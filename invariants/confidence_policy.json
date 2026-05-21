@@ -1,0 +1,12 @@
+{
+  "schema_version": "3.1.8",
+  "distribution_state": "template_seed",
+  "policy": {
+    "fresh": { "conditions": [] },
+    "suspect": { "conditions": [] },
+    "low_confidence": { "conditions": [] },
+    "test_linkage_effect": { "rule": "" },
+    "contradiction_effect": { "rule": "" },
+    "freshness_effect": { "rule": "" }
+  }
+}

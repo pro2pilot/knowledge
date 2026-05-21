@@ -1,0 +1,22 @@
+name: Knowledge Evaluation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.knowledge/**'
+jobs:
+  knowledge-evaluation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run evaluation harness
+        run: |
+          node .knowledge/tools/evaluation-harness.js
+      - name: Upload evaluation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-evaluation
+          path: .knowledge/evaluation/results/latest.json

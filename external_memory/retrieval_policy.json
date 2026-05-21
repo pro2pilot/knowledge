@@ -1,0 +1,16 @@
+{
+  "schema_version": "3.1.8",
+  "local_first": true,
+  "source_of_truth": false,
+  "max_external_chunks": 5,
+  "query_external_when": [
+    "local_search_has_no_answer",
+    "user_explicitly_requests_archive_search",
+    "task_needs_historical_or_static_sources"
+  ],
+  "never_use_external_memory_for": [
+    "current code behavior without code recheck",
+    "current tests without reading tests",
+    "security-sensitive claims without evidence"
+  ]
+}

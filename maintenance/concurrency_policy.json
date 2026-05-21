@@ -1,0 +1,33 @@
+{
+  "schema_version": "3.1.8",
+  "distribution_state": "policy_seed",
+  "mode": "concurrent_safe",
+  "write_policy": {
+    "shared_knowledge": "All writes to .knowledge JSON must go through .knowledge/tools/lib/json-store.js or equivalent lock + atomic write logic.",
+    "lock_path": ".knowledge/.lock",
+    "atomic_writes": true,
+    "append_only_events": ".knowledge/maintenance/events/YYYY-MM-DD.ndjson",
+    "runtime_state": ".knowledge/.runtime/ and .knowledge/sessions/active_tasks/ are per-agent runtime state and should not be treated as canonical knowledge."
+  },
+  "agent_policy": {
+    "agent_id_env": "KNOWLEDGE_AGENT_ID",
+    "recommended_execution": "Use one git worktree or branch per bot/agent. Read shared .knowledge freely; write verified facts through sync/maintenance tools.",
+    "handoff_rule": "Before handing off to another agent, run node .knowledge/tools/sync-tracked.js and update handoff_summary if verified facts changed."
+  },
+  "merge_policy": {
+    "code_is_source_of_truth": true,
+    "tests_beat_prose": true,
+    "suspect_or_low_confidence_requires_code_recheck": true,
+    "bootstrap_and_ingest": "Do not run bootstrap/ingest over curated knowledge without --merge or --force. Prefer --merge."
+  },
+  "read_policy": {
+    "first_read": ".knowledge/maintenance/routing_bundle.json",
+    "wiki_is_advisory": true,
+    "search_is_retrieval_only": true
+  },
+  "generated_artifacts_policy": {
+    "routing_bundle": "safe to regenerate through build-routing-bundle.js",
+    "search_index": "safe to regenerate through build-search-index.js; resolve git conflicts by rebuilding",
+    "quality_report": "safe to regenerate through doctor.js"
+  }
+}

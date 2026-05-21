@@ -1,0 +1,29 @@
+{
+  "schema_version": "3.1.8",
+  "purpose": "Optional external-memory registry. External memory is retrieved context, not source of truth.",
+  "default_policy": "local_first_external_only_when_needed",
+  "providers": {
+    "pinecone": {
+      "enabled": false,
+      "role": "cold_archive_bridge",
+      "source_of_truth": false,
+      "supported_modes": ["local", "cloud"],
+      "mode": "disabled",
+      "connection_modes": {
+        "local": {
+          "description": "Pinecone Local / local test endpoint. No cloud API key required.",
+          "required_env": ["PINECONE_MODE=local", "PINECONE_HOST"],
+          "api_key_required": false,
+          "production_suitable": false
+        },
+        "cloud": {
+          "description": "Managed Pinecone Cloud index.",
+          "required_env": ["PINECONE_MODE=cloud", "PINECONE_API_KEY", "PINECONE_HOST"],
+          "api_key_required": true,
+          "production_suitable": true
+        }
+      }
+    }
+  },
+  "sources": []
+}

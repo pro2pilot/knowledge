@@ -1,0 +1,38 @@
+{
+  "schema_version": "3.1.8",
+  "id": "supabase",
+  "name": "Supabase Project",
+  "description": "Database migrations, RLS policies, edge functions, storage, auth, and generated types for Supabase projects.",
+  "keywords": [
+    "supabase",
+    "postgres",
+    "rls",
+    "edge functions",
+    "storage"
+  ],
+  "suggested_modules": [
+    "database",
+    "auth",
+    "edge-functions",
+    "storage",
+    "types"
+  ],
+  "critical_paths": [
+    "RLS policies",
+    "database migrations",
+    "auth/session model",
+    "edge functions",
+    "storage policies",
+    "generated types"
+  ],
+  "always_recheck": [
+    "RLS",
+    "migrations",
+    "auth",
+    "edge functions",
+    "storage policies"
+  ],
+  "wiki_pages": {
+    "wiki/architecture/supabase-security-map.md": "# Supabase Security Map\n\nStatus: advisory template seed. This page is a scaffold, not a verified project fact. Verify against current code and tests before raising trust.\n\nVerify RLS, migrations, auth, storage policies, and edge functions against current files.\n"
+  }
+}

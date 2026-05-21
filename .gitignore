@@ -1,0 +1,18 @@
+# Runtime-only state for .knowledge
+*.bak-*
+*.tmp-*
+.lock/
+.runtime/
+inspector/data.json
+inspector/status.json
+maintenance/events/
+maintenance/flow-logs/
+maintenance/hook_errors.log
+maintenance/pr_summary.md
+maintenance/update_status.json
+maintenance/watcher_*.log
+metrics/README.md
+metrics/baseline.json
+search/index.json
+search/query_log.ndjson
+sessions/active_tasks/

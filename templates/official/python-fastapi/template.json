@@ -1,0 +1,40 @@
+{
+  "schema_version": "3.1.8",
+  "id": "python-fastapi",
+  "name": "Python FastAPI",
+  "description": "API routes, dependency injection, database sessions, background tasks, and auth boundaries for FastAPI projects.",
+  "keywords": [
+    "python",
+    "fastapi",
+    "pydantic",
+    "uvicorn",
+    "sqlalchemy"
+  ],
+  "suggested_modules": [
+    "api",
+    "auth",
+    "database",
+    "models",
+    "services",
+    "workers"
+  ],
+  "critical_paths": [
+    "auth dependency chain",
+    "request validation",
+    "database session lifecycle",
+    "background task execution",
+    "migrations",
+    "settings/secrets"
+  ],
+  "always_recheck": [
+    "auth dependencies",
+    "database sessions",
+    "settings",
+    "migrations",
+    "background tasks"
+  ],
+  "wiki_pages": {
+    "wiki/architecture/fastapi-service-boundaries.md": "# FastAPI Service Boundaries\n\nStatus: advisory template seed. This page is a scaffold, not a verified project fact. Verify against current code and tests before raising trust.\n\nMap routers, dependencies, schemas, services, database lifecycle, and background tasks.\n",
+    "wiki/runbooks/fastapi-agent-review.md": "# FastAPI Agent Review Runbook\n\nBefore editing auth dependencies, database sessions, settings, or migrations, re-read current source code and tests.\n"
+  }
+}

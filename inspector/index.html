@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>.knowledge Visual Inspector</title>
+<style>
+:root{color-scheme:dark;--bg:#070b14;--panel:#0e1629;--line:#25304a;--text:#ecf3ff;--muted:#9ca9c4;--blue:#56b7ff}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(900px 500px at 20% -10%,#1f3b7c66,transparent),linear-gradient(180deg,#070b14,#0a1020);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,Segoe UI,Arial}.card{width:min(760px,calc(100vw - 32px));background:linear-gradient(180deg,#111c34,#0a1326);border:1px solid var(--line);border-radius:24px;padding:32px;box-shadow:0 24px 90px #0009}h1{font-size:34px;margin:0 0 10px;letter-spacing:-.04em}p{color:var(--muted)}code{display:block;background:#050b16;border:1px solid #1f2b44;border-radius:14px;padding:14px;color:#bce0ff;overflow:auto}.copy{margin-top:14px;border:1px solid #3a4a6b;background:#0e1b32;color:#e8eefc;border-radius:12px;padding:10px 12px;cursor:pointer}.copy:hover{border-color:#79b7ff}.features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}.feature{border:1px solid #23304a;border-radius:14px;padding:10px;color:#dbeafe}@media(max-width:640px){.features{grid-template-columns:1fr}.card{padding:22px}}
+</style>
+</head>
+<body>
+<main class="card">
+<h1>.knowledge Visual Inspector</h1>
+<p>This starter page is replaced by the project-specific inspector after setup:</p>
+<code id="cmd">node .knowledge/tools/build-visual-inspector.js</code>
+<button class="copy" type="button" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('cmd').textContent);this.textContent='Copied'">Copy command</button>
+<div class="features">
+<div class="feature">Improved wiki graph</div>
+<div class="feature">Table filters</div>
+<div class="feature">Clickable file links</div>
+<div class="feature">Low-confidence explanations</div>
+<div class="feature">Better empty states</div>
+<div class="feature">Quick copy actions</div>
+</div>
+</main>
+</body>
+</html>
