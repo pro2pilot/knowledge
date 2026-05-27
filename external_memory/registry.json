@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.1.8",
+  "schema_version": "3.1.9",
   "purpose": "Optional external-memory registry. External memory is retrieved context, not source of truth.",
   "default_policy": "local_first_external_only_when_needed",
   "providers": {

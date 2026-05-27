@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const { ensureDir, readJson, writeJsonAtomic, writeFileAtomic, withLock } = require('./lib/json-store');
 
 const MANAGED_START = '<!-- BEGIN DOT-KNOWLEDGE MANAGED BLOCK -->';
@@ -17,6 +18,25 @@ function upsertManagedBlock(filePath, blockBody, options = {}) {
   }
   const current = fs.readFileSync(filePath, 'utf8');
   const regex = new RegExp(`${MANAGED_START}[\\s\\S]*?${MANAGED_END}\\n?`, 'm');
+  if (regex.test(current)) {
+    writeFileAtomic(filePath, current.replace(regex, block));
+    return 'updated';
+  }
+  writeFileAtomic(filePath, `${current.replace(/\s*$/, '')}\n\n${block}`);
+  return 'appended';
+}
+
+function upsertHashManagedBlock(filePath, blockBody, options = {}) {
+  ensureDir(path.dirname(filePath));
+  const start = '# BEGIN DOT-KNOWLEDGE MANAGED BLOCK';
+  const end = '# END DOT-KNOWLEDGE MANAGED BLOCK';
+  const block = `${start}\n${blockBody.trim()}\n${end}\n`;
+  if (!fs.existsSync(filePath)) {
+    writeFileAtomic(filePath, options.prefix ? `${options.prefix.trim()}\n\n${block}` : block);
+    return 'created';
+  }
+  const current = fs.readFileSync(filePath, 'utf8');
+  const regex = new RegExp(`${start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'm');
   if (regex.test(current)) {
     writeFileAtomic(filePath, current.replace(regex, block));
     return 'updated';
@@ -41,6 +61,20 @@ function copyDir(srcDir, dstDir) {
   return written;
 }
 
+function upsertGitAttributes(repoRoot) {
+  const body = [
+    '# .knowledge installed integration files',
+    '.gitattributes text eol=lf',
+    '.agents/skills/** text eol=lf',
+    '.claude/skills/** text eol=lf',
+    '.opencode/commands/** text eol=lf',
+    'AGENTS.md text eol=lf',
+    'CLAUDE.md text eol=lf',
+    'package.json text eol=lf'
+  ].join('\n');
+  return upsertHashManagedBlock(path.join(repoRoot, '.gitattributes'), body);
+}
+
 function updatePackageJson(repoRoot) {
   const packagePath = path.join(repoRoot, 'package.json');
   if (!fs.existsSync(packagePath)) return { status: 'not_found' };
@@ -54,6 +88,9 @@ function updatePackageJson(repoRoot) {
     'kb:watch': 'node .knowledge/tools/watch-maintenance.js',
     'kb:hooks': 'node .knowledge/tools/install-git-hooks.js',
     'kb:integrations': 'node .knowledge/tools/install-agent-integrations.js',
+    'kb:install-check': 'node .knowledge/tools/install-check.js --json',
+    'kb:update-system': 'node .knowledge/tools/update-system-files.js',
+    'kb:git-policy': 'node .knowledge/tools/git-policy.js --json',
     'kb:routing': 'node .knowledge/tools/build-routing-bundle.js',
     'kb:index': 'node .knowledge/tools/build-search-index.js',
     'kb:search': 'node .knowledge/tools/search-knowledge.js',
@@ -84,7 +121,7 @@ function installAgentIntegrations(options = {}) {
   const repoRoot = path.basename(knowledgeRoot) === '.knowledge' ? path.dirname(knowledgeRoot) : process.cwd();
   const kitRoot = knowledgeRoot;
   const lockDir = path.join(knowledgeRoot, '.lock');
-  return withLock(lockDir, () => {
+  const installed = withLock(lockDir, () => {
     const installed = {};
     const agentsBlock = `# .knowledge trust/routing layer
 
@@ -156,9 +193,25 @@ Use the same \`.knowledge/\` trust rules as \`AGENTS.md\`. Prefer installed skil
     installed.codex_skills = copyDir(path.join(kitRoot, 'agent-integrations', 'codex', 'skills'), path.join(repoRoot, '.agents', 'skills')).length;
     installed.claude_skills = copyDir(path.join(kitRoot, 'agent-integrations', 'claude', 'skills'), path.join(repoRoot, '.claude', 'skills')).length;
     installed.opencode_commands = copyDir(path.join(kitRoot, 'agent-integrations', 'opencode', 'commands'), path.join(repoRoot, '.opencode', 'commands')).length;
+    installed.gitattributes = upsertGitAttributes(repoRoot);
     if (options.updatePackageScripts !== false) installed.package_json = updatePackageJson(repoRoot);
     return installed;
   });
+  const installCheckScript = path.join(knowledgeRoot, 'tools', 'install-check.js');
+  if (fs.existsSync(installCheckScript) && options.runInstallCheck !== false) {
+    const res = spawnSync(process.execPath, [installCheckScript, '--json'], { cwd: repoRoot, encoding: 'utf8', windowsHide: true });
+    installed.install_check = {
+      command: 'node .knowledge/tools/install-check.js --json',
+      exit: res.status,
+      status: null
+    };
+    try { installed.install_check.result = JSON.parse((res.stdout || '').trim() || '{}'); installed.install_check.status = installed.install_check.result.status || null; }
+    catch { installed.install_check.stdout = (res.stdout || '').trim().slice(0, 4000); }
+    if (res.stderr) installed.install_check.stderr = res.stderr.trim().slice(0, 2000);
+  } else {
+    installed.install_check = { recommendation: 'Run node .knowledge/tools/install-check.js --json' };
+  }
+  return installed;
 }
 
 module.exports = installAgentIntegrations;

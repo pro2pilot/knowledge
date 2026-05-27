@@ -1,4 +1,4 @@
-version: 3.1.8
+version: 3.1.9
 config_schema_version: 1
 distribution: public_release
 project_index: .knowledge/project_index.json
@@ -46,6 +46,7 @@ updates:
   mode: advisory_only
   interval_days: 7
   source: github_releases
+  repository: pro2pilot/knowledge
   current_version_source: package.json
   auto_update: false
   telemetry: false

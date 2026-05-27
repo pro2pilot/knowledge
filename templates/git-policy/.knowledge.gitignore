@@ -64,3 +64,4 @@ cache/
 .qa-tmp/
 dist/
 .git/
+.github/

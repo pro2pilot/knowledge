@@ -14,6 +14,7 @@ If this is a freshly extracted public archive, runtime artifacts are
 intentionally not shipped yet. Run first-time setup first:
 
 ```bash
+node .knowledge/tools/install-check.js --json
 node .knowledge/tools/install-agent-integrations.js
 node .knowledge/tools/flow.js import
 ```
@@ -32,6 +33,7 @@ bundle first. If it is missing or stale, choose the correct setup path below.
 From the repository root:
 
 ```bash
+node .knowledge/tools/install-check.js --json
 node .knowledge/tools/install-agent-integrations.js
 node .knowledge/tools/flow.js import
 ```
@@ -94,19 +96,25 @@ inspector/
 
 Safe update procedure:
 
-1. Create a backup of the current `.knowledge/` folder.
-2. Extract the new archive into a temporary folder outside the project.
-3. Copy only the system files listed above into the existing `.knowledge/`.
-4. Do not overwrite module cards, trust reports, evidence, wiki pages, repair queue, freshness, decisions, or project maps.
-5. Run:
+1. Extract the new release artifact into a temporary folder outside the project.
+2. Run a dry-run diff:
 
 ```bash
-node .knowledge/tools/doctor.js
-node .knowledge/tools/flow.js release --no-color
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-run
 ```
 
-6. If the release introduces a schema migration tool, run it in `--dry-run` mode first.
-7. Report changed system files and any doctor warnings.
+3. If the diff only creates or updates system files, apply it:
+
+```bash
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply --yes
+```
+
+The updater creates a timestamped backup of the current `.knowledge/`, writes
+`.knowledge/maintenance/update_system_files_report.json`, then runs
+`install-check`, `doctor`, and `flow release --no-color`.
+
+Do not replace the whole `.knowledge/` folder unless the user explicitly asks
+for a reset.
 
 ## Setup for an existing project with an old `.knowledge` base
 
@@ -145,6 +153,29 @@ If the project already has another knowledge system, do not overwrite it.
    `node .knowledge/tools/flow.js import`
 8. Keep imported material `advisory_only` until checked against current code/tests.
 
+## Install guard and Git policy
+
+Before trusting an install, run:
+
+```bash
+node .knowledge/tools/install-check.js --json
+```
+
+If it reports a nested `.knowledge/.git`, fix only with explicit confirmation:
+
+```bash
+node .knowledge/tools/install-check.js --fix --yes
+```
+
+Git policy is documented in:
+
+```txt
+.knowledge/docs/git-policy.md
+```
+
+Runtime files, locks, flow logs, generated indexes, inspector data, temp files,
+and local backups are not committed by default.
+
 ## Optional update checks
 
 Update checks are disabled by default. `.knowledge` does not run a background updater and does not send telemetry.
@@ -173,7 +204,15 @@ Disable update checks:
 node .knowledge/tools/check-updates.js --disable
 ```
 
-If an update is available, update only `.knowledge` system files. Do not overwrite project knowledge records, trust state, evidence, modules, maps, wiki, repair queue, freshness, sessions, metrics, or inspector output.
+If an update is available, update only `.knowledge` system files:
+
+```bash
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-run
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply --yes
+```
+
+Do not overwrite project knowledge records, trust state, evidence, modules,
+maps, wiki, repair queue, freshness, sessions, metrics, or inspector output.
 
 ## Official templates
 
@@ -230,7 +269,7 @@ node .knowledge/tools/search-knowledge.js "query" --scope=cookbook    # operatio
 node .knowledge/tools/search-knowledge.js "query" --scope=all         # broad exploratory search
 ```
 
-Use `--scope=project` when you need facts about this repo. Use `--scope=templates` only to discover scaffolding ideas — never treat template hits as verified project facts.
+Use `--scope=project` when you need facts about this repo. Use `--scope=templates` only to discover scaffolding ideas -- never treat template hits as verified project facts.
 
 ## Standard operating flows
 

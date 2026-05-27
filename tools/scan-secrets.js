@@ -143,7 +143,7 @@ function main(argv = process.argv.slice(2)) {
     : 'clean';
 
   const report = {
-    schema_version: '3.1.8',
+    schema_version: '3.1.9',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     scope: includeRepo ? 'knowledge_plus_repo_critical_important' : 'knowledge_only',

@@ -237,7 +237,7 @@ function buildUnlocked(options = {}) {
   }
 
   const index = {
-    schema_version: '3.1.8',
+    schema_version: '3.1.9',
     generated_at: generatedAt,
     generated_by: getAgentId(),
     index_type: 'local_lexical_compact',

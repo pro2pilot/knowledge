@@ -8,11 +8,11 @@
 
 `.knowledge` gives Codex, Claude Code, OpenCode and custom agents a local control plane for the repository: one first-read routing bundle, trust and freshness status, repair queue, scoped local search, source-of-truth rules and a Visual Inspector.
 
-**Synthetic SaaS-shape fixture:** **14 orientation files → 1 routing bundle**, **~22% less first-orientation context**.
+**Synthetic SaaS-shape fixture:** **14 orientation files -> 1 routing bundle**, **~22% less first-orientation context**.
 
 **Fewer repeated repo crawls. Fewer stale-summary mistakes. Fewer wrong-file loops.**
 
-Different agents, same repo, shared project memory — without forcing them into one chat thread.
+Different agents, same repo, shared project memory -- without forcing them into one chat thread.
 
 - One first-read routing bundle
 - Trust and freshness status
@@ -33,6 +33,7 @@ Read `.knowledge/Quick-Start.md` and execute it for this repository.
 Manual first-time setup:
 
 ```bash
+node .knowledge/tools/install-check.js --json
 node .knowledge/tools/install-agent-integrations.js
 node .knowledge/tools/flow.js import
 ```
@@ -111,21 +112,21 @@ Current recipes cover new project setup, existing-project migration, agent hando
 
 These numbers come from a **synthetic SaaS fixture** and a few small synthetic repos, on a single local machine. They are **order-of-magnitude** results from one local token estimator (`max(ceil(words*1.33), ceil(chars/4))`). They are not production benchmarks, they are not tokenizer-verified, and they are not a guarantee of behavior on your repo.
 
-On the synthetic SaaS-shape fixture, `.knowledge` reduced the orientation path from 14 files to one routing bundle. On tiny synthetic repos, the routing bundle has fixed structural cost and the percentage may go negative — this is reported honestly, not hidden.
+On the synthetic SaaS-shape fixture, `.knowledge` reduced the orientation path from 14 files to one routing bundle. On tiny synthetic repos, the routing bundle has fixed structural cost and the percentage may go negative -- this is reported honestly, not hidden.
 
-Doctor scores in smoke scenarios ranged **healthy 90–93 depending on scenario**. Remaining deductions are intentional low-trust / suspect-module warnings from heuristic ingest; source-backed evidence is required before trust is raised.
+Doctor scores in smoke scenarios ranged **healthy 90-93 depending on scenario**. Remaining deductions are intentional low-trust / suspect-module warnings from heuristic ingest; source-backed evidence is required before trust is raised.
 
 ### What these numbers mean
 
 - A no-`.knowledge` agent has to open multiple manifests and crawl source folders to identify domain areas. The routing bundle replaces that for the agent's first read.
-- On the SaaS fixture, `14 files → 1 routing bundle` is the headline change. Token counts are estimates, not exact.
+- On the SaaS fixture, `14 files -> 1 routing bundle` is the headline change. Token counts are estimates, not exact.
 - Doctor and wiki-lint scores reflect structural health of `.knowledge`, not correctness of the user's code.
 
 ### What these numbers do not prove
 
 - They do not prove a uniform speedup across all repos. Tiny repos may show overhead because the routing bundle has fixed structure cost.
 - They are not equivalent to a real tokenizer count. Production tokenizers will differ.
-- They are not a guarantee of agent behaviour — agents may still ignore routing if instructed to read source directly.
+- They are not a guarantee of agent behaviour -- agents may still ignore routing if instructed to read source directly.
 
 Benchmark methodology is summarized in:
 
@@ -156,6 +157,11 @@ Code beats summaries. Tests beat prose. External memory is retrieved context onl
 
 ## Quickstart
 
+There are three supported paths. Do not copy a source checkout into
+`.knowledge/`; use the release artifact or the updater command.
+
+### Fresh install
+
 Extract the archive into the repository root so it creates:
 
 ```txt
@@ -171,6 +177,7 @@ Read `.knowledge/Quick-Start.md` and execute it for this repository.
 Manual setup:
 
 ```bash
+node .knowledge/tools/install-check.js --json
 node .knowledge/tools/install-agent-integrations.js
 node .knowledge/tools/flow.js import
 ```
@@ -186,10 +193,39 @@ Release/readiness check:
 node .knowledge/tools/flow.js release
 ```
 
+### Existing `.knowledge` update
+
+Download the new release artifact, extract it into a temporary folder, then
+update only system/framework files:
+
+```bash
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-run
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply --yes
+```
+
+The updater preserves project knowledge such as `wiki/`, `modules/`,
+`evidence/`, `decisions.json`, `maintenance/`, `maps/`, `sessions/`, and
+runtime trust state.
+
+### Migration from non-`.knowledge`
+
+Back up the existing knowledge source, preserve the raw source as advisory
+material, import only mapped content, and then run:
+
+```bash
+node .knowledge/tools/flow.js import
+```
+
+Imported material starts as advisory context until checked against current code
+and tests.
+
 ## Main commands
 
 ```bash
 node .knowledge/tools/doctor.js
+node .knowledge/tools/install-check.js --json
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-run
+node .knowledge/tools/git-policy.js --json
 node .knowledge/tools/flow.js scan
 node .knowledge/tools/flow.js lint
 node .knowledge/tools/flow.js import
@@ -204,6 +240,15 @@ node .knowledge/tools/collect-metrics.js
 node .knowledge/tools/build-visual-inspector.js
 node .knowledge/tools/serve-inspector.js
 ```
+
+Source maintainers can build a safe install artifact with:
+
+```bash
+node tools/package-release.js
+```
+
+The output is `dist/knowledge-v<version>.zip` with `.knowledge/` as the archive
+root and no nested `.knowledge/.git`.
 
 ## Additional workflows
 
@@ -283,6 +328,18 @@ Outputs:
 - `.knowledge/flows/*.md`
 - `.knowledge/tools/flow.js`
 
+### Git policy
+
+Read:
+
+```txt
+.knowledge/docs/git-policy.md
+```
+
+The default policy commits curated/system and project knowledge, but ignores
+runtime locks, logs, temp files, search indexes, inspector data, flow logs, and
+generated heavy outputs unless the team explicitly force-adds them.
+
 ## Updates
 
 `.knowledge` does not run a background updater and does not send telemetry. Update checks are disabled by default.
@@ -311,15 +368,15 @@ Disable update checks:
 node .knowledge/tools/check-updates.js --disable
 ```
 
-Update checks only query GitHub Releases for the official `pro2pilot/knowledge` repository. They never upload repository content, never auto-update files, and never overwrite project knowledge records.
+Update checks only query GitHub Releases for the official `pro2pilot/knowledge` repository. They never upload repository content, never auto-update files, and never overwrite project knowledge records. When an update is available, use `update-system-files.js` to copy only system files.
 
 ## External memory
 
 Pinecone is optional and disabled by default. It can be used as a cold archive bridge in two modes:
 
 ```txt
-Pinecone Local  → local emulator / CI / experiments
-Pinecone Cloud  → managed vector database
+Pinecone Local  -> local emulator / CI / experiments
+Pinecone Cloud  -> managed vector database
 ```
 
 Check local readiness:
