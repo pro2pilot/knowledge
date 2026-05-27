@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.1.8",
+  "version": "3.1.9",
   "description": "Repo-local knowledge system for AI coding agents: routing, trust, freshness, cookbook, templates, visual inspector, wiki graph, metrics, and handoff.",
   "type": "commonjs",
   "engines": {
@@ -28,6 +28,11 @@
     "kb:flow:scan": "node tools/flow.js scan",
     "kb:flow:import": "node tools/flow.js import",
     "kb:flow:release": "node tools/flow.js release",
+    "kb:package-release": "node tools/package-release.js",
+    "kb:self-test-install-policy": "node tools/self-test-install-policy.js",
+    "kb:install-check": "node tools/install-check.js --json",
+    "kb:update-system": "node tools/update-system-files.js",
+    "kb:git-policy": "node tools/git-policy.js --json",
     "kb:updates": "node tools/check-updates.js --status",
     "kb:updates:check": "node tools/check-updates.js",
     "kb:updates:enable": "node tools/check-updates.js --enable --interval=7d",

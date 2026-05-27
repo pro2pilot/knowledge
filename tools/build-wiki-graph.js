@@ -110,7 +110,7 @@ function buildUnlocked(options = {}) {
     if (/^https?:\/\//i.test(edge.to) || edge.to.startsWith('mailto:') || edge.to.startsWith('.knowledge/')) continue;
     if (!pageSet.has(edge.to)) broken_edges.push(edge);
   }
-  const graph = { schema_version: '3.1.8', generated_at: nowIso(), generated_by: getAgentId(), node_count: nodes.length, edge_count: edges.length, broken_edge_count: broken_edges.length, allowed_edge_types: allowedTypes, nodes, edges, broken_edges };
+  const graph = { schema_version: '3.1.9', generated_at: nowIso(), generated_by: getAgentId(), node_count: nodes.length, edge_count: edges.length, broken_edge_count: broken_edges.length, allowed_edge_types: allowedTypes, nodes, edges, broken_edges };
   writeJsonAtomic(path.join(knowledgeRoot, 'maps', 'wiki_graph.json'), graph);
   if (!options.quiet) console.log(JSON.stringify({ written: '.knowledge/maps/wiki_graph.json', nodes: nodes.length, edges: edges.length, broken_edges: broken_edges.length }, null, 2));
   return graph;

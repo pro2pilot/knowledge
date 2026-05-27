@@ -100,6 +100,7 @@ function writeConfig(updates) {
     `  mode: ${updates.mode || 'advisory_only'}`,
     `  interval_days: ${Number(updates.interval_days || 7)}`,
     `  source: ${updates.source || 'github_releases'}`,
+    `  repository: ${OFFICIAL_UPDATE_REPOSITORY}`,
     `  current_version_source: ${updates.current_version_source || 'package.json'}`,
     `  auto_update: ${updates.auto_update ? 'true' : 'false'}`,
     `  telemetry: ${updates.telemetry ? 'true' : 'false'}`,
@@ -153,7 +154,7 @@ async function fetchLatestRelease(config) {
 }
 function makeStatusBase(config) {
   return {
-    schema_version: '3.1.8',
+    schema_version: '3.1.9',
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,

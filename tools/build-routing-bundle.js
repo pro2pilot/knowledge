@@ -73,7 +73,7 @@ function buildUnlocked(options = {}) {
     .slice(0, 100);
 
   const bundle = {
-    schema_version: '3.1.8',
+    schema_version: '3.1.9',
     generated_at: generatedAt,
     generated_by: agentId,
     purpose: 'Compact first-read routing bundle for agents. Read this before opening larger .knowledge files.',

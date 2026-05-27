@@ -37,7 +37,7 @@ function main() {
   const routeTokens = estimateTokens(routeText);
   const multiTokens = estimateTokens(multi);
   const metrics = {
-    schema_version: '3.1.8',
+    schema_version: '3.1.9',
     generated_at: new Date().toISOString(),
     generated_by: getAgentId(),
     token_estimator: METHOD_ID,

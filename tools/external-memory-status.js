@@ -25,7 +25,7 @@ function statusUnlocked(options = {}) {
   const apiKeyRequired = mode === 'cloud';
   const configured = mode !== 'disabled' && Boolean(host) && (!apiKeyRequired || Boolean(env('PINECONE_API_KEY')));
   const report = {
-    schema_version: '3.1.8', generated_at: nowIso(), generated_by: getAgentId(),
+    schema_version: '3.1.9', generated_at: nowIso(), generated_by: getAgentId(),
     policy: { local_first: policy.local_first !== false, source_of_truth: false, max_external_chunks: policy.max_external_chunks || 5 },
     providers: { pinecone: { enabled: Boolean(registry.providers?.pinecone?.enabled || sources.enabled), mode, configured, status: mode === 'disabled' ? 'disabled' : configured ? `ready_${mode}` : `missing_${mode}_environment`, api_key_required: apiKeyRequired, local_supported: true, source_of_truth: false } },
     sources: { configured_sources: (sources.sources || []).length, namespace: sources.namespace || env('PINECONE_NAMESPACE') || null, index: sources.index || env('PINECONE_INDEX') || null },
