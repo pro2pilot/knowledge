@@ -170,7 +170,7 @@ function isTextEntry(entry) {
     '.toml', '.ts', '.txt', '.xml', '.yaml', '.yml'
   ]);
   const textNames = new Set([
-    '.gitattributes', '.gitignore', 'LICENSE', 'NOTICE', 'README', 'SECURITY'
+    '.gitattributes', '.gitignore', '.knowledge.gitignore', 'LICENSE', 'NOTICE', 'README', 'SECURITY'
   ]);
   return textExts.has(ext) || textNames.has(path.posix.basename(rel));
 }
