@@ -310,6 +310,8 @@ node .knowledge/inspector.js
 
 ## Release artifact
 
+Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
+
 Use `dist/knowledge-v3.2.0.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
 
 ```bash

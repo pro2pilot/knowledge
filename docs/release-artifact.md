@@ -1,5 +1,7 @@
 # Release Artifact
 
+> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
+
 Use the zip produced by:
 
 ```bash

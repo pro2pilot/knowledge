@@ -4,6 +4,8 @@
 
 v3.2.0 lifts the active release line to `3.2.0` and aligns installed agent integrations around one stricter final-report contract.
 
+> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
+
 ### Added
 
 - A shared final-report contract across installed agent integrations after meaningful work or before handoff.

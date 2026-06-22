@@ -42,6 +42,8 @@ external memory stays advisory
 
 ## Start
 
+> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only. Canonical asset: `knowledge-v3.2.0.zip` from https://github.com/pro2pilot/knowledge/releases/tag/v3.2.0
+
 Extract the release so your repository contains `.knowledge/`, then tell your agent:
 
 ```txt
@@ -433,6 +435,8 @@ The live Mem0 health check uses bounded Python discovery: explicit `--python`, `
 External retrieved chunks never override source code, tests, evidence, or decisions. Claude MEM is no longer a first-class provider; legacy artifacts are migration-only advisory data.
 
 ### Release artifact and Inspector
+
+> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
 Use `dist/knowledge-v3.2.0.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
 
