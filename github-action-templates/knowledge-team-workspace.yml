@@ -1,0 +1,35 @@
+name: knowledge-team-workspace
+
+on:
+  pull_request:
+
+jobs:
+  knowledge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install check
+        run: node .knowledge/tools/install-check.js --json
+      - name: Doctor flow
+        run: node .knowledge/tools/flow.js doctor --json
+      - name: PR summary
+        run: node .knowledge/tools/generate-pr-summary.js --json
+      - name: Team PR summary when configured
+        shell: bash
+        run: |
+          if [ -n "${KNOWLEDGE_TEAM_ROOT:-}" ] && [ -n "${KNOWLEDGE_WORKSPACE_ID:-}" ]; then
+            node .knowledge/tools/team-pr-summary.js --team-root "$KNOWLEDGE_TEAM_ROOT" --workspace-id "$KNOWLEDGE_WORKSPACE_ID" --json
+          else
+            echo "No teamRoot/workspaceId configured; using repo-local fallback."
+          fi
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-artifacts
+          path: |
+            .knowledge/maintenance/pr_summary.md
+            .knowledge/maintenance/quality_report.json
+            .knowledge/maintenance/routing_bundle.json

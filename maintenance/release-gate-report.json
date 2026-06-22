@@ -1,0 +1,304 @@
+{
+  "schema_version": "3.2.0",
+  "generated_at": "2026-06-21T11:10:21.218Z",
+  "status": "passed",
+  "gate_status": "benchmark-ready",
+  "artifact": "dist/knowledge-v3.2.0.zip",
+  "steps": [
+    {
+      "name": "self-test Inspector Launcher",
+      "command": "node.exe tools/self-test-inspector-launcher.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 357,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"one-file launcher starts\",\n    \"click launcher files exist\",\n    \"session token required\",\n    \"canonical nav renders\",\n    \"shared Inspector renderer renders\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Inspector Actions",
+      "command": "node.exe tools/self-test-inspector-actions.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 358,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"token auth\",\n    \"required action registry\",\n    \"action lifecycle passed\",\n    \"pro gate blocked\",\n    \"logs saved\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Agent Activity",
+      "command": "node.exe tools/self-test-agent-activity.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 344,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"start\",\n    \"heartbeat\",\n    \"report\",\n    \"finish\",\n    \"identity fields\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Safe Queue",
+      "command": "node.exe tools/self-test-safe-queue.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 318,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"Safe Queue default\",\n    \"Manual Only merge default\",\n    \"workspace registration visible\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Agent Footer",
+      "command": "node.exe tools/self-test-agent-footer.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 1384,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"compact footer\",\n    \"full footer\",\n    \"estimated token labels\",\n    \"open inspector action\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Restore Trust",
+      "command": "node.exe tools/self-test-restore-trust.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 54,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"requires --safe\",\n    \"does not claim source edits\",\n    \"does not merge\",\n    \"refreshes routing/search/memory/doctor\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Canonical E2E",
+      "command": "node.exe tools/self-test-canonical-e2e.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 21877,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"simulated\": [\n    \"clean temporary git repo\",\n    \"dirty repo diff\",\n    \"corrupt JSON runtime artifact\",\n    \"unavailable/advisory memory providers\",\n    \"invalid Inspector token\",\n    \"free-mode Pro action without entitlement\",\n    \"no browser open / API-only Inspector run\",\n    \"secret-bearing fixture report for redaction\"\n  ],\n  \"checks\": [\n    \"clean fixture repo doctor --json returns structured status\",\n    \"corrupt JSON fixture is detected without touching source\",\n    \"Restore Trust refreshes generated state only and preserves source hashes\",\n    \"memory providers stay advisory-only when unavailable/unconfigured\",\n    \"PR Impact handles clean and dirty fixture repos with JSON output\",\n    \"debug bundle and Pro snapshot export sanitized JSON artifacts\",\n    \"agent start/heartbeat/report/finish drives active sessions from registry\",\n    \"agent footer exposes Simple/Advanced-compatible local actions\",\n    \"repo-mode Safe Queue and Manual Only defaults are visible\",\n    \"live Inspector token auth, API, actions, lifecycle, SSE fallback, redaction and Pro gate\",\n    \"routing, trust, freshness, repair, search, Inspector and export artifacts generated\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Pro Ready Gates",
+      "command": "node.exe tools/self-test-pro-ready-gates.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 59,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"checks\": [\n    \"version 3.2.0\",\n    \"canonical docs loaded\",\n    \"pro schemas present\",\n    \"pro gate blocks free mode\",\n    \"no pricing in free inspector\",\n    \"Pro Inspector 0.1.0 boundary\",\n    \"License API 0.1.0 skeleton\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test install policy",
+      "command": "node.exe tools/self-test-install-policy.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 140428,
+      "stdout_tail": "[],\n          \"runtime_regenerated\": [],\n          \"missing_system_paths\": [],\n          \"source_missing_system_paths\": [],\n          \"curated_changed_files\": null,\n          \"manual_action_required\": []\n        },\n        \"apply\": {\n          \"create\": 3,\n          \"update\": 156,\n          \"skip\": 138,\n          \"preserve\": 16,\n          \"system_created\": 3,\n          \"system_updated\": 156,\n          \"system_skipped\": 138,\n          \"project_preserved\": 16,\n          \"migration_defaults_created\": 0,\n          \"migration_default_paths\": [],\n          \"runtime_regenerated\": [\n            {\n              \"command\": \"node .knowledge/tools/flow.js release --no-color\",\n              \"exit\": 0,\n              \"status\": \"ok\"\n            },\n            {\n              \"command\": \"node .knowledge/tools/flow.js release --no-color\",\n              \"exit\": 0,\n              \"status\": \"ok\"\n            }\n          ],\n          \"missing_system_paths\": [],\n          \"source_missing_system_paths\": [],\n          \"curated_changed_files\": 0,\n          \"manual_action_required\": []\n        },\n        \"verify\": \"ok\"\n      }\n    },\n    {\n      \"name\": \"bootstrap update from 3.1.8-like install without updater\",\n      \"status\": \"pass\",\n      \"details\": {\n        \"apply\": {\n          \"create\": 30,\n          \"update\": 152,\n          \"skip\": 118,\n          \"preserve\": 16,\n          \"system_created\": 30,\n          \"system_updated\": 152,\n          \"system_skipped\": 118,\n          \"project_preserved\": 16,\n          \"migration_defaults_created\": 2,\n          \"migration_default_paths\": [\n            \"external_memory/registry.json\",\n            \"external_memory/retrieval_policy.json\"\n          ],\n          \"runtime_regenerated\": [\n            {\n              \"command\": \"node .knowledge/tools/flow.js release --no-color\",\n              \"exit\": 0,\n              \"status\": \"ok\"\n            },\n            {\n              \"command\": \"node .knowledge/tools/flow.js release --no-color\",\n              \"exit\": 0,\n              \"status\": \"ok\"\n            }\n          ],\n          \"missing_system_paths\": [],\n          \"source_missing_system_paths\": [],\n          \"curated_changed_files\": 0,\n          \"manual_action_required\": []\n        },\n        \"doctor_status\": \"healthy\",\n        \"verify\": \"ok\"\n      }\n    },\n    {\n      \"name\": \"update preflight stops before report/backup permission failures\",\n      \"status\": \"pass\",\n      \"details\": {\n        \"preflight_status\": \"failed\",\n        \"apply_status\": \"failed\"\n      }\n    },\n    {\n      \"name\": \"runtime files are covered by installed .knowledge/.gitignore\",\n      \"status\": \"pass\",\n      \"details\": {\n        \"patterns_checked\": 14\n      }\n    },\n    {\n      \"name\": \"paths with spaces and Cyrillic pass install-check\",\n      \"status\": \"pass\",\n      \"details\": {\n        \"repo\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.self-test-tmp\\\\knowledge install policy кириллица Wbqj9r\\\\repo with spaces кириллица\",\n        \"status\": \"ok\"\n      }\n    }\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test memory providers",
+      "command": "node.exe tools/self-test-memory-providers.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 1839,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"checks\": [\n    \"list returns Mem0 and Pinecone\",\n    \"preview writes no receipt\",\n    \"install refuses without license confirmation\",\n    \"install records receipt without claiming package install\",\n    \"Mem0 runtime health reports runtime_not_installed without live checks\",\n    \"Mem0 dry-run add does not persist\",\n    \"Mem0 test adapter add/search/list/delete works without production claim\",\n    \"Mem0 export-redacted omits memory content\",\n    \"update requires explicit pinned version\",\n    \"uninstall preserves data by default\",\n    \"pinecone local status redacts API key\",\n    \"legacy Claude MEM detected and marked deprecated\",\n    \"external memory cannot raise trust\",\n    \"Inspector renders Memory Providers cards\",\n    \"repo-local and team stateRoot modes work\",\n    \"paths with spaces and Cyrillic work\",\n    \"status/list/inspector made no network calls\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test external memory",
+      "command": "node.exe tools/self-test-external-memory.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 1310,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"checks\": [\n    \"external-memory-status writes report\",\n    \"metrics/external_memory.json is written\",\n    \"Mem0 and Pinecone included\",\n    \"advisory-only policy preserved\",\n    \"doctor reports memory provider checks\",\n    \"contradictory Mem0 advisory memory cannot raise trust\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test PR Impact",
+      "command": "node.exe tools/self-test-pr-impact.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 4943,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"checks\": [\n    \"no changed files empty state\",\n    \"critical file touched\",\n    \"stale module touched\",\n    \"source changed but evidence missing\",\n    \"generated runtime file staged\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Team Mode",
+      "command": "node.exe tools/self-test-team-mode.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 30669,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"team_root\": \"<temp>\\\\knowledge team тест MxRmk6\\\\.knowledge-team shared\",\n  \"checks\": [\n    \"temp git repo with spaces and Cyrillic path\",\n    \"two worktrees\",\n    \"team-init\",\n    \"workspace-register for two agents\",\n    \"missing teamRoot and missing workspaceId failures\",\n    \"duplicate workspaceId failure\",\n    \"duplicate agentId warning\",\n    \"parallel doctor/release exclusive flows\",\n    \"stale lock cleanup\",\n    \"JSON corruption scan\",\n    \"lock released\",\n    \"events written\",\n    \"doctor/external memory/worktree events written\",\n    \"workspace states separated\",\n    \"team-status sees both workspaces\",\n    \"team-status reports stale workspaces\",\n    \"branch/head detected\",\n    \"branch mismatch warning\",\n    \"missing targetRoot warning\",\n    \"dirty workspace warning\",\n    \"staged generated runtime warning\",\n    \"shared external memory warning\",\n    \"inspector builds in repo and team modes\",\n    \"workspace archive\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Team Inspector JSON",
+      "command": "node.exe tools/self-test-team-inspector-json.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 26268,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"metrics\": {\n    \"workspaces\": 3,\n    \"json_files_parsed\": 36,\n    \"ndjson_files_parsed\": 2,\n    \"json_corruption_count\": 0,\n    \"locks_released\": true,\n    \"events_written\": true,\n    \"workspace_states_isolated\": true,\n    \"repo_local_regression_pass\": true\n  },\n  \"checks\": [\n    \"temp git repo\",\n    \"three worktrees\",\n    \"team-init and workspace-register\",\n    \"parallel flow doctor / release --exclusive / team-pr-summary\",\n    \"repo and team Inspector builds\",\n    \"every JSON and NDJSON under teamRoot parses\",\n    \"generated Inspector data JSON parses\",\n    \"paths with spaces and Cyrillic\",\n    \"Windows-style path snippet inside JSON string\",\n    \"locks released\",\n    \"events written\",\n    \"workspace states isolated\",\n    \"team-status accurate\",\n    \"repo-local regression pass\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "build Inspector",
+      "command": "node.exe tools/build-visual-inspector.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 565,
+      "stdout_tail": "{\n  \"generated_at\": \"2026-06-21T11:08:56.901Z\",\n  \"generated_by\": \"R2D2-182488\",\n  \"mode\": \"repo\",\n  \"output\": \".knowledge/inspector/index.html\",\n  \"data\": \".knowledge/inspector/data.json\",\n  \"features\": [\n    \"improved_wiki_graph\",\n    \"per_table_filters\",\n    \"file_links\",\n    \"empty_states\",\n    \"low_confidence_explanations\",\n    \"copy_command_fallback\",\n    \"canonical_navigation\",\n    \"team_mode_panel\",\n    \"routing_bundle_view\",\n    \"pr_summary_preview\",\n    \"pr_impact_preview\",\n    \"external_memory_status\",\n    \"memory_provider_cards\",\n    \"paid_extension_points\",\n    \"config_driven_paid_manifest\",\n    \"conversion_signal_preview\",\n    \"tabbed_navigation\",\n    \"local_action_drawer_fallback\",\n    \"memory_provider_runtime_boundary\",\n    \"restore_trust_entrypoint\",\n    \"git_branch_diagnostics\",\n    \"shared_live_static_renderer\",\n    \"collapsible_onboarding\",\n    \"metric_severity_cards\",\n    \"trust_repair_agent_prompt\",\n    \"inspector_update_api\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "self-test Inspector UI",
+      "command": "node.exe tools/self-test-inspector-ui.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 7858,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"team_mode_fixture_requested\": false,\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"checks\": [\n    \"all canonical tabs render\",\n    \"forbidden top-level tabs are absent\",\n    \"memory provider cards render\",\n    \"no external scripts/css/images\",\n    \"no known local path leaks\",\n    \"copy command attributes exist\",\n    \"token-protected Inspector API works\",\n    \"first-run onboarding wizard renders\",\n    \"upgrade-missing onboarding marker reopens setup\",\n    \"onboarding save writes settings\",\n    \"git branch selector defaults to active branch\",\n    \"git branch diagnostics API switches target branch\",\n    \"actions endpoint includes Restore Trust\",\n    \"live/static Inspector share tabular Knowledge Trust UI\",\n    \"trust repair agent prompt renders\",\n    \"onboarding card collapses after save\",\n    \"update status API renders launch check status\",\n    \"empty states render\",\n    \"team-mode inspector data.json parses\",\n    \"team-mode inspector DOM renders workspace status\"\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "flow release",
+      "command": "node.exe tools/flow.js release --no-color --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 23895,
+      "stdout_tail": "\": \"github.com-pro2pilot-knowledge-7aef00a1fa\",\n  \"workspace_id\": null,\n  \"agent_id\": null,\n  \"target_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\",\n  \"project_knowledge_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\",\n  \"state_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\",\n  \"branch\": \"feat/knowledge-3-2-0-inspector-team-mode\",\n  \"head_sha\": \"afe1a214226b00bbe5b29b5f7ee2d0a46ced3046\",\n  \"started_at\": \"2026-06-21T11:09:05.384Z\",\n  \"duration_total_ms\": 23278,\n  \"steps_total\": 15,\n  \"steps_ok\": 15,\n  \"overall_status\": \"ok\",\n  \"warnings\": [\n    \"dirty workspace\"\n  ],\n  \"flow_log\": \"maintenance/flow-logs/release-2026-06-21T11-09-05-384Z.json\",\n  \"steps\": [\n    {\n      \"step\": \"sync\",\n      \"command\": \"sync-tracked.js --scan\",\n      \"exit\": 0,\n      \"duration_ms\": 1189,\n      \"summary\": \"\"\n    },\n    {\n      \"step\": \"wiki-graph\",\n      \"command\": \"build-wiki-graph.js\",\n      \"exit\": 0,\n      \"duration_ms\": 536,\n      \"summary\": \"5 nodes / 0 edges\"\n    },\n    {\n      \"step\": \"lint\",\n      \"command\": \"lint-wiki.js\",\n      \"exit\": 0,\n      \"duration_ms\": 1153,\n      \"summary\": \"100 /100 healthy\"\n    },\n    {\n      \"step\": \"ext-memory\",\n      \"command\": \"external-memory-status.js\",\n      \"exit\": 0,\n      \"duration_ms\": 476,\n      \"summary\": \"manual\"\n    },\n    {\n      \"step\": \"routing\",\n      \"command\": \"build-routing-bundle.js\",\n      \"exit\": 0,\n      \"duration_ms\": 562,\n      \"summary\": \"1 modules\"\n    },\n    {\n      \"step\": \"search-idx\",\n      \"command\": \"build-search-index.js\",\n      \"exit\": 0,\n      \"duration_ms\": 691,\n      \"summary\": \"44 docs\"\n    },\n    {\n      \"step\": \"paid-manifest\",\n      \"command\": \"validate-paid-manifest.js\",\n      \"exit\": 0,\n      \"duration_ms\": 552,\n      \"summary\": \"pass / 11 capabilities\"\n    },\n    {\n      \"step\": \"inspector\",\n      \"command\": \"build-visual-inspector.js\",\n      \"exit\": 0,\n      \"duration_ms\": 626,\n      \"summary\": \"index.html\"\n    },\n    {\n      \"step\": \"secret-scan\",\n      \"command\": \"scan-secrets.js\",\n      \"exit\": 0,\n      \"duration_ms\": 674,\n      \"summary\": \"clean / 0 findings\"\n    },\n    {\n      \"step\": \"updates\",\n      \"command\": \"check-updates.js --auto --json\",\n      \"exit\": 0,\n      \"duration_ms\": 40,\n      \"summary\": \"not_due\"\n    },\n    {\n      \"step\": \"doctor\",\n      \"command\": \"doctor.js\",\n      \"exit\": 0,\n      \"duration_ms\": 1932,\n      \"summary\": \"100 /100 healthy\"\n    },\n    {\n      \"step\": \"metrics\",\n      \"command\": \"collect-metrics.js\",\n      \"exit\": 0,\n      \"duration_ms\": 2504,\n      \"summary\": \"-76% tokens saved\"\n    },\n    {\n      \"step\": \"pr-summary\",\n      \"command\": \"generate-pr-summary.js\",\n      \"exit\": 0,\n      \"duration_ms\": 1278,\n      \"summary\": \"\"\n    },\n    {\n      \"step\": \"graphs\",\n      \"command\": \"render-graph-execution.js\",\n      \"exit\": 0,\n      \"duration_ms\": 575,\n      \"summary\": \"\"\n    },\n    {\n      \"step\": \"harness\",\n      \"command\": \"evaluation-harness.js\",\n      \"exit\": 0,\n      \"duration_ms\": 10490,\n      \"summary\": \"\"\n    }\n  ]\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "doctor",
+      "command": "node.exe tools/doctor.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 1912,
+      "stdout_tail": " \"last_retrieval_count\": 0,\n          \"adapter_records_count\": 0,\n          \"override_attempts_blocked\": 0,\n          \"source_of_truth\": false,\n          \"trust_effect\": \"advisory_only\",\n          \"trust_role\": \"advisory_only\",\n          \"warnings\": [\n            \"Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.\",\n            \"Install/update requires explicit user action and may use network outside status/report mode.\"\n          ],\n          \"errors\": []\n        },\n        {\n          \"provider_id\": \"pinecone\",\n          \"provider\": \"pinecone\",\n          \"provider_name\": \"Pinecone\",\n          \"type\": \"cloud\",\n          \"layer\": \"free_core\",\n          \"status\": \"disabled\",\n          \"runtime_health\": \"not_available\",\n          \"enabled\": false,\n          \"installed\": false,\n          \"configured\": false,\n          \"detected\": false,\n          \"mode\": \"disabled\",\n          \"scope\": \"repo\",\n          \"data_path\": null,\n          \"path\": null,\n          \"api_key_required\": false,\n          \"index\": null,\n          \"namespace\": null,\n          \"license_spdx\": \"Service-TOS\",\n          \"version\": null,\n          \"records_count\": 0,\n          \"last_retrieval_count\": 0,\n          \"source_of_truth\": false,\n          \"trust_effect\": \"advisory_only\",\n          \"trust_role\": \"advisory_only\",\n          \"warnings\": [],\n          \"errors\": []\n        }\n      ]\n    },\n    {\n      \"check\": \"memory_provider_manifest_mem0\",\n      \"status\": \"pass\",\n      \"artifact\": \".knowledge/memory-providers/mem0/manifest.json\"\n    },\n    {\n      \"check\": \"memory_source_of_truth_policy\",\n      \"status\": \"pass\",\n      \"source_of_truth_policy\": {\n        \"external_memory_source_of_truth\": false,\n        \"external_memory_can_raise_trust\": false,\n        \"external_memory_can_overwrite_curated_knowledge\": false\n      }\n    },\n    {\n      \"check\": \"legacy_claude_mem\",\n      \"status\": \"pass\",\n      \"detected\": 0\n    },\n    {\n      \"check\": \"mem0_status\",\n      \"status\": \"pass\",\n      \"provider_status\": \"runtime_not_installed\",\n      \"installed\": false,\n      \"receipt_present\": false\n    },\n    {\n      \"check\": \"pinecone_provider_status\",\n      \"status\": \"pass\",\n      \"provider_status\": \"disabled\",\n      \"mode\": \"disabled\"\n    },\n    {\n      \"check\": \"provider_runtime_state_not_staged\",\n      \"status\": \"pass\",\n      \"staged\": []\n    },\n    {\n      \"check\": \"update_check\",\n      \"status\": \"pass\",\n      \"update_status\": \"not_due\",\n      \"current_version\": \"3.2.0\",\n      \"latest_version\": null\n    },\n    {\n      \"check\": \"search_index\",\n      \"status\": \"pass\",\n      \"artifact\": \".knowledge/search/index.json\"\n    },\n    {\n      \"check\": \"append_only_events_dir\",\n      \"status\": \"pass\",\n      \"artifact\": \".knowledge/maintenance/events/\"\n    },\n    {\n      \"check\": \"secret_scan\",\n      \"status\": \"pass\",\n      \"findings_total\": 0,\n      \"secret_scan_status\": \"clean\",\n      \"generated_at\": \"2026-06-21T11:09:11.835Z\"\n    }\n  ],\n  \"issues\": []\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "package release",
+      "command": "node.exe tools/package-release.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 295,
+      "stdout_tail": "{\n  \"version\": \"3.2.0\",\n  \"output_path\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\dist\\\\knowledge-v3.2.0.zip\",\n  \"included_files_count\": 329,\n  \"excluded_entries_count\": 139,\n  \"excluded_files_count\": 18418,\n  \"warnings\": [],\n  \"errors\": [],\n  \"status\": \"ok\"\n}\n",
+      "stderr_tail": ""
+    },
+    {
+      "name": "validate release artifact",
+      "command": "node.exe tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 49,
+      "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"artifact\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\dist\\\\knowledge-v3.2.0.zip\",\n  \"status\": \"ok\",\n  \"entries\": 329,\n  \"violations\": []\n}\n",
+      "stderr_tail": ""
+    }
+  ],
+  "clean_install": {
+    "status": "pass",
+    "root": "<clean-install-smoke>",
+    "steps": [
+      {
+        "name": "git init",
+        "command": "git init",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 47,
+        "stdout_tail": "Initialized empty Git repository in C:/MyProject/workspace/knowledge-3.2.0/.qa-tmp/release-gate-clean-smoke-cAQ4sF/.git/\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "git config email",
+        "command": "git config user.email knowledge-smoke@example.invalid",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 41,
+        "stdout_tail": "",
+        "stderr_tail": ""
+      },
+      {
+        "name": "git config name",
+        "command": "git config user.name Knowledge Smoke",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 36,
+        "stdout_tail": "",
+        "stderr_tail": ""
+      },
+      {
+        "name": "git add fixture",
+        "command": "git add app.js .knowledge",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 616,
+        "stdout_tail": "",
+        "stderr_tail": "warning: unable to access '<home>': Permission denied\nwarning: in the working copy of '.knowledge/templates/git-policy/gitattributes.snippet', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'app.js', LF will be replaced by CRLF the next time Git touches it\n"
+      },
+      {
+        "name": "git commit fixture",
+        "command": "git commit -m clean install smoke fixture",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 291,
+        "stdout_tail": " .knowledge/tools/lib/memory-providers.js\n create mode 100644 .knowledge/tools/lib/paid-inspector-model.js\n create mode 100644 .knowledge/tools/lib/path-context.js\n create mode 100644 .knowledge/tools/lib/team-store.js\n create mode 100644 .knowledge/tools/lib/token-estimate.js\n create mode 100644 .knowledge/tools/lint-wiki.js\n create mode 100644 .knowledge/tools/memory-mem0.js\n create mode 100644 .knowledge/tools/memory-provider.js\n create mode 100644 .knowledge/tools/package-release.js\n create mode 100644 .knowledge/tools/pr-impact.js\n create mode 100644 .knowledge/tools/release-gate.js\n create mode 100644 .knowledge/tools/render-graph-execution.js\n create mode 100644 .knowledge/tools/restore-trust.js\n create mode 100644 .knowledge/tools/run-benchmarks.js\n create mode 100644 .knowledge/tools/run-git-hook-sync.js\n create mode 100644 .knowledge/tools/scan-secrets.js\n create mode 100644 .knowledge/tools/search-knowledge.js\n create mode 100644 .knowledge/tools/self-test-agent-activity.js\n create mode 100644 .knowledge/tools/self-test-agent-footer.js\n create mode 100644 .knowledge/tools/self-test-canonical-e2e.js\n create mode 100644 .knowledge/tools/self-test-external-memory.js\n create mode 100644 .knowledge/tools/self-test-inspector-actions.js\n create mode 100644 .knowledge/tools/self-test-inspector-launcher.js\n create mode 100644 .knowledge/tools/self-test-inspector-ui.js\n create mode 100644 .knowledge/tools/self-test-install-policy.js\n create mode 100644 .knowledge/tools/self-test-memory-providers.js\n create mode 100644 .knowledge/tools/self-test-pr-impact.js\n create mode 100644 .knowledge/tools/self-test-pro-ready-gates.js\n create mode 100644 .knowledge/tools/self-test-restore-trust.js\n create mode 100644 .knowledge/tools/self-test-safe-queue.js\n create mode 100644 .knowledge/tools/self-test-team-inspector-json.js\n create mode 100644 .knowledge/tools/self-test-team-mode.js\n create mode 100644 .knowledge/tools/serve-inspector.js\n create mode 100644 .knowledge/tools/sync-tracked.js\n create mode 100644 .knowledge/tools/team-init.js\n create mode 100644 .knowledge/tools/team-pr-summary.js\n create mode 100644 .knowledge/tools/team-status.js\n create mode 100644 .knowledge/tools/update-system-files.js\n create mode 100644 .knowledge/tools/validate-paid-manifest.js\n create mode 100644 .knowledge/tools/validate-release-artifact.js\n create mode 100644 .knowledge/tools/validate-source-deliverable.js\n create mode 100644 .knowledge/tools/watch-maintenance.js\n create mode 100644 .knowledge/tools/watch-smoke.js\n create mode 100644 .knowledge/tools/workspace-register.js\n create mode 100644 .knowledge/tools/workspace-unregister.js\n create mode 100644 .knowledge/tools/worktree-status.js\n create mode 100644 .knowledge/wiki/architecture/README.md\n create mode 100644 .knowledge/wiki/concepts/README.md\n create mode 100644 .knowledge/wiki/index.md\n create mode 100644 .knowledge/wiki/log.md\n create mode 100644 .knowledge/wiki/runbooks/README.md\n create mode 100644 app.js\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "install-check",
+        "command": "node.exe .knowledge/tools/install-check.js --json",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 76,
+        "stdout_tail": "{\n  \"status\": \"ok\",\n  \"mode\": \"fresh\",\n  \"repo_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\",\n  \"knowledge_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\\\\.knowledge\",\n  \"issues\": [\n    {\n      \"severity\": \"info\",\n      \"code\": \"fresh_runtime_missing\",\n      \"message\": \"maintenance/routing_bundle.json is absent. This is normal before first flow import.\",\n      \"artifact\": \".knowledge/maintenance/routing_bundle.json\"\n    },\n    {\n      \"severity\": \"info\",\n      \"code\": \"root_gitattributes_optional\",\n      \"message\": \"Root .gitattributes is optional. See .knowledge/templates/git-policy/gitattributes.snippet for recommendations.\",\n      \"artifact\": \".gitattributes\"\n    }\n  ],\n  \"fixes_available\": [],\n  \"fixes_applied\": [],\n  \"next_commands\": [\n    \"node .knowledge/tools/install-agent-integrations.js\",\n    \"node .knowledge/tools/flow.js import\"\n  ]\n}\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "flow import",
+        "command": "node.exe .knowledge/tools/flow.js import --no-color --json",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 10883,
+        "stdout_tail": "{\n  \"flow\": \"import\",\n  \"mode\": \"repo\",\n  \"repo_id\": \"local-repo-a1327b5583\",\n  \"workspace_id\": null,\n  \"agent_id\": null,\n  \"target_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\",\n  \"project_knowledge_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\\\\.knowledge\",\n  \"state_root\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\\\\.knowledge\",\n  \"branch\": \"master\",\n  \"head_sha\": \"366d9fd1d30b63a2224f3eaf3beb9a8102b70a77\",\n  \"started_at\": \"2026-06-21T11:09:32.694Z\",\n  \"duration_total_ms\": 10353,\n  \"steps_total\": 12,\n  \"steps_ok\": 12,\n  \"overall_status\": \"ok\",\n  \"warnings\": [\n    \"agent is on main\"\n  ],\n  \"flow_log\": \".knowledge/maintenance/flow-logs/import-2026-06-21T11-09-32-694Z.json\",\n  \"steps\": [\n    {\n      \"step\": \"ingest\",\n      \"command\": \"ingest-existing-project.js --merge\",\n      \"exit\": 0,\n      \"duration_ms\": 2872,\n      \"summary\": \"\"\n    },\n    {\n      \"step\": \"sync\",\n      \"command\": \"sync-tracked.js --scan --discover\",\n      \"exit\": 0,\n      \"duration_ms\": 1075,\n      \"summary\": \"\"\n    },\n    {\n      \"step\": \"wiki-graph\",\n      \"command\": \"build-wiki-graph.js\",\n      \"exit\": 0,\n      \"duration_ms\": 456,\n      \"summary\": \"5 nodes / 0 edges\"\n    },\n    {\n      \"step\": \"lint\",\n      \"command\": \"lint-wiki.js\",\n      \"exit\": 0,\n      \"duration_ms\": 1064,\n      \"summary\": \"100 /100 healthy\"\n    },\n    {\n      \"step\": \"ext-memory\",\n      \"command\": \"external-memory-status.js\",\n      \"exit\": 0,\n      \"duration_ms\": 601,\n      \"summary\": \"manual\"\n    },\n    {\n      \"step\": \"routing\",\n      \"command\": \"build-routing-bundle.js\",\n      \"exit\": 0,\n      \"duration_ms\": 531,\n      \"summary\": \"1 modules\"\n    },\n    {\n      \"step\": \"search-idx\",\n      \"command\": \"build-search-index.js\",\n      \"exit\": 0,\n      \"duration_ms\": 685,\n      \"summary\": \"47 docs\"\n    },\n    {\n      \"step\": \"paid-manifest\",\n      \"command\": \"validate-paid-manifest.js\",\n      \"exit\": 0,\n      \"duration_ms\": 539,\n      \"summary\": \"pass / 11 capabilities\"\n    },\n    {\n      \"step\": \"inspector\",\n      \"command\": \"build-visual-inspector.js\",\n      \"exit\": 0,\n      \"duration_ms\": 664,\n      \"summary\": \"index.html\"\n    },\n    {\n      \"step\": \"secret-scan\",\n      \"command\": \"scan-secrets.js\",\n      \"exit\": 0,\n      \"duration_ms\": 637,\n      \"summary\": \"clean / 0 findings\"\n    },\n    {\n      \"step\": \"updates\",\n      \"command\": \"check-updates.js --auto --json\",\n      \"exit\": 0,\n      \"duration_ms\": 43,\n      \"summary\": \"not_due\"\n    },\n    {\n      \"step\": \"doctor\",\n      \"command\": \"doctor.js\",\n      \"exit\": 0,\n      \"duration_ms\": 1182,\n      \"summary\": \"100 /100 healthy\"\n    }\n  ]\n}\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "doctor",
+        "command": "node.exe .knowledge/tools/doctor.js --json",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 1295,
+        "stdout_tail": " \"last_retrieval_count\": 0,\n          \"adapter_records_count\": 0,\n          \"override_attempts_blocked\": 0,\n          \"source_of_truth\": false,\n          \"trust_effect\": \"advisory_only\",\n          \"trust_role\": \"advisory_only\",\n          \"warnings\": [\n            \"Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.\",\n            \"Install/update requires explicit user action and may use network outside status/report mode.\"\n          ],\n          \"errors\": []\n        },\n        {\n          \"provider_id\": \"pinecone\",\n          \"provider\": \"pinecone\",\n          \"provider_name\": \"Pinecone\",\n          \"type\": \"cloud\",\n          \"layer\": \"free_core\",\n          \"status\": \"disabled\",\n          \"runtime_health\": \"not_available\",\n          \"enabled\": false,\n          \"installed\": false,\n          \"configured\": false,\n          \"detected\": false,\n          \"mode\": \"disabled\",\n          \"scope\": \"repo\",\n          \"data_path\": null,\n          \"path\": null,\n          \"api_key_required\": false,\n          \"index\": null,\n          \"namespace\": null,\n          \"license_spdx\": \"Service-TOS\",\n          \"version\": null,\n          \"records_count\": 0,\n          \"last_retrieval_count\": 0,\n          \"source_of_truth\": false,\n          \"trust_effect\": \"advisory_only\",\n          \"trust_role\": \"advisory_only\",\n          \"warnings\": [],\n          \"errors\": []\n        }\n      ]\n    },\n    {\n      \"check\": \"memory_provider_manifest_mem0\",\n      \"status\": \"pass\",\n      \"artifact\": \".knowledge/memory-providers/mem0/manifest.json\"\n    },\n    {\n      \"check\": \"memory_source_of_truth_policy\",\n      \"status\": \"pass\",\n      \"source_of_truth_policy\": {\n        \"external_memory_source_of_truth\": false,\n        \"external_memory_can_raise_trust\": false,\n        \"external_memory_can_overwrite_curated_knowledge\": false\n      }\n    },\n    {\n      \"check\": \"legacy_claude_mem\",\n      \"status\": \"pass\",\n      \"detected\": 0\n    },\n    {\n      \"check\": \"mem0_status\",\n      \"status\": \"pass\",\n      \"provider_status\": \"runtime_not_installed\",\n      \"installed\": false,\n      \"receipt_present\": false\n    },\n    {\n      \"check\": \"pinecone_provider_status\",\n      \"status\": \"pass\",\n      \"provider_status\": \"disabled\",\n      \"mode\": \"disabled\"\n    },\n    {\n      \"check\": \"provider_runtime_state_not_staged\",\n      \"status\": \"pass\",\n      \"staged\": []\n    },\n    {\n      \"check\": \"update_check\",\n      \"status\": \"pass\",\n      \"update_status\": \"not_due\",\n      \"current_version\": \"3.2.0\",\n      \"latest_version\": null\n    },\n    {\n      \"check\": \"search_index\",\n      \"status\": \"pass\",\n      \"artifact\": \".knowledge/search/index.json\"\n    },\n    {\n      \"check\": \"append_only_events_dir\",\n      \"status\": \"pass\",\n      \"artifact\": \".knowledge/maintenance/events/\"\n    },\n    {\n      \"check\": \"secret_scan\",\n      \"status\": \"pass\",\n      \"findings_total\": 0,\n      \"secret_scan_status\": \"clean\",\n      \"generated_at\": \"2026-06-21T11:09:41.813Z\"\n    }\n  ],\n  \"issues\": []\n}\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "build Inspector",
+        "command": "node.exe .knowledge/tools/build-visual-inspector.js",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 558,
+        "stdout_tail": "{\n  \"generated_at\": \"2026-06-21T11:09:44.891Z\",\n  \"generated_by\": \"R2D2-84372\",\n  \"mode\": \"repo\",\n  \"output\": \".knowledge/inspector/index.html\",\n  \"data\": \".knowledge/inspector/data.json\",\n  \"features\": [\n    \"improved_wiki_graph\",\n    \"per_table_filters\",\n    \"file_links\",\n    \"empty_states\",\n    \"low_confidence_explanations\",\n    \"copy_command_fallback\",\n    \"canonical_navigation\",\n    \"team_mode_panel\",\n    \"routing_bundle_view\",\n    \"pr_summary_preview\",\n    \"pr_impact_preview\",\n    \"external_memory_status\",\n    \"memory_provider_cards\",\n    \"paid_extension_points\",\n    \"config_driven_paid_manifest\",\n    \"conversion_signal_preview\",\n    \"tabbed_navigation\",\n    \"local_action_drawer_fallback\",\n    \"memory_provider_runtime_boundary\",\n    \"restore_trust_entrypoint\",\n    \"git_branch_diagnostics\",\n    \"shared_live_static_renderer\",\n    \"collapsible_onboarding\",\n    \"metric_severity_cards\",\n    \"trust_repair_agent_prompt\",\n    \"inspector_update_api\"\n  ]\n}\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "self-test Inspector UI",
+        "command": "node.exe .knowledge/tools/self-test-inspector-ui.js",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 7539,
+        "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"team_mode_fixture_requested\": false,\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"checks\": [\n    \"all canonical tabs render\",\n    \"forbidden top-level tabs are absent\",\n    \"memory provider cards render\",\n    \"no external scripts/css/images\",\n    \"no known local path leaks\",\n    \"copy command attributes exist\",\n    \"token-protected Inspector API works\",\n    \"first-run onboarding wizard renders\",\n    \"upgrade-missing onboarding marker reopens setup\",\n    \"onboarding save writes settings\",\n    \"git branch selector defaults to active branch\",\n    \"git branch diagnostics API switches target branch\",\n    \"actions endpoint includes Restore Trust\",\n    \"live/static Inspector share tabular Knowledge Trust UI\",\n    \"trust repair agent prompt renders\",\n    \"onboarding card collapses after save\",\n    \"update status API renders launch check status\",\n    \"empty states render\",\n    \"team-mode inspector data.json parses\",\n    \"team-mode inspector DOM renders workspace status\"\n  ]\n}\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "self-test Team Mode",
+        "command": "node.exe .knowledge/tools/self-test-team-mode.js",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 28221,
+        "stdout_tail": "{\n  \"schema_version\": \"3.2.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"team_root\": \"<temp>\\\\knowledge team тест fhaoPO\\\\.knowledge-team shared\",\n  \"checks\": [\n    \"temp git repo with spaces and Cyrillic path\",\n    \"two worktrees\",\n    \"team-init\",\n    \"workspace-register for two agents\",\n    \"missing teamRoot and missing workspaceId failures\",\n    \"duplicate workspaceId failure\",\n    \"duplicate agentId warning\",\n    \"parallel doctor/release exclusive flows\",\n    \"stale lock cleanup\",\n    \"JSON corruption scan\",\n    \"lock released\",\n    \"events written\",\n    \"doctor/external memory/worktree events written\",\n    \"workspace states separated\",\n    \"team-status sees both workspaces\",\n    \"team-status reports stale workspaces\",\n    \"branch/head detected\",\n    \"branch mismatch warning\",\n    \"missing targetRoot warning\",\n    \"dirty workspace warning\",\n    \"staged generated runtime warning\",\n    \"shared external memory warning\",\n    \"inspector builds in repo and team modes\",\n    \"workspace archive\"\n  ]\n}\n",
+        "stderr_tail": ""
+      },
+      {
+        "name": "memory status all",
+        "command": "node.exe .knowledge/tools/memory-provider.js status-all --json",
+        "status": "pass",
+        "exit_code": 0,
+        "duration_ms": 550,
+        "stdout_tail": "provider\": \"mem0-oss\",\n      \"provider_name\": \"Mem0 OSS\",\n      \"type\": \"local\",\n      \"layer\": \"free_core\",\n      \"status\": \"runtime_not_installed\",\n      \"runtime_health\": \"not_available\",\n      \"enabled\": false,\n      \"installed\": false,\n      \"receipt_present\": false,\n      \"configured\": false,\n      \"detected\": false,\n      \"mode\": \"manual\",\n      \"scope\": \"repo\",\n      \"data_path\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\\\\.knowledge\\\\external_memory\\\\mem0\",\n      \"path\": \"C:\\\\MyProject\\\\workspace\\\\knowledge-3.2.0\\\\.qa-tmp\\\\release-gate-clean-smoke-cAQ4sF\\\\.knowledge\\\\external_memory\\\\mem0\",\n      \"license_spdx\": \"Apache-2.0\",\n      \"version\": \"mem0ai==2.0.4\",\n      \"version_pin\": \"mem0ai==2.0.4\",\n      \"source_url\": \"https://docs.mem0.ai/open-source/overview\",\n      \"records_count\": 0,\n      \"last_retrieval_count\": 0,\n      \"adapter_records_count\": 0,\n      \"override_attempts_blocked\": 0,\n      \"source_of_truth\": false,\n      \"trust_effect\": \"advisory_only\",\n      \"trust_role\": \"advisory_only\",\n      \"warnings\": [\n        \"Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.\",\n        \"Install/update requires explicit user action and may use network outside status/report mode.\"\n      ],\n      \"errors\": []\n    },\n    \"pinecone\": {\n      \"provider_id\": \"pinecone\",\n      \"provider\": \"pinecone\",\n      \"provider_name\": \"Pinecone\",\n      \"type\": \"cloud\",\n      \"layer\": \"free_core\",\n      \"status\": \"disabled\",\n      \"runtime_health\": \"not_available\",\n      \"enabled\": false,\n      \"installed\": false,\n      \"configured\": false,\n      \"detected\": false,\n      \"mode\": \"disabled\",\n      \"scope\": \"repo\",\n      \"data_path\": null,\n      \"path\": null,\n      \"api_key_required\": false,\n      \"index\": null,\n      \"namespace\": null,\n      \"license_spdx\": \"Service-TOS\",\n      \"version\": null,\n      \"records_count\": 0,\n      \"last_retrieval_count\": 0,\n      \"source_of_truth\": false,\n      \"trust_effect\": \"advisory_only\",\n      \"trust_role\": \"advisory_only\",\n      \"warnings\": [],\n      \"errors\": []\n    }\n  },\n  \"legacy_providers_detected\": [],\n  \"sources\": {\n    \"configured_sources\": 0,\n    \"namespace\": null,\n    \"index\": null\n  },\n  \"live_checks\": {\n    \"status_report_mode\": \"offline\",\n    \"network_calls\": \"not_run\"\n  },\n  \"warnings\": [\n    \"Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.\",\n    \"Install/update requires explicit user action and may use network outside status/report mode.\"\n  ],\n  \"metrics\": {\n    \"schema_version\": \"3.2.0\",\n    \"generated_at\": \"2026-06-21T11:10:21.207Z\",\n    \"generated_by\": \"R2D2-166484\",\n    \"mode\": \"repo\",\n    \"provider_count\": 2,\n    \"enabled_provider_count\": 0,\n    \"legacy_provider_count\": 0,\n    \"external_memory_records_count\": 0,\n    \"last_retrieval_count\": 0,\n    \"external_memory_override_count\": 0,\n    \"override_attempts_blocked\": 0,\n    \"unknown_license_count\": 0\n  }\n}\n",
+        "stderr_tail": ""
+      }
+    ]
+  },
+  "failures": []
+}

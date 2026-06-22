@@ -1,0 +1,95 @@
+{
+  "id": "KB-08",
+  "slug": "kb-08-inspector-ux",
+  "title": "Inspector UX / Command Center",
+  "status": "pass",
+  "claim_status": "measured-on-fixture",
+  "runs_requested": 5,
+  "runs_passed": 5,
+  "runs_failed": 0,
+  "metrics": {
+    "inspector_checks": 10,
+    "team_mode_fixture": 1
+  },
+  "evidence": [
+    "tools/self-test-inspector-ui.js"
+  ],
+  "limitations": [],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T09:44:34.743Z",
+      "finished_at": "2026-06-08T09:44:35.137Z",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "metrics": {
+        "inspector_checks": 10,
+        "team_mode_fixture": 1
+      },
+      "evidence": [
+        "tools/self-test-inspector-ui.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T09:44:35.137Z",
+      "finished_at": "2026-06-08T09:44:35.762Z",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "metrics": {
+        "inspector_checks": 10,
+        "team_mode_fixture": 1
+      },
+      "evidence": [
+        "tools/self-test-inspector-ui.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T09:44:35.762Z",
+      "finished_at": "2026-06-08T09:44:36.837Z",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "metrics": {
+        "inspector_checks": 10,
+        "team_mode_fixture": 1
+      },
+      "evidence": [
+        "tools/self-test-inspector-ui.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T09:44:36.837Z",
+      "finished_at": "2026-06-08T09:44:37.737Z",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "metrics": {
+        "inspector_checks": 10,
+        "team_mode_fixture": 1
+      },
+      "evidence": [
+        "tools/self-test-inspector-ui.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T09:44:37.737Z",
+      "finished_at": "2026-06-08T09:44:38.143Z",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "metrics": {
+        "inspector_checks": 10,
+        "team_mode_fixture": 1
+      },
+      "evidence": [
+        "tools/self-test-inspector-ui.js"
+      ],
+      "limitations": []
+    }
+  ]
+}

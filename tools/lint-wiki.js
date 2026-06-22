@@ -5,10 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
 const buildWikiGraph = require('./build-wiki-graph');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const knowledgeRoot = path.resolve(__dirname, '..');
+const context = resolveKnowledgeContext();
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
 const wikiRoot = path.join(knowledgeRoot, 'wiki');
-const lockDir = path.join(knowledgeRoot, '.lock');
+const lockDir = path.join(stateRoot, '.lock');
 
 function nowIso() { return new Date().toISOString(); }
 function rel(abs, base = wikiRoot) { return path.relative(base, abs).replace(/\\/g, '/'); }
@@ -31,7 +34,7 @@ function qualityScore(issues) {
   return Math.max(0, score);
 }
 function lintUnlocked(options = {}) {
-  ensureDir(path.join(knowledgeRoot, 'maintenance'));
+  ensureDir(path.join(stateRoot, 'maintenance'));
   const issues = [];
   const pages = walk(wikiRoot);
   const titles = new Map();
@@ -70,8 +73,8 @@ function lintUnlocked(options = {}) {
     if (!['index.md', 'log.md'].includes(id) && !id.endsWith('/README.md') && !(incoming.get(id) || 0)) add(issues, 'low', 'orphan_wiki_page', 'Wiki page has no incoming wiki links.', node.path);
   }
   const score = qualityScore(issues);
-  const report = { schema_version: '3.1.9', generated_at: nowIso(), generated_by: getAgentId(), status: score >= 90 ? 'healthy' : score >= 75 ? 'usable_with_warnings' : 'degraded', quality_score: score, pages: pages.length, graph: { nodes: graph.node_count, edges: graph.edge_count, broken_edges: graph.broken_edge_count }, issues };
-  writeJsonAtomic(path.join(knowledgeRoot, 'maintenance', 'wiki_lint_report.json'), report);
+  const report = { schema_version: '3.2.0', generated_at: nowIso(), generated_by: getAgentId(), mode: context.mode, status: score >= 90 ? 'healthy' : score >= 75 ? 'usable_with_warnings' : 'degraded', quality_score: score, pages: pages.length, graph: { nodes: graph.node_count, edges: graph.edge_count, broken_edges: graph.broken_edge_count }, issues };
+  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'wiki_lint_report.json'), report);
   if (!options.quiet) console.log(JSON.stringify(report, null, 2));
   return report;
 }

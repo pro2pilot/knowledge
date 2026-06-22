@@ -5,10 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { ensureDir, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const knowledgeRoot = path.resolve(__dirname, '..');
+const context = resolveKnowledgeContext();
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
 const wikiRoot = path.join(knowledgeRoot, 'wiki');
-const lockDir = path.join(knowledgeRoot, '.lock');
+const lockDir = path.join(stateRoot, '.lock');
 const allowedTypes = ['supports', 'contradicts', 'depends_on', 'supersedes', 'preceded_by', 'followed_by', 'implements', 'references', 'related', 'source_of', 'evidence', 'source_files', 'tests'];
 
 function nowIso() { return new Date().toISOString(); }
@@ -88,7 +91,7 @@ function inlineLinks(markdown) {
   return out;
 }
 function buildUnlocked(options = {}) {
-  ensureDir(path.join(knowledgeRoot, 'maps'));
+  ensureDir(path.join(stateRoot, 'maps'));
   const pages = walk(wikiRoot);
   const pageSet = new Set(pages.map((abs) => rel(abs, wikiRoot)));
   const nodes = [];
@@ -110,9 +113,9 @@ function buildUnlocked(options = {}) {
     if (/^https?:\/\//i.test(edge.to) || edge.to.startsWith('mailto:') || edge.to.startsWith('.knowledge/')) continue;
     if (!pageSet.has(edge.to)) broken_edges.push(edge);
   }
-  const graph = { schema_version: '3.1.9', generated_at: nowIso(), generated_by: getAgentId(), node_count: nodes.length, edge_count: edges.length, broken_edge_count: broken_edges.length, allowed_edge_types: allowedTypes, nodes, edges, broken_edges };
-  writeJsonAtomic(path.join(knowledgeRoot, 'maps', 'wiki_graph.json'), graph);
-  if (!options.quiet) console.log(JSON.stringify({ written: '.knowledge/maps/wiki_graph.json', nodes: nodes.length, edges: edges.length, broken_edges: broken_edges.length }, null, 2));
+  const graph = { schema_version: '3.2.0', generated_at: nowIso(), generated_by: getAgentId(), mode: context.mode, node_count: nodes.length, edge_count: edges.length, broken_edge_count: broken_edges.length, allowed_edge_types: allowedTypes, nodes, edges, broken_edges };
+  writeJsonAtomic(path.join(stateRoot, 'maps', 'wiki_graph.json'), graph);
+  if (!options.quiet) console.log(JSON.stringify({ written: context.mode === 'repo' ? '.knowledge/maps/wiki_graph.json' : path.join(stateRoot, 'maps', 'wiki_graph.json'), nodes: nodes.length, edges: edges.length, broken_edges: broken_edges.length }, null, 2));
   return graph;
 }
 function main(options = {}) { return options.skipLock ? buildUnlocked(options) : withLock(lockDir, () => buildUnlocked(options)); }

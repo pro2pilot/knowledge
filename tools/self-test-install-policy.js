@@ -186,6 +186,91 @@ function generatedOrRuntime(file) {
   );
 }
 
+function countManagedBlocks(text) {
+  const legacyMarker = ['KNOWLEDGE', 'KIT'].join('-');
+  return (text.match(new RegExp(`<!-- BEGIN (?:DOT-KNOWLEDGE|${legacyMarker}) MANAGED BLOCK -->`, 'g')) || []).length;
+}
+
+function removeKnowledgePaths(repo, relPaths) {
+  for (const relPath of relPaths) rmDir(path.join(repo, '.knowledge', relPath));
+}
+
+const runtimeExpectations = {
+  codex: ['AGENTS.md', '.agents/skills/kb-metrics/SKILL.md'],
+  claude: ['CLAUDE.md', '.claude/skills/kb-metrics/SKILL.md'],
+  opencode: ['.opencode/commands/kb-metrics.md'],
+  gemini: ['GEMINI.md'],
+  copilot: ['.github/copilot-instructions.md'],
+  devin: ['.devin/rules/knowledge.md'],
+  windsurf: ['.devin/rules/knowledge.md'],
+  continue: ['.continue/rules/knowledge.md'],
+  roo: ['.roo/rules/knowledge.md'],
+  aider: ['CONVENTIONS.md', '.aider.conf.yml']
+};
+
+const allIntegrationPaths = Array.from(new Set(Object.values(runtimeExpectations).flat()));
+
+function existsRel(repo, relPath) {
+  return fs.existsSync(path.join(repo, relPath));
+}
+
+function gitattributesText(repo) {
+  return fs.existsSync(path.join(repo, '.gitattributes')) ? fs.readFileSync(path.join(repo, '.gitattributes'), 'utf8') : '';
+}
+
+function attrPattern(relPath) {
+  if (relPath.startsWith('.agents/skills/')) return '.agents/skills/**';
+  if (relPath.startsWith('.claude/skills/')) return '.claude/skills/**';
+  if (relPath.startsWith('.opencode/commands/')) return '.opencode/commands/**';
+  return relPath;
+}
+
+function assertRuntimeOnly(repo, runtime) {
+  const expected = runtimeExpectations[runtime];
+  const missing = expected.filter((relPath) => !existsRel(repo, relPath));
+  assert(missing.length === 0, `${runtime} integration did not create expected files.`, { missing, expected });
+  const unexpected = allIntegrationPaths.filter((relPath) => !expected.includes(relPath) && existsRel(repo, relPath));
+  assert(unexpected.length === 0, `${runtime} integration created unrelated agent files.`, { unexpected, expected });
+  const attrs = gitattributesText(repo);
+  const attrMissing = expected.filter((relPath) => !attrs.includes(attrPattern(relPath)));
+  assert(attrMissing.length === 0, `${runtime} .gitattributes is missing expected paths.`, { attrMissing, attrs });
+  const attrUnexpected = allIntegrationPaths.filter((relPath) => {
+    if (expected.includes(relPath)) return false;
+    return attrs.includes(attrPattern(relPath));
+  });
+  assert(attrUnexpected.length === 0, `${runtime} .gitattributes contains unrelated runtime paths.`, { attrUnexpected, attrs });
+  return { expected };
+}
+
+function assertInstalledSystemComplete(repo) {
+  const manifest = readJson(path.join(sourceRoot, 'install-manifest.json'));
+  const missingTopLevel = manifest.system_paths.filter((relPath) => !fs.existsSync(path.join(repo, '.knowledge', relPath)));
+  const keyFiles = [
+    'install-manifest.json',
+    'memory-providers/mem0/manifest.json',
+    'memory-providers/pinecone/manifest.json',
+    'benchmarks/run-benchmarks.js',
+    '.release-notes/v3.2.0.md',
+    '.gitignore',
+    '.gitattributes',
+    'inspector.js',
+    'open-inspector.vbs',
+    'assets/knowledge-trust-flow_02.svg',
+    'assets/knowledge-trust-flow_02.png',
+    'agent-integrations/codex/skills/kb-repair-trust/SKILL.md',
+    'agent-integrations/claude/skills/kb-repair-trust/SKILL.md',
+    'CHANGELOG.md',
+    'RELEASE_NOTES.md',
+    'SECURITY.md',
+    'SBOM.memory.json',
+    'THIRD_PARTY_NOTICES.md',
+    'tools/lib/python-discovery.js'
+  ];
+  const missingKeyFiles = keyFiles.filter((relPath) => !fs.existsSync(path.join(repo, '.knowledge', relPath)));
+  assert(missingTopLevel.length === 0 && missingKeyFiles.length === 0, 'Installed system paths are incomplete.', { missingTopLevel, missingKeyFiles });
+  return { system_paths_checked: manifest.system_paths.length, key_files_checked: keyFiles.length };
+}
+
 function main(argv = process.argv.slice(2)) {
   const keep = argv.includes('--keep');
   const results = [];
@@ -202,6 +287,10 @@ function main(argv = process.argv.slice(2)) {
       assert(Number.isInteger(packageSummary.excluded_files_count), 'package-release summary is missing excluded_files_count.', packageSummary);
       assert(entries.every((entry) => entry.startsWith('.knowledge/')), 'Artifact contains entries outside .knowledge/.', { entries: entries.slice(0, 20) });
       assert(entries.includes('.knowledge/.gitignore'), 'Artifact does not contain installed .knowledge/.gitignore.', {});
+      assert(entries.includes('.knowledge/install-manifest.json'), 'Artifact does not contain install-manifest.json.', {});
+      assert(entries.includes('.knowledge/memory-providers/mem0/manifest.json'), 'Artifact does not contain Mem0 provider manifest.', {});
+      assert(entries.includes('.knowledge/memory-providers/pinecone/manifest.json'), 'Artifact does not contain Pinecone provider manifest.', {});
+      assert(entries.includes('.knowledge/benchmarks/run-benchmarks.js'), 'Artifact does not contain benchmark runner.', {});
       assert(!entries.some((entry) => /(^|\/)\.git(\/|$)/.test(entry)), 'Artifact contains Git metadata.', {});
       assert(!entries.some((entry) => entry.startsWith('.knowledge/.github/')), 'Artifact contains source .github metadata.', {});
       return { output_path: packageSummary.output_path, entries: entries.length };
@@ -288,6 +377,128 @@ function main(argv = process.argv.slice(2)) {
       return { status: parsed.status, issue_codes: codes };
     });
 
+    record(results, 'install-agent-integrations creates only selected runtime files', () => {
+      const checked = [];
+      for (const runtime of Object.keys(runtimeExpectations)) {
+        const repo = path.join(root, `runtime ${runtime} repo`);
+        ensureDir(repo);
+        initGitRepo(repo);
+        extractZip(packageSummary.output_path, repo);
+        writeJson(path.join(repo, 'package.json'), { name: `runtime-${runtime}-repo`, private: true });
+        const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--runtime', runtime, '--no-package-scripts'], repo);
+        const parsed = parseJsonResult(integrations);
+        assert(integrations.exit === 0 && parsed.status === 'ok', `${runtime} install-agent-integrations failed.`, { integrations, parsed });
+        assert(parsed.mode === 'runtime' && parsed.runtimes?.includes(runtime), `${runtime} install result did not report runtime mode.`, parsed);
+        checked.push({ runtime, ...assertRuntimeOnly(repo, runtime) });
+        const rerun = runNode(['.knowledge/tools/install-agent-integrations.js', '--runtime', runtime, '--no-package-scripts'], repo);
+        const rerunParsed = parseJsonResult(rerun);
+        assert(rerun.exit === 0 && rerunParsed.status === 'ok', `${runtime} rerun failed.`, { rerun, rerunParsed });
+        for (const relPath of runtimeExpectations[runtime].filter((item) => item.endsWith('.md') && !item.startsWith('.agents/skills/') && !item.startsWith('.claude/skills/') && !item.startsWith('.opencode/commands/'))) {
+          const text = fs.readFileSync(path.join(repo, relPath), 'utf8');
+          assert(countManagedBlocks(text) === 1, `${runtime} rerun duplicated managed block in ${relPath}.`, { relPath, text });
+        }
+      }
+      return { runtimes_checked: checked.map((item) => item.runtime) };
+    });
+
+    record(results, 'install-agent-integrations rejects unknown runtime without creating agent files', () => {
+      const repo = path.join(root, 'unknown runtime repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'unknown-runtime-repo', private: true });
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--runtime', 'mystery', '--no-package-scripts'], repo);
+      const parsed = parseJsonResult(integrations);
+      assert(integrations.exit === 0 && parsed.status === 'runtime_required', 'Unknown runtime should return runtime_required.', parsed);
+      const created = allIntegrationPaths.filter((relPath) => existsRel(repo, relPath));
+      assert(created.length === 0, 'Unknown runtime created integration files.', { created, parsed });
+      assert(!existsRel(repo, '.gitattributes'), 'Unknown runtime created .gitattributes.', { parsed });
+      return { status: parsed.status, commands: parsed.commands.length };
+    });
+
+    record(results, 'install-agent-integrations --all creates the full integration set', () => {
+      const repo = path.join(root, 'all runtimes repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'all-runtimes-repo', private: true });
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all', '--no-package-scripts'], repo);
+      const parsed = parseJsonResult(integrations);
+      assert(integrations.exit === 0 && parsed.status === 'ok' && parsed.mode === 'all', '--all install failed.', { integrations, parsed });
+      const missing = allIntegrationPaths.filter((relPath) => !existsRel(repo, relPath));
+      assert(missing.length === 0, '--all did not create the full integration set.', { missing });
+      const attrs = gitattributesText(repo);
+      const attrMissing = allIntegrationPaths.map(attrPattern).filter((pattern, index, list) => list.indexOf(pattern) === index && !attrs.includes(pattern));
+      assert(attrMissing.length === 0, '--all .gitattributes is missing integration paths.', { attrMissing, attrs });
+      return { runtimes: parsed.runtimes, files_checked: allIntegrationPaths.length };
+    });
+
+    record(results, 'Quick-Start lists every supported runtime command', () => {
+      const quickStart = fs.readFileSync(path.join(sourceRoot, 'Quick-Start.md'), 'utf8');
+      const missing = Object.keys(runtimeExpectations)
+        .map((runtime) => `node .knowledge/tools/install-agent-integrations.js --runtime ${runtime}`)
+        .filter((command) => !quickStart.includes(command));
+      assert(missing.length === 0, 'Quick-Start is missing runtime install commands.', { missing });
+      assert(quickStart.includes('OpenClaw') && quickStart.includes('Hermes') && quickStart.includes('Pi'), 'Quick-Start is missing generic compatibility notes.', {});
+      return { commands_checked: Object.keys(runtimeExpectations).length };
+    });
+
+    record(results, 'install-agent-integrations propagates final-report contract in --all mode', () => {
+      const repo = path.join(root, 'integration contract repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'integration-contract-repo', private: true });
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all'], repo);
+      assert(integrations.exit === 0, 'install-agent-integrations failed for integration contract test.', integrations);
+      const agentsMd = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
+      const claudeMd = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8');
+      const codexMetrics = fs.readFileSync(path.join(repo, '.agents', 'skills', 'kb-metrics', 'SKILL.md'), 'utf8');
+      const claudeMetrics = fs.readFileSync(path.join(repo, '.claude', 'skills', 'kb-metrics', 'SKILL.md'), 'utf8');
+      const opencodeMetrics = fs.readFileSync(path.join(repo, '.opencode', 'commands', 'kb-metrics.md'), 'utf8');
+      const opencodePrSummary = fs.readFileSync(path.join(repo, '.opencode', 'commands', 'kb-pr-summary.md'), 'utf8');
+      assert(agentsMd.includes('## Final report after meaningful work'), 'AGENTS.md is missing the final-report contract.', {});
+      assert(agentsMd.includes('estimated tokens saved and percent saved'), 'AGENTS.md is missing token-savings guidance.', {});
+      assert(claudeMd.includes('## Final report after meaningful work'), 'CLAUDE.md is missing the final-report contract.', {});
+      assert(claudeMd.includes('silently skipping token-savings reporting'), 'CLAUDE.md is missing explicit metrics-missing guidance.', {});
+      assert(codexMetrics.includes('estimated tokens saved plus estimated percent saved'), 'Installed Codex metrics skill is missing token-savings guidance.', {});
+      assert(claudeMetrics.includes('estimated tokens saved plus estimated percent saved'), 'Installed Claude metrics skill is missing token-savings guidance.', {});
+      assert(opencodeMetrics.includes('estimated percent saved'), 'Installed OpenCode metrics command is missing token-savings guidance.', {});
+      assert(opencodePrSummary.includes('metrics or token-savings status'), 'Installed OpenCode PR summary command is missing final-report guidance.', {});
+      return {
+        agents_contract: true,
+        claude_contract: true,
+        codex_metrics_contract: true,
+        claude_metrics_contract: true,
+        opencode_contract: true
+      };
+    });
+
+    record(results, 'install-agent-integrations migrates legacy managed marker without duplicate', () => {
+      const repo = path.join(root, 'legacy marker repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'legacy-marker-repo', private: true });
+      const legacyMarker = ['KNOWLEDGE', 'KIT'].join('-');
+      fs.writeFileSync(path.join(repo, 'AGENTS.md'), [
+        '# Project agents',
+        '',
+        `<!-- BEGIN ${legacyMarker} MANAGED BLOCK -->`,
+        'old managed body',
+        `<!-- END ${legacyMarker} MANAGED BLOCK -->`,
+        ''
+      ].join('\n'), 'utf8');
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--runtime', 'codex'], repo);
+      assert(integrations.exit === 0, 'install-agent-integrations failed for legacy marker test.', integrations);
+      const agentsMd = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
+      assert(countManagedBlocks(agentsMd) === 1, 'AGENTS.md has duplicate managed blocks after legacy marker migration.', { agentsMd });
+      assert(agentsMd.includes('<!-- BEGIN DOT-KNOWLEDGE MANAGED BLOCK -->'), 'AGENTS.md did not migrate to canonical marker.', {});
+      assert(!agentsMd.includes(`<!-- BEGIN ${legacyMarker} MANAGED BLOCK -->`), 'AGENTS.md still contains legacy begin marker.', {});
+      assert(agentsMd.includes('## Final report after meaningful work'), 'Migrated AGENTS.md is missing final-report contract.', {});
+      return { managed_blocks: countManagedBlocks(agentsMd), migrated_to_dot_knowledge: true };
+    });
+
     record(results, 'fresh install flow release and git add ignore generated runtime', () => {
       const repo = path.join(root, 'fresh flow release repo');
       ensureDir(repo);
@@ -297,7 +508,7 @@ function main(argv = process.argv.slice(2)) {
       const check = runNode(['.knowledge/tools/install-check.js', '--json'], repo);
       const checkJson = parseJsonResult(check);
       assert(check.exit === 0 && checkJson.status === 'ok', 'install-check failed before fresh flow release.', checkJson);
-      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js'], repo);
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--runtime', 'codex'], repo);
       assert(integrations.exit === 0, 'install-agent-integrations failed.', integrations);
       const importResult = runNode(['.knowledge/tools/flow.js', 'import', '--no-color'], repo);
       assert(importResult.exit === 0, 'flow import failed in fresh flow release test.', importResult);
@@ -323,17 +534,123 @@ function main(argv = process.argv.slice(2)) {
       writeJson(path.join(repo, '.knowledge', 'modules', 'custom_module.json'), { module_id: 'custom', note: 'preserve this' });
       writeJson(path.join(repo, '.knowledge', 'evidence', 'custom_evidence.json'), { facts: [{ id: 'custom', text: 'preserve this' }] });
       writeJson(path.join(repo, '.knowledge', 'decisions.json'), { decisions: [{ id: 'D-custom', text: 'preserve this' }] });
+      rmDir(path.join(repo, '.knowledge', 'inspector.js'));
+      const missingVerify = runNode(['.knowledge/tools/update-system-files.js', '--verify-upgrade', '--json'], repo);
+      const missingVerifyJson = parseJsonResult(missingVerify);
+      assert(missingVerify.exit !== 0 && missingVerifyJson.status === 'failed', 'verify-upgrade should fail when Inspector launcher is missing.', missingVerifyJson);
+      assert(missingVerifyJson.verify?.checks?.some((check) => check.check === 'system_completeness' && check.missing_system_paths?.includes('inspector.js')), 'verify-upgrade should report missing Inspector launcher.', missingVerifyJson.verify);
       const dryRun = runNode(['.knowledge/tools/update-system-files.js', '--from', sourceRoot, '--dry-run'], repo);
       const dryJson = parseJsonResult(dryRun);
       assert(dryRun.exit === 0 && dryJson.status === 'ok', 'update-system-files dry-run failed.', dryJson);
+      assert(dryJson.actions?.some((action) => action.action === 'create' && action.path === 'inspector.js'), 'dry-run should plan missing Inspector launcher creation.', dryJson.actions);
       const apply = runNode(['.knowledge/tools/update-system-files.js', '--from', sourceRoot, '--apply', '--yes'], repo);
       const applyJson = parseJsonResult(apply);
       assert(apply.exit === 0 && applyJson.status === 'ok', 'update-system-files apply failed.', applyJson);
+      assert(applyJson.summary.curated_changed_files === 0, 'Updater changed curated project knowledge.', applyJson.summary);
+      assert(applyJson.system_completeness?.status === 'ok', 'Updater left missing system paths.', applyJson.system_completeness);
+      assertInstalledSystemComplete(repo);
+      assert(fs.existsSync(path.join(repo, '.knowledge', 'inspector.js')), 'Updater did not install .knowledge/inspector.js.', {});
       assert(fs.readFileSync(path.join(repo, '.knowledge', 'wiki', 'custom.md'), 'utf8').includes('Preserve this'), 'Custom wiki was not preserved.', {});
       assert(readJson(path.join(repo, '.knowledge', 'modules', 'custom_module.json')).note === 'preserve this', 'Custom module was not preserved.', {});
       assert(readJson(path.join(repo, '.knowledge', 'evidence', 'custom_evidence.json')).facts[0].id === 'custom', 'Custom evidence was not preserved.', {});
       assert(readJson(path.join(repo, '.knowledge', 'decisions.json')).decisions[0].id === 'D-custom', 'decisions.json was not preserved.', {});
-      return { dry_run: dryJson.summary, apply: applyJson.summary };
+      const verify = runNode(['.knowledge/tools/update-system-files.js', '--verify-upgrade', '--from', sourceRoot, '--json'], repo);
+      const verifyJson = parseJsonResult(verify);
+      assert(verify.exit === 0 && verifyJson.status === 'ok', 'verify-upgrade failed after existing update.', verifyJson);
+      return { dry_run: dryJson.summary, apply: applyJson.summary, verify: verifyJson.status };
+    });
+
+    record(results, 'bootstrap update from 3.1.8-like install without updater', () => {
+      const repo = path.join(root, 'bootstrap old update repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'bootstrap-old-repo', private: true });
+      const importResult = runNode(['.knowledge/tools/flow.js', 'import', '--no-color'], repo);
+      assert(importResult.exit === 0, 'flow import failed before bootstrap update test.', importResult);
+      fs.writeFileSync(path.join(repo, '.knowledge', 'wiki', 'custom.md'), '# Custom Wiki\n\nPreserve this.\n', 'utf8');
+      writeJson(path.join(repo, '.knowledge', 'modules', 'custom_module.json'), { module_id: 'custom', note: 'preserve this' });
+      writeJson(path.join(repo, '.knowledge', 'evidence', 'custom_evidence.json'), { facts: [{ id: 'custom', text: 'preserve this' }] });
+      writeJson(path.join(repo, '.knowledge', 'decisions.json'), { decisions: [{ id: 'D-custom', text: 'preserve this' }] });
+      writeJson(path.join(repo, '.knowledge', 'maintenance', 'external_memory_status.json'), { status: 'legacy-shape', providers: { mem0: { status: 'unknown' } } });
+      removeKnowledgePaths(repo, [
+        'tools/update-system-files.js',
+        'install-manifest.json',
+        'memory-providers',
+        'benchmarks',
+        'inspector.js',
+        '.release-notes',
+        '.gitignore',
+        '.gitattributes',
+        'CHANGELOG.md',
+        'RELEASE_NOTES.md',
+        'SECURITY.md',
+        'SBOM.memory.json',
+        'THIRD_PARTY_NOTICES.md',
+        'external_memory/registry.json',
+        'external_memory/retrieval_policy.json'
+      ]);
+      assert(!fs.existsSync(path.join(repo, '.knowledge', 'tools', 'update-system-files.js')), 'Old install simulation still has updater.', {});
+      const apply = runNode([
+        path.join(sourceRoot, 'tools', 'update-system-files.js'),
+        '--from', sourceRoot,
+        '--target-knowledge-root', path.join(repo, '.knowledge'),
+        '--apply',
+        '--yes',
+        '--json'
+      ], repo);
+      const applyJson = parseJsonResult(apply);
+      assert(apply.exit === 0 && applyJson.status === 'ok', 'bootstrap update-system-files apply failed.', applyJson);
+      assert(applyJson.summary.curated_changed_files === 0, 'Bootstrap updater changed curated project knowledge.', applyJson.summary);
+      assert(applyJson.summary.migration_defaults_created === 2, 'Bootstrap updater did not create missing project defaults.', applyJson.summary);
+      assert(fs.existsSync(path.join(repo, '.knowledge', 'external_memory', 'registry.json')), 'Missing migrated external_memory/registry.json.', {});
+      assert(fs.existsSync(path.join(repo, '.knowledge', 'external_memory', 'retrieval_policy.json')), 'Missing migrated external_memory/retrieval_policy.json.', {});
+      assert(applyJson.system_completeness?.status === 'ok', 'Bootstrap updater left missing system paths.', applyJson.system_completeness);
+      assertInstalledSystemComplete(repo);
+      assert(fs.existsSync(path.join(repo, '.knowledge', 'inspector.js')), 'Bootstrap updater did not install .knowledge/inspector.js.', {});
+      assert(fs.existsSync(path.join(repo, '.knowledge', 'tools', 'update-system-files.js')), 'Bootstrap updater did not install updater into target.', {});
+      assert(fs.readFileSync(path.join(repo, '.knowledge', 'wiki', 'custom.md'), 'utf8').includes('Preserve this'), 'Custom wiki was not preserved by bootstrap update.', {});
+      assert(readJson(path.join(repo, '.knowledge', 'modules', 'custom_module.json')).note === 'preserve this', 'Custom module was not preserved by bootstrap update.', {});
+      assert(readJson(path.join(repo, '.knowledge', 'evidence', 'custom_evidence.json')).facts[0].id === 'custom', 'Custom evidence was not preserved by bootstrap update.', {});
+      assert(readJson(path.join(repo, '.knowledge', 'decisions.json')).decisions[0].id === 'D-custom', 'decisions.json was not preserved by bootstrap update.', {});
+      const doctor = readJson(path.join(repo, '.knowledge', 'maintenance', 'quality_report.json'));
+      assert(doctor.status !== 'broken', 'Doctor is broken after bootstrap update.', doctor);
+      const verify = runNode(['.knowledge/tools/update-system-files.js', '--verify-upgrade', '--from', sourceRoot, '--json'], repo);
+      const verifyJson = parseJsonResult(verify);
+      assert(verify.exit === 0 && verifyJson.status === 'ok', 'verify-upgrade failed after bootstrap update.', verifyJson);
+      return { apply: applyJson.summary, doctor_status: doctor.status, verify: verifyJson.status };
+    });
+
+    record(results, 'update preflight stops before report/backup permission failures', () => {
+      const repo = path.join(root, 'update preflight invalid maintenance repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'preflight-invalid-maintenance', private: true });
+      rmDir(path.join(repo, '.knowledge', 'maintenance'));
+      fs.writeFileSync(path.join(repo, '.knowledge', 'maintenance'), 'not a directory\n', 'utf8');
+      const preflight = runNode([
+        path.join(sourceRoot, 'tools', 'update-system-files.js'),
+        '--from', sourceRoot,
+        '--target-knowledge-root', path.join(repo, '.knowledge'),
+        '--preflight',
+        '--json'
+      ], repo);
+      const preflightJson = parseJsonResult(preflight);
+      assert(preflight.exit !== 0 && preflightJson.status === 'failed', 'preflight should fail for unwritable maintenance report path.', preflightJson);
+      assert(preflightJson.permission_preflight?.status === 'failed', 'preflight report did not expose permission_preflight failure.', preflightJson);
+      const apply = runNode([
+        path.join(sourceRoot, 'tools', 'update-system-files.js'),
+        '--from', sourceRoot,
+        '--target-knowledge-root', path.join(repo, '.knowledge'),
+        '--apply',
+        '--yes',
+        '--json'
+      ], repo);
+      const applyJson = parseJsonResult(apply);
+      assert(apply.exit !== 0 && applyJson.status === 'failed', 'apply should fail before backup/copy when preflight fails.', applyJson);
+      assert(!applyJson.backup_path, 'apply created backup despite failing preflight.', applyJson);
+      return { preflight_status: preflightJson.permission_preflight.status, apply_status: applyJson.status };
     });
 
     record(results, 'runtime files are covered by installed .knowledge/.gitignore', () => {
@@ -349,6 +666,7 @@ function main(argv = process.argv.slice(2)) {
         'search/index.json',
         'inspector/',
         'metrics/baseline.json',
+        'metrics/external_memory.json',
         'maps/wiki_graph.json',
         '*.tmp-*',
         '*.bak-*'

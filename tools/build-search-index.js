@@ -11,10 +11,13 @@ const path = require('path');
 const crypto = require('crypto');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
 const { estimateTokens } = require('./lib/token-estimate');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const knowledgeRoot = path.resolve(__dirname, '..');
-const lockDir = path.join(knowledgeRoot, '.lock');
+const context = resolveKnowledgeContext();
+const repoRoot = context.targetRoot;
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
+const lockDir = path.join(stateRoot, '.lock');
 const maxBytes = Number(process.env.KNOWLEDGE_SEARCH_MAX_FILE_BYTES || 250000);
 
 const stopwords = new Set('the a an and or of to in for on with without into from by as is are was were be been this that these those it its code tests evidence module modules knowledge json md read write current source truth project file files'.split(' '));
@@ -44,7 +47,13 @@ const SYNONYMS = {
 };
 
 function nowIso() { return new Date().toISOString(); }
-function rel(abs) { return path.relative(knowledgeRoot, abs).replace(/\\/g, '/'); }
+function rel(abs) {
+  const fromProject = path.relative(knowledgeRoot, abs).replace(/\\/g, '/');
+  if (!fromProject.startsWith('..') && !path.isAbsolute(fromProject)) return fromProject;
+  const fromState = path.relative(stateRoot, abs).replace(/\\/g, '/');
+  if (!fromState.startsWith('..') && !path.isAbsolute(fromState)) return fromState;
+  return path.basename(abs);
+}
 function sha256Text(text) { return crypto.createHash('sha256').update(text).digest('hex'); }
 function expandTokens(tokens) {
   const out = new Set(tokens);
@@ -125,20 +134,16 @@ function collectFiles() {
     'external_memory',
     'templates/official'
   ];
-  const includedFiles = [
-    'decisions.json',
-    'contradictions.json',
-    'glossary.json',
-    'project_index.json',
-    'maintenance/handoff_summary.json',
-    'maintenance/trust_report.json',
-    'maintenance/concurrency_policy.json',
-    'maintenance/quality_report.json'
-  ];
+  const projectFiles = ['decisions.json', 'contradictions.json', 'glossary.json', 'project_index.json', 'maintenance/concurrency_policy.json'];
+  const stateFiles = ['maintenance/handoff_summary.json', 'maintenance/trust_report.json', 'maintenance/quality_report.json', 'maintenance/routing_bundle.json'];
   const files = [];
   for (const rootName of includedRoots) walk(path.join(knowledgeRoot, rootName), files);
-  for (const file of includedFiles) {
+  for (const file of projectFiles) {
     const abs = path.join(knowledgeRoot, file);
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) files.push(abs);
+  }
+  for (const file of stateFiles) {
+    const abs = path.join(stateRoot, file);
     if (fs.existsSync(abs) && fs.statSync(abs).isFile()) files.push(abs);
   }
   return Array.from(new Set(files));
@@ -180,7 +185,7 @@ function expandCollectionDocs(relative, parsed) {
 }
 
 function buildUnlocked(options = {}) {
-  ensureDir(path.join(knowledgeRoot, 'search'));
+  ensureDir(path.join(stateRoot, 'search'));
   const generatedAt = nowIso();
   const docs = [];
   const includedCounts = {};
@@ -237,9 +242,13 @@ function buildUnlocked(options = {}) {
   }
 
   const index = {
-    schema_version: '3.1.9',
+    schema_version: '3.2.0',
     generated_at: generatedAt,
     generated_by: getAgentId(),
+    mode: context.mode,
+    target_root: context.targetRoot,
+    project_knowledge_root: context.projectKnowledgeRoot,
+    state_root: context.stateRoot,
     index_type: 'local_lexical_compact',
     purpose: 'Compact local search index. Use search-knowledge.js to retrieve only relevant .knowledge documents.',
     document_kinds: ['wiki', 'cookbook', 'decision', 'contradiction', 'invariant', 'glossary', 'external_memory', 'template', 'module', 'evidence', 'map', 'maintenance', 'knowledge'],
@@ -248,8 +257,8 @@ function buildUnlocked(options = {}) {
     document_count: docs.length,
     documents: docs.sort((a, b) => a.path.localeCompare(b.path))
   };
-  writeJsonAtomic(path.join(knowledgeRoot, 'search', 'index.json'), index);
-  if (!options.quiet) console.log(JSON.stringify({ written: '.knowledge/search/index.json', documents: docs.length, kinds: includedCounts }, null, 2));
+  writeJsonAtomic(path.join(stateRoot, 'search', 'index.json'), index);
+  if (!options.quiet) console.log(JSON.stringify({ written: context.mode === 'repo' ? '.knowledge/search/index.json' : path.join(stateRoot, 'search', 'index.json'), documents: docs.length, kinds: includedCounts }, null, 2));
   return index;
 }
 

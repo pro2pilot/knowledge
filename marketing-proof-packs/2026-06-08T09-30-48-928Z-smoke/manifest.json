@@ -1,0 +1,9 @@
+{
+  "schema_version": "3.2.0",
+  "run_id": "2026-06-08T09-30-48-928Z-smoke",
+  "source_benchmark_run": "benchmark-runs/2026-06-08T09-30-48-928Z-smoke",
+  "generated_at": "2026-06-08T09:31:00.016Z",
+  "public_claims_approved": 0,
+  "public_claims_blocked": 1,
+  "verdict": "passed"
+}

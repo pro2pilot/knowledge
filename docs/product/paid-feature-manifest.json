@@ -1,0 +1,460 @@
+{
+  "schema_version": "3.2.0",
+  "source": "knowledge_3_2_0_docs/03_inspector_monetization_logic.md",
+  "purpose": "Free-core manifest for paid Inspector surface, conversion signals, billing boundaries, licensing rules, and product positioning. This is not paid implementation or pricing config.",
+  "free_boundary": "Free core shows local truth, config-driven disabled paid actions, contextual conversion signals, and license/provenance rules only.",
+  "paid_layer_root": "pro2pilot-inspector/",
+  "pricing_policy": {
+    "prices_in_free_core": false,
+    "feature_plan_bindings_in_free_core": false,
+    "pricing_source": "external commercial config or paid Inspector workspace",
+    "plan_binding_source": "paid Inspector entitlement config",
+    "reason": "Prices and plan packaging can change without code changes in .knowledge Core."
+  },
+  "commercial_position": {
+    "sell_as": "workflow and governance layer for AI-assisted engineering teams",
+    "do_not_sell_as": [
+      "AI memory alone",
+      "RAG for code",
+      "low-code canvas",
+      "replacement for Codex, Claude Code, OpenCode, MCP, or GitHub"
+    ],
+    "buyer_value": [
+      "fewer blind PRs from agents",
+      "reviewable AI-assisted changes",
+      "owner, status, and SLA for knowledge debt",
+      "PR impact across trust, freshness, and critical paths",
+      "team and multi-worktree coordination",
+      "governance and policy packs",
+      "GitHub automation",
+      "auditability",
+      "self-host or private deployment when needed"
+    ]
+  },
+  "packaging_copy": {
+    "free": {
+      "headline": "Free open-core repo-local trust layer.",
+      "bullets": [
+        "routing bundle",
+        "trust and freshness",
+        "repair queue",
+        "local search",
+        "PR summary",
+        "static Inspector",
+        "no required cloud",
+        "no telemetry by default",
+        "Apache-2.0"
+      ],
+      "cta": [
+        "Open on GitHub",
+        "Install .knowledge"
+      ]
+    },
+    "paid": {
+      "headline": "Turn agent knowledge into a team operating surface.",
+      "bullets": [
+        "PR impact graph",
+        "repair ownership",
+        "team mode dashboard",
+        "GitHub App",
+        "policy packs",
+        "history and alerts",
+        "SSO, RBAC, and audit",
+        "hosted or private deployment"
+      ],
+      "cta": [
+        "Join private preview",
+        "Request team demo"
+      ]
+    }
+  },
+  "capabilities": [
+    {
+      "id": "multi-repo-dashboard",
+      "label": "Multi-repo Dashboard",
+      "category": "team_governance",
+      "free_behavior": "disabled_preview",
+      "paid_value": "Organization-wide health, trust, stale pressure, repair pressure, and repo grouping.",
+      "action_label": "Open multi-repo dashboard"
+    },
+    {
+      "id": "team-mode-management",
+      "label": "Team Mode Management",
+      "category": "team_governance",
+      "free_behavior": "readonly_local_status",
+      "paid_value": "Workspace ownership, comparison, history, archive workflows, and team policies.",
+      "action_label": "Manage team workspaces"
+    },
+    {
+      "id": "advanced-pr-impact",
+      "label": "Advanced PR Impact Graph and GitHub App",
+      "category": "pr_governance",
+      "free_behavior": "markdown_preview",
+      "paid_value": "Interactive impact graph, GitHub comments, checks, labels, reviewer suggestions, and retained PR impact history.",
+      "action_label": "Post GitHub PR impact"
+    },
+    {
+      "id": "repair-ownership",
+      "label": "Repair Ownership",
+      "category": "knowledge_debt",
+      "free_behavior": "local_queue_only",
+      "paid_value": "Owners, SLA, comments, history, linked PRs/issues, and team dashboards for knowledge debt.",
+      "action_label": "Assign owner"
+    },
+    {
+      "id": "policy-packs",
+      "label": "Policy Packs",
+      "category": "governance",
+      "free_behavior": "advisory_preview",
+      "paid_value": "Commercial governance rules, approvals, policy exceptions, checks, and audit exports.",
+      "action_label": "Request policy approval"
+    },
+    {
+      "id": "memory-governance",
+      "label": "Memory Governance and Provider Fleet Status",
+      "category": "governance",
+      "free_behavior": "disabled_preview",
+      "paid_value": "Org-level Mem0/Pinecone status plus Graphiti and Zep provider governance, audit, drift, license, SLA, and policy-pack overlays.",
+      "action_label": "Open memory governance"
+    },
+    {
+      "id": "workflow-stack-packs",
+      "label": "Workflow and Stack Packs",
+      "category": "governance",
+      "free_behavior": "advisory_preview",
+      "paid_value": "Stack-specific governance for Next.js SaaS, Python FastAPI, Node monorepos, Supabase, AI agent runtime, GitHub PR review, agency onboarding, release governance, and migrations.",
+      "action_label": "Install workflow pack"
+    },
+    {
+      "id": "audit-export",
+      "label": "Audit Export",
+      "category": "audit",
+      "free_behavior": "disabled_preview",
+      "paid_value": "Signed audit bundles, approval trails, policy exceptions, incident replay, and governance exports.",
+      "action_label": "Export audit bundle"
+    },
+    {
+      "id": "history-alerts",
+      "label": "History and Alerts",
+      "category": "operations",
+      "free_behavior": "local_history_only",
+      "paid_value": "Retained PR impact history, repair ownership history, alerts, and anomaly reporting.",
+      "action_label": "Retain history"
+    },
+    {
+      "id": "enterprise-controls",
+      "label": "SSO/RBAC/Audit and Hosted/Private/VPC",
+      "category": "enterprise",
+      "free_behavior": "not_available",
+      "paid_value": "Enterprise auth, retention, deployment, support, compliance controls, custom integrations, and private or sovereign deployment.",
+      "action_label": "Request private deployment"
+    },
+    {
+      "id": "commercial-pack-registry",
+      "label": "Commercial Pack Registry",
+      "category": "governance",
+      "free_behavior": "disabled_preview",
+      "paid_value": "Private pack registry, pack metadata, provenance, rollout controls, and partner packs.",
+      "action_label": "Open pack registry"
+    }
+  ],
+  "conversion_signals": [
+    {
+      "id": "repair-ownership-needed",
+      "label": "Repair ownership",
+      "capability_id": "repair-ownership",
+      "message": "Repair items exist; ownership, SLA, and history are paid-value actions.",
+      "action_label": "Assign owner",
+      "conditions": [
+        {
+          "metric": "repair_queue_count",
+          "op": ">",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "multi-workspace-detected",
+      "label": "Team workspace pressure",
+      "capability_id": "team-mode-management",
+      "message": "Multiple active workspaces indicate a team coordination workflow.",
+      "action_label": "Manage team workspaces",
+      "conditions": [
+        {
+          "metric": "team_workspace_count",
+          "op": ">",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "critical-impact",
+      "label": "Critical path impact",
+      "capability_id": "advanced-pr-impact",
+      "message": "Critical or important files are mapped; interactive PR impact belongs to the paid surface.",
+      "action_label": "Open PR impact graph",
+      "conditions": [
+        {
+          "metric": "critical_file_count",
+          "op": ">",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "stale-pressure",
+      "label": "History and alerts",
+      "capability_id": "history-alerts",
+      "message": "Stale items exist; retained history and alerts are paid-value actions.",
+      "action_label": "Retain history",
+      "conditions": [
+        {
+          "metric": "stale_item_count",
+          "op": ">",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "audit-export-request",
+      "label": "Audit export",
+      "capability_id": "audit-export",
+      "message": "Audit bundles and governance exports are paid-value actions.",
+      "action_label": "Export audit bundle",
+      "conditions": [
+        {
+          "metric": "quality_score",
+          "op": ">=",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "shared-memory-governance",
+      "label": "External memory governance",
+      "capability_id": "policy-packs",
+      "message": "Shared external memory needs provenance, isolation, and governance review.",
+      "action_label": "Request memory policy",
+      "conditions": [
+        {
+          "metric": "shared_external_memory_count",
+          "op": ">",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "billing_dimensions": [
+    {
+      "id": "seat",
+      "label": "Seats",
+      "paid_reason": "Team identity, ownership, support, and governance workflows."
+    },
+    {
+      "id": "workspace_or_org",
+      "label": "Workspace or org",
+      "paid_reason": "Shared operating surface and commercial account boundary."
+    },
+    {
+      "id": "repository_in_paid_dashboard",
+      "label": "Repositories in paid dashboard",
+      "paid_reason": "Cross-repo aggregation, comparison, history, and alerting."
+    },
+    {
+      "id": "github_app_automation",
+      "label": "GitHub App automation",
+      "paid_reason": "Comments, checks, labels, reviewer routing, and GitHub workflow integration."
+    },
+    {
+      "id": "retained_history",
+      "label": "Retained PR impact and repair history",
+      "paid_reason": "Persistent team context beyond local free artifacts."
+    },
+    {
+      "id": "policy_packs",
+      "label": "Policy packs",
+      "paid_reason": "Commercial governance rules, approvals, exceptions, and audits."
+    },
+    {
+      "id": "hosted_private_deployment",
+      "label": "Hosted, private, VPC, or sovereign deployment",
+      "paid_reason": "Deployment, security, compliance, support, and retention obligations."
+    }
+  ],
+  "do_not_charge_for": [
+    "local CLI command count",
+    "local free report count",
+    "basic static Inspector",
+    "basic PR summary markdown",
+    "manual update check",
+    "local search index"
+  ],
+  "usage_billing_policy": {
+    "initial_policy": "Do not start with complex per-run or per-token Inspector billing.",
+    "prefer": [
+      "simple seat and workspace pricing in the paid commercial config",
+      "fair limits on repositories, retained history, and PR events",
+      "soft overage warnings",
+      "custom enterprise terms for high-volume usage"
+    ],
+    "future_options": [
+      "PR impact events over configured limits",
+      "long-retention storage",
+      "hosted runner minutes",
+      "optional managed AI analysis credits"
+    ]
+  },
+  "add_on_streams": [
+    {
+      "id": "policy-packs",
+      "label": "Policy Packs",
+      "examples": [
+        "runtime execution",
+        "auth and security",
+        "billing and payments",
+        "data migration",
+        "secrets handling",
+        "compliance export",
+        "memory provider governance",
+        "Graphiti and Zep provider policy",
+        "MCP tool risk",
+        "release readiness"
+      ]
+    },
+    {
+      "id": "workflow-stack-packs",
+      "label": "Workflow / Stack Packs",
+      "examples": [
+        "Next.js SaaS",
+        "Python FastAPI",
+        "Node monorepo",
+        "Supabase",
+        "AI agent runtime",
+        "GitHub PR review",
+        "agency client onboarding",
+        "release governance",
+        "migration from n8n, Dify, CrewAI, or LangGraph"
+      ]
+    },
+    {
+      "id": "managed-launch",
+      "label": "Managed Launch / Migration Services",
+      "examples": [
+        "repo audit",
+        ".knowledge setup",
+        "template and pack configuration",
+        "policy mapping",
+        "GitHub App setup",
+        "team training",
+        "first PR impact workflow",
+        "QA and rollout plan"
+      ]
+    },
+    {
+      "id": "governance-compliance",
+      "label": "Governance / Compliance Add-on",
+      "examples": [
+        "signed audit bundle",
+        "approval workflows",
+        "policy exceptions",
+        "longer retention",
+        "incident replay",
+        "budget anomaly reports",
+        "quarterly governance export"
+      ]
+    },
+    {
+      "id": "sovereign-deployment",
+      "label": "Private/VPC/Sovereign Deployment",
+      "examples": [
+        "deployment into customer infrastructure",
+        "no source upload by default",
+        "custom data retention",
+        "customer-managed keys later",
+        "security hardening",
+        "SLA and support"
+      ]
+    }
+  ],
+  "private_preview": {
+    "offer": [
+      "timeboxed team preview",
+      "setup call for early design partners",
+      "no credit card by default",
+      "feedback agreement",
+      "optional case-study discount"
+    ],
+    "success_criteria": [
+      "multiple repos connected",
+      "several PR impact analyses completed",
+      "repair items created or assigned",
+      "at least one policy pack used",
+      "GitHub App installed where relevant",
+      "team lead can explain before/after review value"
+    ]
+  },
+  "license_and_provenance_rules": {
+    "core_license": "Apache-2.0",
+    "paid_layer_license": "commercial",
+    "rules": [
+      "free core files remain Apache-2.0",
+      "paid source/components have clear commercial license headers",
+      "shared code boundaries are explicit",
+      "NOTICE and THIRD_PARTY_LICENSES are maintained when needed",
+      "paid backend does not silently relicense open-core contributions"
+    ],
+    "external_connector_rules": [
+      "treat external memory as optional connector, not source of truth",
+      "show component name, source URL, version, and license before install",
+      "require explicit Enable or Install action",
+      "write dependency metadata into external_memory/registry.json",
+      "preserve license and NOTICE obligations when redistributing or bundling",
+      "include connector status in reports and metrics",
+      "never allow external memory to override code, tests, evidence, or decisions",
+      "warn in team mode when memory is shared across worktrees or cannot be isolated",
+      "provide disable/uninstall and audit view in paid implementation"
+    ]
+  },
+  "gtm_motions": [
+    {
+      "id": "open-core-plg",
+      "label": "Open-core PLG",
+      "channels": [
+        "GitHub",
+        "technical docs",
+        "developer content",
+        "demo videos with Inspector screenshots"
+      ]
+    },
+    {
+      "id": "founder-led-paid-pilot",
+      "label": "Founder-led paid pilot",
+      "targets": [
+        "tech leads",
+        "AI-native teams",
+        "agencies",
+        "small engineering teams"
+      ]
+    },
+    {
+      "id": "sovereign-enterprise-design-partners",
+      "label": "Sovereign / Enterprise design partners",
+      "targets": [
+        "enterprise engineering",
+        "regulated data teams",
+        "platform and DevEx teams",
+        "agencies serving enterprise clients"
+      ]
+    }
+  ],
+  "anti_patterns": [
+    "crippling free core",
+    "hiding trust reasons behind paid",
+    "forcing cloud for one repo",
+    "charging for local reports",
+    "selling vague AI magic",
+    "building a Dify or n8n clone",
+    "ignoring license/provenance for third-party connectors",
+    "collecting telemetry silently"
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "id": "KB-13",
+  "slug": "kb-13-pro-inspector",
+  "title": "Pro Inspector Governance",
+  "status": "preview",
+  "claim_status": "preview",
+  "runs_requested": 5,
+  "runs_passed": 0,
+  "runs_failed": 0,
+  "metrics": {
+    "pro_test_passed": 1,
+    "pro_build_passed": 1,
+    "kb13_sub_suites": 5
+  },
+  "evidence": [
+    "../pro2pilot-inspector/scripts/test.mjs",
+    "../pro2pilot-inspector/scripts/build.mjs"
+  ],
+  "limitations": [
+    "Pro Inspector is a private-preview demo app, not production governance service"
+  ],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T09:48:32.849Z",
+      "finished_at": "2026-06-08T09:48:33.262Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "pro_test_passed": 1,
+        "pro_build_passed": 1,
+        "kb13_sub_suites": 5
+      },
+      "evidence": [
+        "../pro2pilot-inspector/scripts/test.mjs",
+        "../pro2pilot-inspector/scripts/build.mjs"
+      ],
+      "limitations": [
+        "Pro Inspector is a private-preview demo app, not production governance service"
+      ]
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T09:48:33.262Z",
+      "finished_at": "2026-06-08T09:48:33.430Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "pro_test_passed": 1,
+        "pro_build_passed": 1,
+        "kb13_sub_suites": 5
+      },
+      "evidence": [
+        "../pro2pilot-inspector/scripts/test.mjs",
+        "../pro2pilot-inspector/scripts/build.mjs"
+      ],
+      "limitations": [
+        "Pro Inspector is a private-preview demo app, not production governance service"
+      ]
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T09:48:33.430Z",
+      "finished_at": "2026-06-08T09:48:33.848Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "pro_test_passed": 1,
+        "pro_build_passed": 1,
+        "kb13_sub_suites": 5
+      },
+      "evidence": [
+        "../pro2pilot-inspector/scripts/test.mjs",
+        "../pro2pilot-inspector/scripts/build.mjs"
+      ],
+      "limitations": [
+        "Pro Inspector is a private-preview demo app, not production governance service"
+      ]
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T09:48:33.848Z",
+      "finished_at": "2026-06-08T09:48:34.279Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "pro_test_passed": 1,
+        "pro_build_passed": 1,
+        "kb13_sub_suites": 5
+      },
+      "evidence": [
+        "../pro2pilot-inspector/scripts/test.mjs",
+        "../pro2pilot-inspector/scripts/build.mjs"
+      ],
+      "limitations": [
+        "Pro Inspector is a private-preview demo app, not production governance service"
+      ]
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T09:48:34.279Z",
+      "finished_at": "2026-06-08T09:48:34.455Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "pro_test_passed": 1,
+        "pro_build_passed": 1,
+        "kb13_sub_suites": 5
+      },
+      "evidence": [
+        "../pro2pilot-inspector/scripts/test.mjs",
+        "../pro2pilot-inspector/scripts/build.mjs"
+      ],
+      "limitations": [
+        "Pro Inspector is a private-preview demo app, not production governance service"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,34 @@
 # Release Notes
 
+## v3.2.0 - Universal final-report hardening
+
+v3.2.0 lifts the active release line to `3.2.0` and aligns installed agent integrations around one stricter final-report contract.
+
+### Added
+
+- A shared final-report contract across installed agent integrations after meaningful work or before handoff.
+- A policy decision record for reporting doctor, wiki lint, trust, repair, routing, PR summary, and metrics outcomes consistently.
+- Release notes and knowledge-log entries for the `v3.2.0` bootstrap.
+- Visual Inspector update UI with automatic release check, dry-run plan, report view, and explicit apply gated by `--allow-local-actions`.
+- Updater preflight, migration-default creation, and post-upgrade stale/repair/suspect reporting for older install paths.
+- Shared memory adapter contract plus explicit Mem0 and Pinecone adapter CLIs that keep external memory advisory-only.
+
+### Changed
+
+- Active version and schema markers are updated to `3.2.0`.
+- `Quick-Start.md` now requires agents to surface metrics paths and estimated token savings when routing metrics exist.
+- Installed `AGENTS.md`, `CLAUDE.md`, Codex skills, Claude skills, and OpenCode commands now reinforce the same final-report expectations.
+- Inspector launch checks are enabled by default, while update apply remains explicit, local, and telemetry-free.
+- Memory provider status now reports adapter commands, offline status behavior, and explicit-live-call boundaries.
+
+### Fixed
+
+- Metrics reporting is no longer left implicit for some integrations while being surfaced by others.
+- Agents are instructed to say explicitly when `.knowledge/metrics/baseline.json` is missing or stale instead of silently skipping that part of the report.
+- Old installs missing required `external_memory` defaults no longer become broken after system update; missing defaults are created without overwriting curated knowledge.
+- Filesystem permission/report failures are detected before apply so updates stop before partial backup/copy work.
+- Graphiti and Zep provider manifests remain in the separate Pro Inspector workspace and are blocked from the free/core release artifact.
+
 ## v3.1.9 - Install and Git policy hardening
 
 v3.1.9 focuses on making `.knowledge` installs, updates, release packaging, and Git behavior safe and reproducible for agents and humans.
@@ -11,7 +40,7 @@ v3.1.9 focuses on making `.knowledge` installs, updates, release packaging, and 
 - `tools/update-system-files.js` for updating framework/system files without overwriting project-specific knowledge.
 - `tools/git-policy.js`, `.knowledge` Git policy docs, and Git policy templates.
 - `tools/self-test-install-policy.js` covering fresh install, bad install repair, update preservation, Git ignore behavior, and Windows-safe paths.
-- Codex release-preparation workflow skill.
+- Release preparation workflow guidance for maintainers.
 
 ### Changed
 

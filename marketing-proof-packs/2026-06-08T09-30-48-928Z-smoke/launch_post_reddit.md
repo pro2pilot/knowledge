@@ -1,0 +1,1 @@
+We ran a local proof pack for .knowledge. The useful part is that every claim has a claim ID, raw artifact, reproduction command and limitation. No public claims approved in this run. 1 suite(s) remain preview, planned, diagnostic or failed and are not used as claims.

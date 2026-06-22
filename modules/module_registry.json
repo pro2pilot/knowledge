@@ -1,5 +1,20 @@
 {
-  "schema_version": "3.1.9",
+  "schema_version": "3.2.0",
   "distribution_state": "template_seed",
-  "modules": []
+  "modules": [
+    {
+      "module_id": "root",
+      "name": "root",
+      "path": ".",
+      "card": ".knowledge/modules/root.json",
+      "confidence": "medium",
+      "key_files": [
+        ".knowledge/README.md",
+        ".knowledge/Quick-Start.md",
+        ".knowledge/tools/flow.js",
+        ".knowledge/tools/build-visual-inspector.js"
+      ],
+      "evidence_files": []
+    }
+  ]
 }

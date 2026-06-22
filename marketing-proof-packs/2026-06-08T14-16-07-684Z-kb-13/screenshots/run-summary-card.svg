@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" role="img" aria-label="Benchmark run summary card">
+  <rect width="960" height="540" fill="#111814"/>
+  <text x="48" y="72" fill="#f7f4ea" font-family="Arial" font-size="36">Benchmark proof pack</text>
+  <text x="48" y="118" fill="#cfd7ce" font-family="Arial" font-size="18">Run 2026-06-08T14-16-07-684Z-kb-13</text>
+  <text x="48" y="190" fill="#f7f4ea" font-family="Arial" font-size="28">Verdict: passed</text>
+  <text x="48" y="250" fill="#8ed0a8" font-family="Arial" font-size="24">Approved claims: 1</text>
+  <text x="48" y="292" fill="#e1b667" font-family="Arial" font-size="24">Held back: 0</text>
+  <text x="48" y="390" fill="#cfd7ce" font-family="Arial" font-size="18">Generated evidence card, not a product UI screenshot.</text>
+</svg>

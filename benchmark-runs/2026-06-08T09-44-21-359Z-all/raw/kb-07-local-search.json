@@ -1,0 +1,101 @@
+{
+  "id": "KB-07",
+  "slug": "kb-07-local-search",
+  "title": "Local Search and Source-of-Truth",
+  "status": "pass",
+  "claim_status": "measured",
+  "runs_requested": 5,
+  "runs_passed": 5,
+  "runs_failed": 0,
+  "metrics": {
+    "search_documents": 44,
+    "search_command_passed": 1
+  },
+  "evidence": [
+    "search/index.json",
+    "tools/search-knowledge.js"
+  ],
+  "limitations": [],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T09:44:26.587Z",
+      "finished_at": "2026-06-08T09:44:28.072Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "search_documents": 44,
+        "search_command_passed": 1
+      },
+      "evidence": [
+        "search/index.json",
+        "tools/search-knowledge.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T09:44:28.072Z",
+      "finished_at": "2026-06-08T09:44:30.513Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "search_documents": 44,
+        "search_command_passed": 1
+      },
+      "evidence": [
+        "search/index.json",
+        "tools/search-knowledge.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T09:44:30.513Z",
+      "finished_at": "2026-06-08T09:44:32.886Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "search_documents": 44,
+        "search_command_passed": 1
+      },
+      "evidence": [
+        "search/index.json",
+        "tools/search-knowledge.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T09:44:32.886Z",
+      "finished_at": "2026-06-08T09:44:33.826Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "search_documents": 44,
+        "search_command_passed": 1
+      },
+      "evidence": [
+        "search/index.json",
+        "tools/search-knowledge.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T09:44:33.826Z",
+      "finished_at": "2026-06-08T09:44:34.743Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "search_documents": 44,
+        "search_command_passed": 1
+      },
+      "evidence": [
+        "search/index.json",
+        "tools/search-knowledge.js"
+      ],
+      "limitations": []
+    }
+  ]
+}

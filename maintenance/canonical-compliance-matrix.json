@@ -1,0 +1,128 @@
+{
+  "schema_version": "3.2.0",
+  "generated_at": "2026-06-15T17:45:00.000Z",
+  "source": "docs/canonical/17_COMPLIANCE_CHECKLIST.md",
+  "status": "tested_with_user_deferred_paid_inspector_qa",
+  "deferred_items": [
+    {
+      "id": "paid-pro-inspector-qa",
+      "reason": "User explicitly asked not to touch pro2pilot-inspector during the free Inspector release pass.",
+      "scope": "../pro2pilot-inspector npm install/lint/test/build/smoke/qa and KB-13 Pro Inspector benchmark writes",
+      "safe_current_evidence": "tools/self-test-pro-ready-gates.js verifies the adjacent Pro Inspector package version remains 0.1.0 when present; no closed Pro code is embedded in the free artifact."
+    }
+  ],
+  "items": [
+    {
+      "id": "product-canon",
+      "requirement": "Product is routing/evidence/trust/freshness/repair/PR-review, not an agent orchestrator or AI IDE.",
+      "status": "tested",
+      "implementation_files": ["README.md", "Quick-Start.md", "docs/product-canon.md", "docs/faq.md"],
+      "qa_command": "node tools/self-test-pro-ready-gates.js --json"
+    },
+    {
+      "id": "canonical-navigation",
+      "requirement": "Inspector navigation is Home, Review, Knowledge Trust, Agents Activity, Reports, Settings, Pro Preview only.",
+      "status": "tested",
+      "implementation_files": ["tools/build-visual-inspector.js", "tools/serve-inspector.js"],
+      "qa_command": "node tools/self-test-inspector-ui.js --json"
+    },
+    {
+      "id": "free-core",
+      "requirement": "Free core includes routing, evidence, trust, freshness, repair, PR review, agent footer, restore trust, debug/pro exports and JSON CLI.",
+      "status": "tested",
+      "implementation_files": ["tools/*.js", "models/*.json", "settings/*.json"],
+      "qa_command": "node tools/self-test-canonical-e2e.js --json && node tools/release-gate.js --json"
+    },
+    {
+      "id": "action-engine",
+      "requirement": "Inspector buttons run allowlisted local actions with logged lifecycle and token auth.",
+      "status": "tested",
+      "implementation_files": ["tools/lib/action-registry.js", "tools/lib/action-runner.js", "tools/serve-inspector.js"],
+      "qa_command": "node tools/self-test-inspector-actions.js --json"
+    },
+    {
+      "id": "agent-activity",
+      "requirement": "Agent Registry and Active Sessions replace manual active-agent switching.",
+      "status": "tested",
+      "implementation_files": ["tools/agent-session.js", "tools/team-status.js", "tools/lib/team-store.js"],
+      "qa_command": "node tools/self-test-agent-activity.js --json"
+    },
+    {
+      "id": "safe-queue",
+      "requirement": "Concurrent work defaults to Safe Queue and Manual Only merge policy.",
+      "status": "tested",
+      "implementation_files": ["tools/team-status.js", "tools/team-init.js", "maintenance/concurrency_policy.json"],
+      "qa_command": "node tools/self-test-safe-queue.js --json"
+    },
+    {
+      "id": "restore-trust",
+      "requirement": "Restore Trust safe action refreshes generated knowledge and does not change source code or merge.",
+      "status": "tested",
+      "implementation_files": ["tools/restore-trust.js", "tools/lib/action-registry.js"],
+      "qa_command": "node tools/self-test-restore-trust.js --json && node tools/self-test-canonical-e2e.js --json"
+    },
+    {
+      "id": "agent-footer-simple-advanced",
+      "requirement": "Simple/Advanced settings and agent footer contract exist without adding a chat tab.",
+      "status": "tested",
+      "implementation_files": ["tools/agent-footer.js", "settings/operator-profile.json", "settings/autonomy-policy.json", "settings/agent-policy.json", "settings/report-footer.json"],
+      "qa_command": "node tools/self-test-agent-footer.js --json"
+    },
+    {
+      "id": "first-run-onboarding",
+      "requirement": "First-run Inspector wizard uses canonical prompts and saves operator/autonomy/agent/footer settings.",
+      "status": "tested",
+      "implementation_files": ["tools/serve-inspector.js", "settings/operator-profile.json", "settings/autonomy-policy.json", "settings/agent-policy.json", "settings/report-footer.json"],
+      "qa_command": "node tools/self-test-inspector-ui.js --json"
+    },
+    {
+      "id": "memory-advisory",
+      "requirement": "External memory is advisory only and cannot raise trust.",
+      "status": "tested",
+      "implementation_files": ["tools/lib/memory-providers.js", "tools/external-memory-status.js"],
+      "qa_command": "node tools/self-test-memory-providers.js && node tools/self-test-external-memory.js"
+    },
+    {
+      "id": "pr-review-merge",
+      "requirement": "Basic PR summary/impact are free; automatic merge remains disabled by default.",
+      "status": "tested",
+      "implementation_files": ["tools/pr-impact.js", "tools/team-pr-summary.js", "maintenance/concurrency_policy.json"],
+      "qa_command": "node tools/self-test-pr-impact.js"
+    },
+    {
+      "id": "release-artifact",
+      "requirement": "Release artifact includes the free core, launcher, action engine, schemas and docs, and excludes runtime/pro/secret material.",
+      "status": "tested",
+      "implementation_files": ["tools/package-release.js", "tools/validate-release-artifact.js", "dist/knowledge-v3.2.0.zip"],
+      "qa_command": "node tools/package-release.js && node tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json"
+    },
+    {
+      "id": "benchmarks",
+      "requirement": "Benchmark harness exists and can produce local proof artifacts.",
+      "status": "tested",
+      "implementation_files": ["benchmarks/run-benchmarks.js", "benchmarks/suites/suites.json"],
+      "qa_command": "node benchmarks/run-benchmarks.js --suite smoke --json"
+    },
+    {
+      "id": "pro-ready-free-gates",
+      "requirement": "Pro unlock is inside the same Inspector via schemas/feature gates; free core has no pricing or closed Pro code.",
+      "status": "tested",
+      "implementation_files": ["models/pro-license-token.schema.json", "models/pro-entitlement.schema.json", "models/pro-extension-manifest.schema.json", "tools/lib/action-registry.js", "docs/pro-subscription.md"],
+      "qa_command": "node tools/self-test-pro-ready-gates.js --json"
+    },
+    {
+      "id": "license-api",
+      "requirement": "License API/backend skeleton is 0.1.0 private preview with Cloudflare Worker, D1 schema, Stripe/R2 contracts and QA scripts.",
+      "status": "tested",
+      "implementation_files": ["../pro2pilot-license-api/package.json", "../pro2pilot-license-api/src/worker.js", "../pro2pilot-license-api/schema.d1.sql", "../pro2pilot-license-api/contracts/*.json"],
+      "qa_command": "npm.cmd run lint && npm.cmd run test && npm.cmd run build"
+    },
+    {
+      "id": "paid-pro-inspector",
+      "requirement": "Adjacent Pro Inspector remains 0.1.0 private preview and is not embedded in the free artifact.",
+      "status": "deferred",
+      "implementation_files": ["../pro2pilot-inspector/package.json"],
+      "qa_command": "deferred by user request: do not touch pro2pilot-inspector in this pass"
+    }
+  ]
+}

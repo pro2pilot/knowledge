@@ -5,7 +5,12 @@
 3. Run:
 
 ```bash
+node .knowledge/tools/install-agent-integrations.js --runtime codex
 node .knowledge/tools/flow.js import
+node .knowledge/inspector.js
 ```
 
+Replace `codex` with the active runtime if this repository is being operated by another supported agent.
+
 Never overwrite existing knowledge without backup and merge intent.
+If `First-run setup` appears in Inspector, complete it before trusting generated reports.

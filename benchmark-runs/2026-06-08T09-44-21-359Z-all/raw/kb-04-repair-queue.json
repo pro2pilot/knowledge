@@ -1,0 +1,95 @@
+{
+  "id": "KB-04",
+  "slug": "kb-04-repair-queue",
+  "title": "Repair Queue Actionability",
+  "status": "pass",
+  "claim_status": "measured",
+  "runs_requested": 5,
+  "runs_passed": 5,
+  "runs_failed": 0,
+  "metrics": {
+    "repair_items_total": 0,
+    "open_repair_items": 0
+  },
+  "evidence": [
+    "maintenance/repair_queue.json"
+  ],
+  "limitations": [],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T09:44:26.585Z",
+      "finished_at": "2026-06-08T09:44:26.585Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "repair_items_total": 0,
+        "open_repair_items": 0
+      },
+      "evidence": [
+        "maintenance/repair_queue.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T09:44:26.585Z",
+      "finished_at": "2026-06-08T09:44:26.586Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "repair_items_total": 0,
+        "open_repair_items": 0
+      },
+      "evidence": [
+        "maintenance/repair_queue.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T09:44:26.586Z",
+      "finished_at": "2026-06-08T09:44:26.586Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "repair_items_total": 0,
+        "open_repair_items": 0
+      },
+      "evidence": [
+        "maintenance/repair_queue.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T09:44:26.586Z",
+      "finished_at": "2026-06-08T09:44:26.586Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "repair_items_total": 0,
+        "open_repair_items": 0
+      },
+      "evidence": [
+        "maintenance/repair_queue.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T09:44:26.586Z",
+      "finished_at": "2026-06-08T09:44:26.586Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "repair_items_total": 0,
+        "open_repair_items": 0
+      },
+      "evidence": [
+        "maintenance/repair_queue.json"
+      ],
+      "limitations": []
+    }
+  ]
+}

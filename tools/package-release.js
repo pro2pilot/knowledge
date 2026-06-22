@@ -40,6 +40,10 @@ function shouldExclude(relPath, entry) {
   if (segments[0] === 'dist') return { exclude: true, reason: 'dist_output' };
   if (segments[0] === '.self-test-tmp') return { exclude: true, reason: 'self_test_tmp' };
   if (segments[0] === '.qa-tmp') return { exclude: true, reason: 'qa_tmp' };
+  if (segments[0] === 'benchmark-runs') return { exclude: true, reason: 'benchmark_run_output' };
+  if (segments[0] === 'marketing-proof-packs') return { exclude: true, reason: 'marketing_proof_output' };
+  if (rel.startsWith('benchmarks/results/')) return { exclude: true, reason: 'benchmark_results_runtime' };
+  if (rel.startsWith('docs/implementation/')) return { exclude: true, reason: 'source_implementation_notes' };
   if (segments.includes('.lock')) return { exclude: true, reason: 'runtime_lock' };
   if (segments.includes('.runtime')) return { exclude: true, reason: 'runtime_state' };
   if (rel.startsWith('maintenance/flow-logs/')) return { exclude: true, reason: 'flow_logs' };
@@ -49,10 +53,16 @@ function shouldExclude(relPath, entry) {
   if (rel.startsWith('evaluation/results/')) return { exclude: true, reason: 'evaluation_results' };
   if (rel.startsWith('maintenance/graphs/')) return { exclude: true, reason: 'generated_graphs' };
   if (rel.startsWith('search/')) return { exclude: true, reason: 'search_index' };
-  if (rel === 'metrics/baseline.json' || rel === 'metrics/README.md') return { exclude: true, reason: 'metrics_runtime' };
-  if (rel === 'inspector/data.json' || rel === 'inspector/status.json') return { exclude: true, reason: 'inspector_runtime' };
+  if (rel === 'metrics/baseline.json' || rel === 'metrics/external_memory.json' || rel === 'metrics/README.md') return { exclude: true, reason: 'metrics_runtime' };
+  if (rel === 'inspector/index.html' || rel === 'inspector/data.json' || rel === 'inspector/status.json') return { exclude: true, reason: 'inspector_runtime' };
   if (rel === 'sessions/active_task.json' || rel.startsWith('sessions/active_tasks/')) return { exclude: true, reason: 'session_runtime' };
   if (rel === 'project_index.json' || rel === 'freshness.json') return { exclude: true, reason: 'project_runtime' };
+  if (/^external_memory\/(mem0|legacy|claude_mem|claude|claude-auto-memory)(\/|$)/i.test(rel)) {
+    return { exclude: true, reason: 'external_memory_runtime_or_legacy_state' };
+  }
+  if (/^memory-providers\/(graphiti|zep)(\/|$)/i.test(rel)) {
+    return { exclude: true, reason: 'paid_memory_provider_excluded_from_free_core' };
+  }
 
   const generatedMaintenance = new Set([
     'maintenance/routing_bundle.json',
@@ -62,6 +72,7 @@ function shouldExclude(relPath, entry) {
     'maintenance/external_memory_status.json',
     'maintenance/secret_scan_report.json',
     'maintenance/pr_summary.md',
+    'maintenance/pr_impact.json',
     'maintenance/sync_log.json',
     'maintenance/stale_items.json',
     'maintenance/repair_queue.json',
@@ -70,7 +81,16 @@ function shouldExclude(relPath, entry) {
     'maintenance/update_status.json',
     'maintenance/install_check_report.json',
     'maintenance/update_system_files_report.json',
-    'maintenance/applied_templates.json'
+    'maintenance/applied_templates.json',
+    'maintenance/knowledge-3.2.0-10-10-inventory.md',
+    'maintenance/competitive-10-10-inventory.md',
+    'maintenance/phase-0-inventory.md',
+    'maintenance/release-gate-report.json',
+    'maintenance/release-gate-report.md',
+    'maintenance/knowledge-3.2.0-final-qa.md',
+    'maintenance/knowledge-3.2.0-final-qa.json',
+    'maintenance/pro-inspector-snapshot.json',
+    'maintenance/debug-bundle.json'
   ]);
   if (generatedMaintenance.has(rel)) return { exclude: true, reason: 'maintenance_runtime' };
 
@@ -166,8 +186,8 @@ function isTextEntry(entry) {
   const rel = normalizeRel(entry.rel || entry.name || '');
   const ext = path.posix.extname(rel).toLowerCase();
   const textExts = new Set([
-    '.cjs', '.css', '.csv', '.html', '.js', '.json', '.md', '.mjs', '.svg',
-    '.toml', '.ts', '.txt', '.xml', '.yaml', '.yml'
+    '.cjs', '.css', '.csv', '.html', '.js', '.json', '.md', '.mjs', '.ps1',
+    '.snippet', '.svg', '.toml', '.ts', '.txt', '.vbs', '.xml', '.yaml', '.yml'
   ]);
   const textNames = new Set([
     '.gitattributes', '.gitignore', '.knowledge.gitignore', 'LICENSE', 'NOTICE', 'README', 'SECURITY'

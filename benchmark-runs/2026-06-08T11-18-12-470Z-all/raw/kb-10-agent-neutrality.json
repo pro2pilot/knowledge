@@ -1,0 +1,113 @@
+{
+  "id": "KB-10",
+  "slug": "kb-10-agent-neutrality",
+  "title": "Agent Neutrality / Handoff",
+  "status": "preview",
+  "claim_status": "preview",
+  "runs_requested": 5,
+  "runs_passed": 0,
+  "runs_failed": 0,
+  "metrics": {
+    "agent_integration_surfaces": 3
+  },
+  "evidence": [
+    "agent-integrations/codex",
+    "agent-integrations/claude",
+    "agent-integrations/opencode"
+  ],
+  "limitations": [
+    "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+  ],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T11:19:14.899Z",
+      "finished_at": "2026-06-08T11:19:14.899Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "agent_integration_surfaces": 3
+      },
+      "evidence": [
+        "agent-integrations/codex",
+        "agent-integrations/claude",
+        "agent-integrations/opencode"
+      ],
+      "limitations": [
+        "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+      ]
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T11:19:14.899Z",
+      "finished_at": "2026-06-08T11:19:14.899Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "agent_integration_surfaces": 3
+      },
+      "evidence": [
+        "agent-integrations/codex",
+        "agent-integrations/claude",
+        "agent-integrations/opencode"
+      ],
+      "limitations": [
+        "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+      ]
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T11:19:14.899Z",
+      "finished_at": "2026-06-08T11:19:14.899Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "agent_integration_surfaces": 3
+      },
+      "evidence": [
+        "agent-integrations/codex",
+        "agent-integrations/claude",
+        "agent-integrations/opencode"
+      ],
+      "limitations": [
+        "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+      ]
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T11:19:14.899Z",
+      "finished_at": "2026-06-08T11:19:14.899Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "agent_integration_surfaces": 3
+      },
+      "evidence": [
+        "agent-integrations/codex",
+        "agent-integrations/claude",
+        "agent-integrations/opencode"
+      ],
+      "limitations": [
+        "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+      ]
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T11:19:14.899Z",
+      "finished_at": "2026-06-08T11:19:14.900Z",
+      "status": "preview",
+      "claim_status": "preview",
+      "metrics": {
+        "agent_integration_surfaces": 3
+      },
+      "evidence": [
+        "agent-integrations/codex",
+        "agent-integrations/claude",
+        "agent-integrations/opencode"
+      ],
+      "limitations": [
+        "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+      ]
+    }
+  ]
+}

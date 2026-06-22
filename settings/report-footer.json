@@ -1,0 +1,8 @@
+{
+  "schema_version": "3.2.0",
+  "mode": "compact",
+  "show_token_metrics": true,
+  "show_restore_action": true,
+  "show_open_inspector_action": true,
+  "only_when_trust_incomplete": false
+}

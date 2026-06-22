@@ -1,4 +1,4 @@
-version: 3.1.9
+version: 3.2.0
 config_schema_version: 1
 distribution: public_release
 project_index: .knowledge/project_index.json
@@ -42,12 +42,14 @@ trust_order:
   - session_notes
 
 updates:
-  enabled: false
+  enabled: true
   mode: advisory_only
   interval_days: 7
   source: github_releases
   repository: pro2pilot/knowledge
   current_version_source: package.json
+  auto_check_on_inspector_open: true
+  allow_prerelease: false
   auto_update: false
   telemetry: false
   timeout_ms: 5000

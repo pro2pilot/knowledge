@@ -13,39 +13,52 @@ const {
   getAgentId,
   withLock
 } = require('./lib/json-store');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const knowledgeRoot = path.resolve(__dirname, '..');
-const lockDir = path.join(knowledgeRoot, '.lock');
+const context = resolveKnowledgeContext();
+const repoRoot = context.targetRoot;
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
+const lockDir = path.join(stateRoot, '.lock');
 const trigger = process.env.KNOWLEDGE_TRIGGER || (process.argv.includes('--scan') ? 'manual-scan' : 'manual');
 const agentId = getAgentId();
 const fullScan = process.argv.includes('--scan') || process.env.KNOWLEDGE_FULL_SCAN === '1';
 const discoverNewFiles = process.argv.includes('--discover') || process.env.KNOWLEDGE_DISCOVER_NEW === '1' || !fullScan;
 
 const paths = {
-  freshness: path.join(knowledgeRoot, 'freshness.json'),
-  staleItems: path.join(knowledgeRoot, 'maintenance', 'stale_items.json'),
-  repairQueue: path.join(knowledgeRoot, 'maintenance', 'repair_queue.json'),
-  syncLog: path.join(knowledgeRoot, 'maintenance', 'sync_log.json'),
-  eventLogDir: path.join(knowledgeRoot, 'maintenance', 'events'),
-  activeTaskLegacy: path.join(knowledgeRoot, 'sessions', 'active_task.json'),
-  activeTasksDir: path.join(knowledgeRoot, 'sessions', 'active_tasks'),
+  freshness: path.join(stateRoot, 'freshness.json'),
+  staleItems: path.join(stateRoot, 'maintenance', 'stale_items.json'),
+  repairQueue: path.join(stateRoot, 'maintenance', 'repair_queue.json'),
+  syncLog: path.join(stateRoot, 'maintenance', 'sync_log.json'),
+  eventLogDir: path.join(stateRoot, 'maintenance', 'events'),
+  activeTaskLegacy: path.join(stateRoot, 'sessions', 'active_task.json'),
+  activeTasksDir: path.join(stateRoot, 'sessions', 'active_tasks'),
   moduleRegistry: path.join(knowledgeRoot, 'modules', 'module_registry.json'),
   contradictions: path.join(knowledgeRoot, 'contradictions.json'),
-  fileCriticality: path.join(knowledgeRoot, 'maps', 'file_criticality.json'),
+  fileCriticality: path.join(stateRoot, 'maps', 'file_criticality.json'),
   fileFacts: path.join(knowledgeRoot, 'evidence', 'file_facts.json'),
   criticalPaths: path.join(knowledgeRoot, 'maps', 'critical_paths.json'),
-  trustReport: path.join(knowledgeRoot, 'maintenance', 'trust_report.json'),
-  automationStatus: path.join(knowledgeRoot, 'maintenance', 'automation_status.json'),
-  handoffSummary: path.join(knowledgeRoot, 'maintenance', 'handoff_summary.json'),
-  routingBundle: path.join(knowledgeRoot, 'maintenance', 'routing_bundle.json')
+  trustReport: path.join(stateRoot, 'maintenance', 'trust_report.json'),
+  automationStatus: path.join(stateRoot, 'maintenance', 'automation_status.json'),
+  handoffSummary: path.join(stateRoot, 'maintenance', 'handoff_summary.json'),
+  routingBundle: path.join(stateRoot, 'maintenance', 'routing_bundle.json')
 };
 
 const WATCHED_ROOTS = ['.'];
-const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.knowledge', '.next', '.turbo', '.cache', '.pytest_cache', '.mypy_cache', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes'];
+const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.knowledge', '.next', '.turbo', '.cache', '.pytest_cache', '.mypy_cache', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes', 'pro2pilot-inspector', '.tmp'];
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.php', '.cs', '.sql', '.toml', '.yaml', '.yml', '.json', '.prisma']);
 
 function exists(filePath) { return fs.existsSync(filePath); }
+function resolveArtifactPath(relPath) {
+  const raw = String(relPath || '');
+  const clean = raw.replace(/^\.knowledge[\\/]/, '');
+  const candidates = [
+    path.join(repoRoot, raw),
+    path.join(repoRoot, clean),
+    path.join(knowledgeRoot, clean)
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
 function nowIso() { return new Date().toISOString(); }
 function sha256(filePath) { return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'); }
 function safeReadJson(filePath, fallback) { return readJson(filePath, fallback); }
@@ -188,7 +201,22 @@ function mainUnlocked() {
   const fileFacts = safeReadJson(paths.fileFacts, { generated_at: null, facts: [] });
   const criticalPaths = safeReadJson(paths.criticalPaths, { generated_at: null, paths: [] });
   const automationStatus = safeReadJson(paths.automationStatus, { mode: 'event-driven' });
-  const handoffSummary = safeReadJson(paths.handoffSummary, null);
+  const handoffSummary = safeReadJson(paths.handoffSummary, {
+    schema_version: '3.2.0',
+    generated_at: null,
+    generated_by: null,
+    project_operational_summary: 'Generated handoff summary for the current .knowledge state.',
+    trusted_modules: [],
+    near_trusted_modules: [],
+    routing_only_modules: [],
+    non_authoritative_modules: [],
+    highest_risk_modules: [],
+    next_agent_first_reads: [
+      '.knowledge/maintenance/routing_bundle.json',
+      '.knowledge/maintenance/trust_report.json',
+      '.knowledge/maintenance/quality_report.json'
+    ]
+  });
   let routingBundleSummary = null;
 
   freshness.tracked_files = freshness.tracked_files || [];
@@ -286,7 +314,7 @@ function mainUnlocked() {
   const moduleTrust = [];
   for (const moduleInfo of moduleRegistry.modules || []) {
     let card = null;
-    try { card = readJson(path.join(repoRoot, moduleInfo.card)); } catch { card = null; }
+    try { card = readJson(resolveArtifactPath(moduleInfo.card)); } catch { card = null; }
     if (!card) {
       moduleTrust.push({ module_id: moduleInfo.module_id, confidence: 'low', freshness_status: 'missing_card', trust_status: 'low_confidence', reasons: { missing_card: moduleInfo.card } });
       continue;
@@ -351,7 +379,9 @@ function mainUnlocked() {
 
   automationStatus.mode = 'event-driven';
   automationStatus.concurrent_safe = true;
-  automationStatus.locking = { strategy: 'directory_lock', path: '.knowledge/.lock', atomic_writes: true };
+  automationStatus.locking = { strategy: 'directory_lock', path: context.mode === 'repo' ? '.knowledge/.lock' : path.join(stateRoot, '.lock'), atomic_writes: true };
+  automationStatus.knowledge_mode = context.mode;
+  automationStatus.state_root = stateRoot;
   automationStatus.hooks_installed = automationStatus.hooks_installed ?? false;
   automationStatus.watcher_supported = true;
   automationStatus.watcher_last_seen_at = trigger === 'watcher' ? timestamp : (automationStatus.watcher_last_seen_at ?? null);
@@ -379,19 +409,17 @@ function mainUnlocked() {
   writeJsonAtomic(paths.syncLog, syncLog);
   writeJsonAtomic(paths.trustReport, trustReport);
   writeJsonAtomic(paths.automationStatus, automationStatus);
-  if (handoffSummary) {
-    handoffSummary.generated_at = timestamp;
-    handoffSummary.generated_by = agentId;
-    handoffSummary.trusted_modules = trustedModules;
-    handoffSummary.near_trusted_modules = nearTrustedModules;
-    handoffSummary.routing_only_modules = routingTrustedModules;
-    handoffSummary.non_authoritative_modules = advisoryOnlyModules;
-    handoffSummary.highest_risk_modules = Array.from(new Set([...(handoffSummary.highest_risk_modules || []), ...suspectModules, ...lowModules]));
-    writeJsonAtomic(paths.handoffSummary, handoffSummary);
-  }
+  handoffSummary.generated_at = timestamp;
+  handoffSummary.generated_by = agentId;
+  handoffSummary.trusted_modules = trustedModules;
+  handoffSummary.near_trusted_modules = nearTrustedModules;
+  handoffSummary.routing_only_modules = routingTrustedModules;
+  handoffSummary.non_authoritative_modules = advisoryOnlyModules;
+  handoffSummary.highest_risk_modules = Array.from(new Set([...(handoffSummary.highest_risk_modules || []), ...suspectModules, ...lowModules]));
+  writeJsonAtomic(paths.handoffSummary, handoffSummary);
 
   try {
-    const buildRoutingBundle = require(path.join(knowledgeRoot, 'tools', 'build-routing-bundle.js'));
+    const buildRoutingBundle = require(path.join(context.systemRoot, 'tools', 'build-routing-bundle.js'));
     const routingBundle = buildRoutingBundle({ skipLock: true, quiet: true });
     routingBundleSummary = { modules: (routingBundle.modules || []).length, high_risk_modules: (routingBundle.high_risk_modules || []).length };
     automationStatus.routing_bundle_status = 'healthy';
@@ -411,7 +439,7 @@ function mainUnlocked() {
 }
 
 function main() {
-  ensureDir(path.join(knowledgeRoot, 'maintenance'));
+  ensureDir(path.join(stateRoot, 'maintenance'));
   return withLock(lockDir, mainUnlocked);
 }
 

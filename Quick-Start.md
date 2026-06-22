@@ -8,6 +8,47 @@ Follow this file exactly unless the user gives stronger project-specific instruc
 
 Make `.knowledge/` the repo-local trust, routing, freshness, wiki, search, inspector, and handoff layer for this project.
 
+Canonical product model:
+
+```txt
+.knowledge is a repo-local routing, evidence, trust, freshness, repair and PR-review system for coding agents.
+```
+
+Do not treat `.knowledge` as an agent manager, AI IDE, chat surface, or auto-merge system. External memory is advisory only.
+
+Open the free local Inspector:
+
+```bash
+node .knowledge/inspector.js
+```
+
+If `First-run setup` is shown, complete it immediately before relying on agent-written reports.
+
+## Choose your agent integration
+
+Install only the repo-local integration for the agent that is currently operating this repository. If no runtime is obvious, ask the user which command to run instead of creating every vendor folder.
+
+| Agent/runtime | Command | Files created or updated |
+|---|---|---|
+| Codex | `node .knowledge/tools/install-agent-integrations.js --runtime codex` | `AGENTS.md`, `.agents/skills/` |
+| Claude Code | `node .knowledge/tools/install-agent-integrations.js --runtime claude` | `CLAUDE.md`, `.claude/skills/` |
+| OpenCode | `node .knowledge/tools/install-agent-integrations.js --runtime opencode` | `.opencode/commands/` |
+| Gemini CLI | `node .knowledge/tools/install-agent-integrations.js --runtime gemini` | `GEMINI.md` |
+| GitHub Copilot | `node .knowledge/tools/install-agent-integrations.js --runtime copilot` | `.github/copilot-instructions.md` |
+| Devin | `node .knowledge/tools/install-agent-integrations.js --runtime devin` | `.devin/rules/knowledge.md` |
+| Windsurf Cascade | `node .knowledge/tools/install-agent-integrations.js --runtime windsurf` | `.devin/rules/knowledge.md` |
+| Continue | `node .knowledge/tools/install-agent-integrations.js --runtime continue` | `.continue/rules/knowledge.md` |
+| Roo Code | `node .knowledge/tools/install-agent-integrations.js --runtime roo` | `.roo/rules/knowledge.md` |
+| Aider | `node .knowledge/tools/install-agent-integrations.js --runtime aider` | `CONVENTIONS.md`, `.aider.conf.yml` |
+
+Power users can install every supported integration explicitly:
+
+```bash
+node .knowledge/tools/install-agent-integrations.js --all
+```
+
+OpenClaw, Hermes, Pi, and other agents without a confirmed repo-local rules-file convention should use the generic bridge: read or paste `.knowledge/Quick-Start.md`, or install `AGENTS.md` with `--runtime codex` only when that agent accepts `AGENTS.md`. Do not create vendor folders for them until their documented convention is confirmed.
+
 ## Required first action
 
 If this is a freshly extracted public archive, runtime artifacts are
@@ -15,8 +56,9 @@ intentionally not shipped yet. Run first-time setup first:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js
+node .knowledge/tools/install-agent-integrations.js --runtime <agent>
 node .knowledge/tools/flow.js import
+node .knowledge/inspector.js
 ```
 
 After setup, read:
@@ -34,8 +76,9 @@ From the repository root:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js
+node .knowledge/tools/install-agent-integrations.js --runtime <agent>
 node .knowledge/tools/flow.js import
+node .knowledge/inspector.js
 ```
 
 Then read:
@@ -45,6 +88,23 @@ Then read:
 .knowledge/maintenance/quality_report.json
 .knowledge/maintenance/repair_queue.json
 ```
+
+Do not stop after `flow.js import`. Open the live Inspector right away and complete `First-run setup` when it appears.
+
+## Optional memory providers
+
+Memory providers are advisory only. They never outrank current code, tests, evidence, or decisions.
+
+```bash
+node .knowledge/tools/memory-provider.js list --json
+node .knowledge/tools/memory-provider.js preview mem0-oss --json
+node .knowledge/tools/memory-provider.js status-all --json
+node .knowledge/tools/memory-mem0.js health --json
+node .knowledge/tools/memory-mem0.js health --adapter live --json
+node .knowledge/tools/memory-pinecone.js health --json
+```
+
+Mem0 OSS is the recommended optional free/core backend. Live Mem0 health auto-detects Python from explicit `--python`, Mem0/Python env vars, active virtual environments, PATH, Windows `py`/`pymanager`, and standard install directories. It does not scan the whole computer and never installs packages automatically; use `--python "<path>"` when the right interpreter is known. Only `health --adapter live` uses a 30000 ms default timeout for the live Mem0 import/health path, because the first `import mem0` on Windows can be noticeably slower than warm checks; discovery/probe checks remain short. If it times out, JSON reports `diagnostic_code: python_timeout`, and `--timeout-ms <ms>` can override the wait. Pinecone remains an optional vector/cloud retrieval bridge. Claude MEM is legacy migration data only.
 
 ## Updating an existing `.knowledge` installation
 
@@ -176,9 +236,9 @@ Git policy is documented in:
 Runtime files, locks, flow logs, generated indexes, inspector data, temp files,
 and local backups are not committed by default.
 
-## Optional update checks
+## Update checks
 
-Update checks are disabled by default. `.knowledge` does not run a background updater and does not send telemetry.
+Visual Inspector checks the official `pro2pilot/knowledge` release feed when it opens. `.knowledge` does not run a background updater, does not apply updates silently, and does not send telemetry.
 
 Manual check:
 
@@ -186,7 +246,7 @@ Manual check:
 node .knowledge/tools/check-updates.js
 ```
 
-Optional weekly advisory check during `doctor` / `flow`:
+Keep or re-enable weekly advisory checks during `doctor` / `flow`:
 
 ```bash
 node .knowledge/tools/check-updates.js --enable --interval=7d
@@ -207,12 +267,12 @@ node .knowledge/tools/check-updates.js --disable
 If an update is available, update only `.knowledge` system files:
 
 ```bash
+node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --preflight --json
 node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-run
 node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply --yes
 ```
 
-Do not overwrite project knowledge records, trust state, evidence, modules,
-maps, wiki, repair queue, freshness, sessions, metrics, or inspector output.
+The updater preserves curated project knowledge byte-for-byte, creates only missing migration defaults such as required `external_memory` policy files, regenerates runtime/status artifacts, and reports stale knowledge as repair work instead of silently deleting it.
 
 ## Official templates
 
@@ -241,6 +301,25 @@ Build after setup or release flow:
 ```bash
 node .knowledge/tools/build-visual-inspector.js
 ```
+
+The free Inspector is a local product with token-protected allowlisted actions. Static HTML remains a read-only fallback.
+
+```bash
+node .knowledge/inspector.js
+```
+
+## Release artifact
+
+Use `dist/knowledge-v3.2.0.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
+
+```bash
+node tools/package-release.js
+node tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json
+```
+
+## Free Inspector vs Pro Inspector
+
+Free Inspector is local, static, one-repo, and command-copy by default. Pro Inspector is the separate paid app for PR impact, repair ownership, policy packs, memory governance, provider fleet status, multi-repo/team dashboard, and audit/history.
 
 Open:
 
@@ -280,6 +359,23 @@ node .knowledge/tools/flow.js doctor
 node .knowledge/tools/flow.js import
 node .knowledge/tools/flow.js release
 ```
+
+## Team mode for multiple agents
+
+Use team mode only when the user explicitly wants multi-worktree or multi-agent
+coordination. Repo-local mode remains the default.
+
+```bash
+node .knowledge/tools/team-init.js --team-root ../.knowledge-team --target-root . --json
+node .knowledge/tools/workspace-register.js --team-root ../.knowledge-team --target-root <worktree-path> --workspace-id <task-id> --agent-id <agent-id> --json
+node .knowledge/tools/worktree-status.js --target-root <worktree-path> --team-root ../.knowledge-team --workspace-id <task-id> --json
+node .knowledge/tools/flow.js release --team-root ../.knowledge-team --target-root <worktree-path> --workspace-id <task-id> --agent-id <agent-id> --exclusive --json
+node .knowledge/tools/team-pr-summary.js --team-root ../.knowledge-team --workspace-id <task-id> --json
+```
+
+In team mode, curated knowledge remains in the worktree `.knowledge/` for PR
+review, while generated state goes to the workspace state directory under
+`teamRoot`.
 
 ## Source-of-truth order
 
@@ -322,4 +418,6 @@ Then report:
 - repair queue items;
 - routing bundle path;
 - PR summary path;
-- metrics path.
+- metrics path;
+- estimated tokens saved and percent saved when `.knowledge/metrics/baseline.json` contains routing metrics;
+- an explicit note when metrics are unavailable or not regenerated yet.

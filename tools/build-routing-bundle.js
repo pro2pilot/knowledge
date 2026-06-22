@@ -3,14 +3,23 @@
 
 const path = require('path');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { resolveKnowledgeContext, jsonContext } = require('./lib/path-context');
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const knowledgeRoot = path.resolve(__dirname, '..');
-const lockDir = path.join(knowledgeRoot, '.lock');
+const context = resolveKnowledgeContext();
+const repoRoot = context.targetRoot;
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
+const lockDir = path.join(stateRoot, '.lock');
 
 function nowIso() { return new Date().toISOString(); }
 function safeRead(filePath, fallback) { return readJson(filePath, fallback); }
+function projectPath(relPath) { return path.join(knowledgeRoot, relPath); }
+function statePath(relPath) { return path.join(stateRoot, relPath); }
+function display(relPath) { return context.mode === 'repo' ? `.knowledge/${relPath}` : path.join(stateRoot, relPath); }
 function compactArray(value, max = 20) { return Array.isArray(value) ? value.slice(0, max) : []; }
+function providerStatus(externalStatus, providerId) {
+  return (externalStatus.providers || []).find((provider) => provider.provider_id === providerId || provider.provider === providerId) || {};
+}
 function normalizeTrustBuckets(trustReport) {
   const modules = trustReport.modules || {};
   return {
@@ -24,23 +33,23 @@ function normalizeTrustBuckets(trustReport) {
 }
 
 function buildUnlocked(options = {}) {
-  ensureDir(path.join(knowledgeRoot, 'maintenance'));
+  ensureDir(path.join(stateRoot, 'maintenance'));
   const generatedAt = nowIso();
   const agentId = getAgentId();
 
-  const projectIndex = safeRead(path.join(knowledgeRoot, 'project_index.json'), {});
-  const trustReport = safeRead(path.join(knowledgeRoot, 'maintenance', 'trust_report.json'), {});
-  const handoff = safeRead(path.join(knowledgeRoot, 'maintenance', 'handoff_summary.json'), {});
-  const concurrency = safeRead(path.join(knowledgeRoot, 'maintenance', 'concurrency_policy.json'), {});
-  const quality = safeRead(path.join(knowledgeRoot, 'maintenance', 'quality_report.json'), {});
-  const wikiLint = safeRead(path.join(knowledgeRoot, 'maintenance', 'wiki_lint_report.json'), {});
-  const wikiGraph = safeRead(path.join(knowledgeRoot, 'maps', 'wiki_graph.json'), {});
-  const externalStatus = safeRead(path.join(knowledgeRoot, 'maintenance', 'external_memory_status.json'), {});
-  const metrics = safeRead(path.join(knowledgeRoot, 'metrics', 'baseline.json'), {});
-  const criticalPaths = safeRead(path.join(knowledgeRoot, 'maps', 'critical_paths.json'), { paths: [] });
-  const fileCriticality = safeRead(path.join(knowledgeRoot, 'maps', 'file_criticality.json'), { files: [] });
-  const registry = safeRead(path.join(knowledgeRoot, 'modules', 'module_registry.json'), { modules: [] });
-  const freshness = safeRead(path.join(knowledgeRoot, 'freshness.json'), { artifact_statuses: {}, tracked_files: [] });
+  const projectIndex = safeRead(projectPath('project_index.json'), {});
+  const trustReport = safeRead(statePath(path.join('maintenance', 'trust_report.json')), {});
+  const handoff = safeRead(statePath(path.join('maintenance', 'handoff_summary.json')), {});
+  const concurrency = safeRead(projectPath(path.join('maintenance', 'concurrency_policy.json')), safeRead(statePath(path.join('maintenance', 'concurrency_policy.json')), {}));
+  const quality = safeRead(statePath(path.join('maintenance', 'quality_report.json')), {});
+  const wikiLint = safeRead(statePath(path.join('maintenance', 'wiki_lint_report.json')), {});
+  const wikiGraph = safeRead(statePath(path.join('maps', 'wiki_graph.json')), {});
+  const externalStatus = safeRead(statePath(path.join('maintenance', 'external_memory_status.json')), {});
+  const metrics = safeRead(statePath(path.join('metrics', 'baseline.json')), {});
+  const criticalPaths = safeRead(projectPath(path.join('maps', 'critical_paths.json')), { paths: [] });
+  const fileCriticality = safeRead(statePath(path.join('maps', 'file_criticality.json')), { files: [] });
+  const registry = safeRead(projectPath(path.join('modules', 'module_registry.json')), { modules: [] });
+  const freshness = safeRead(statePath('freshness.json'), { artifact_statuses: {}, tracked_files: [] });
 
   const statusByModule = new Map((trustReport.module_statuses || []).map((item) => [item.module_id, item]));
   const classificationByPath = new Map((fileCriticality.files || []).map((item) => [item.path, item.classification || 'important']));
@@ -73,9 +82,10 @@ function buildUnlocked(options = {}) {
     .slice(0, 100);
 
   const bundle = {
-    schema_version: '3.1.9',
+    schema_version: '3.2.0',
     generated_at: generatedAt,
     generated_by: agentId,
+    context: jsonContext(context),
     purpose: 'Compact first-read routing bundle for agents. Read this before opening larger .knowledge files.',
     source_of_truth_order: ['current_code', 'current_tests', '.knowledge/evidence/*.json', '.knowledge/modules/*.json', '.knowledge/decisions.json', '.knowledge/wiki/*.md', '.knowledge/sessions/*', 'external_retrieved_memory'],
     first_read_strategy: {
@@ -110,7 +120,7 @@ function buildUnlocked(options = {}) {
       mode: concurrency.mode || concurrency.write_policy || 'locked_atomic_writes',
       requires_agent_id: concurrency.requires_agent_id ?? true,
       recommended_workspace: concurrency.recommended_workspace || 'one git worktree or branch per bot/agent',
-      event_log: '.knowledge/maintenance/events/YYYY-MM-DD.ndjson'
+      event_log: context.mode === 'repo' ? '.knowledge/maintenance/events/YYYY-MM-DD.ndjson' : path.join(stateRoot, 'maintenance', 'events', 'YYYY-MM-DD.ndjson')
     },
     trust,
     high_risk_modules: highRiskModules,
@@ -141,10 +151,13 @@ function buildUnlocked(options = {}) {
       rebuild_command: 'node .knowledge/tools/build-search-index.js'
     },
     external_memory: {
-      status: externalStatus.providers?.pinecone?.status || 'unknown',
-      mode: externalStatus.providers?.pinecone?.mode || 'disabled',
+      recommended_provider: externalStatus.recommended_provider || 'mem0-oss',
+      status: providerStatus(externalStatus, 'mem0-oss').status || providerStatus(externalStatus, 'pinecone').status || 'unknown',
+      mode: providerStatus(externalStatus, 'mem0-oss').mode || providerStatus(externalStatus, 'pinecone').mode || 'disabled',
       source_of_truth: false,
-      command: 'node .knowledge/tools/external-memory-status.js'
+      trust_effect: 'advisory_only',
+      legacy_providers_detected: (externalStatus.legacy_providers_detected || []).length,
+      command: 'node .knowledge/tools/memory-provider.js status-all --json'
     },
     maintenance_commands: [
       'node .knowledge/tools/sync-tracked.js',
@@ -153,10 +166,13 @@ function buildUnlocked(options = {}) {
       'node .knowledge/tools/build-wiki-graph.js',
       'node .knowledge/tools/lint-wiki.js',
       'node .knowledge/tools/external-memory-status.js',
+      'node .knowledge/tools/memory-provider.js status-all --json',
       'node .knowledge/tools/build-routing-bundle.js',
       'node .knowledge/tools/build-search-index.js',
       'node .knowledge/tools/doctor.js',
-      'node .knowledge/tools/collect-metrics.js'
+      'node .knowledge/tools/collect-metrics.js',
+      'node .knowledge/tools/worktree-status.js --json',
+      'node .knowledge/tools/team-status.js --team-root <path> --json'
     ],
     token_economy: {
       intent: 'Read one compact bundle first, then only the relevant module cards and source files.',
@@ -164,9 +180,9 @@ function buildUnlocked(options = {}) {
     }
   };
 
-  const outPath = path.join(knowledgeRoot, 'maintenance', 'routing_bundle.json');
+  const outPath = statePath(path.join('maintenance', 'routing_bundle.json'));
   writeJsonAtomic(outPath, bundle);
-  if (!options.quiet) console.log(JSON.stringify({ written: '.knowledge/maintenance/routing_bundle.json', modules: modules.length, high_risk_modules: highRiskModules.length }, null, 2));
+  if (!options.quiet) console.log(JSON.stringify({ written: display('maintenance/routing_bundle.json'), modules: modules.length, high_risk_modules: highRiskModules.length, mode: context.mode }, null, 2));
   return bundle;
 }
 

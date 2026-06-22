@@ -1,0 +1,101 @@
+{
+  "id": "KB-06",
+  "slug": "kb-06-wiki-graph",
+  "title": "Wiki Graph",
+  "status": "pass",
+  "claim_status": "measured",
+  "runs_requested": 5,
+  "runs_passed": 5,
+  "runs_failed": 0,
+  "metrics": {
+    "wiki_nodes": 5,
+    "wiki_edges": 0,
+    "broken_edges": 0
+  },
+  "evidence": [
+    "maps/wiki_graph.json"
+  ],
+  "limitations": [],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T11:18:16.546Z",
+      "finished_at": "2026-06-08T11:18:16.546Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "wiki_nodes": 5,
+        "wiki_edges": 0,
+        "broken_edges": 0
+      },
+      "evidence": [
+        "maps/wiki_graph.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T11:18:16.546Z",
+      "finished_at": "2026-06-08T11:18:16.546Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "wiki_nodes": 5,
+        "wiki_edges": 0,
+        "broken_edges": 0
+      },
+      "evidence": [
+        "maps/wiki_graph.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T11:18:16.546Z",
+      "finished_at": "2026-06-08T11:18:16.546Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "wiki_nodes": 5,
+        "wiki_edges": 0,
+        "broken_edges": 0
+      },
+      "evidence": [
+        "maps/wiki_graph.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T11:18:16.546Z",
+      "finished_at": "2026-06-08T11:18:16.547Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "wiki_nodes": 5,
+        "wiki_edges": 0,
+        "broken_edges": 0
+      },
+      "evidence": [
+        "maps/wiki_graph.json"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T11:18:16.547Z",
+      "finished_at": "2026-06-08T11:18:16.547Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "wiki_nodes": 5,
+        "wiki_edges": 0,
+        "broken_edges": 0
+      },
+      "evidence": [
+        "maps/wiki_graph.json"
+      ],
+      "limitations": []
+    }
+  ]
+}

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 
-// (max(words*1.33, chars/4)) so routing bundle, baseline, and assisted
-// numbers are derived the same way and remain comparable.
-
 const fs = require('fs');
 const path = require('path');
 const { ensureDir, readJson, writeJsonAtomic, writeFileAtomic, getAgentId } = require('./lib/json-store');
 const { estimateTokens, METHOD_ID } = require('./lib/token-estimate');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const knowledgeRoot = path.resolve(__dirname, '..');
+const context = resolveKnowledgeContext();
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
 
 function bytes(p) { try { return fs.statSync(p).size; } catch { return 0; } }
 function count(dir, fn = () => true) {
@@ -18,34 +18,44 @@ function count(dir, fn = () => true) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const a = path.join(dir, e.name);
     if (e.isDirectory()) n += count(a, fn);
-    else if (fn(a)) n++;
+    else if (fn(a)) n += 1;
   }
   return n;
 }
+function readText(filePath) {
+  return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
+}
 
 function main() {
-  ensureDir(path.join(knowledgeRoot, 'metrics'));
-  const routePath = path.join(knowledgeRoot, 'maintenance', 'routing_bundle.json');
-  const routeText = fs.existsSync(routePath) ? fs.readFileSync(routePath, 'utf8') : '';
+  ensureDir(path.join(stateRoot, 'metrics'));
+  const routePath = path.join(stateRoot, 'maintenance', 'routing_bundle.json');
+  const routeText = readText(routePath);
   const multi = [
-    'project_index.json',
-    'maintenance/trust_report.json',
-    'maintenance/handoff_summary.json',
-    'maintenance/concurrency_policy.json',
-    'maps/critical_paths.json'
-  ].map((f) => fs.existsSync(path.join(knowledgeRoot, f)) ? fs.readFileSync(path.join(knowledgeRoot, f), 'utf8') : '').join('\n');
+    path.join(knowledgeRoot, 'project_index.json'),
+    path.join(stateRoot, 'maintenance', 'trust_report.json'),
+    path.join(stateRoot, 'maintenance', 'handoff_summary.json'),
+    path.join(knowledgeRoot, 'maintenance', 'concurrency_policy.json'),
+    path.join(knowledgeRoot, 'maps', 'critical_paths.json')
+  ].map(readText).join('\n');
   const routeTokens = estimateTokens(routeText);
   const multiTokens = estimateTokens(multi);
+  const externalMemoryReport = readJson(path.join(stateRoot, 'maintenance', 'external_memory_status.json'), { providers: [], metrics: {} });
+  const externalMemoryMetrics = readJson(path.join(stateRoot, 'metrics', 'external_memory.json'), externalMemoryReport.metrics || {});
   const metrics = {
-    schema_version: '3.1.9',
+    schema_version: '3.2.0',
     generated_at: new Date().toISOString(),
     generated_by: getAgentId(),
+    mode: context.mode,
+    target_root: context.targetRoot,
+    project_knowledge_root: context.projectKnowledgeRoot,
+    state_root: context.stateRoot,
     token_estimator: METHOD_ID,
     files: {
-      total: count(knowledgeRoot),
-      json: count(knowledgeRoot, (a) => a.endsWith('.json')),
-      markdown: count(knowledgeRoot, (a) => a.endsWith('.md')),
-      tools: count(path.join(knowledgeRoot, 'tools'), (a) => a.endsWith('.js'))
+      curated_total: count(knowledgeRoot),
+      runtime_total: count(stateRoot),
+      json: count(knowledgeRoot, (a) => a.endsWith('.json')) + count(stateRoot, (a) => a.endsWith('.json')),
+      markdown: count(knowledgeRoot, (a) => a.endsWith('.md')) + count(stateRoot, (a) => a.endsWith('.md')),
+      tools: count(path.join(context.systemRoot, 'tools'), (a) => a.endsWith('.js'))
     },
     routing: {
       bundle_bytes: bytes(routePath),
@@ -55,20 +65,26 @@ function main() {
       estimated_percent_saved: multiTokens ? Math.round((1 - routeTokens / multiTokens) * 100) : 0
     },
     indexes: {
-      search_documents: readJson(path.join(knowledgeRoot, 'search', 'index.json'), { documents: [] }).documents.length,
-      wiki_nodes: readJson(path.join(knowledgeRoot, 'maps', 'wiki_graph.json'), { nodes: [] }).nodes.length,
-      wiki_edges: readJson(path.join(knowledgeRoot, 'maps', 'wiki_graph.json'), { edges: [] }).edges.length
+      search_documents: readJson(path.join(stateRoot, 'search', 'index.json'), { documents: [] }).documents.length,
+      wiki_nodes: readJson(path.join(stateRoot, 'maps', 'wiki_graph.json'), { nodes: [] }).nodes.length,
+      wiki_edges: readJson(path.join(stateRoot, 'maps', 'wiki_graph.json'), { edges: [] }).edges.length
     },
     health: {
-      doctor_score: readJson(path.join(knowledgeRoot, 'maintenance', 'quality_report.json'), {}).quality_score ?? null,
-      wiki_lint_score: readJson(path.join(knowledgeRoot, 'maintenance', 'wiki_lint_report.json'), {}).quality_score ?? null
+      doctor_score: readJson(path.join(stateRoot, 'maintenance', 'quality_report.json'), {}).quality_score ?? null,
+      wiki_lint_score: readJson(path.join(stateRoot, 'maintenance', 'wiki_lint_report.json'), {}).quality_score ?? null
+    },
+    external_memory: {
+      providers: externalMemoryReport.providers || [],
+      metrics: externalMemoryMetrics,
+      source_of_truth_policy: externalMemoryReport.source_of_truth_policy || {}
     }
   };
-  writeJsonAtomic(path.join(knowledgeRoot, 'metrics', 'baseline.json'), metrics);
-  writeFileAtomic(path.join(knowledgeRoot, 'metrics', 'README.md'),
+  writeJsonAtomic(path.join(stateRoot, 'metrics', 'baseline.json'), metrics);
+  writeFileAtomic(path.join(stateRoot, 'metrics', 'README.md'),
 `# Metrics
 
 Generated: ${metrics.generated_at}
+Mode: ${metrics.mode}
 Token estimator: ${metrics.token_estimator}
 
 - Routing bundle tokens (approx): ${metrics.routing.bundle_tokens_approx}
@@ -79,11 +95,11 @@ Token estimator: ${metrics.token_estimator}
 - Doctor score: ${metrics.health.doctor_score}
 - Wiki lint score: ${metrics.health.wiki_lint_score}
 
-Token numbers are order-of-magnitude. They are produced by one local
-estimator (\`max(ceil(words*1.33), ceil(chars/4))\`) so routing bundle
-and baseline are comparable. Tokenizer-specific counts may differ.
+Token numbers are order-of-magnitude and locally estimated.
 `);
   console.log(JSON.stringify(metrics, null, 2));
+  return metrics;
 }
 
 if (require.main === module) main();
+module.exports = main;

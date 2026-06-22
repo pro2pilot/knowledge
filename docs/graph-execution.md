@@ -38,7 +38,7 @@ Install any Mermaid preview extension and open the `.mmd` files.
 Run:
 
 ```bash
-node .knowledge/tools/serve-inspector.js
+node .knowledge/inspector.js
 ```
 
 Use the local URL printed by the tool. This is useful for screenshots/GIFs.

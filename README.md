@@ -1,41 +1,60 @@
 # .knowledge by Pro2Pilot
 
 <p align="center">
-  <img src="assets/knowledge-demo.gif" alt=".knowledge demo: unzip, agent reads Quick-Start, flow release, inspector opens" width="860">
+  <img src="assets/knowledge-trust-flow_02.svg" alt=".knowledge trust flow: code, tests, agent requests, and advisory external memory pass through the trust layer before trusted review or repair" width="100%">
 </p>
 
-**Stop paying agents to rediscover your repo.**
+<p align="center"><strong>The open, repo-local trust layer for AI coding agents.</strong></p>
 
-`.knowledge` gives Codex, Claude Code, OpenCode and custom agents a local control plane for the repository: one first-read routing bundle, trust and freshness status, repair queue, scoped local search, source-of-truth rules and a Visual Inspector.
+AI coding agents move fast. The hard part is knowing **what they should trust**.
 
-**Synthetic SaaS-shape fixture:** **14 orientation files -> 1 routing bundle**, **~22% less first-orientation context**.
+`.knowledge` gives Codex, Claude Code, OpenCode, Gemini CLI, GitHub Copilot, Devin/Windsurf, Continue, Roo Code, Aider, and custom agents a shared system for:
 
-**Fewer repeated repo crawls. Fewer stale-summary mistakes. Fewer wrong-file loops.**
+```txt
+routing -> evidence -> trust + freshness -> repair -> PR review
+```
 
-Different agents, same repo, shared project memory -- without forcing them into one chat thread.
+Current code and tests remain the source of truth. Stale summaries, low-confidence notes, and external memory are never silently treated as facts.
 
-- One first-read routing bundle
-- Trust and freshness status
-- Repair queue
-- Local search scopes
-- Source-of-truth order
-- Multi-agent workflow for Codex, Claude Code, OpenCode and custom agents
-- Visual Inspector
-- Local-first, no telemetry
-- No required cloud
+> AI adoption is already mainstream. Trust is not. In the [2025 Stack Overflow Developer Survey](https://survey.stackoverflow.co/2025/ai), 84% of respondents use or plan to use AI tools, while 46% distrust their accuracy.
 
-For a fresh archive, first-time setup starts with:
+## What `.knowledge` changes
+
+- **Routes agents before they crawl.** One first-read bundle points each agent to the relevant modules, files, and source-of-truth order.
+- **Makes knowledge evidence-backed.** Claims can be traced to current code, tests, and explicit evidence.
+- **Detects stale or suspect context.** Freshness and trust state are visible before an agent relies on old summaries or memory.
+- **Restores trust instead of hiding drift.** A repair queue explains what broke, what changed, and what needs to be rechecked.
+- **Turns changes into reviewer-ready impact.** PR review connects changed files to modules, critical paths, trust, evidence, and recommended checks.
+- **Shows the system locally.** The free Visual Inspector makes trust, freshness, repair, PR impact, and agent activity understandable without reading raw JSON.
+
+`.knowledge` is not an AI IDE and does not replace your agents. Agents execute work; `.knowledge` makes the knowledge around that work inspectable, fresh, repairable, and reviewable.
+
+### Local-first by design
+
+```txt
+Apache-2.0 open core
+no required cloud
+no required login
+no telemetry
+works with multiple coding agents
+external memory stays advisory
+```
+
+## Start
+
+Extract the release so your repository contains `.knowledge/`, then tell your agent:
 
 ```txt
 Read `.knowledge/Quick-Start.md` and execute it for this repository.
 ```
 
-Manual first-time setup:
+Or run manually:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js
+node .knowledge/tools/install-agent-integrations.js --runtime codex
 node .knowledge/tools/flow.js import
+node .knowledge/inspector.js
 ```
 
 After setup, the first operational file an agent reads is:
@@ -46,14 +65,12 @@ After setup, the first operational file an agent reads is:
 
 ## What it does
 
-- Routes agents to the right modules and files.
-- Tracks trust levels and freshness.
-- Marks stale or suspect knowledge instead of silently trusting it.
-- Stores module cards, decisions, evidence, wiki notes, and handoff state.
-- Builds a local search index and typed wiki graph.
+- Writes and refreshes the first-read routing bundle in `.knowledge/maintenance/routing_bundle.json`.
+- Stores module cards, decisions, evidence, wiki notes, and handoff state beside the code.
+- Builds a local search index and typed wiki graph for targeted context discovery.
 - Generates doctor reports, metrics, PR summaries, and Mermaid flow diagrams.
-- Provides GitHub Action templates and agent integrations.
-- Supports optional external memory as a bridge, not a source of truth.
+- Provides official templates, GitHub Action templates, and runtime-specific integrations for popular coding agents.
+- Keeps optional memory providers as advisory context, never as a source of truth.
 
 ## Official templates
 
@@ -90,7 +107,7 @@ Open:
 .knowledge/inspector/index.html
 ```
 
-It shows health, trust buckets, modules, repair queue, stale items, critical files, wiki graph, applied templates, and external-memory state. Use it for screenshots, demos, onboarding, and debugging.
+It shows health, trust buckets, modules, repair queue, stale items, critical files, wiki graph, applied templates, and Memory Providers state. Use it for screenshots, demos, onboarding, and debugging.
 
 The bundled Visual Inspector is local, static and free.
 
@@ -106,9 +123,26 @@ Practical recipes live in:
 .knowledge/docs/cookbook/
 ```
 
-Current recipes cover new project setup, existing-project migration, agent handoff, wiki graph maintenance, PR review, and external memory.
+Current recipes cover new project setup, existing-project migration, agent handoff, wiki graph maintenance, PR review, and memory providers.
 
-## Smoke benchmark
+## Source-of-truth order
+
+```txt
+current code
+> current tests
+> .knowledge/evidence/*.json
+> .knowledge/modules/*.json
+> .knowledge/decisions.json
+> .knowledge/wiki/*.md
+> .knowledge/sessions/*
+> external retrieved memory
+```
+
+Code beats summaries. Tests beat prose. External memory is retrieved advisory context only.
+
+## Evidence and benchmarks
+
+Measured carefully. No magic claims.
 
 These numbers come from a **synthetic SaaS fixture** and a few small synthetic repos, on a single local machine. They are **order-of-magnitude** results from one local token estimator (`max(ceil(words*1.33), ceil(chars/4))`). They are not production benchmarks, they are not tokenizer-verified, and they are not a guarantee of behavior on your repo.
 
@@ -126,7 +160,7 @@ Doctor scores in smoke scenarios ranged **healthy 90-93 depending on scenario**.
 
 - They do not prove a uniform speedup across all repos. Tiny repos may show overhead because the routing bundle has fixed structure cost.
 - They are not equivalent to a real tokenizer count. Production tokenizers will differ.
-- They are not a guarantee of agent behaviour -- agents may still ignore routing if instructed to read source directly.
+- They are not a guarantee of agent behavior -- agents may still ignore routing if instructed to read source directly.
 
 Benchmark methodology is summarized in:
 
@@ -139,21 +173,6 @@ Regenerate project-specific numbers with:
 ```bash
 node .knowledge/tools/flow.js release --no-color
 ```
-
-## Source-of-truth order
-
-```txt
-current code
-> current tests
-> .knowledge/evidence/*.json
-> .knowledge/modules/*.json
-> .knowledge/decisions.json
-> .knowledge/wiki/*.md
-> .knowledge/sessions/*
-> external retrieved memory
-```
-
-Code beats summaries. Tests beat prose. External memory is retrieved context only.
 
 ## Quickstart
 
@@ -178,9 +197,12 @@ Manual setup:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js
+node .knowledge/tools/install-agent-integrations.js --runtime codex
 node .knowledge/tools/flow.js import
+node .knowledge/inspector.js
 ```
+
+Replace `codex` with `claude`, `opencode`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent. Use `--all` only when you intentionally want every supported integration surface.
 
 Before `flow import`, project runtime files such as `project_index.json`,
 `freshness.json`, and `maintenance/routing_bundle.json` may not exist yet.
@@ -238,8 +260,26 @@ node .knowledge/tools/search-knowledge.js "query" --scope=cookbook
 node .knowledge/tools/search-knowledge.js "query" --scope=all
 node .knowledge/tools/collect-metrics.js
 node .knowledge/tools/build-visual-inspector.js
-node .knowledge/tools/serve-inspector.js
+node .knowledge/inspector.js
 ```
+
+## Concurrent agent work
+
+Concurrent agent work is explicit. It lets multiple agents work in separate Git worktrees or
+branches while runtime state stays separated under a shared team root.
+
+```bash
+node .knowledge/tools/team-init.js --team-root ../.knowledge-team --target-root . --json
+node .knowledge/tools/workspace-register.js --team-root ../.knowledge-team --target-root ../worktrees/codex-task-1 --workspace-id codex-task-1 --agent-id codex-01 --json
+node .knowledge/tools/flow.js release --team-root ../.knowledge-team --target-root ../worktrees/codex-task-1 --workspace-id codex-task-1 --agent-id codex-01 --exclusive --json
+node .knowledge/tools/team-pr-summary.js --team-root ../.knowledge-team --workspace-id codex-task-1 --json
+node .knowledge/tools/team-status.js --team-root ../.knowledge-team --json
+```
+
+Curated knowledge stays branch-local in Git. Generated/runtime state is written
+to `<teamRoot>/repos/<repoId>/workspaces/<workspaceId>/state/`.
+
+See `.knowledge/docs/cookbook/07-team-worktree-pr.md`.
 
 Source maintainers can build a safe install artifact with:
 
@@ -304,7 +344,7 @@ The inspector is optional. `.knowledge` works without it.
 
 ```bash
 node .knowledge/tools/build-visual-inspector.js
-node .knowledge/tools/serve-inspector.js
+node .knowledge/inspector.js
 ```
 
 Details: `.knowledge/docs/inspector.md`.
@@ -342,7 +382,7 @@ generated heavy outputs unless the team explicitly force-adds them.
 
 ## Updates
 
-`.knowledge` does not run a background updater and does not send telemetry. Update checks are disabled by default.
+`.knowledge` does not run a background updater, does not apply updates silently, and does not send telemetry. Visual Inspector checks the official release feed when it opens and offers an explicit update flow.
 
 Check manually:
 
@@ -350,7 +390,7 @@ Check manually:
 node .knowledge/tools/check-updates.js
 ```
 
-Enable optional weekly advisory checks during `doctor` / `flow`:
+Keep or re-enable weekly advisory checks during `doctor` / `flow`:
 
 ```bash
 node .knowledge/tools/check-updates.js --enable --interval=7d
@@ -368,13 +408,14 @@ Disable update checks:
 node .knowledge/tools/check-updates.js --disable
 ```
 
-Update checks only query GitHub Releases for the official `pro2pilot/knowledge` repository. They never upload repository content, never auto-update files, and never overwrite project knowledge records. When an update is available, use `update-system-files.js` to copy only system files.
+Update checks only query GitHub Releases for the official `pro2pilot/knowledge` repository. They never upload repository content, never auto-update files, and never overwrite project knowledge records. When an update is available, use Visual Inspector or `update-system-files.js` to copy system files, create missing migration defaults, preserve curated knowledge, and write a preservation proof.
 
-## External memory
+## Memory providers
 
-Pinecone is optional and disabled by default. It can be used as a cold archive bridge in two modes:
+Mem0 OSS is the recommended optional universal memory backend for free/core. Pinecone remains optional as a vector/cloud retrieval bridge. Both are disabled by default and advisory only.
 
 ```txt
+Mem0 OSS        -> recommended optional local memory backend
 Pinecone Local  -> local emulator / CI / experiments
 Pinecone Cloud  -> managed vector database
 ```
@@ -382,10 +423,31 @@ Pinecone Cloud  -> managed vector database
 Check local readiness:
 
 ```bash
-node .knowledge/tools/external-memory-status.js
+node .knowledge/tools/memory-provider.js status-all --json
+node .knowledge/tools/memory-mem0.js health --json
+node .knowledge/tools/memory-mem0.js health --adapter live --json
 ```
 
-External retrieved chunks never override source code, tests, evidence, or decisions.
+The live Mem0 health check uses bounded Python discovery: explicit `--python`, `KNOWLEDGE_MEM0_PYTHON`/`MEM0_PYTHON`, active virtual environments, PATH commands, Windows `py`/`pymanager` listings, and standard Python install directories. It does not scan the whole disk and never installs Python or Mem0 automatically. Only `health --adapter live` uses a 30000 ms default timeout for the live Mem0 import/health path, because the first `import mem0` on Windows can be noticeably slower than warm checks; short Python discovery/probe checks stay short. If that wait is exceeded, JSON reports `diagnostic_code: python_timeout`. Use `--timeout-ms <ms>` to override the live health wait; Python probe/import overrides also accept `--python-timeout-ms <ms>` and the compatibility alias `--pythonTimeMs <ms>`. If Python is found but Mem0 is missing, the output includes the exact `<python> -m pip install mem0ai==2.0.4` command. If live writes/searches hit a qdrant lock or storage permission failure, JSON reports `diagnostic_code: mem0_storage_permission_error` without deleting locks or repairing permissions.
+
+External retrieved chunks never override source code, tests, evidence, or decisions. Claude MEM is no longer a first-class provider; legacy artifacts are migration-only advisory data.
+
+### Release artifact and Inspector
+
+Use `dist/knowledge-v3.2.0.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
+
+```bash
+node tools/package-release.js
+node tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json
+```
+
+Build the local tabbed Inspector after install/import:
+
+```bash
+node .knowledge/tools/build-visual-inspector.js
+```
+
+Free Inspector is local and command-copy by default. Pro Inspector is a separate paid app for PR impact, repair ownership, policy packs, memory governance, provider fleet status, multi-repo/team dashboard, and audit/history.
 
 ## Repository health check
 

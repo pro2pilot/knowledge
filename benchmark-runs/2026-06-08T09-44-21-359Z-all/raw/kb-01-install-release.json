@@ -1,0 +1,101 @@
+{
+  "id": "KB-01",
+  "slug": "kb-01-install-release",
+  "title": "Install and Release Health",
+  "status": "pass",
+  "claim_status": "measured",
+  "runs_requested": 5,
+  "runs_passed": 5,
+  "runs_failed": 0,
+  "metrics": {
+    "artifact_entries": 262,
+    "artifact_violations": 0
+  },
+  "evidence": [
+    "tools/package-release.js",
+    "tools/validate-release-artifact.js"
+  ],
+  "limitations": [],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T09:44:21.362Z",
+      "finished_at": "2026-06-08T09:44:21.583Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "artifact_entries": 262,
+        "artifact_violations": 0
+      },
+      "evidence": [
+        "tools/package-release.js",
+        "tools/validate-release-artifact.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T09:44:21.583Z",
+      "finished_at": "2026-06-08T09:44:21.791Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "artifact_entries": 262,
+        "artifact_violations": 0
+      },
+      "evidence": [
+        "tools/package-release.js",
+        "tools/validate-release-artifact.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T09:44:21.791Z",
+      "finished_at": "2026-06-08T09:44:21.999Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "artifact_entries": 262,
+        "artifact_violations": 0
+      },
+      "evidence": [
+        "tools/package-release.js",
+        "tools/validate-release-artifact.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T09:44:21.999Z",
+      "finished_at": "2026-06-08T09:44:22.214Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "artifact_entries": 262,
+        "artifact_violations": 0
+      },
+      "evidence": [
+        "tools/package-release.js",
+        "tools/validate-release-artifact.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T09:44:22.214Z",
+      "finished_at": "2026-06-08T09:44:22.677Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "artifact_entries": 262,
+        "artifact_violations": 0
+      },
+      "evidence": [
+        "tools/package-release.js",
+        "tools/validate-release-artifact.js"
+      ],
+      "limitations": []
+    }
+  ]
+}

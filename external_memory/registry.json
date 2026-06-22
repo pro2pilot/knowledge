@@ -1,12 +1,31 @@
 {
-  "schema_version": "3.1.9",
-  "purpose": "Optional external-memory registry. External memory is retrieved context, not source of truth.",
+  "schema_version": "3.2.0",
+  "purpose": "Optional memory-provider registry. External memory is retrieved context, not source of truth.",
   "default_policy": "local_first_external_only_when_needed",
+  "adapter_contract": {
+    "schema": "knowledge.memory_adapter.v1",
+    "source_of_truth": false,
+    "trust_effect": "advisory_only",
+    "status_report_makes_network_calls": false,
+    "live_calls_require_explicit_command": true,
+    "retrieved_memory_requires_verification": true
+  },
   "providers": {
+    "mem0_oss": {
+      "enabled": false,
+      "role": "recommended_optional_universal_memory_backend",
+      "source_of_truth": false,
+      "trust_effect": "advisory_only",
+      "manifest": "memory-providers/mem0/manifest.json",
+      "adapter": "tools/memory-mem0.js"
+    },
     "pinecone": {
       "enabled": false,
-      "role": "cold_archive_bridge",
+      "role": "optional_vector_cloud_retrieval_bridge",
       "source_of_truth": false,
+      "trust_effect": "advisory_only",
+      "manifest": "memory-providers/pinecone/manifest.json",
+      "adapter": "tools/memory-pinecone.js",
       "supported_modes": ["local", "cloud"],
       "mode": "disabled",
       "connection_modes": {
@@ -23,6 +42,13 @@
           "production_suitable": true
         }
       }
+    },
+    "legacy_claude_mem": {
+      "enabled": false,
+      "role": "legacy_advisory_only",
+      "source_of_truth": false,
+      "trust_effect": "advisory_only",
+      "removed_as_first_class_provider": true
     }
   },
   "sources": []

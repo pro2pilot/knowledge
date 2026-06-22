@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.local/schemas/knowledge/pro-extension-manifest.schema.json",
+  "title": "Pro2Pilot Pro Extension Manifest",
+  "type": "object",
+  "required": ["name", "version", "channel", "sha256", "signature", "compatible_knowledge"],
+  "properties": {
+    "name": { "type": "string" },
+    "version": { "type": "string", "const": "0.1.0" },
+    "channel": { "type": "string", "enum": ["stable", "beta", "internal"] },
+    "sha256": { "type": "string" },
+    "signature": { "type": "string" },
+    "compatible_knowledge": { "type": "string", "pattern": "^3\\.2\\.0" },
+    "required_entitlements": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

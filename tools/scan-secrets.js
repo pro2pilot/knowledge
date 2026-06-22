@@ -9,11 +9,14 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const knowledgeRoot = path.resolve(__dirname, '..');
-const lockDir = path.join(knowledgeRoot, '.lock');
-const reportPath = path.join(knowledgeRoot, 'maintenance', 'secret_scan_report.json');
+const context = resolveKnowledgeContext();
+const repoRoot = context.targetRoot;
+const knowledgeRoot = context.projectKnowledgeRoot;
+const stateRoot = context.stateRoot;
+const lockDir = path.join(stateRoot, '.lock');
+const reportPath = path.join(stateRoot, 'maintenance', 'secret_scan_report.json');
 
 // positive rates. Tuned not to fire on placeholders like "xxx" or "<...>".
 const RULES = [
@@ -31,7 +34,7 @@ const RULES = [
 
 // Files we never scan (binaries, large artefacts).
 const SKIP_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.bz2', '.7z', '.exe', '.dll', '.so', '.dylib', '.bin', '.mp4', '.mp3', '.wav', '.woff', '.woff2', '.ttf', '.eot']);
-const SKIP_DIR = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.cache', '.knowledge/.lock', '.knowledge/inspector']);
+const SKIP_DIR = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.cache', '.qa-tmp', '.self-test-tmp', '.knowledge/.lock', '.knowledge/inspector']);
 
 function nowIso() { return new Date().toISOString(); }
 function rel(abs) { return path.relative(repoRoot, abs).replace(/\\/g, '/'); }
@@ -106,7 +109,7 @@ function scanFile(abs) {
 }
 
 function loadCriticalityScope() {
-  const data = readJson(path.join(knowledgeRoot, 'maps', 'file_criticality.json'), { files: [] });
+  const data = readJson(path.join(stateRoot, 'maps', 'file_criticality.json'), { files: [] });
   return new Set((data.files || []).filter((f) => ['critical', 'important'].includes(f.classification)).map((f) => f.path));
 }
 
@@ -143,9 +146,10 @@ function main(argv = process.argv.slice(2)) {
     : 'clean';
 
   const report = {
-    schema_version: '3.1.9',
+    schema_version: '3.2.0',
     generated_at: nowIso(),
     generated_by: getAgentId(),
+    mode: context.mode,
     scope: includeRepo ? 'knowledge_plus_repo_critical_important' : 'knowledge_only',
     repo_files_scanned: repoScanned,
     rules_count: RULES.length,
@@ -166,7 +170,7 @@ function main(argv = process.argv.slice(2)) {
       status,
       findings_total: findings.length,
       by_severity: bySeverity,
-      report: '.knowledge/maintenance/secret_scan_report.json'
+      report: context.mode === 'repo' ? '.knowledge/maintenance/secret_scan_report.json' : reportPath
     }, null, 2));
   }
 

@@ -40,6 +40,7 @@ maintenance/graphs/
 search/index.json
 search/query_log.ndjson
 metrics/baseline.json
+metrics/external_memory.json
 metrics/README.md
 inspector/data.json
 inspector/status.json

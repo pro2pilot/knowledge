@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.local/schemas/knowledge/pro-entitlement.schema.json",
+  "title": "Pro2Pilot Pro Entitlement Cache",
+  "type": "object",
+  "required": ["plan", "entitlements", "source"],
+  "properties": {
+    "active": { "type": "boolean" },
+    "source": { "type": "string", "enum": ["free", "local_license", "license_api", "dev_env"] },
+    "plan": { "type": "string" },
+    "entitlements": { "type": "array", "items": { "type": "string" } },
+    "expires_at": { "type": ["string", "null"] },
+    "offline_grace_until": { "type": ["string", "null"] },
+    "activation_id": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

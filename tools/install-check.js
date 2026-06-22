@@ -141,7 +141,16 @@ function analyze(options = {}) {
   const status = hasErrors ? 'failed' : (hasWarnings ? 'warning' : 'ok');
 
   if (mode === 'fresh') {
-    nextCommands.push('node .knowledge/tools/install-agent-integrations.js');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime codex');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime claude');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime opencode');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime gemini');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime copilot');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime devin');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime windsurf');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime continue');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime roo');
+    nextCommands.push('node .knowledge/tools/install-agent-integrations.js --runtime aider');
     nextCommands.push('node .knowledge/tools/flow.js import');
   } else if (mode === 'configured') {
     nextCommands.push('node .knowledge/tools/flow.js release --no-color');

@@ -1,0 +1,26 @@
+{
+  "package": "pro2pilot-canonical-artifacts",
+  "version": "2026-06-08",
+  "purpose": "Canonical docs/specs/checklists derived from product planning discussion",
+  "files": [
+    "00_INDEX_AND_REPORT.md",
+    "01_PRODUCT_CANON.md",
+    "02_FREE_CORE_SPEC.md",
+    "03_FREE_INSPECTOR_UX_SPEC.md",
+    "04_PRO_SUBSCRIPTION_SPEC.md",
+    "05_FEATURE_SPLIT_MATRIX.md",
+    "06_AGENT_ACTIVITY_AND_CONCURRENT_WORK.md",
+    "07_TRUST_EVIDENCE_ROUTING_REPAIR.md",
+    "08_AGENT_REPORT_FOOTER_AND_SIMPLE_ADVANCED.md",
+    "09_VSCODE_BROWSER_AND_EMBEDDING.md",
+    "10_MEMORY_PROVIDER_STRATEGY.md",
+    "11_PR_REVIEW_AND_MERGE_QUEUE.md",
+    "12_QA_BENCHMARK_RELEASE_GATES.md",
+    "13_LICENSE_ATTRIBUTION_EMBEDDING_FAQ.md",
+    "14_SITE_FAQ_DRAFT.md",
+    "15_AGENT_IMPLEMENTATION_PROMPT.md",
+    "16_UI_COPY_AND_LABELS.md",
+    "17_COMPLIANCE_CHECKLIST.md"
+  ],
+  "core_formula": ".knowledge is a repo-local routing, evidence, trust, freshness, repair and PR-review system for coding agents."
+}

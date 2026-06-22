@@ -76,6 +76,8 @@ function getConfig() {
     source: block.source || 'github_releases',
     repository: OFFICIAL_UPDATE_REPOSITORY,
     current_version_source: block.current_version_source || 'package.json',
+    auto_check_on_inspector_open: parseBool(block.auto_check_on_inspector_open, true),
+    allow_prerelease: parseBool(block.allow_prerelease, false),
     auto_update: parseBool(block.auto_update, false),
     telemetry: parseBool(block.telemetry, false),
     timeout_ms: Number(block.timeout_ms || 5000)
@@ -102,6 +104,8 @@ function writeConfig(updates) {
     `  source: ${updates.source || 'github_releases'}`,
     `  repository: ${OFFICIAL_UPDATE_REPOSITORY}`,
     `  current_version_source: ${updates.current_version_source || 'package.json'}`,
+    `  auto_check_on_inspector_open: ${updates.auto_check_on_inspector_open !== false ? 'true' : 'false'}`,
+    `  allow_prerelease: ${updates.allow_prerelease ? 'true' : 'false'}`,
     `  auto_update: ${updates.auto_update ? 'true' : 'false'}`,
     `  telemetry: ${updates.telemetry ? 'true' : 'false'}`,
     `  timeout_ms: ${Number(updates.timeout_ms || 5000)}`,
@@ -132,12 +136,21 @@ function isDue(config, status) {
 }
 async function fetchLatestRelease(config) {
   if (process.env.KNOWLEDGE_UPDATE_MOCK_LATEST) {
-    return { tag_name: process.env.KNOWLEDGE_UPDATE_MOCK_LATEST, html_url: 'mock://latest-release', source: 'mock' };
+    const mockAssetUrl = process.env.KNOWLEDGE_UPDATE_MOCK_ASSET_URL || process.env.KNOWLEDGE_UPDATE_LOCAL_ZIP || null;
+    return {
+      tag_name: process.env.KNOWLEDGE_UPDATE_MOCK_LATEST,
+      html_url: 'mock://latest-release',
+      source: 'mock',
+      prerelease: false,
+      assets: mockAssetUrl ? [{ name: `knowledge-v${process.env.KNOWLEDGE_UPDATE_MOCK_LATEST}.zip`, browser_download_url: mockAssetUrl }] : []
+    };
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(config.timeout_ms || 5000));
   try {
-    const url = `https://api.github.com/repos/${OFFICIAL_UPDATE_REPOSITORY}/releases/latest`;
+    const url = config.allow_prerelease
+      ? `https://api.github.com/repos/${OFFICIAL_UPDATE_REPOSITORY}/releases`
+      : `https://api.github.com/repos/${OFFICIAL_UPDATE_REPOSITORY}/releases/latest`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'dot-knowledge-update-check' },
@@ -147,20 +160,46 @@ async function fetchLatestRelease(config) {
     let json = null;
     try { json = body ? JSON.parse(body) : null; } catch { json = null; }
     if (!response.ok) throw new Error(`GitHub Releases request failed: ${response.status} ${response.statusText}`);
-    return { tag_name: json?.tag_name || json?.name || '', html_url: json?.html_url || null, source: 'github_releases' };
+    const release = Array.isArray(json)
+      ? json.find((item) => item && !item.draft && (config.allow_prerelease || !item.prerelease))
+      : json;
+    return {
+      tag_name: release?.tag_name || release?.name || '',
+      html_url: release?.html_url || null,
+      source: 'github_releases',
+      prerelease: Boolean(release?.prerelease),
+      assets: Array.isArray(release?.assets) ? release.assets.map((asset) => ({
+        name: asset.name,
+        browser_download_url: asset.browser_download_url,
+        size: asset.size,
+        content_type: asset.content_type
+      })) : []
+    };
   } finally {
     clearTimeout(timeout);
   }
 }
+
+function selectReleaseAsset(latest) {
+  const assets = Array.isArray(latest?.assets) ? latest.assets : [];
+  const version = String(latest?.tag_name || '').replace(/^v/i, '');
+  return assets.find((asset) => /^knowledge-v\d+\.\d+\.\d+.*\.zip$/i.test(asset.name || '')) ||
+    assets.find((asset) => version && String(asset.name || '').toLowerCase() === `knowledge-v${version}.zip`.toLowerCase()) ||
+    assets.find((asset) => /\.zip$/i.test(asset.name || '')) ||
+    null;
+}
+
 function makeStatusBase(config) {
   return {
-    schema_version: '3.1.9',
+    schema_version: '3.2.0',
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,
     mode: config.mode,
     enabled: Boolean(config.enabled),
     interval_days: Number(config.interval_days || 7),
+    auto_check_on_inspector_open: config.auto_check_on_inspector_open !== false,
+    allow_prerelease: Boolean(config.allow_prerelease),
     auto_update: false,
     telemetry: false,
     current_version: readPackageVersion()
@@ -170,6 +209,7 @@ async function checkNow(config, reason = 'manual') {
   const base = makeStatusBase(config);
   try {
     const latest = await fetchLatestRelease(config);
+    const asset = selectReleaseAsset(latest);
     const latestVersion = String(latest.tag_name || '').replace(/^v/i, '') || null;
     const cmp = latestVersion ? compareVersions(base.current_version, latestVersion) : 0;
     const status = {
@@ -180,6 +220,10 @@ async function checkNow(config, reason = 'manual') {
       latest_version: latestVersion,
       latest_tag: latest.tag_name || null,
       latest_url: latest.html_url || null,
+      latest_prerelease: Boolean(latest.prerelease),
+      asset_name: asset ? asset.name : null,
+      asset_url: asset ? asset.browser_download_url : null,
+      assets: (latest.assets || []).map((item) => ({ name: item.name, size: item.size || null, content_type: item.content_type || null })),
       advisory: latestVersion && cmp < 0 ? `Update available: ${base.current_version} -> ${latestVersion}. Updates are advisory-only; run a system update only when you choose to.` : 'No update available.',
       note: 'Update checks query GitHub Releases only. They do not upload repository content and do not auto-update.'
     };
@@ -245,7 +289,16 @@ async function main(argv = process.argv.slice(2)) {
   return result;
 }
 
-module.exports = main;
+module.exports = Object.assign(main, {
+  getConfig,
+  readStatus,
+  checkNow,
+  isDue,
+  fetchLatestRelease,
+  selectReleaseAsset,
+  compareVersions,
+  OFFICIAL_UPDATE_REPOSITORY
+});
 if (require.main === module) {
   main().catch((error) => { console.error(error.stack || error.message); process.exit(1); });
 }

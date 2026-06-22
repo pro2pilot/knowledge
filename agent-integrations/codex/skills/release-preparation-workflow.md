@@ -68,12 +68,12 @@ REPO_FULL_NAME          Example: pro2pilot/knowledge
 LOCAL_REPO_PATH         Example: C:\path\to\knowledge
 BASE_BRANCH             Usually: main
 WORK_BRANCH             Example: fix/install-git-policy
-TARGET_VERSION          Example: 3.1.9
-PREVIOUS_VERSION        Example: 3.1.8
+TARGET_VERSION          Example: 3.2.0
+PREVIOUS_VERSION        Example: 3.1.9
 EXPECTED_GH_ACCOUNT     GitHub username expected to push/release
 EXPECTED_GIT_AUTHOR     Optional expected git user.name
 EXPECTED_GIT_EMAIL      Optional expected git user.email
-RELEASE_TITLE           Example: v3.1.9 — Install and Git policy hardening
+RELEASE_TITLE           Example: v3.2.0 — Universal final-report hardening
 ```
 
 If `TARGET_VERSION` or `EXPECTED_GH_ACCOUNT` is missing, ask before continuing.
@@ -572,7 +572,7 @@ Run:
 
 ```powershell
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js
+node .knowledge/tools/install-agent-integrations.js --runtime codex
 node .knowledge/tools/flow.js import --no-color
 node .knowledge/tools/flow.js release --no-color
 git add . 2> git-add-stderr.txt
@@ -701,6 +701,8 @@ Rules:
 - Do not overclaim features.
 - Mention only verified changes.
 - Mention exact asset names.
+- Do not mention internal agent or skill implementation details in public release notes unless the user explicitly asks for that. For example, do not list "Codex skill", "agent workflow skill", or similar internal packaging details as a release feature.
+- When the user asks for text to paste into GitHub Release body, output one clean copy-ready Markdown document. Do not wrap the whole document in another fenced block if that would make nested code blocks awkward to copy or paste.
 
 ---
 
@@ -868,7 +870,7 @@ gh release download v<TARGET_VERSION> --repo <REPO_FULL_NAME> --pattern "knowled
 git init
 Expand-Archive ".\knowledge-v<TARGET_VERSION>.zip" -DestinationPath .
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js
+node .knowledge/tools/install-agent-integrations.js --runtime codex
 node .knowledge/tools/flow.js import --no-color
 node .knowledge/tools/flow.js release --no-color
 git add . 2> git-add-stderr.txt

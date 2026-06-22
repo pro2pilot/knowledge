@@ -1,27 +1,28 @@
 #!/usr/bin/env node
 'use strict';
 
+// Output modes:
 //   default    one line per step ("[ ok ] step  Xms")
 //   --quiet    final summary only
 //   --json     single well-formed JSON object (never ANSI)
 //   --no-color disable ANSI escape sequences in all modes
-// Per-step logs are always written to
-// .knowledge/maintenance/flow-logs/<flow>-<timestamp>.json so debugging
-// stays available without polluting the terminal.
+//
+// In repo-local mode runtime logs stay under `.knowledge/maintenance/flow-logs`.
+// In team mode runtime logs move to `stateRoot/maintenance/flow-logs`.
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-
-const knowledgeRoot = path.resolve(__dirname, '..');
-const repoRoot = path.resolve(knowledgeRoot, '..');
+const { parseCliArgs, resolveKnowledgeContext, contextEnv, jsonContext } = require('./lib/path-context');
+const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
+const { acquireTeamLock, appendTeamEvent, updateWorkspaceFlow } = require('./lib/team-store');
 
 const flows = {
-  scan:   ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
+  scan: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
   doctor: ['external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'doctor.js'],
-  lint:   ['build-wiki-graph.js', 'lint-wiki.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
-  import: ['ingest-existing-project.js --merge', 'sync-tracked.js --scan --discover', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
-  release:['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
+  lint: ['build-wiki-graph.js', 'lint-wiki.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
+  import: ['ingest-existing-project.js --merge', 'sync-tracked.js --scan --discover', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
+  release: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
 };
 
 const STEP_LABELS = {
@@ -32,6 +33,7 @@ const STEP_LABELS = {
   'check-updates.js': 'updates',
   'build-routing-bundle.js': 'routing',
   'build-search-index.js': 'search-idx',
+  'validate-paid-manifest.js': 'paid-manifest',
   'build-visual-inspector.js': 'inspector',
   'scan-secrets.js': 'secret-scan',
   'doctor.js': 'doctor',
@@ -43,18 +45,17 @@ const STEP_LABELS = {
 };
 
 function parseArgs(argv) {
-  const positional = [];
-  let quiet = false;
-  let json = false;
-  let noColor = false;
-  for (const arg of argv) {
-    if (arg === '--quiet') quiet = true;
-    else if (arg === '--json') json = true;
-    else if (arg === '--no-color') noColor = true;
-    else positional.push(arg);
-  }
-  const name = positional[0] || 'release';
-  return { name, quiet, json, noColor };
+  const parsed = parseCliArgs(argv);
+  const flags = parsed.flags;
+  const name = parsed.positional[0] || 'release';
+  return {
+    name,
+    quiet: Boolean(flags.quiet),
+    json: Boolean(flags.json),
+    noColor: Boolean(flags.noColor),
+    exclusive: Boolean(flags.exclusive),
+    contextFlags: flags
+  };
 }
 
 function colorEnabled({ json, noColor }) {
@@ -65,8 +66,8 @@ function colorEnabled({ json, noColor }) {
   return true;
 }
 
-function updateChecksEnabled() {
-  const configPath = path.join(knowledgeRoot, 'config.yaml');
+function updateChecksEnabled(context) {
+  const configPath = path.join(context.projectKnowledgeRoot, 'config.yaml');
   if (!fs.existsSync(configPath)) return false;
   const lines = fs.readFileSync(configPath, 'utf8').split(/\r?\n/);
   let inUpdates = false;
@@ -78,9 +79,9 @@ function updateChecksEnabled() {
   return false;
 }
 
-function stepsForFlow(name) {
+function stepsForFlow(name, context) {
   const base = flows[name] || [];
-  if (!updateChecksEnabled()) return base;
+  if (!updateChecksEnabled(context)) return base;
   const updateStep = 'check-updates.js --auto --json';
   if (base.includes(updateStep)) return base;
   const doctorIndex = base.findIndex((cmd) => cmd.startsWith('doctor.js'));
@@ -88,11 +89,15 @@ function stepsForFlow(name) {
   return [...base.slice(0, doctorIndex), updateStep, ...base.slice(doctorIndex)];
 }
 
-function runOne(cmd) {
+function runOne(cmd, context) {
   const [file, ...args] = cmd.split(/\s+/);
-  const scriptPath = path.join(knowledgeRoot, 'tools', file);
+  const scriptPath = path.join(context.systemRoot, 'tools', file);
   const started = Date.now();
-  const res = spawnSync(process.execPath, [scriptPath, ...args], { cwd: repoRoot });
+  const res = spawnSync(process.execPath, [scriptPath, ...args], {
+    cwd: context.targetRoot,
+    env: contextEnv(context),
+    windowsHide: true
+  });
   const duration_ms = Date.now() - started;
   const stdout = (res.stdout || '').toString();
   const stderr = (res.stderr || '').toString();
@@ -114,84 +119,149 @@ function runOne(cmd) {
 function detailFor(step) {
   const p = step.parsed;
   if (!p) return '';
-  if (step.step === 'doctor') return `${p.quality_score ?? '-'}/100 ${p.status ?? ''}`;
-  if (step.step === 'lint') return `${p.quality_score ?? '-'}/100 ${p.status ?? ''}`;
+  if (step.step === 'doctor') return `${p.quality_score ?? '-'} /100 ${p.status ?? ''}`;
+  if (step.step === 'lint') return `${p.quality_score ?? '-'} /100 ${p.status ?? ''}`;
   if (step.step === 'wiki-graph') return `${p.nodes ?? '-'} nodes / ${p.edges ?? '-'} edges`;
-  if (step.step === 'search-idx') return `${p.documents ?? '-'} docs`;
+  if (step.step === 'search-idx') return `${p.documents ?? p.document_count ?? '-'} docs`;
   if (step.step === 'routing') return `${p.modules ?? '-'} modules`;
+  if (step.step === 'paid-manifest') return `${p.status || 'unknown'} / ${p.capabilities ?? '-'} capabilities`;
   if (step.step === 'inspector') return `${(p.output || '').replace(/^.*\//, '')}`;
-  if (step.step === 'secret-scan') return `${p.status || 'unknown'} · ${(p.findings || []).length} findings`;
-  if (step.step === 'ext-memory') return `${p.providers?.pinecone?.mode ?? 'disabled'}`;
+  if (step.step === 'secret-scan') return `${p.status || 'unknown'} / ${(p.findings || []).length} findings`;
+  if (step.step === 'ext-memory') return `${p.providers?.pinecone?.mode ?? p.providers?.[0]?.mode ?? 'disabled'}`;
   if (step.step === 'metrics') return `${p.routing?.estimated_percent_saved ?? '-'}% tokens saved`;
-  if (step.step === 'updates') return `${p.status || 'unknown'}${p.latest_version ? ' · latest ' + p.latest_version : ''}`;
+  if (step.step === 'updates') return `${p.status || 'unknown'}${p.latest_version ? ' / latest ' + p.latest_version : ''}`;
   return '';
 }
 
-function writeFlowLog(name, started, results, totalMs) {
-  const dir = path.join(knowledgeRoot, 'maintenance', 'flow-logs');
-  fs.mkdirSync(dir, { recursive: true });
+function displayPath(filePath, context) {
+  const rel = path.relative(context.targetRoot, filePath).replace(/\\/g, '/');
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel;
+  return filePath;
+}
+
+function readJsonIfExists(filePath, fallback) {
+  if (!fs.existsSync(filePath)) return fallback;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function onboardingFollowUp(context, flowName) {
+  if (!['import', 'release'].includes(flowName)) return null;
+  const profile = readJsonIfExists(path.join(context.projectKnowledgeRoot, 'settings', 'operator-profile.json'), {});
+  const completed = profile.first_run_onboarding_completed === true;
+  if (completed) return null;
+  return {
+    required: true,
+    reason: Object.prototype.hasOwnProperty.call(profile, 'first_run_onboarding_completed') ? 'not_completed' : 'upgrade_missing_completion_marker',
+    command: 'node .knowledge/inspector.js',
+    note: 'Open the live Inspector now and complete First-run setup before relying on generated reports.'
+  };
+}
+
+function writeFlowLog(name, started, results, totalMs, context) {
+  const dir = path.join(context.stateRoot, 'maintenance', 'flow-logs');
+  ensureDir(dir);
   const ts = started.toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${name}-${ts}.json`);
-  fs.writeFileSync(file, JSON.stringify({
+  writeJsonAtomic(file, {
     flow: name,
+    context: jsonContext(context),
     started_at: started.toISOString(),
     duration_total_ms: totalMs,
     steps_total: results.length,
     steps_ok: results.filter((r) => r.exit === 0).length,
     overall_status: results.every((r) => r.exit === 0) ? 'ok' : 'failed',
     steps: results
-  }, null, 2));
-  return path.relative(repoRoot, file).replace(/\\/g, '/');
+  });
+  return displayPath(file, context);
 }
 
-function main(argv = process.argv.slice(2)) {
-  const { name, quiet, json, noColor } = parseArgs(argv);
+function runFlow(options) {
+  const { name, quiet, json, noColor, exclusive, context } = options;
   if (!flows[name]) {
-    console.error(`Unknown flow: ${name}. Available: ${Object.keys(flows).join(', ')}`);
-    process.exit(1);
+    throw new Error(`Unknown flow: ${name}. Available: ${Object.keys(flows).join(', ')}`);
   }
+  ensureDir(path.join(context.stateRoot, 'maintenance'));
+  appendTeamEvent(context, 'flow_start', { flow: name, exclusive });
   const useColor = colorEnabled({ json, noColor });
   const ansi = {
-    ok: (s) => useColor ? `[32m${s}[0m` : s,
-    fail: (s) => useColor ? `[31m${s}[0m` : s
+    ok: (s) => useColor ? `\x1b[32m${s}\x1b[0m` : s,
+    fail: (s) => useColor ? `\x1b[31m${s}\x1b[0m` : s
   };
   const started = new Date();
   const startedMs = Date.now();
   const results = [];
-  for (const cmd of stepsForFlow(name)) {
-    const result = runOne(cmd);
+  for (const cmd of stepsForFlow(name, context)) {
+    const result = runOne(cmd, context);
     results.push(result);
+    appendTeamEvent(context, 'flow_step', { flow: name, step: result.step, exit: result.exit, duration_ms: result.duration_ms });
     if (!quiet && !json) {
       const status = result.exit === 0 ? ansi.ok('ok') : ansi.fail('fail');
       const detail = detailFor(result);
       const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
-      console.log(`[ ${status} ] ${pad(result.step, 11)} ${String(result.duration_ms).padStart(5, ' ')} ms${detail ? '  ·  ' + detail : ''}`);
+      console.log(`[ ${status} ] ${pad(result.step, 11)} ${String(result.duration_ms).padStart(5, ' ')} ms${detail ? '  /  ' + detail : ''}`);
     }
   }
   const totalMs = Date.now() - startedMs;
   const ok = results.filter((r) => r.exit === 0).length;
   const total = results.length;
-  const logRel = writeFlowLog(name, started, results, totalMs);
+  const logRel = writeFlowLog(name, started, results, totalMs, context);
   const overall = ok === total ? 'ok' : 'failed';
-
-  if (json) {
-    const out = {
-      flow: name,
-      started_at: started.toISOString(),
-      duration_total_ms: totalMs,
-      steps_total: total,
-      steps_ok: ok,
-      overall_status: overall,
-      flow_log: logRel,
-      steps: results.map((r) => ({ step: r.step, command: r.command, exit: r.exit, duration_ms: r.duration_ms, summary: detailFor(r) }))
-    };
-    console.log(JSON.stringify(out, null, 2));
-  } else {
-    console.log(`flow.${name}: ${ok}/${total} ok · ${totalMs} ms · log: ${logRel}`);
-  }
-  if (overall !== 'ok') process.exit(2);
+  const onboarding = onboardingFollowUp(context, name);
+  const out = {
+    flow: name,
+    mode: context.mode,
+    repo_id: context.repoId,
+    workspace_id: context.workspaceId,
+    agent_id: context.agentId,
+    target_root: context.targetRoot,
+    project_knowledge_root: context.projectKnowledgeRoot,
+    state_root: context.stateRoot,
+    branch: context.branch,
+    head_sha: context.headSha,
+    started_at: started.toISOString(),
+    duration_total_ms: totalMs,
+    steps_total: total,
+    steps_ok: ok,
+    overall_status: overall,
+    warnings: context.warnings,
+    flow_log: logRel,
+    onboarding_follow_up: onboarding,
+    steps: results.map((r) => ({ step: r.step, command: r.command, exit: r.exit, duration_ms: r.duration_ms, summary: detailFor(r) }))
+  };
+  updateWorkspaceFlow(context, out);
+  appendTeamEvent(context, 'flow_end', { flow: name, overall_status: overall, steps_ok: ok, steps_total: total, flow_log: logRel });
+  return out;
 }
 
-if (require.main === module) main();
+function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
+  const context = resolveKnowledgeContext(args.contextFlags);
+  let release = null;
+  try {
+    if (context.mode === 'team' && args.exclusive) release = acquireTeamLock(context, 'flow');
+    const out = runFlow({ ...args, context });
+    if (args.json) console.log(JSON.stringify(out, null, 2));
+    else {
+      console.log(`flow.${args.name}: ${out.steps_ok}/${out.steps_total} ok / ${out.duration_total_ms} ms / log: ${out.flow_log}`);
+      if (out.onboarding_follow_up?.required) {
+        console.log(`next: ${out.onboarding_follow_up.command}`);
+        console.log(out.onboarding_follow_up.note);
+      }
+    }
+    if (out.overall_status !== 'ok') process.exit(2);
+    return out;
+  } finally {
+    if (release) release();
+  }
+}
 
-module.exports = { runOne, parseArgs, colorEnabled };
+if (require.main === module) {
+  try { main(); }
+  catch (error) { console.error(error.stack || error.message); process.exit(1); }
+}
+
+module.exports = { runOne, parseArgs, colorEnabled, runFlow };

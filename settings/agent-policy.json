@@ -1,0 +1,7 @@
+{
+  "schema_version": "3.2.0",
+  "concurrent_work_policy": "Safe Queue",
+  "merge_policy": "Manual Only",
+  "auto_merge": false,
+  "safe_queue_default": true
+}

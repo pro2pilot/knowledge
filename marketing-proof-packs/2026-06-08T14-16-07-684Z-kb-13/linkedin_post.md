@@ -1,0 +1,1 @@
+.knowledge is a repo-local knowledge governance layer for AI coding agents. Latest local benchmark proof: KB-13 Pro Inspector Governance: pro_score=94. We are keeping preview/planned suites out of public copy.

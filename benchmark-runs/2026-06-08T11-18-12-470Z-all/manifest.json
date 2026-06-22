@@ -1,0 +1,1693 @@
+{
+  "schema_version": "3.2.0",
+  "run_id": "2026-06-08T11-18-12-470Z-all",
+  "generated_at": "2026-06-08T11:22:44.343Z",
+  "suite": "all",
+  "fixture": "all",
+  "runs": 5,
+  "verdict": "partial",
+  "results": [
+    {
+      "id": "GATE-00",
+      "slug": "gate-00",
+      "title": "Release and QA Gate",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "release_gate_passed": 1,
+        "p0_commands": 12,
+        "clean_install_steps": 12
+      },
+      "evidence": [
+        "maintenance/release-gate-report.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:12.471Z",
+          "finished_at": "2026-06-08T11:18:12.472Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_gate_passed": 1,
+            "p0_commands": 12,
+            "clean_install_steps": 12
+          },
+          "evidence": [
+            "maintenance/release-gate-report.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:12.472Z",
+          "finished_at": "2026-06-08T11:18:12.472Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_gate_passed": 1,
+            "p0_commands": 12,
+            "clean_install_steps": 12
+          },
+          "evidence": [
+            "maintenance/release-gate-report.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:12.472Z",
+          "finished_at": "2026-06-08T11:18:12.472Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_gate_passed": 1,
+            "p0_commands": 12,
+            "clean_install_steps": 12
+          },
+          "evidence": [
+            "maintenance/release-gate-report.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:12.472Z",
+          "finished_at": "2026-06-08T11:18:12.472Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_gate_passed": 1,
+            "p0_commands": 12,
+            "clean_install_steps": 12
+          },
+          "evidence": [
+            "maintenance/release-gate-report.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:12.472Z",
+          "finished_at": "2026-06-08T11:18:12.473Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_gate_passed": 1,
+            "p0_commands": 12,
+            "clean_install_steps": 12
+          },
+          "evidence": [
+            "maintenance/release-gate-report.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-01",
+      "slug": "kb-01-install-release",
+      "title": "Install and Release Health",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "artifact_entries": 262,
+        "artifact_violations": 0
+      },
+      "evidence": [
+        "tools/package-release.js",
+        "tools/validate-release-artifact.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:12.473Z",
+          "finished_at": "2026-06-08T11:18:12.697Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "artifact_entries": 262,
+            "artifact_violations": 0
+          },
+          "evidence": [
+            "tools/package-release.js",
+            "tools/validate-release-artifact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:12.697Z",
+          "finished_at": "2026-06-08T11:18:13.160Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "artifact_entries": 262,
+            "artifact_violations": 0
+          },
+          "evidence": [
+            "tools/package-release.js",
+            "tools/validate-release-artifact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:13.160Z",
+          "finished_at": "2026-06-08T11:18:13.381Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "artifact_entries": 262,
+            "artifact_violations": 0
+          },
+          "evidence": [
+            "tools/package-release.js",
+            "tools/validate-release-artifact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:13.381Z",
+          "finished_at": "2026-06-08T11:18:13.609Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "artifact_entries": 262,
+            "artifact_violations": 0
+          },
+          "evidence": [
+            "tools/package-release.js",
+            "tools/validate-release-artifact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:13.609Z",
+          "finished_at": "2026-06-08T11:18:13.835Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "artifact_entries": 262,
+            "artifact_violations": 0
+          },
+          "evidence": [
+            "tools/package-release.js",
+            "tools/validate-release-artifact.js"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-02",
+      "slug": "kb-02-routing",
+      "title": "First-read Routing vs Context Packing",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "routing_bundle_present": 1,
+        "routed_modules": 1,
+        "first_read_declared": 1
+      },
+      "evidence": [
+        "maintenance/routing_bundle.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:13.835Z",
+          "finished_at": "2026-06-08T11:18:14.232Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_bundle_present": 1,
+            "routed_modules": 1,
+            "first_read_declared": 1
+          },
+          "evidence": [
+            "maintenance/routing_bundle.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:14.232Z",
+          "finished_at": "2026-06-08T11:18:14.878Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_bundle_present": 1,
+            "routed_modules": 1,
+            "first_read_declared": 1
+          },
+          "evidence": [
+            "maintenance/routing_bundle.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:14.878Z",
+          "finished_at": "2026-06-08T11:18:15.272Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_bundle_present": 1,
+            "routed_modules": 1,
+            "first_read_declared": 1
+          },
+          "evidence": [
+            "maintenance/routing_bundle.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:15.272Z",
+          "finished_at": "2026-06-08T11:18:15.889Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_bundle_present": 1,
+            "routed_modules": 1,
+            "first_read_declared": 1
+          },
+          "evidence": [
+            "maintenance/routing_bundle.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:15.889Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_bundle_present": 1,
+            "routed_modules": 1,
+            "first_read_declared": 1
+          },
+          "evidence": [
+            "maintenance/routing_bundle.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-03",
+      "slug": "kb-03-trust-freshness",
+      "title": "Trust/Freshness Calibration",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "modules_total": 1,
+        "modules_low_confidence": 0,
+        "stale_items_total": 0
+      },
+      "evidence": [
+        "maintenance/trust_report.json",
+        "maintenance/stale_items.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:16.545Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "modules_total": 1,
+            "modules_low_confidence": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maintenance/trust_report.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:16.545Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "modules_total": 1,
+            "modules_low_confidence": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maintenance/trust_report.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:16.545Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "modules_total": 1,
+            "modules_low_confidence": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maintenance/trust_report.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:16.545Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "modules_total": 1,
+            "modules_low_confidence": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maintenance/trust_report.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:16.545Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "modules_total": 1,
+            "modules_low_confidence": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maintenance/trust_report.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-04",
+      "slug": "kb-04-repair-queue",
+      "title": "Repair Queue Actionability",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "repair_items_total": 0,
+        "open_repair_items": 0
+      },
+      "evidence": [
+        "maintenance/repair_queue.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:16.545Z",
+          "finished_at": "2026-06-08T11:18:16.545Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "repair_items_total": 0,
+            "open_repair_items": 0
+          },
+          "evidence": [
+            "maintenance/repair_queue.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "repair_items_total": 0,
+            "open_repair_items": 0
+          },
+          "evidence": [
+            "maintenance/repair_queue.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "repair_items_total": 0,
+            "open_repair_items": 0
+          },
+          "evidence": [
+            "maintenance/repair_queue.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "repair_items_total": 0,
+            "open_repair_items": 0
+          },
+          "evidence": [
+            "maintenance/repair_queue.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "repair_items_total": 0,
+            "open_repair_items": 0
+          },
+          "evidence": [
+            "maintenance/repair_queue.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-05",
+      "slug": "kb-05-critical-stale-risk",
+      "title": "Critical Files / Stale Risk",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "critical_or_important_files": 0,
+        "stale_items_total": 0
+      },
+      "evidence": [
+        "maps/file_criticality.json",
+        "maintenance/stale_items.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "critical_or_important_files": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maps/file_criticality.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "critical_or_important_files": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maps/file_criticality.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "critical_or_important_files": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maps/file_criticality.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "critical_or_important_files": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maps/file_criticality.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "critical_or_important_files": 0,
+            "stale_items_total": 0
+          },
+          "evidence": [
+            "maps/file_criticality.json",
+            "maintenance/stale_items.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-06",
+      "slug": "kb-06-wiki-graph",
+      "title": "Wiki Graph",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "wiki_nodes": 5,
+        "wiki_edges": 0,
+        "broken_edges": 0
+      },
+      "evidence": [
+        "maps/wiki_graph.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "wiki_nodes": 5,
+            "wiki_edges": 0,
+            "broken_edges": 0
+          },
+          "evidence": [
+            "maps/wiki_graph.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "wiki_nodes": 5,
+            "wiki_edges": 0,
+            "broken_edges": 0
+          },
+          "evidence": [
+            "maps/wiki_graph.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.546Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "wiki_nodes": 5,
+            "wiki_edges": 0,
+            "broken_edges": 0
+          },
+          "evidence": [
+            "maps/wiki_graph.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:16.546Z",
+          "finished_at": "2026-06-08T11:18:16.547Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "wiki_nodes": 5,
+            "wiki_edges": 0,
+            "broken_edges": 0
+          },
+          "evidence": [
+            "maps/wiki_graph.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:16.547Z",
+          "finished_at": "2026-06-08T11:18:16.547Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "wiki_nodes": 5,
+            "wiki_edges": 0,
+            "broken_edges": 0
+          },
+          "evidence": [
+            "maps/wiki_graph.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-07",
+      "slug": "kb-07-local-search",
+      "title": "Local Search and Source-of-Truth",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "search_documents": 44,
+        "search_command_passed": 1
+      },
+      "evidence": [
+        "search/index.json",
+        "tools/search-knowledge.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:16.547Z",
+          "finished_at": "2026-06-08T11:18:19.524Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "search_documents": 44,
+            "search_command_passed": 1
+          },
+          "evidence": [
+            "search/index.json",
+            "tools/search-knowledge.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:19.524Z",
+          "finished_at": "2026-06-08T11:18:20.285Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "search_documents": 44,
+            "search_command_passed": 1
+          },
+          "evidence": [
+            "search/index.json",
+            "tools/search-knowledge.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:20.285Z",
+          "finished_at": "2026-06-08T11:18:21.375Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "search_documents": 44,
+            "search_command_passed": 1
+          },
+          "evidence": [
+            "search/index.json",
+            "tools/search-knowledge.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:21.375Z",
+          "finished_at": "2026-06-08T11:18:22.643Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "search_documents": 44,
+            "search_command_passed": 1
+          },
+          "evidence": [
+            "search/index.json",
+            "tools/search-knowledge.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:22.643Z",
+          "finished_at": "2026-06-08T11:18:25.133Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "search_documents": 44,
+            "search_command_passed": 1
+          },
+          "evidence": [
+            "search/index.json",
+            "tools/search-knowledge.js"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-08",
+      "slug": "kb-08-inspector-ux",
+      "title": "Inspector UX / Command Center",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "inspector_checks": 10,
+        "team_mode_fixture": 1
+      },
+      "evidence": [
+        "tools/self-test-inspector-ui.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:25.133Z",
+          "finished_at": "2026-06-08T11:18:26.273Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "inspector_checks": 10,
+            "team_mode_fixture": 1
+          },
+          "evidence": [
+            "tools/self-test-inspector-ui.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:26.273Z",
+          "finished_at": "2026-06-08T11:18:26.716Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "inspector_checks": 10,
+            "team_mode_fixture": 1
+          },
+          "evidence": [
+            "tools/self-test-inspector-ui.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:26.716Z",
+          "finished_at": "2026-06-08T11:18:27.153Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "inspector_checks": 10,
+            "team_mode_fixture": 1
+          },
+          "evidence": [
+            "tools/self-test-inspector-ui.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:27.153Z",
+          "finished_at": "2026-06-08T11:18:27.825Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "inspector_checks": 10,
+            "team_mode_fixture": 1
+          },
+          "evidence": [
+            "tools/self-test-inspector-ui.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:18:27.825Z",
+          "finished_at": "2026-06-08T11:18:28.245Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "inspector_checks": 10,
+            "team_mode_fixture": 1
+          },
+          "evidence": [
+            "tools/self-test-inspector-ui.js"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-09",
+      "slug": "kb-09-pr-impact",
+      "title": "PR Summary and PR Impact",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "changed_files": 255,
+        "affected_modules": 1,
+        "policy_warnings": 54,
+        "fixture_checks": 5
+      },
+      "evidence": [
+        "tools/pr-impact.js",
+        "tools/self-test-pr-impact.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:18:28.245Z",
+          "finished_at": "2026-06-08T11:18:37.582Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "changed_files": 255,
+            "affected_modules": 1,
+            "policy_warnings": 54,
+            "fixture_checks": 5
+          },
+          "evidence": [
+            "tools/pr-impact.js",
+            "tools/self-test-pr-impact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:18:37.582Z",
+          "finished_at": "2026-06-08T11:18:45.982Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "changed_files": 255,
+            "affected_modules": 1,
+            "policy_warnings": 54,
+            "fixture_checks": 5
+          },
+          "evidence": [
+            "tools/pr-impact.js",
+            "tools/self-test-pr-impact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:18:45.982Z",
+          "finished_at": "2026-06-08T11:18:57.181Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "changed_files": 255,
+            "affected_modules": 1,
+            "policy_warnings": 54,
+            "fixture_checks": 5
+          },
+          "evidence": [
+            "tools/pr-impact.js",
+            "tools/self-test-pr-impact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:18:57.181Z",
+          "finished_at": "2026-06-08T11:19:06.320Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "changed_files": 255,
+            "affected_modules": 1,
+            "policy_warnings": 54,
+            "fixture_checks": 5
+          },
+          "evidence": [
+            "tools/pr-impact.js",
+            "tools/self-test-pr-impact.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:19:06.320Z",
+          "finished_at": "2026-06-08T11:19:14.899Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "changed_files": 255,
+            "affected_modules": 1,
+            "policy_warnings": 54,
+            "fixture_checks": 5
+          },
+          "evidence": [
+            "tools/pr-impact.js",
+            "tools/self-test-pr-impact.js"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-10",
+      "slug": "kb-10-agent-neutrality",
+      "title": "Agent Neutrality / Handoff",
+      "status": "preview",
+      "claim_status": "preview",
+      "runs_requested": 5,
+      "runs_passed": 0,
+      "runs_failed": 0,
+      "metrics": {
+        "agent_integration_surfaces": 3
+      },
+      "evidence": [
+        "agent-integrations/codex",
+        "agent-integrations/claude",
+        "agent-integrations/opencode"
+      ],
+      "limitations": [
+        "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+      ],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:19:14.899Z",
+          "finished_at": "2026-06-08T11:19:14.899Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "agent_integration_surfaces": 3
+          },
+          "evidence": [
+            "agent-integrations/codex",
+            "agent-integrations/claude",
+            "agent-integrations/opencode"
+          ],
+          "limitations": [
+            "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+          ]
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:19:14.899Z",
+          "finished_at": "2026-06-08T11:19:14.899Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "agent_integration_surfaces": 3
+          },
+          "evidence": [
+            "agent-integrations/codex",
+            "agent-integrations/claude",
+            "agent-integrations/opencode"
+          ],
+          "limitations": [
+            "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+          ]
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:19:14.899Z",
+          "finished_at": "2026-06-08T11:19:14.899Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "agent_integration_surfaces": 3
+          },
+          "evidence": [
+            "agent-integrations/codex",
+            "agent-integrations/claude",
+            "agent-integrations/opencode"
+          ],
+          "limitations": [
+            "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+          ]
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:19:14.899Z",
+          "finished_at": "2026-06-08T11:19:14.899Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "agent_integration_surfaces": 3
+          },
+          "evidence": [
+            "agent-integrations/codex",
+            "agent-integrations/claude",
+            "agent-integrations/opencode"
+          ],
+          "limitations": [
+            "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+          ]
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:19:14.899Z",
+          "finished_at": "2026-06-08T11:19:14.900Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "agent_integration_surfaces": 3
+          },
+          "evidence": [
+            "agent-integrations/codex",
+            "agent-integrations/claude",
+            "agent-integrations/opencode"
+          ],
+          "limitations": [
+            "agent-neutral routing has local integration surfaces, but no multi-runtime live benchmark was run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "KB-11",
+      "slug": "kb-11-memory-providers",
+      "title": "Memory Provider Safety and Governance",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "provider_checks": 17,
+        "external_checks": 6,
+        "external_memory_override_count": 0,
+        "external_memory_can_raise_trust": 0
+      },
+      "evidence": [
+        "tools/self-test-memory-providers.js",
+        "tools/self-test-external-memory.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:19:14.900Z",
+          "finished_at": "2026-06-08T11:19:19.287Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "provider_checks": 17,
+            "external_checks": 6,
+            "external_memory_override_count": 0,
+            "external_memory_can_raise_trust": 0
+          },
+          "evidence": [
+            "tools/self-test-memory-providers.js",
+            "tools/self-test-external-memory.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:19:19.287Z",
+          "finished_at": "2026-06-08T11:19:24.133Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "provider_checks": 17,
+            "external_checks": 6,
+            "external_memory_override_count": 0,
+            "external_memory_can_raise_trust": 0
+          },
+          "evidence": [
+            "tools/self-test-memory-providers.js",
+            "tools/self-test-external-memory.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:19:24.133Z",
+          "finished_at": "2026-06-08T11:19:29.198Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "provider_checks": 17,
+            "external_checks": 6,
+            "external_memory_override_count": 0,
+            "external_memory_can_raise_trust": 0
+          },
+          "evidence": [
+            "tools/self-test-memory-providers.js",
+            "tools/self-test-external-memory.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:19:29.198Z",
+          "finished_at": "2026-06-08T11:19:32.753Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "provider_checks": 17,
+            "external_checks": 6,
+            "external_memory_override_count": 0,
+            "external_memory_can_raise_trust": 0
+          },
+          "evidence": [
+            "tools/self-test-memory-providers.js",
+            "tools/self-test-external-memory.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:19:32.753Z",
+          "finished_at": "2026-06-08T11:19:37.272Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "provider_checks": 17,
+            "external_checks": 6,
+            "external_memory_override_count": 0,
+            "external_memory_can_raise_trust": 0
+          },
+          "evidence": [
+            "tools/self-test-memory-providers.js",
+            "tools/self-test-external-memory.js"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-12",
+      "slug": "kb-12-team-mode",
+      "title": "Team Mode / Multi-worktree",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "workspaces": 3,
+        "json_corruption_count": 0,
+        "workspace_state_isolation_pass": 1
+      },
+      "evidence": [
+        "tools/self-test-team-inspector-json.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:19:37.272Z",
+          "finished_at": "2026-06-08T11:20:13.286Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "workspaces": 3,
+            "json_corruption_count": 0,
+            "workspace_state_isolation_pass": 1
+          },
+          "evidence": [
+            "tools/self-test-team-inspector-json.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:20:13.286Z",
+          "finished_at": "2026-06-08T11:20:48.342Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "workspaces": 3,
+            "json_corruption_count": 0,
+            "workspace_state_isolation_pass": 1
+          },
+          "evidence": [
+            "tools/self-test-team-inspector-json.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:20:48.342Z",
+          "finished_at": "2026-06-08T11:21:19.946Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "workspaces": 3,
+            "json_corruption_count": 0,
+            "workspace_state_isolation_pass": 1
+          },
+          "evidence": [
+            "tools/self-test-team-inspector-json.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:21:19.946Z",
+          "finished_at": "2026-06-08T11:21:53.120Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "workspaces": 3,
+            "json_corruption_count": 0,
+            "workspace_state_isolation_pass": 1
+          },
+          "evidence": [
+            "tools/self-test-team-inspector-json.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:21:53.120Z",
+          "finished_at": "2026-06-08T11:22:30.547Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "workspaces": 3,
+            "json_corruption_count": 0,
+            "workspace_state_isolation_pass": 1
+          },
+          "evidence": [
+            "tools/self-test-team-inspector-json.js"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-13",
+      "slug": "kb-13-pro-inspector",
+      "title": "Pro Inspector Governance",
+      "status": "preview",
+      "claim_status": "preview",
+      "runs_requested": 5,
+      "runs_passed": 0,
+      "runs_failed": 0,
+      "metrics": {
+        "pro_test_passed": 1,
+        "pro_build_passed": 1,
+        "kb13_sub_suites": 5
+      },
+      "evidence": [
+        "../pro2pilot-inspector/scripts/test.mjs",
+        "../pro2pilot-inspector/scripts/build.mjs"
+      ],
+      "limitations": [
+        "Pro Inspector is a private-preview demo app, not production governance service"
+      ],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:22:30.547Z",
+          "finished_at": "2026-06-08T11:22:30.723Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "pro_test_passed": 1,
+            "pro_build_passed": 1,
+            "kb13_sub_suites": 5
+          },
+          "evidence": [
+            "../pro2pilot-inspector/scripts/test.mjs",
+            "../pro2pilot-inspector/scripts/build.mjs"
+          ],
+          "limitations": [
+            "Pro Inspector is a private-preview demo app, not production governance service"
+          ]
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:22:30.723Z",
+          "finished_at": "2026-06-08T11:22:30.897Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "pro_test_passed": 1,
+            "pro_build_passed": 1,
+            "kb13_sub_suites": 5
+          },
+          "evidence": [
+            "../pro2pilot-inspector/scripts/test.mjs",
+            "../pro2pilot-inspector/scripts/build.mjs"
+          ],
+          "limitations": [
+            "Pro Inspector is a private-preview demo app, not production governance service"
+          ]
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:22:30.897Z",
+          "finished_at": "2026-06-08T11:22:31.072Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "pro_test_passed": 1,
+            "pro_build_passed": 1,
+            "kb13_sub_suites": 5
+          },
+          "evidence": [
+            "../pro2pilot-inspector/scripts/test.mjs",
+            "../pro2pilot-inspector/scripts/build.mjs"
+          ],
+          "limitations": [
+            "Pro Inspector is a private-preview demo app, not production governance service"
+          ]
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:22:31.072Z",
+          "finished_at": "2026-06-08T11:22:31.507Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "pro_test_passed": 1,
+            "pro_build_passed": 1,
+            "kb13_sub_suites": 5
+          },
+          "evidence": [
+            "../pro2pilot-inspector/scripts/test.mjs",
+            "../pro2pilot-inspector/scripts/build.mjs"
+          ],
+          "limitations": [
+            "Pro Inspector is a private-preview demo app, not production governance service"
+          ]
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:22:31.507Z",
+          "finished_at": "2026-06-08T11:22:31.712Z",
+          "status": "preview",
+          "claim_status": "preview",
+          "metrics": {
+            "pro_test_passed": 1,
+            "pro_build_passed": 1,
+            "kb13_sub_suites": 5
+          },
+          "evidence": [
+            "../pro2pilot-inspector/scripts/test.mjs",
+            "../pro2pilot-inspector/scripts/build.mjs"
+          ],
+          "limitations": [
+            "Pro Inspector is a private-preview demo app, not production governance service"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "KB-14",
+      "slug": "kb-14-no-cloud",
+      "title": "No-cloud / Privacy / Reproducibility",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "release_violations": 0,
+        "external_memory_can_raise_trust": 0,
+        "no_cloud_default": 1
+      },
+      "evidence": [
+        "tools/validate-release-artifact.js",
+        "maintenance/external_memory_status.json"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:22:31.712Z",
+          "finished_at": "2026-06-08T11:22:31.786Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_violations": 0,
+            "external_memory_can_raise_trust": 0,
+            "no_cloud_default": 1
+          },
+          "evidence": [
+            "tools/validate-release-artifact.js",
+            "maintenance/external_memory_status.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:22:31.786Z",
+          "finished_at": "2026-06-08T11:22:31.855Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_violations": 0,
+            "external_memory_can_raise_trust": 0,
+            "no_cloud_default": 1
+          },
+          "evidence": [
+            "tools/validate-release-artifact.js",
+            "maintenance/external_memory_status.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:22:31.855Z",
+          "finished_at": "2026-06-08T11:22:31.924Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_violations": 0,
+            "external_memory_can_raise_trust": 0,
+            "no_cloud_default": 1
+          },
+          "evidence": [
+            "tools/validate-release-artifact.js",
+            "maintenance/external_memory_status.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:22:31.924Z",
+          "finished_at": "2026-06-08T11:22:31.993Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_violations": 0,
+            "external_memory_can_raise_trust": 0,
+            "no_cloud_default": 1
+          },
+          "evidence": [
+            "tools/validate-release-artifact.js",
+            "maintenance/external_memory_status.json"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:22:31.993Z",
+          "finished_at": "2026-06-08T11:22:32.058Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "release_violations": 0,
+            "external_memory_can_raise_trust": 0,
+            "no_cloud_default": 1
+          },
+          "evidence": [
+            "tools/validate-release-artifact.js",
+            "maintenance/external_memory_status.json"
+          ],
+          "limitations": []
+        }
+      ]
+    },
+    {
+      "id": "KB-15",
+      "slug": "kb-15-performance-scale",
+      "title": "Performance / Scale",
+      "status": "pass",
+      "claim_status": "measured",
+      "runs_requested": 5,
+      "runs_passed": 5,
+      "runs_failed": 0,
+      "metrics": {
+        "routing_ms": 693.8,
+        "search_index_ms": 873,
+        "inspector_build_ms": 889.6
+      },
+      "evidence": [
+        "tools/build-routing-bundle.js",
+        "tools/build-search-index.js",
+        "tools/build-visual-inspector.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:22:32.058Z",
+          "finished_at": "2026-06-08T11:22:33.858Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_ms": 429,
+            "search_index_ms": 693,
+            "inspector_build_ms": 678
+          },
+          "evidence": [
+            "tools/build-routing-bundle.js",
+            "tools/build-search-index.js",
+            "tools/build-visual-inspector.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 2,
+          "started_at": "2026-06-08T11:22:33.858Z",
+          "finished_at": "2026-06-08T11:22:38.466Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_ms": 673,
+            "search_index_ms": 1896,
+            "inspector_build_ms": 2039
+          },
+          "evidence": [
+            "tools/build-routing-bundle.js",
+            "tools/build-search-index.js",
+            "tools/build-visual-inspector.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 3,
+          "started_at": "2026-06-08T11:22:38.466Z",
+          "finished_at": "2026-06-08T11:22:39.979Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_ms": 395,
+            "search_index_ms": 688,
+            "inspector_build_ms": 430
+          },
+          "evidence": [
+            "tools/build-routing-bundle.js",
+            "tools/build-search-index.js",
+            "tools/build-visual-inspector.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 4,
+          "started_at": "2026-06-08T11:22:39.979Z",
+          "finished_at": "2026-06-08T11:22:42.166Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_ms": 640,
+            "search_index_ms": 665,
+            "inspector_build_ms": 882
+          },
+          "evidence": [
+            "tools/build-routing-bundle.js",
+            "tools/build-search-index.js",
+            "tools/build-visual-inspector.js"
+          ],
+          "limitations": []
+        },
+        {
+          "run": 5,
+          "started_at": "2026-06-08T11:22:42.166Z",
+          "finished_at": "2026-06-08T11:22:44.340Z",
+          "status": "pass",
+          "claim_status": "measured",
+          "metrics": {
+            "routing_ms": 1332,
+            "search_index_ms": 423,
+            "inspector_build_ms": 419
+          },
+          "evidence": [
+            "tools/build-routing-bundle.js",
+            "tools/build-search-index.js",
+            "tools/build-visual-inspector.js"
+          ],
+          "limitations": []
+        }
+      ]
+    }
+  ]
+}

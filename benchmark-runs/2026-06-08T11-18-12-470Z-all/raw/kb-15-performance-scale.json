@@ -1,0 +1,113 @@
+{
+  "id": "KB-15",
+  "slug": "kb-15-performance-scale",
+  "title": "Performance / Scale",
+  "status": "pass",
+  "claim_status": "measured",
+  "runs_requested": 5,
+  "runs_passed": 5,
+  "runs_failed": 0,
+  "metrics": {
+    "routing_ms": 693.8,
+    "search_index_ms": 873,
+    "inspector_build_ms": 889.6
+  },
+  "evidence": [
+    "tools/build-routing-bundle.js",
+    "tools/build-search-index.js",
+    "tools/build-visual-inspector.js"
+  ],
+  "limitations": [],
+  "run_results": [
+    {
+      "run": 1,
+      "started_at": "2026-06-08T11:22:32.058Z",
+      "finished_at": "2026-06-08T11:22:33.858Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "routing_ms": 429,
+        "search_index_ms": 693,
+        "inspector_build_ms": 678
+      },
+      "evidence": [
+        "tools/build-routing-bundle.js",
+        "tools/build-search-index.js",
+        "tools/build-visual-inspector.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 2,
+      "started_at": "2026-06-08T11:22:33.858Z",
+      "finished_at": "2026-06-08T11:22:38.466Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "routing_ms": 673,
+        "search_index_ms": 1896,
+        "inspector_build_ms": 2039
+      },
+      "evidence": [
+        "tools/build-routing-bundle.js",
+        "tools/build-search-index.js",
+        "tools/build-visual-inspector.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 3,
+      "started_at": "2026-06-08T11:22:38.466Z",
+      "finished_at": "2026-06-08T11:22:39.979Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "routing_ms": 395,
+        "search_index_ms": 688,
+        "inspector_build_ms": 430
+      },
+      "evidence": [
+        "tools/build-routing-bundle.js",
+        "tools/build-search-index.js",
+        "tools/build-visual-inspector.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 4,
+      "started_at": "2026-06-08T11:22:39.979Z",
+      "finished_at": "2026-06-08T11:22:42.166Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "routing_ms": 640,
+        "search_index_ms": 665,
+        "inspector_build_ms": 882
+      },
+      "evidence": [
+        "tools/build-routing-bundle.js",
+        "tools/build-search-index.js",
+        "tools/build-visual-inspector.js"
+      ],
+      "limitations": []
+    },
+    {
+      "run": 5,
+      "started_at": "2026-06-08T11:22:42.166Z",
+      "finished_at": "2026-06-08T11:22:44.340Z",
+      "status": "pass",
+      "claim_status": "measured",
+      "metrics": {
+        "routing_ms": 1332,
+        "search_index_ms": 423,
+        "inspector_build_ms": 419
+      },
+      "evidence": [
+        "tools/build-routing-bundle.js",
+        "tools/build-search-index.js",
+        "tools/build-visual-inspector.js"
+      ],
+      "limitations": []
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": "3.2.0",
+  "run_id": "2026-06-08T11-11-01-929Z-kb-12",
+  "generated_at": "2026-06-08T11:11:35.623Z",
+  "suite": "KB-12",
+  "fixture": "all",
+  "runs": 1,
+  "verdict": "passed",
+  "results": [
+    {
+      "id": "KB-12",
+      "slug": "kb-12-team-mode",
+      "title": "Team Mode / Multi-worktree",
+      "status": "pass",
+      "claim_status": "measured-on-fixture",
+      "runs_requested": 1,
+      "runs_passed": 1,
+      "runs_failed": 0,
+      "metrics": {
+        "workspaces": 3,
+        "json_corruption_count": 0,
+        "workspace_state_isolation_pass": 1
+      },
+      "evidence": [
+        "tools/self-test-team-inspector-json.js"
+      ],
+      "limitations": [],
+      "run_results": [
+        {
+          "run": 1,
+          "started_at": "2026-06-08T11:11:01.930Z",
+          "finished_at": "2026-06-08T11:11:35.621Z",
+          "status": "pass",
+          "claim_status": "measured-on-fixture",
+          "metrics": {
+            "workspaces": 3,
+            "json_corruption_count": 0,
+            "workspace_state_isolation_pass": 1
+          },
+          "evidence": [
+            "tools/self-test-team-inspector-json.js"
+          ],
+          "limitations": []
+        }
+      ]
+    }
+  ]
+}

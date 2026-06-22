@@ -16,9 +16,10 @@
 const fs = require('fs');
 const path = require('path');
 const { readJson } = require('./lib/json-store');
+const { resolveKnowledgeContext } = require('./lib/path-context');
 
-const knowledgeRoot = path.resolve(__dirname, '..');
-const indexPath = path.join(knowledgeRoot, 'search', 'index.json');
+const context = resolveKnowledgeContext();
+const indexPath = path.join(context.stateRoot, 'search', 'index.json');
 const buildIndex = require('./build-search-index.js');
 
 const VALID_SCOPES = ['project', 'cookbook', 'templates', 'all'];

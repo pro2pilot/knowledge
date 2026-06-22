@@ -1,0 +1,60 @@
+{
+  "schema_version": "3.2.0",
+  "id": "pinecone",
+  "display_name": "Pinecone",
+  "type": "cloud",
+  "recommended": false,
+  "recommended_for": ["team", "enterprise"],
+  "positioning": "Optional vector/cloud retrieval provider for teams already using Pinecone or needing managed vector search.",
+  "license": {
+    "spdx": "Service-TOS",
+    "url": "https://www.pinecone.io/terms/",
+    "requires_notice": false
+  },
+  "source": {
+    "homepage": "https://www.pinecone.io/",
+    "repository": "",
+    "package": "",
+    "version": null,
+    "version_pin": null,
+    "verified_at": "2026-06-06"
+  },
+  "install": {
+    "mode": "manual",
+    "commands": [
+      "Set PINECONE_MODE=local and PINECONE_HOST for local/dev checks",
+      "Set PINECONE_MODE=cloud, PINECONE_HOST, and PINECONE_API_KEY for explicit cloud retrieval tools"
+    ],
+    "requires_network": true,
+    "requires_user_confirmation": true,
+    "status_report_makes_network_calls": false
+  },
+  "data": {
+    "default_path": "<stateRoot>/external_memory/pinecone",
+    "state_dir_name": "pinecone",
+    "stores_user_data": false,
+    "scope": "repo"
+  },
+  "adapter": {
+    "contract": "knowledge.memory_adapter.v1",
+    "tool": "tools/memory-pinecone.js",
+    "default_mode": "dry-run",
+    "supported_modes": ["dry-run", "live"],
+    "live_requires_explicit_consent": true,
+    "operations": ["health", "remember", "recall", "sync-sources", "export-redacted", "sync-report"],
+    "status_report_makes_network_calls": false,
+    "output_redacts_secrets": true
+  },
+  "trust_policy": {
+    "source_of_truth": false,
+    "trust_effect": "advisory_only",
+    "can_raise_trust": false,
+    "can_overwrite_curated_knowledge": false
+  },
+  "status": {
+    "enabled": false,
+    "installed": false,
+    "version": null,
+    "last_check": null
+  }
+}
