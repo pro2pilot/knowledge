@@ -89,8 +89,7 @@ function validate(zipPath) {
   for (const required of [
     '.knowledge/inspector.js',
     '.knowledge/open-inspector.vbs',
-    '.knowledge/assets/knowledge-trust-flow_02.svg',
-    '.knowledge/assets/knowledge-trust-flow_02.png',
+    '.knowledge/assets/knowledge-trust-gate-light-readme.svg',
     '.knowledge/agent-integrations/codex/skills/kb-repair-trust/SKILL.md',
     '.knowledge/agent-integrations/claude/skills/kb-repair-trust/SKILL.md',
     '.knowledge/tools/lib/action-registry.js',

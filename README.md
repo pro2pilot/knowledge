@@ -1,7 +1,7 @@
 # .knowledge by Pro2Pilot
 
 <p align="center">
-  <img src="assets/knowledge-trust-flow_02.svg" alt=".knowledge trust flow: code, tests, agent requests, and advisory external memory pass through the trust layer before trusted review or repair" width="100%">
+  <img src="assets/knowledge-trust-gate-light-readme.svg" alt=".knowledge trust gate: code, tests, agents, memory, and PR review pass through the local trust layer" width="100%">
 </p>
 
 <p align="center"><strong>The open, repo-local trust layer for AI coding agents.</strong></p>

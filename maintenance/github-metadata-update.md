@@ -53,7 +53,7 @@ https://pro2pilot.com/knowledge/
 If GitHub social preview is configured manually, use:
 
 ```txt
-assets/knowledge-trust-flow_02.png
+assets/knowledge-trust-gate-light-readme.svg
 ```
 
 Confirm the preview text does not imply `.knowledge` guarantees correctness or eliminates hallucinations.

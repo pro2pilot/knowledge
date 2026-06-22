@@ -20,7 +20,7 @@ The open, repo-local trust layer for AI coding agents.
 - Replaced the hero image reference with:
 
 ```txt
-assets/knowledge-trust-flow_02.svg
+assets/knowledge-trust-gate-light-readme.svg
 ```
 
 - Added bounded Stack Overflow 2025 trust-gap evidence.
@@ -32,15 +32,13 @@ assets/knowledge-trust-flow_02.svg
 Added to the release candidate:
 
 ```txt
-knowledge-3.2.0/assets/knowledge-trust-flow_02.svg
-knowledge-3.2.0/assets/knowledge-trust-flow_02.png
+knowledge-3.2.0/assets/knowledge-trust-gate-light-readme.svg
 ```
 
 Added to website materials:
 
 ```txt
-WEB/assets/knowledge-trust-flow_02.svg
-WEB/assets/knowledge-trust-flow_02.png
+WEB/assets/knowledge-trust-gate-light-readme.svg
 ```
 
 ## Retired Hero Asset
@@ -97,7 +95,7 @@ Route agents through evidence, trust, freshness, repair and PR review while code
 Social image:
 
 ```txt
-WEB/assets/knowledge-trust-flow_02.png
+WEB/assets/knowledge-trust-gate-light-readme.svg
 ```
 
 ## GitHub Metadata

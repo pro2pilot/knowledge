@@ -4,7 +4,7 @@ Generated locally on 2026-06-18. This report lists remaining release checks and 
 
 ## Completed Locally
 
-- README hero uses `assets/knowledge-trust-flow_02.svg`.
+- README hero uses `assets/knowledge-trust-gate-light-readme.svg`.
 - README no longer references the old demo GIF asset.
 - Release candidate includes the SVG and PNG trust-flow assets.
 - Website spec uses trust-first positioning and the supplied diagram.

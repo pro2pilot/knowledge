@@ -138,6 +138,10 @@ async function main() {
   assert(!html.includes('>Metrics</button>'), 'Metrics must not be a top-level tab');
   assert(!html.includes('>Work</button>'), 'Work must not be a top-level tab');
   assert(!html.includes('>Chat</button>'), 'Chat must not be a top-level tab');
+  assert(html.includes('https://pro2pilot.com/inspector/'), 'Pro Preview must include the Inspector Pro waitlist link');
+  for (const forbidden of ['Billing Boundaries', 'Do Not Charge For', 'Usage Billing Policy', 'Paid preview', 'paid-value actions']) {
+    assert(!html.includes(forbidden), `Pro Preview must not expose "${forbidden}"`);
+  }
 
   const commandLabels = [
     'Run Doctor',
@@ -168,7 +172,8 @@ async function main() {
   assert(!/<script\s+[^>]*src=/i.test(html), 'Inspector must not load external scripts');
   assert(!/<link\s+[^>]*href=/i.test(html), 'Inspector must not load external stylesheets');
   assert(!/<img\s+[^>]*src=/i.test(html), 'Inspector must not load external images');
-  assert(!/https?:\/\//i.test(html), 'Inspector should not contain remote URLs in generated UI');
+  const htmlWithoutAllowedWaitlist = html.replace(/https:\/\/pro2pilot\.com\/inspector\//g, '');
+  assert(!/https?:\/\//i.test(htmlWithoutAllowedWaitlist), 'Inspector should not contain unexpected remote URLs in generated UI');
   const localLeak = new RegExp(`([A-Z]:\\\\(?:Users\\\\[^\\\\]+|MyProject)|/mnt/${'data'}|/tmp/${'knowledge'}|knowledge${'-'}kit)`, 'i');
   assert(!localLeak.test(html), 'Inspector leaked local developer path');
   assert(/data-copy=/.test(html), 'Inspector copy commands missing data-copy attributes');

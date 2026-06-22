@@ -44,8 +44,7 @@ async function wait(port, child) {
 
 async function main() {
   assert(fs.existsSync(path.join(systemRoot, 'open-inspector.vbs')), 'click launcher missing');
-  assert(fs.existsSync(path.join(systemRoot, 'assets', 'knowledge-trust-flow_02.svg')), 'trust flow SVG asset missing');
-  assert(fs.existsSync(path.join(systemRoot, 'assets', 'knowledge-trust-flow_02.png')), 'trust flow PNG asset missing');
+  assert(fs.existsSync(path.join(systemRoot, 'assets', 'knowledge-trust-gate-light-readme.svg')), 'trust gate README SVG asset missing');
   assert(fs.existsSync(path.join(systemRoot, 'tools', 'create-inspector-shortcut.ps1')), 'shortcut creation script missing');
   assert(fs.existsSync(path.join(systemRoot, 'tools', 'open-inspector.ps1')), 'launcher helper script missing');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-launcher-'));
@@ -80,7 +79,7 @@ async function main() {
     assert(!html.body.includes('>Command Center</button>'), 'Command Center must not be a top-level tab');
     assert(!html.body.includes('>Metrics</button>'), 'Metrics must not be a top-level tab');
     assert(html.body.includes('data-table-search="modules"'), 'launcher HTML should share tabular Inspector renderer');
-    const result = { schema_version: '3.2.0', status: 'pass', checks: ['one-file launcher starts', 'click launcher files exist', 'trust flow assets exist', 'launcher helper exists', 'session token required', 'canonical nav renders', 'shared Inspector renderer renders'] };
+    const result = { schema_version: '3.2.0', status: 'pass', checks: ['one-file launcher starts', 'click launcher files exist', 'trust gate asset exists', 'launcher helper exists', 'session token required', 'canonical nav renders', 'shared Inspector renderer renders'] };
     console.log(JSON.stringify(result, null, 2));
   } finally {
     child.kill();

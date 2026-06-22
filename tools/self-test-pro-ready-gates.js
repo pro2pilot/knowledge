@@ -35,10 +35,13 @@ function main() {
   const freeEntitlements = loadEntitlements(root, {});
   const gate = canRunAction(getAction('pro.pr_impact_pro'), freeEntitlements);
   assert(!gate.ok && gate.reason === 'missing_entitlement', 'free mode must block pro-only actions');
-  const source = fs.readFileSync(path.join(root, 'tools', 'serve-inspector.js'), 'utf8');
-  assert(source.includes('No prices are shown inside the free Inspector'), 'free Inspector must not show pricing');
+  const source = fs.readFileSync(path.join(root, 'tools', 'build-visual-inspector.js'), 'utf8');
+  assert(source.includes('https://pro2pilot.com/inspector/'), 'Pro Preview must link to the Inspector Pro waitlist');
+  assert(!source.includes('<h3>Billing Boundaries</h3>'), 'Pro Preview must not expose billing boundaries');
+  assert(!source.includes('<h3>Do Not Charge For</h3>'), 'Pro Preview must not expose internal free boundary copy');
+  assert(!source.includes('<h3>Usage Billing Policy</h3>'), 'Pro Preview must not expose usage billing policy');
   assert(!exists('pro2pilot-inspector'), 'free package must not embed pro2pilot-inspector');
-  const checks = ['version 3.2.0', 'canonical docs loaded', 'pro schemas present', 'pro gate blocks free mode', 'no pricing in free inspector'];
+  const checks = ['version 3.2.0', 'canonical docs loaded', 'pro schemas present', 'pro gate blocks free mode', 'public waitlist preview'];
   const proPackagePath = path.join(workspaceRoot, 'pro2pilot-inspector', 'package.json');
   if (fs.existsSync(proPackagePath)) {
     const proPkg = JSON.parse(fs.readFileSync(proPackagePath, 'utf8'));
