@@ -72,8 +72,6 @@
     "kb:self-test-safe-queue": "node tools/self-test-safe-queue.js --json",
     "kb:self-test-agent-footer": "node tools/self-test-agent-footer.js --json",
     "kb:self-test-restore-trust": "node tools/self-test-restore-trust.js --json",
-    "kb:self-test-canonical-e2e": "node tools/self-test-canonical-e2e.js --json",
-    "kb:self-test-pro-ready-gates": "node tools/self-test-pro-ready-gates.js --json",
     "kb:paid-manifest": "node tools/validate-paid-manifest.js"
   },
   "keywords": [

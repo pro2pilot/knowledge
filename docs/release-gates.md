@@ -12,10 +12,9 @@ node tools/self-test-agent-activity.js --json
 node tools/self-test-safe-queue.js --json
 node tools/self-test-agent-footer.js --json
 node tools/self-test-restore-trust.js --json
-node tools/self-test-canonical-e2e.js --json
-node tools/self-test-pro-ready-gates.js --json
 node tools/self-test-memory-providers.js
 node tools/self-test-external-memory.js
+node tools/self-test-free-core-graph.js
 node tools/self-test-pr-impact.js
 node tools/self-test-team-mode.js
 node tools/self-test-team-inspector-json.js
@@ -25,4 +24,4 @@ node tools/package-release.js
 node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json
 ```
 
-Clean install smoke from `dist/knowledge-v3.2.1.zip` must pass before calling the release production-ready.
+Clean install smoke from `dist/knowledge-v3.2.1.zip` must pass before marking the release available.
