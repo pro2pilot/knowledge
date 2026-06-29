@@ -34,14 +34,14 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -49,7 +49,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -57,7 +57,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -285,7 +285,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.0',
+      version: safeJson('package.json', {}).version || '3.2.1',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,

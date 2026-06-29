@@ -1,6 +1,6 @@
 # .knowledge Competitive Benchmark Harness
 
-This harness runs local, reproducible benchmark suites for `.knowledge 3.2.0`.
+This harness runs local, reproducible benchmark suites for `.knowledge 3.2.1`.
 
 It is intentionally claim-safe:
 

@@ -299,10 +299,18 @@ Templates are advisory and require code/test verification before trust is raised
 Build after setup or release flow:
 
 ```bash
+node .knowledge/tools/build-wiki-graph.js
 node .knowledge/tools/build-visual-inspector.js
 ```
 
 The free Inspector is a local product with token-protected allowlisted actions. Static HTML remains a read-only fallback.
+
+The graph section is the Free Core Trust Graph. It should show source-of-truth order, module routing, wiki relations, advisory external memory, relation counts, broken edges, and orphan pages. If it shows only disconnected nodes, run:
+
+```bash
+node .knowledge/tools/build-wiki-graph.js
+node .knowledge/tools/self-test-free-core-graph.js
+```
 
 ```bash
 node .knowledge/inspector.js
@@ -312,11 +320,11 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.0.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
+Use `dist/knowledge-v3.2.1.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
 
 ```bash
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json
 ```
 
 ## Free Inspector vs Pro Inspector

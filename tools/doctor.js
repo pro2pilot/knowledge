@@ -271,7 +271,7 @@ function doctorUnlocked(options = {}) {
   const criticalCount = issues.filter((i) => i.severity === 'critical').length;
   const score = scoreFromIssues(issues);
   const report = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,

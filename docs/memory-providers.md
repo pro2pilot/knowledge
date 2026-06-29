@@ -101,7 +101,7 @@ Graphiti and Zep are represented in the paid Inspector layer:
 - Graphiti: Pro/Enterprise self-host temporal graph memory provider for provenance, validity windows and graph traversal.
 - Zep: Pro/Enterprise managed or BYOC memory provider for governed enterprise agent memory.
 
-Free core may show disabled preview cards, but it must not import paid implementations. Their manifests and adapter notes live outside the free release tree under the Pro Inspector directory and are excluded from `dist/knowledge-v3.2.0.zip`.
+Free core may show disabled preview cards, but it must not import paid implementations. Their manifests and adapter notes live outside the free release tree under the Pro Inspector directory and are excluded from `dist/knowledge-v3.2.1.zip`.
 
 ## Migrating from Claude MEM
 

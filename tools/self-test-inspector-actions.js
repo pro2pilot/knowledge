@@ -77,7 +77,7 @@ async function main() {
     assert(fs.existsSync(run.json.run.stdout_path), 'stdout log was not saved');
     const pro = await request(port, 'POST', '/api/actions/pro.pr_impact_pro/run', token, { confirmed: true });
     assert(pro.status === 423 && pro.json.run.status === 'blocked', 'pro-only action must be blocked without entitlement');
-    console.log(JSON.stringify({ schema_version: '3.2.0', status: 'pass', checks: ['token auth', 'required action registry', 'action lifecycle passed', 'pro gate blocked', 'logs saved'] }, null, 2));
+    console.log(JSON.stringify({ schema_version: '3.2.1', status: 'pass', checks: ['token auth', 'required action registry', 'action lifecycle passed', 'pro gate blocked', 'logs saved'] }, null, 2));
   } finally {
     child.kill();
     fs.rmSync(root, { recursive: true, force: true });

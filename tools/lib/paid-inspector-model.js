@@ -6,7 +6,7 @@ function toArray(value) {
 }
 
 const DEFAULT_MANIFEST = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   purpose: 'Free-core paid Inspector manifest.',
   free_boundary: 'Free core shows local truth and disabled paid actions only.',
   paid_layer_root: 'pro2pilot-inspector/',

@@ -105,7 +105,7 @@ function main() {
   };
   for (const [name, content] of Object.entries(graphs)) writeFileAtomic(path.join(outDir, name), content);
   const written = Object.keys(graphs).map((name) => context.mode === 'repo' ? `.knowledge/maintenance/graphs/${name}` : path.join(outDir, name));
-  const result = { schema_version: '3.2.0', mode: context.mode, written };
+  const result = { schema_version: '3.2.1', mode: context.mode, written };
   console.log(JSON.stringify(result, null, 2));
   return result;
 }

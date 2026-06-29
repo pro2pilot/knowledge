@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.0",
+  "schema_version": "3.2.1",
   "id": "nextjs-saas",
   "name": "Next.js SaaS",
   "description": "Auth, billing, route handlers, webhooks, migrations, and frontend/server boundaries for a Next.js SaaS repo.",

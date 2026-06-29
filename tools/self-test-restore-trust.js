@@ -18,7 +18,7 @@ function main() {
   for (const tool of ['build-routing-bundle.js', 'build-search-index.js', 'external-memory-status.js', 'doctor.js']) {
     assert(source.includes(tool), `restore-trust missing step ${tool}`);
   }
-  console.log(JSON.stringify({ schema_version: '3.2.0', status: 'pass', checks: ['requires --safe', 'does not claim source edits', 'does not merge', 'refreshes routing/search/memory/doctor'] }, null, 2));
+  console.log(JSON.stringify({ schema_version: '3.2.1', status: 'pass', checks: ['requires --safe', 'does not claim source edits', 'does not merge', 'refreshes routing/search/memory/doctor'] }, null, 2));
 }
 
 try { main(); } catch (error) { console.error(error.stack || error.message); process.exit(1); }

@@ -45,7 +45,7 @@ function buildSnapshot(context) {
   const stale = readStateJson(context, 'maintenance/stale_items.json', { items: [] });
   const critical = readStateJson(context, 'maps/file_criticality.json', { files: [] });
   const snapshot = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     kind: 'pro-inspector-snapshot',
     generated_at: nowIso(),
     generated_by: getAgentId(),

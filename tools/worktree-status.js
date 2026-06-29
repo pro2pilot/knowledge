@@ -38,7 +38,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const out = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: new Date().toISOString(),
     target_root: targetRoot,
     repo_id: repoId,

@@ -11,7 +11,7 @@ node tools/package-release.js
 Expected artifact:
 
 ```txt
-dist/knowledge-v3.2.0.zip
+dist/knowledge-v3.2.1.zip
 ```
 
 Do not copy a source checkout into a repository as `.knowledge/`. The release artifact is the install artifact.
@@ -19,7 +19,7 @@ Do not copy a source checkout into a repository as `.knowledge/`. The release ar
 Validate it with:
 
 ```bash
-node tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json
 ```
 
 The artifact excludes source and runtime state, including:

@@ -76,7 +76,7 @@ ${(repair.queue || []).slice(0, 10).map((item) => `- ${item.priority || 'medium'
 
   writeFileAtomic(outPath, md);
   const result = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: new Date().toISOString(),
     workspace,
     branch: changed.git.branch,

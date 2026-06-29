@@ -313,7 +313,7 @@ function buildExternalMemoryReport(context, options = {}) {
   ]));
   const providerStatuses = Object.fromEntries(providers.map((provider) => [provider.provider_id.replace(/-/g, '_'), provider]));
   const metrics = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -327,7 +327,7 @@ function buildExternalMemoryReport(context, options = {}) {
     unknown_license_count: providers.filter((provider) => !provider.license_spdx || provider.license_spdx === 'unknown').length
   };
   const report = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -422,7 +422,7 @@ function recordInstall(context, providerId, flags = {}, options = {}) {
   }
   const dir = providerStateDir(context, manifest);
   const receipt = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     installed_at: null,
@@ -463,7 +463,7 @@ function recordUpdate(context, providerId, flags = {}, options = {}) {
   requireConfirmation(flags, 'update');
   const toVersion = requireVersion(flags.to || flags.version, 'update');
   const receipt = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     updated_at: null,
@@ -498,7 +498,7 @@ function uninstallProvider(context, providerId, flags = {}, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), {});
   const uninstall = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     provider_id: manifest.id,
     uninstalled_at: nowIso(),
     uninstall_mode: 'manual_receipt',
@@ -573,7 +573,7 @@ function listProviders(context, options = {}) {
   const manifests = loadProviderManifests(context, options);
   return {
     ok: true,
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: nowIso(),
     mode: context.mode,
     providers: manifests.map((manifest) => ({

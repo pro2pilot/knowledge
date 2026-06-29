@@ -65,7 +65,7 @@ function main(argv = process.argv.slice(2)) {
   fs.writeFileSync(path.join(runDir, 'verification', 'checksums.sha256'), result.checksums.join('\n') + '\n', 'utf8');
   fs.writeFileSync(path.join(runDir, 'verification', 'redaction-report.md'), `# Redaction report\n\nStatus: ${result.findings.length ? 'failed' : 'passed'}\n\nFindings: ${result.findings.length}\n`, 'utf8');
   const output = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     run_id: runId,
     status: result.findings.length ? 'failed' : 'passed',
     findings: result.findings,
@@ -80,7 +80,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const { flags } = parseCliArgs(process.argv.slice(2));
-    const output = { schema_version: '3.2.0', status: 'failed', error: error.message };
+    const output = { schema_version: '3.2.1', status: 'failed', error: error.message };
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else console.error(error.message);
     process.exit(2);

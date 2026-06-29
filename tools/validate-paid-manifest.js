@@ -13,7 +13,7 @@ function main(argv = process.argv.slice(2)) {
   const manifest = normalizePaidManifest(readJson(manifestPath, {}));
   const issues = validateNoPricingOrPlanBindings(manifest);
   const out = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     status: issues.length ? 'failed' : 'pass',
     context: jsonContext(context),
     manifest: context.mode === 'repo' ? 'docs/product/paid-feature-manifest.json' : manifestPath,

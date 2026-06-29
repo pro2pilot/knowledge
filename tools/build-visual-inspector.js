@@ -109,14 +109,14 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -124,7 +124,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -132,7 +132,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.0',
+  schema_version: '3.2.1',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -358,36 +358,74 @@ function getCriticalFiles(data) {
     }));
 }
 
+function graphGroup(node) {
+  const type = String(node.type || node.group || '').toLowerCase();
+  if (type === 'source_truth' || String(node.id || '').startsWith('truth:')) return 'source_truth';
+  if (type === 'module' || String(node.id || '').startsWith('module:')) return 'module';
+  if (type === 'wiki_page' || String(node.path || '').includes('/wiki/')) return 'wiki';
+  return 'other';
+}
+
+function relationClass(value) {
+  return String(value || 'related').replace(/[^a-z0-9_-]/gi, '_');
+}
+
+function graphNodeHref(node) {
+  const target = normalizePath(node.path || '');
+  if (!target) return '';
+  if (['.knowledge/evidence', '.knowledge/modules', '.knowledge/wiki', '.knowledge/sessions', '.knowledge/external_memory'].includes(target)) return hrefForPath(target);
+  if (target.startsWith('.knowledge/') || /^(docs|modules|maps|maintenance|wiki|evidence|external_memory|sessions)\//.test(target)) return hrefForPath(target);
+  return '';
+}
+
+function compactGraphLabel(value, max = 24) {
+  const text = String(value || '').replace(/^Module:\s*/i, '').replace(/^Current\s+/i, '').trim();
+  return text.length <= max ? text : `${text.slice(0, Math.max(8, max - 1))}...`;
+}
+
+function placeGraphRow(items, y, width, startX = 84, endPad = 120) {
+  if (!items.length) return [];
+  const usable = Math.max(1, width - startX - endPad);
+  const step = items.length === 1 ? 0 : usable / (items.length - 1);
+  return items.map((node, index) => ({
+    ...node,
+    x: items.length === 1 ? width / 2 : startX + step * index,
+    y,
+    row_index: index
+  }));
+}
+
 function layoutGraph(nodes, edges) {
-  const nodeList = (nodes || []).slice(0, 90);
-  const edgeList = (edges || []).slice(0, 220);
-  if (!nodeList.length) return { nodes: [], edges: [] };
+  const nodeList = (nodes || []).slice(0, 120);
+  const edgeList = (edges || []).slice(0, 260);
+  if (!nodeList.length) return { nodes: [], edges: [], width: 980, height: 520 };
   const degrees = new Map(nodeList.map((node) => [node.id, 0]));
   for (const edge of edgeList) {
     if (degrees.has(edge.from)) degrees.set(edge.from, degrees.get(edge.from) + 1);
     if (degrees.has(edge.to)) degrees.set(edge.to, degrees.get(edge.to) + 1);
   }
-  const sorted = [...nodeList].sort((a, b) => (degrees.get(b.id) || 0) - (degrees.get(a.id) || 0));
-  const centerId = sorted[0]?.id;
-  const positioned = [];
-  const width = 900;
-  const height = 440;
-  const cx = width / 2;
-  const cy = height / 2;
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < sorted.length; i += 1) {
-    const node = sorted[i];
-    if (node.id === centerId) {
-      positioned.push({ ...node, x: cx, y: cy, degree: degrees.get(node.id) || 0, r: 13 });
-      continue;
-    }
-    const ring = Math.floor(Math.sqrt(i));
-    const radius = Math.min(190, 78 + ring * 46);
-    const angle = i * golden;
-    const x = cx + Math.cos(angle) * radius + ((i % 3) - 1) * 22;
-    const y = cy + Math.sin(angle) * radius * 0.72 + ((i % 2) ? 10 : -10);
-    positioned.push({ ...node, x: Math.max(50, Math.min(width - 190, x)), y: Math.max(40, Math.min(height - 45, y)), degree: degrees.get(node.id) || 0, r: Math.min(15, 7 + (degrees.get(node.id) || 0)) });
-  }
+  const groups = { source_truth: [], module: [], wiki: [], other: [] };
+  for (const node of nodeList) groups[graphGroup(node)].push(node);
+  groups.source_truth.sort((a, b) => safeNumber(a.rank, 99) - safeNumber(b.rank, 99));
+  groups.module.sort((a, b) => String(a.title || a.id).localeCompare(String(b.title || b.id)));
+  groups.wiki.sort((a, b) => {
+    if (a.id === 'index.md') return -1;
+    if (b.id === 'index.md') return 1;
+    return String(a.title || a.id).localeCompare(String(b.title || b.id));
+  });
+  const width = 980;
+  const height = 520;
+  const positioned = [
+    ...placeGraphRow(groups.source_truth, 82, width, 74, 94),
+    ...placeGraphRow(groups.module, 238, width, 170, 170),
+    ...placeGraphRow(groups.wiki, 385, width, 106, 116),
+    ...placeGraphRow(groups.other, 470, width, 120, 120)
+  ].map((node) => ({
+    ...node,
+    group: graphGroup(node),
+    degree: degrees.get(node.id) || 0,
+    r: Math.min(17, Math.max(9, 8 + Math.sqrt(degrees.get(node.id) || 1) * 2))
+  }));
   const byId = new Map(positioned.map((node) => [node.id, node]));
   const visibleEdges = edgeList.map((edge) => {
     const a = byId.get(edge.from);
@@ -395,30 +433,87 @@ function layoutGraph(nodes, edges) {
     if (!a || !b) return null;
     return { ...edge, a, b };
   }).filter(Boolean);
-  return { nodes: positioned, edges: visibleEdges };
+  return { nodes: positioned, edges: visibleEdges, width, height };
 }
 
 function edgePath(edge) {
   const { a, b } = edge;
+  const vertical = Math.abs(b.y - a.y);
+  const sameRow = vertical < 40;
   const mx = (a.x + b.x) / 2;
   const my = (a.y + b.y) / 2;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const curve = Math.min(46, Math.max(18, len * 0.12));
-  const cx = mx - (dy / len) * curve;
-  const cy = my + (dx / len) * curve;
+  const curve = sameRow ? Math.min(64, Math.max(22, Math.abs(dx) * 0.18)) : Math.min(80, Math.max(26, len * 0.11));
+  const bend = sameRow ? (a.row_index || 0) % 2 === 0 ? -curve : curve : curve;
+  const cx = sameRow ? mx : mx - (dy / len) * bend;
+  const cy = sameRow ? my + bend : my + (dx / len) * bend;
   return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
 }
 
-function graphSvg(data) {
-  const graphNodes = data.wikiGraph.nodes || [];
-  const graphEdges = data.wikiGraph.edges || [];
+function graphMetric(label, value, hint = '') {
+  return `<div class="graph-metric"><strong>${esc(value)}</strong><span>${esc(label)}</span>${hint ? `<small>${esc(hint)}</small>` : ''}</div>`;
+}
+
+function graphInsights(graph) {
+  const summary = graph.summary || {};
+  const relationCounts = summary.relation_counts || {};
+  const relationText = Object.entries(relationCounts).map(([key, value]) => `${key}:${value}`).join(' / ') || 'none';
+  const orphanPages = summary.orphan_pages || [];
+  const checks = summary.actionable_checks || [];
+  return `<div class="graph-insights"><h3>Graph diagnostics</h3><table class="kv"><tbody><tr><th>View</th><td>${esc(graph.view || 'wiki_graph')}</td></tr><tr><th>Relations</th><td>${esc(relationText)}</td></tr><tr><th>Orphan pages</th><td>${orphanPages.length ? esc(orphanPages.join(', ')) : 'none'}</td></tr><tr><th>Broken edges</th><td>${esc(graph.broken_edge_count || 0)}</td></tr></tbody></table>${checks.length ? `<ul class="reason-list">${checks.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>` : ''}</div>`;
+}
+
+function freeCoreGraphSvg(data) {
+  const graph = data.wikiGraph || {};
+  const graphNodes = graph.nodes || [];
+  const graphEdges = graph.edges || [];
   if (!graphNodes.length) {
-    return emptyState('No wiki graph yet', 'Run wiki graph build after adding wiki pages or typed links.', 'node .knowledge/tools/build-wiki-graph.js');
+    return emptyState('No free-core graph yet', 'Run graph build after install/import to generate source-of-truth, module, and wiki relations.', 'node .knowledge/tools/build-wiki-graph.js');
   }
   const layout = layoutGraph(graphNodes, graphEdges);
-  const edges = layout.edges.map((edge) => {
+  const defs = `<defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>`;
+  const lanes = [
+    ['Source-of-truth order', 82],
+    ['Module routing', 238],
+    ['Wiki and advisory context', 385]
+  ].map(([label, y]) => `<g class="lane"><line x1="34" y1="${y}" x2="${layout.width - 34}" y2="${y}"></line><text x="38" y="${y - 26}">${esc(label)}</text></g>`).join('');
+  const edgeMarkup = layout.edges.map((edge) => {
+    const relation = edge.relation || edge.type || 'related';
+    const valid = edge.valid === false ? ' invalid' : '';
+    return `<path d="${edgePath(edge)}" class="edge ${relationClass(relation)}${valid}" marker-end="url(#graph-arrow)"><title>${esc(relation)}\n${esc(edge.from)} -> ${esc(edge.to)}${edge.reason ? `\n${esc(edge.reason)}` : ''}</title></path>`;
+  }).join('');
+  const nodeMarkup = layout.nodes.map((node) => {
+    const trust = trustClass(node.trust || node.status || 'advisory_only');
+    const group = graphGroup(node);
+    const label = compactGraphLabel(node.title || node.page || node.id || '', group === 'source_truth' ? 21 : 26);
+    const yLabel = group === 'source_truth' ? node.y - 25 : node.y + 31;
+    const body = `<g class="graph-node ${esc(group)}"><circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.r}" class="node ${esc(trust)} ${esc(group)}"><title>${esc(node.title || '')}\n${esc(node.id || '')}\ntrust: ${esc(node.trust || 'advisory_only')}\n${esc(node.description || '')}</title></circle><text x="${node.x.toFixed(1)}" y="${yLabel.toFixed(1)}" class="label ${esc(group)}">${esc(label)}</text></g>`;
+    const href = graphNodeHref(node);
+    return href ? `<a href="${esc(href)}" class="graph-link">${body}</a>` : body;
+  }).join('');
+  const legendTypes = ['outranks', 'routes', 'documents', 'checks', 'references', 'advisory', 'supports', 'depends_on', 'contradicts'];
+  const legend = legendTypes.map((type) => `<span><i class="edge-swatch ${type}"></i>${esc(type)}</span>`).join('');
+  const sourceOrder = graph.summary?.source_truth_order || [];
+  return `<div class="free-core-graph" data-free-core-graph="true"><div class="graph-tools"><div><strong>Free Core Trust Graph</strong><p class="sub">Source-of-truth order, module routing, wiki relations, and advisory boundaries.</p></div>${copyButton('node .knowledge/tools/build-wiki-graph.js', 'Copy rebuild command')}</div><div class="graph-metrics">${graphMetric('nodes', graph.node_count ?? graphNodes.length)}${graphMetric('edges', graph.edge_count ?? graphEdges.length)}${graphMetric('broken', graph.broken_edge_count || 0)}${graphMetric('orphans', graph.orphan_page_count || 0)}${graphMetric('readiness', graph.readiness || 'unknown')}</div><div class="legend">${legend}</div><svg class="wiki-svg trust-graph-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="Free core trust graph">${defs}${lanes}${edgeMarkup}${nodeMarkup}</svg>${sourceOrder.length ? `<div class="source-order-strip"><strong>Trust order:</strong> ${esc(sourceOrder.join(' > '))}</div>` : ''}${graphEdges.length ? graphInsights(graph) : emptyState('Graph has nodes but no relations', 'Add typed links or rerun the 3.2.1 graph builder to restore relation edges.', 'node .knowledge/tools/build-wiki-graph.js')}</div>`;
+}
+
+function legacyGraphSvg(data) {
+  const graph = data.wikiGraph || {};
+  const graphNodes = graph.nodes || [];
+  const graphEdges = graph.edges || [];
+  if (!graphNodes.length) {
+    return emptyState('No free-core graph yet', 'Run graph build after install/import to generate source-of-truth, module, and wiki relations.', 'node .knowledge/tools/build-wiki-graph.js');
+  }
+  const layout = layoutGraph(graphNodes, graphEdges);
+  const defs = `<defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>`;
+  const lanes = [
+    ['Source-of-truth order', 82],
+    ['Module routing', 238],
+    ['Wiki and advisory context', 385]
+  ].map(([label, y]) => `<g class="lane"><line x1="34" y1="${y}" x2="${layout.width - 34}" y2="${y}"></line><text x="38" y="${y - 26}">${esc(label)}</text></g>`).join('');
+  const edgeMarkup = layout.edges.map((edge) => {
     const relation = edge.relation || edge.type || 'related';
     const valid = edge.valid === false ? ' invalid' : '';
     return `<path d="${edgePath(edge)}" class="edge ${esc(relation)}${valid}"><title>${esc(relation)}\n${esc(edge.from)} → ${esc(edge.to)}</title></path>`;
@@ -657,13 +752,14 @@ function renderPaidPreview(data) {
 }
 
 function proPreviewText(value) {
+  const phrase = (...parts) => parts.join('');
   return String(value || '')
-    .replace(/paid-value actions?/gi, 'Inspector Pro workflow')
+    .replace(new RegExp(`${phrase('paid', '-value')} actions?`, 'gi'), 'Inspector Pro workflow')
     .replace(/belongs to the paid surface/gi, 'is available in Inspector Pro')
     .replace(/paid surface/gi, 'Inspector Pro')
-    .replace(/paid preview/gi, 'Waitlist preview')
+    .replace(new RegExp(phrase('paid', ' preview'), 'gi'), 'Waitlist preview')
     .replace(/paid action/gi, 'Join waitlist')
-    .replace(/Commercial Pack Registry/gi, 'Private Pack Registry')
+    .replace(new RegExp(phrase('Commercial Pack', ' Registry'), 'gi'), 'Private Pack Registry')
     .replace(/commercial governance/gi, 'advanced governance')
     .replace(/commercial account boundary/gi, 'shared account boundary')
     .replace(/disabled_preview/gi, 'Preview')
@@ -758,7 +854,7 @@ function render(data) {
 <section>${renderQuickActions()}</section>
 <section class="grid stats">${countsHtml}<div class="stat"><div class="num">${esc(qualityScore)}</div><div class="cap">quality</div></div><div class="stat"><div class="num">${esc(wikiLintScore)}</div><div class="cap">wiki lint</div></div><div class="stat"><div class="num">${esc(repairCount)}</div><div class="cap">repair queue</div></div><div class="stat"><div class="num">${esc(staleCount)}</div><div class="cap">stale items</div></div><div class="stat"><div class="num">${esc(wikiEdges)}</div><div class="cap">wiki edges</div></div></section>
 <section class="grid two"><div class="card"><h2>Routing Bundle View</h2>${renderRouting(data)}</div><div class="card"><h2>Team Mode</h2>${renderTeamMode(data)}</div></section>
-<section class="grid two"><div class="card"><h2>Wiki Graph</h2>${graphSvg(data)}</div><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div></section>
+<section class="grid two"><div class="card"><h2>Free Core Trust Graph</h2>${freeCoreGraphSvg(data)}</div><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div></section>
 <section class="card"><h2>Modules <span class="sub">· with low-confidence explanations</span></h2>${renderModules(data)}</section>
 <section class="grid two"><div class="card"><h2>Repair Queue</h2>${renderRepair(data)}</div><div class="card"><h2>Stale Items</h2>${renderStale(data)}</div></section>
 <section class="card"><h2>Critical / Important Files</h2>${renderCriticalFiles(data)}</section>
@@ -814,7 +910,7 @@ function renderTabbed(data, options = {}) {
   ].map(([label, value, body]) => renderMetricCard(label, value, body)).join('');
   const countCards = counts.map((count) => `<div class="stat ${trustClass(count.key)}"><div class="num">${count.count}</div><div class="cap">${esc(count.key)}</div></div>`).join('');
   const searchBody = `<div class="empty-state"><h3>Local search</h3><p>${esc(searchDocs)} indexed documents. Search runs locally from generated index data.</p>${commandBox('node .knowledge/tools/search-knowledge.js "<query>"', 'Copy search command')}</div>`;
-  const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/export-debug-bundle.js --json"><span>Export Debug Bundle</span><code>node .knowledge/tools/export-debug-bundle.js --json</code></button><button class="action-card" type="button" data-copy="node .knowledge/tools/export-pro-snapshot.js --json"><span>Export Pro Snapshot</span><code>node .knowledge/tools/export-pro-snapshot.js --json</code></button><button class="action-card" type="button" data-copy="node .knowledge/tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json"><span>Validate Release Artifact</span><code>node .knowledge/tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Redaction boundary</h3><p>Debug exports include provider status and metadata, not API keys or memory content by default.</p></div>`;
+  const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/export-debug-bundle.js --json"><span>Export Debug Bundle</span><code>node .knowledge/tools/export-debug-bundle.js --json</code></button><button class="action-card" type="button" data-copy="node .knowledge/tools/export-pro-snapshot.js --json"><span>Export Pro Snapshot</span><code>node .knowledge/tools/export-pro-snapshot.js --json</code></button><button class="action-card" type="button" data-copy="node .knowledge/tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json"><span>Validate Release Artifact</span><code>node .knowledge/tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Redaction boundary</h3><p>Debug exports include provider status and metadata, not API keys or memory content by default.</p></div>`;
   const onboarding = renderOnboarding(data, options);
   const actionDrawer = `<div class="panel"><h3>Global action drawer</h3><p class="sub">${options.live ? 'Live buttons run allowlisted local actions with the session token.' : 'Static fallback copies commands only. Run <code>node .knowledge/inspector.js</code> for token-protected local buttons.'}</p>${renderQuickActions({ ...options, data })}</div>`;
   const actionResult = renderActionResultPanel(options);
@@ -823,7 +919,7 @@ function renderTabbed(data, options = {}) {
   const tabs = [
     ['Home', `${onboarding}<div class="grid stats metric-grid compact-top-metrics">${homeCards}</div>${renderBranchDiagnostics(data, { ...options, showSimpleTrust: data.settings.user_mode === 'simple' })}${actionDrawer}${actionResult}<div class="card"><h2>Memory Providers</h2><p class="sub">External memory is advisory and cannot override evidence.</p>${renderMemoryProviders(data)}</div>`],
     ['Review', `<div class="grid two"><div class="card"><h2>PR Impact</h2>${renderPrImpactPreview(data)}</div><div class="card"><h2>Reviewer Notes</h2>${renderPrPreview(data)}</div></div><div class="card"><h2>Critical Paths / Policy Warnings</h2>${renderCriticalFiles(data)}</div>`],
-    ['Knowledge Trust', `<div class="grid stats">${countCards}</div><div class="mini-actions trust-repair-actions">${options.live ? '<button type="button" class="copy-btn" data-action="trust.restore.safe">Restore Trust</button>' : copyButton('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}${renderTrustRepairPrompt(data)}</div><div class="grid two"><div class="card"><h2>Trust Overview</h2>${renderModules(data)}</div><div class="card"><h2>Evidence and Routing</h2>${renderRouting(data)}<h3>Search</h3>${searchBody}</div></div><div class="grid two"><div class="card"><h2>Freshness</h2>${renderStale(data)}</div><div class="card"><h2>Repair Queue / Restore Trust</h2>${renderRepair(data)}${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div></div><div class="card"><h2>Wiki Graph</h2>${graphSvg(data)}</div>`],
+    ['Knowledge Trust', `<div class="grid stats">${countCards}</div><div class="mini-actions trust-repair-actions">${options.live ? '<button type="button" class="copy-btn" data-action="trust.restore.safe">Restore Trust</button>' : copyButton('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}${renderTrustRepairPrompt(data)}</div><div class="grid two"><div class="card"><h2>Trust Overview</h2>${renderModules(data)}</div><div class="card"><h2>Evidence and Routing</h2>${renderRouting(data)}<h3>Search</h3>${searchBody}</div></div><div class="grid two"><div class="card"><h2>Freshness</h2>${renderStale(data)}</div><div class="card"><h2>Repair Queue / Restore Trust</h2>${renderRepair(data)}${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div></div><div class="card"><h2>Free Core Trust Graph</h2>${freeCoreGraphSvg(data)}</div>`],
     ['Agents Activity', agentsBody],
     ['Reports', `<div class="grid two"><div class="card"><h2>Agent Reports / Debug Bundle / Pro Snapshot</h2>${exportBody}</div><div class="card"><h2>Benchmark Proof / Audit Export / Marketing Proof Pack</h2>${commandBox('node .knowledge/benchmarks/run-benchmarks.js --suite smoke --json', 'Benchmark smoke')}${commandBox('node .knowledge/benchmarks/generate-marketing-pack.js --latest --json', 'Marketing pack')}</div></div>`],
     ['Settings', `${settingsBody}<div class="card"><h2>Memory Providers</h2>${renderMemoryProviders(data)}</div>`],
@@ -836,16 +932,19 @@ function renderTabbed(data, options = {}) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>.knowledge Inspector 3.2.0</title>
+<title>.knowledge Inspector 3.2.1</title>
 <style>
 :root{--bg:#091017;--panel:#101a23;--panel2:#13212b;--line:#2c3c45;--text:#f4f7f4;--muted:#aebbb3;--green:#39b980;--yellow:#e6b84c;--red:#e05252;--blue:#62a8e5;--violet:#a48be0;--shadow:0 18px 60px #0007}*{box-sizing:border-box}body{margin:0;background:#091017;color:var(--text);font:14px/1.48 ui-sans-serif,system-ui,-apple-system,Segoe UI,Arial}.app{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}.sidebar{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);background:#0b141b;padding:18px}.brand{font-weight:900;font-size:18px;margin-bottom:14px}.tab-btn{width:100%;display:block;text-align:left;border:1px solid transparent;background:transparent;color:var(--muted);padding:9px 10px;border-radius:8px;cursor:pointer}.tab-btn:hover,.tab-btn.active{background:#14232d;color:var(--text);border-color:#324752}.content{min-width:0}.topbar{position:sticky;top:0;z-index:5;background:#0e1820e8;backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 22px}.topbar h1{font-size:22px;margin:0 0 8px}.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{border:1px solid #344852;background:#121f28;border-radius:999px;padding:5px 9px;color:#dce8df;font-size:12px}main{padding:22px}.tab-panel{display:none}.tab-panel.active{display:block}.panel,.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:8px;padding:16px;box-shadow:var(--shadow)}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}h2{font-size:19px;margin:0}h3{font-size:15px;margin:16px 0 8px}.sub{color:var(--muted)}.grid{display:grid;gap:12px}.stats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.metric-grid{margin-top:10px}.compact-top-metrics{grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px}.compact-top-metrics .stat{padding:10px 12px;min-height:0}.compact-top-metrics .num{font-size:14px;line-height:1.15}.compact-top-metrics .cap{font-size:10px;margin-top:4px}.compact-top-metrics .sub{font-size:10px;line-height:1.35;margin-top:6px}.compact-top-metrics .severity-dot{top:8px;right:8px;width:6px;height:6px}.branch-diagnostics{margin:12px 0}.branch-diagnostics-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}.branch-diagnostics-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:16px;align-items:start}.branch-picker{display:grid;gap:5px;color:var(--muted);font-size:12px}.branch-picker select{background:#0b141b;border:1px solid #344852;color:var(--text);border-radius:8px;padding:9px;min-width:220px}.quick-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.action-card{cursor:pointer;text-align:left;border:1px solid #344852;background:#0d1820;border-radius:8px;padding:12px;color:var(--text)}.action-card.locked{border-style:dashed;opacity:.72}.action-card:hover{border-color:#63a0c9}.action-card span{display:block;font-weight:800;margin-bottom:5px}.action-card code{display:block;color:#9bd0f4;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stat{background:#0d1820;border:1px solid #263841;border-radius:8px;padding:12px;min-height:78px}.metric-card{position:relative;margin-top:6px;padding-top:18px;border-left:4px solid #3b5360}.metric-card.ok{border-left-color:var(--green)}.metric-card.warning{border-left-color:var(--yellow);background:#1d1a10}.metric-card.critical{border-left-color:var(--red);background:#211316}.severity-dot{position:absolute;top:8px;right:10px;width:8px;height:8px;border-radius:999px;background:#3b5360}.metric-card.ok .severity-dot{background:var(--green)}.metric-card.warning .severity-dot{background:var(--yellow)}.metric-card.critical .severity-dot{background:var(--red)}.num{font-size:24px;font-weight:900;word-break:break-word}.cap{color:var(--muted);font-size:11px;text-transform:uppercase}.pill{display:inline-flex;padding:3px 8px;border-radius:999px;background:#23323b}.trusted{background:#133629}.routing_trusted{background:#14324a}.near_trusted,.important,.medium{background:#3b2d15}.suspect,.low_confidence,.critical,.high{background:#4a1d22}.advisory_only{background:#292542}.table-controls{display:flex;gap:8px;margin-bottom:10px}.table-controls input,.table-controls select{background:#0b141b;border:1px solid #344852;color:var(--text);border-radius:8px;padding:9px}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #263841;text-align:left;vertical-align:top}th{color:var(--muted);font-size:11px;text-transform:uppercase}.kv th{width:170px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.copy-btn{border:1px solid #3b5360;background:#11212c;color:#eaf3ee;border-radius:8px;padding:7px 9px;cursor:pointer}.danger-btn{border-color:#87535a;background:#321920}.onboarding-card{margin-bottom:14px}.onboarding-card.requires-setup{border-color:var(--yellow)}.onboarding-toggle{display:flex;justify-content:space-between;gap:12px;width:100%;border:0;background:transparent;color:var(--text);padding:0;text-align:left;cursor:pointer}.onboarding-toggle span{font-weight:900}.onboarding-toggle small{color:var(--muted)}.onboarding-body{margin-top:14px}.onboarding-body[hidden]{display:none}.setting-list{display:grid;gap:10px}.setting-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,320px);gap:14px;align-items:center;border:1px solid #263841;background:#0d1820;border-radius:8px;padding:10px}.setting-row span,.setting-row small{display:block}.setting-row small{color:var(--muted);margin-top:3px}.setting-row select,.setting-row input{width:100%;background:#0b141b;border:1px solid #344852;color:var(--text);border-radius:8px;padding:9px}.simple-trust-actions,.trust-repair-actions{margin:12px 0}.simple-trust-actions.compact{margin:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;padding:16px;border:1px solid #263841;border-radius:8px;background:#0d1820}.simple-trust-actions.compact h2{font-size:16px}.update-banner{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border:1px solid #3b5360;background:#0d1820;border-radius:8px;padding:14px;margin-bottom:12px}.update-banner.available{border-color:#e6b84c}.update-banner.failed{border-color:#e05252}.empty-state{border:1px dashed #3b5360;background:#0c171f;border-radius:8px;padding:18px;text-align:center;color:var(--muted)}.cmd{display:flex;gap:8px;align-items:center;background:#081017;border:1px solid #263841;border-radius:8px;padding:9px;margin-top:10px}.cmd code{flex:1;color:#9bd0f4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pro-preview-intro{display:flex;justify-content:space-between;gap:16px;align-items:center;border:1px solid #30434d;background:#0d1820;border-radius:8px;padding:14px;margin:14px 0}.pro-preview-intro strong,.pro-preview-intro span{display:block}.pro-preview-intro span{color:var(--muted);margin-top:3px}.pro-waitlist-button{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 22px;border:1px solid #3c3f4b;border-radius:8px;background:linear-gradient(180deg,#34343d,#161720);box-shadow:inset 0 1px 0 #ffffff18,0 8px 18px #0008;color:#f4f0f2;text-transform:uppercase;letter-spacing:2px;font-weight:900;text-decoration:none;white-space:nowrap}.pro-waitlist-button:hover{border-color:#6d7180;background:linear-gradient(180deg,#3d3e48,#1c1d27)}.signal-grid,.paid-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.signal-card{border:1px solid #314752;background:#0d1820;border-radius:8px;padding:12px}.signal-card strong,.signal-card span{display:block}.signal-card span{color:var(--muted);font-size:12px}.result-panel{margin-top:12px}.result-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;border:0;background:transparent;color:var(--text);padding:0;text-align:left;cursor:pointer}.result-toggle span{font-weight:900}.result-toggle small{color:var(--muted)}.result-panel pre{margin-top:12px}.result-panel.is-collapsed pre{display:none}.wiki-svg{width:100%;height:440px;background:#081017;border:1px solid #263841;border-radius:8px}.edge{fill:none;stroke:#6d7d88}.edge.contradicts{stroke:var(--red)}.edge.supports{stroke:var(--green)}.edge.depends_on{stroke:var(--yellow)}.node{fill:var(--violet);stroke:#fff}.node.trusted{fill:var(--green)}.node.routing_trusted{fill:var(--blue)}.node.suspect,.node.low_confidence{fill:var(--red)}.label{font-size:10px;fill:#eef7f2;paint-order:stroke;stroke:#081017;stroke-width:3px}.toast{position:fixed;right:18px;bottom:18px;background:#123629;color:#c8f3dc;border:1px solid #2a8b62;padding:10px 12px;border-radius:8px;opacity:0;transform:translateY(8px);transition:.18s}.toast.show{opacity:1;transform:translateY(0)}@media(max-width:850px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.tab-btn{display:inline-block;width:auto;margin:0 4px 6px 0}.topbar{position:relative}main{padding:14px}.table-controls,.setting-row{display:block}.table-controls input,.table-controls select,.setting-row select,.setting-row input{width:100%;margin-top:8px;margin-bottom:8px}.update-banner{display:block}.branch-diagnostics-body{grid-template-columns:1fr}.pro-preview-intro{align-items:flex-start;flex-direction:column}.pro-waitlist-button{width:100%}}
+</style>
+<style>
+.free-core-graph{display:grid;gap:12px}.graph-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}.graph-metric{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:9px 10px}.graph-metric strong,.graph-metric span,.graph-metric small{display:block}.graph-metric strong{font-size:18px}.graph-metric span{color:var(--muted);font-size:11px;text-transform:uppercase}.graph-metric small{color:var(--muted);font-size:11px;margin-top:3px}.trust-graph-svg{height:520px;background:linear-gradient(180deg,#081017,#0c1820);overflow:visible}.lane line{stroke:#263841;stroke-width:1}.lane text{fill:#aebbb3;font-size:12px;text-transform:uppercase}.edge{fill:none;stroke:#6d7d88;stroke-width:2;opacity:.86}.edge.outranks{stroke:#eaf3ee}.edge.routes{stroke:var(--blue)}.edge.documents{stroke:var(--green)}.edge.checks{stroke:#67e8f9}.edge.references,.edge.related{stroke:var(--violet)}.edge.advisory{stroke:var(--yellow);stroke-dasharray:6 4}.edge.supports{stroke:var(--green)}.edge.depends_on{stroke:var(--yellow)}.edge.contradicts{stroke:var(--red)}#graph-arrow path{fill:#91a2ad}.node{stroke:#081017;stroke-width:2}.node.source_truth{fill:#eaf3ee}.node.module{fill:var(--blue)}.node.wiki{fill:var(--violet)}.node.trusted{fill:var(--green)}.node.routing_trusted{fill:var(--blue)}.node.advisory_only{fill:var(--violet)}.node.suspect,.node.low_confidence{fill:var(--red)}.label{text-anchor:middle;font-size:11px;fill:#eef7f2;paint-order:stroke;stroke:#081017;stroke-width:4px}.label.source_truth{font-weight:800}.source-order-strip{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:10px;color:#dce8df}.graph-insights{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:12px}.graph-insights h3{margin-top:0}.graph-insights .reason-list{margin-top:10px}.edge-swatch.outranks{background:#eaf3ee}.edge-swatch.routes{background:var(--blue)}.edge-swatch.documents,.edge-swatch.supports{background:var(--green)}.edge-swatch.checks{background:#67e8f9}.edge-swatch.references{background:var(--violet)}.edge-swatch.advisory{background:var(--yellow)}.edge-swatch.contradicts{background:var(--red)}@media(max-width:850px){.trust-graph-svg{height:420px}.graph-tools{display:block}.graph-tools .copy-btn{margin-top:8px}}
 </style>
 </head>
 <body>
 <div class="app">
-<aside class="sidebar"><div class="brand">.knowledge Inspector 3.2.0</div><nav>${nav}</nav></aside>
+<aside class="sidebar"><div class="brand">.knowledge Inspector 3.2.1</div><nav>${nav}</nav></aside>
 <div class="content">
-<header class="topbar"><h1>.knowledge Inspector 3.2.0</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></header>
+<header class="topbar"><h1>.knowledge Inspector 3.2.1</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></header>
 <main>${sections}</main>
 </div></div>
 <div id="toast" class="toast">Copied</div>

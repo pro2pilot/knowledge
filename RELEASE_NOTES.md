@@ -1,114 +1,51 @@
 # Release Notes
 
-## v3.2.0 - Universal final-report hardening
+## v3.2.1 - Free Core trust graph hardening
 
-v3.2.0 lifts the active release line to `3.2.0` and aligns installed agent integrations around one stricter final-report contract.
+v3.2.1 raises the local free-core graph from a sparse wiki-dot view to an actionable source-of-truth and routing graph.
 
 > **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
 ### Added
 
-- A shared final-report contract across installed agent integrations after meaningful work or before handoff.
-- A policy decision record for reporting doctor, wiki lint, trust, repair, routing, PR summary, and metrics outcomes consistently.
-- Release notes and knowledge-log entries for the `v3.2.0` bootstrap.
-- Visual Inspector update UI with automatic release check, dry-run plan, report view, and explicit apply gated by `--allow-local-actions`.
-- Updater preflight, migration-default creation, and post-upgrade stale/repair/suspect reporting for older install paths.
-- Shared memory adapter contract plus explicit Mem0 and Pinecone adapter CLIs that keep external memory advisory-only.
+- A generated `free_core_trust_graph` view in `maps/wiki_graph.json`.
+- Source-of-truth order nodes for code, tests, evidence, module cards, decisions, wiki, sessions, and external memory.
+- Inferred module-to-wiki and source-of-truth edges so a fresh release no longer renders as disconnected dots.
+- Inspector graph diagnostics for relation counts, broken edges, orphan pages, readiness, and rebuild commands.
+- A focused free-core graph self-test that fails if the graph regresses to zero useful relations.
+- `docs/free-core-graph.md` with the free/pro graph boundary and readiness checklist.
+- `docs/site-github-canonical-boundary.md` with the canonical split between website explanation and GitHub implementation proof.
 
 ### Changed
 
-- Active version and schema markers are updated to `3.2.0`.
-- `Quick-Start.md` now requires agents to surface metrics paths and estimated token savings when routing metrics exist.
-- Installed `AGENTS.md`, `CLAUDE.md`, Codex skills, Claude skills, and OpenCode commands now reinforce the same final-report expectations.
-- Inspector launch checks are enabled by default, while update apply remains explicit, local, and telemetry-free.
-- Memory provider status now reports adapter commands, offline status behavior, and explicit-live-call boundaries.
+- Active version and schema markers are updated to `3.2.1`.
+- Visual Inspector now labels the graph as **Free Core Trust Graph** and renders colored relation lanes instead of a generic wiki graph.
+- Wiki lint now checks orphan status only for wiki pages, not for source-of-truth or module graph nodes.
+- README is now a shorter install/source hub with a link map to the human-readable site docs.
+- Website planning assets now target the 3.2.1 release line and include an `Embed .knowledge in your app` documentation page.
+- Release artifact commands and validation examples now point to `dist/knowledge-v3.2.1.zip`.
 
 ### Fixed
 
-- Metrics reporting is no longer left implicit for some integrations while being surfaced by others.
-- Agents are instructed to say explicitly when `.knowledge/metrics/baseline.json` is missing or stale instead of silently skipping that part of the report.
-- Old installs missing required `external_memory` defaults no longer become broken after system update; missing defaults are created without overwriting curated knowledge.
-- Filesystem permission/report failures are detected before apply so updates stop before partial backup/copy work.
-- Graphiti and Zep provider manifests remain in the separate Pro Inspector workspace and are blocked from the free/core release artifact.
+- The free graph is no longer practically useless on a fresh seed with no typed wiki links.
+- The release packager and validator block generated QA maintenance files plus private strategy/product/pro-spec notes from the install ZIP.
+- Source-of-truth and external-memory advisory boundaries are visible in the free Inspector instead of living only in prose docs.
+
+## v3.2.0 - Universal final-report hardening
+
+v3.2.0 aligned installed agent integrations around one stricter final-report contract, update checks, and memory-provider boundaries.
+
+### Highlights
+
+- Shared final-report contract across installed agents.
+- Visual Inspector update UI and explicit local update apply boundary.
+- Mem0 and Pinecone adapter CLIs that keep external memory advisory-only.
+- Graphiti and Zep provider manifests kept outside the free/core release artifact.
 
 ## v3.1.9 - Install and Git policy hardening
 
-v3.1.9 focuses on making `.knowledge` installs, updates, release packaging, and Git behavior safe and reproducible for agents and humans.
-
-### Added
-
-- `tools/package-release.js` for building a curated install artifact: `dist/knowledge-v3.1.9.zip`.
-- `tools/install-check.js` for validating fresh installs, detecting nested `.knowledge/.git`, and producing machine-readable reports.
-- `tools/update-system-files.js` for updating framework/system files without overwriting project-specific knowledge.
-- `tools/git-policy.js`, `.knowledge` Git policy docs, and Git policy templates.
-- `tools/self-test-install-policy.js` covering fresh install, bad install repair, update preservation, Git ignore behavior, and Windows-safe paths.
-- Release preparation workflow guidance for maintainers.
-
-### Changed
-
-- Public install archives are packaged as `.knowledge/...` and exclude source repository metadata, runtime state, logs, generated reports, caches, and local release artifacts.
-- Installed `.knowledge/.gitignore` is generated from `templates/git-policy/.knowledge.gitignore`, separate from the source repository `.gitignore`.
-- Text files in the release ZIP are normalized to LF.
-- README and Quick Start now document three explicit paths: fresh install, existing `.knowledge` update, and migration from non-`.knowledge`.
-- `config.yaml` and seed/schema markers are updated to `3.1.9`.
-
-### Fixed
-
-- `install-check --fix --yes` now reports `pre_fix`, `fixes_applied`, and `post_fix`, with top-level status matching the post-fix result.
-- A nested `.knowledge/.git` is moved to a safe backup only when explicitly requested with `--fix --yes`.
-- Git add smoke tests verify generated/runtime artifacts are ignored by default.
-- Package release summaries distinguish excluded entries from recursive excluded files.
-
-### Upgrade Note
-
-For an existing `.knowledge` installation, do not replace the whole folder. Extract the new release artifact to a temporary folder and run:
-
-```bash
-node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-run
-node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply --yes
-```
-
-Project-specific knowledge such as `wiki/`, `modules/`, `evidence/`, `decisions.json`, `maintenance/`, `maps/`, and `sessions/` is preserved unless the user explicitly resets it.
-
-### QA
-
-- JavaScript syntax checks
-- JSON parse checks
-- Package release build
-- Install policy self-test
-- Fresh artifact smoke test
-- Bad install repair smoke test
-- Existing update preservation smoke test
-- Git add smoke test for generated/runtime ignores
-
-### Assets
-
-- `knowledge-v3.1.9.zip`
-- `knowledge-v3.1.9.zip.sha256`
-
-### Known Limitations
-
-- `update-system-files.js` does not prune deprecated system files automatically. This is intentional for safety; removal should be a separate reviewed action.
+v3.1.9 focused on safe install/update packaging, Git policy, and reproducible release artifacts.
 
 ## v3.1.8 - First public release
 
 Initial public release of `.knowledge by Pro2Pilot`.
-
-### Added
-
-- One first-read routing bundle.
-- Trust and freshness status.
-- Repair queue.
-- Local search scopes.
-- Visual Inspector.
-- Cookbook flows.
-- Official templates.
-- Secret scan baseline.
-- Pinecone Local / Pinecone Cloud bridge, disabled by default.
-- Codex, Claude Code, OpenCode integrations.
-- Optional advisory update checks, disabled by default.
-- Apache-2.0 core.
-
-### Notes
-
-Metrics are order-of-magnitude and based on a synthetic SaaS-shape fixture. Tiny repositories may show overhead because the routing bundle has fixed structure cost.

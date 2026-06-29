@@ -82,7 +82,7 @@ function buildUnlocked(options = {}) {
     .slice(0, 100);
 
   const bundle = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     generated_at: generatedAt,
     generated_by: agentId,
     context: jsonContext(context),

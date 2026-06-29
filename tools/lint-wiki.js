@@ -69,11 +69,12 @@ function lintUnlocked(options = {}) {
   const incoming = new Map();
   for (const edge of graph.edges || []) incoming.set(edge.to, (incoming.get(edge.to) || 0) + 1);
   for (const node of graph.nodes || []) {
+    if (node.type !== 'wiki_page') continue;
     const id = node.id;
     if (!['index.md', 'log.md'].includes(id) && !id.endsWith('/README.md') && !(incoming.get(id) || 0)) add(issues, 'low', 'orphan_wiki_page', 'Wiki page has no incoming wiki links.', node.path);
   }
   const score = qualityScore(issues);
-  const report = { schema_version: '3.2.0', generated_at: nowIso(), generated_by: getAgentId(), mode: context.mode, status: score >= 90 ? 'healthy' : score >= 75 ? 'usable_with_warnings' : 'degraded', quality_score: score, pages: pages.length, graph: { nodes: graph.node_count, edges: graph.edge_count, broken_edges: graph.broken_edge_count }, issues };
+  const report = { schema_version: '3.2.1', generated_at: nowIso(), generated_by: getAgentId(), mode: context.mode, status: score >= 90 ? 'healthy' : score >= 75 ? 'usable_with_warnings' : 'degraded', quality_score: score, pages: pages.length, graph: { nodes: graph.node_count, edges: graph.edge_count, broken_edges: graph.broken_edge_count, view: graph.view || 'wiki_graph' }, issues };
   writeJsonAtomic(path.join(stateRoot, 'maintenance', 'wiki_lint_report.json'), report);
   if (!options.quiet) console.log(JSON.stringify(report, null, 2));
   return report;

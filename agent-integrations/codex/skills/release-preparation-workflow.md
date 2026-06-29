@@ -68,12 +68,12 @@ REPO_FULL_NAME          Example: pro2pilot/knowledge
 LOCAL_REPO_PATH         Example: C:\path\to\knowledge
 BASE_BRANCH             Usually: main
 WORK_BRANCH             Example: fix/install-git-policy
-TARGET_VERSION          Example: 3.2.0
+TARGET_VERSION          Example: 3.2.1
 PREVIOUS_VERSION        Example: 3.1.9
 EXPECTED_GH_ACCOUNT     GitHub username expected to push/release
 EXPECTED_GIT_AUTHOR     Optional expected git user.name
 EXPECTED_GIT_EMAIL      Optional expected git user.email
-RELEASE_TITLE           Example: v3.2.0 — Universal final-report hardening
+RELEASE_TITLE           Example: v3.2.1 — Universal final-report hardening
 ```
 
 If `TARGET_VERSION` or `EXPECTED_GH_ACCOUNT` is missing, ask before continuing.

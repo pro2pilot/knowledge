@@ -8,6 +8,8 @@ const { spawnSync } = require('child_process');
 
 const sourceRoot = path.resolve(__dirname, '..');
 const cyrillic = '\u043a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u0430';
+const childTimeoutMs = Number(process.env.KNOWLEDGE_SELF_TEST_CHILD_TIMEOUT_MS || 120000);
+const gitTimeoutMs = Number(process.env.KNOWLEDGE_SELF_TEST_GIT_TIMEOUT_MS || 30000);
 
 function normalizeRel(value) {
   return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '');
@@ -35,23 +37,35 @@ function runNode(args, cwd, env = {}) {
     cwd,
     env: { ...process.env, ...env },
     encoding: 'utf8',
+    timeout: Number.isFinite(childTimeoutMs) ? childTimeoutMs : 120000,
     windowsHide: true
   });
   return {
     command: `node ${args.join(' ')}`,
     cwd,
     exit: res.status,
+    signal: res.signal || null,
+    error: res.error ? { code: res.error.code, message: res.error.message } : null,
+    timed_out: res.error?.code === 'ETIMEDOUT',
     stdout: (res.stdout || '').trim(),
     stderr: (res.stderr || '').trim()
   };
 }
 
 function runGit(args, cwd) {
-  const res = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+  const res = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout: Number.isFinite(gitTimeoutMs) ? gitTimeoutMs : 30000,
+    windowsHide: true
+  });
   return {
     command: `git ${args.join(' ')}`,
     cwd,
     exit: res.status,
+    signal: res.signal || null,
+    error: res.error ? { code: res.error.code, message: res.error.message } : null,
+    timed_out: res.error?.code === 'ETIMEDOUT',
     stdout: (res.stdout || '').trim(),
     stderr: (res.stderr || '').trim()
   };
@@ -250,7 +264,7 @@ function assertInstalledSystemComplete(repo) {
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.0.md',
+    '.release-notes/v3.2.1.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',

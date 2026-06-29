@@ -2,7 +2,9 @@
 
 ## What is `.knowledge`?
 
-`.knowledge` is a repo-local routing, evidence, trust, freshness, repair and PR-review system for coding agents.
+`.knowledge: repo-local trust layer for coding agents.`
+
+It is a repo-local routing, evidence, trust, freshness, repair and PR-review system for coding agents.
 
 ## Is it an AI coding agent?
 

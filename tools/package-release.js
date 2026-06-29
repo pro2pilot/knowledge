@@ -44,12 +44,26 @@ function shouldExclude(relPath, entry) {
   if (segments[0] === 'marketing-proof-packs') return { exclude: true, reason: 'marketing_proof_output' };
   if (rel.startsWith('benchmarks/results/')) return { exclude: true, reason: 'benchmark_results_runtime' };
   if (rel.startsWith('docs/implementation/')) return { exclude: true, reason: 'source_implementation_notes' };
+  if (rel.startsWith('docs/strategy/')) return { exclude: true, reason: 'private_strategy_notes' };
+  if (rel.startsWith('docs/product/')) return { exclude: true, reason: 'private_product_notes' };
+  if (rel.startsWith('docs/canonical/')) return { exclude: true, reason: 'internal_canonical_docs' };
+  if (rel === 'docs/product-canon.md') return { exclude: true, reason: 'internal_product_canon' };
+  if (rel === 'docs/pro-inspector.md') return { exclude: true, reason: 'private_pro_inspector_notes' };
+  if (rel === 'docs/pro-subscription.md') return { exclude: true, reason: 'private_pro_subscription_notes' };
+  if (rel === 'docs/site-github-canonical-boundary.md') return { exclude: true, reason: 'internal_site_github_boundary_notes' };
+  if (rel.startsWith('maintenance/canonical-')) return { exclude: true, reason: 'private_canonical_maintenance' };
+  if (rel === 'maintenance/memory-provider-migration-inventory.md') return { exclude: true, reason: 'internal_migration_inventory' };
+  if (segments[0] === 'internal') return { exclude: true, reason: 'internal_release_governance' };
+  if (segments[0] === 'pro2pilot_canonical_artifacts') return { exclude: true, reason: 'private_canonical_artifacts' };
   if (segments.includes('.lock')) return { exclude: true, reason: 'runtime_lock' };
   if (segments.includes('.runtime')) return { exclude: true, reason: 'runtime_state' };
   if (rel.startsWith('maintenance/flow-logs/')) return { exclude: true, reason: 'flow_logs' };
   if (rel.startsWith('maintenance/events/')) return { exclude: true, reason: 'events' };
   if (rel.startsWith('maintenance/dev-notes/')) return { exclude: true, reason: 'source_dev_notes' };
   if (rel.startsWith('maintenance/install-backups/')) return { exclude: true, reason: 'install_backups' };
+  if (/^maintenance\/knowledge-[^/]+-(?:10-10-inventory|final-qa)\.(?:md|json)$/i.test(rel)) {
+    return { exclude: true, reason: 'release_qa_or_inventory_notes' };
+  }
   if (rel.startsWith('evaluation/results/')) return { exclude: true, reason: 'evaluation_results' };
   if (rel.startsWith('maintenance/graphs/')) return { exclude: true, reason: 'generated_graphs' };
   if (rel.startsWith('search/')) return { exclude: true, reason: 'search_index' };
@@ -62,6 +76,12 @@ function shouldExclude(relPath, entry) {
   }
   if (/^memory-providers\/(graphiti|zep)(\/|$)/i.test(rel)) {
     return { exclude: true, reason: 'paid_memory_provider_excluded_from_free_core' };
+  }
+  if (/^models\/pro-(entitlement|extension-manifest|license-token)\.schema\.json$/i.test(rel)) {
+    return { exclude: true, reason: 'pro_schema_excluded_from_free_core' };
+  }
+  if (/^tools\/self-test-(canonical-e2e|pro-ready-gates)\.js$/i.test(rel)) {
+    return { exclude: true, reason: 'internal_or_pro_test_excluded_from_free_core' };
   }
 
   const generatedMaintenance = new Set([
@@ -82,13 +102,16 @@ function shouldExclude(relPath, entry) {
     'maintenance/install_check_report.json',
     'maintenance/update_system_files_report.json',
     'maintenance/applied_templates.json',
-    'maintenance/knowledge-3.2.0-10-10-inventory.md',
+    'maintenance/knowledge-3.2.1-10-10-inventory.md',
+    'maintenance/knowledge-3.2.1-10-10-inventory.md',
     'maintenance/competitive-10-10-inventory.md',
     'maintenance/phase-0-inventory.md',
     'maintenance/release-gate-report.json',
     'maintenance/release-gate-report.md',
-    'maintenance/knowledge-3.2.0-final-qa.md',
-    'maintenance/knowledge-3.2.0-final-qa.json',
+    'maintenance/knowledge-3.2.1-final-qa.md',
+    'maintenance/knowledge-3.2.1-final-qa.json',
+    'maintenance/knowledge-3.2.1-final-qa.md',
+    'maintenance/knowledge-3.2.1-final-qa.json',
     'maintenance/pro-inspector-snapshot.json',
     'maintenance/debug-bundle.json'
   ]);

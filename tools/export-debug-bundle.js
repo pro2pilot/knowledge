@@ -59,7 +59,7 @@ function buildBundle(context) {
   const external = buildExternalMemoryReport(context, { write: true });
   const maintenance = path.join(context.stateRoot, 'maintenance');
   const bundle = {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     kind: 'debug-bundle',
     generated_at: nowIso(),
     generated_by: getAgentId(),

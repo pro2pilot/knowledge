@@ -71,18 +71,44 @@ function validate(zipPath) {
     /^\.knowledge\/\.github\//,
     /(^|\/)node_modules(\/|$)/,
     /^\.knowledge\/dist\//,
+    /^\.knowledge\/internal\//,
+    /^\.knowledge\/pro2pilot_canonical_artifacts\//,
+    /^\.knowledge\/docs\/strategy\//,
+    /^\.knowledge\/docs\/product\//,
+    /^\.knowledge\/docs\/canonical\//,
+    /^\.knowledge\/docs\/product-canon\.md$/,
+    /^\.knowledge\/docs\/pro-inspector\.md$/,
+    /^\.knowledge\/docs\/pro-subscription\.md$/,
+    /^\.knowledge\/docs\/site-github-canonical-boundary\.md$/,
+    /^\.knowledge\/maintenance\/canonical-/,
+    /^\.knowledge\/maintenance\/memory-provider-migration-inventory\.md$/,
+    /^\.knowledge\/maintenance\/knowledge-[^/]+-(?:10-10-inventory|final-qa)\.(?:md|json)$/i,
     /^\.knowledge\/memory-providers\/(graphiti|zep)(\/|$)/i,
+    /^\.knowledge\/models\/pro-(entitlement|extension-manifest|license-token)\.schema\.json$/i,
+    /^\.knowledge\/tools\/self-test-(canonical-e2e|pro-ready-gates)\.js$/i,
     /^\.knowledge\/maintenance\/flow-logs\//,
     /^\.knowledge\/external_memory\/(mem0|legacy|claude_mem|claude|claude-auto-memory)(\/|$)/,
     /^\.knowledge\/metrics\/external_memory\.json$/,
     /^\.knowledge\/inspector\/index\.html$/
   ];
+  const commercialTextPattern = new RegExp([
+    '\\$\\d{2,}',
+    '\\/mo\\b',
+    'per user\\b',
+    'per seat\\b',
+    '\\bpricing\\b',
+    '\\bprices?\\b',
+    '\\btariff\\b',
+    ['feature', 'to', 'plan'].join('-'),
+    ['plan', 'packaging'].join(' ')
+  ].join('|'), 'i');
   const forbiddenContent = [
     { id: 'local_windows_project_path', pattern: /[A-Z]:\\(?:Users\\[^\\]+|MyProject)/i },
     { id: 'mnt_data_path', pattern: /\/mnt\/data/i },
     { id: 'tmp_knowledge_path', pattern: /\/tmp\/knowledge/i },
     { id: 'local_user_path', pattern: /Users[\\/](?![\[<^])[\w .-]{1,64}(?=[\\/])/i },
-    { id: 'workspace_name_leak', pattern: new RegExp(`knowledge${'-'}kit`, 'i') }
+    { id: 'workspace_name_leak', pattern: new RegExp(`knowledge${'-'}kit`, 'i') },
+    { id: 'free_core_commercial_text', pattern: commercialTextPattern }
   ];
   const violations = [];
   const names = new Set(entries.map((entry) => normalizeRel(entry.name)));
@@ -98,9 +124,12 @@ function validate(zipPath) {
     '.knowledge/tools/agent-session.js',
     '.knowledge/tools/restore-trust.js',
     '.knowledge/tools/agent-footer.js',
-    '.knowledge/docs/canonical/15_AGENT_IMPLEMENTATION_PROMPT.md'
+    '.knowledge/docs/free-core.md',
+    '.knowledge/docs/inspector.md',
+    '.knowledge/docs/memory-providers.md',
+    '.knowledge/docs/release-artifact.md'
   ]) {
-    if (!names.has(required)) violations.push({ type: 'required_entry_missing', entry: required, reason: 'canonical release file missing' });
+    if (!names.has(required)) violations.push({ type: 'required_entry_missing', entry: required, reason: 'public release file missing' });
   }
   for (const entry of entries) {
     const name = normalizeRel(entry.name);
@@ -111,12 +140,14 @@ function validate(zipPath) {
     if (textEntry(name)) {
       const text = entry.body.toString('utf8');
       for (const item of forbiddenContent) {
+        if (item.id === 'free_core_commercial_text' && name === '.knowledge/tools/validate-release-artifact.js') continue;
+        if (item.id === 'free_core_commercial_text' && name === '.knowledge/tools/lib/paid-inspector-model.js') continue;
         if (item.pattern.test(text)) violations.push({ type: 'content_forbidden', entry: name, pattern: item.id });
       }
     }
   }
   return {
-    schema_version: '3.2.0',
+    schema_version: '3.2.1',
     artifact: path.resolve(zipPath),
     status: violations.length ? 'failed' : 'ok',
     entries: entries.length,
@@ -126,7 +157,7 @@ function validate(zipPath) {
 
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.0.zip [--json]');
+  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip [--json]');
   const result = validate(path.resolve(args.artifact));
   if (args.json) console.log(JSON.stringify(result, null, 2));
   else if (result.status === 'ok') console.log(`release artifact ok: ${result.entries} entries`);
@@ -141,7 +172,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const parsed = parseArgs(process.argv.slice(2));
-    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.0', status: 'failed', error: error.message }, null, 2));
+    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.1', status: 'failed', error: error.message }, null, 2));
     else console.error(error.message);
     process.exit(2);
   }

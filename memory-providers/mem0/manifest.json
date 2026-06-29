@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.0",
+  "schema_version": "3.2.1",
   "id": "mem0-oss",
   "display_name": "Mem0 OSS",
   "type": "local",

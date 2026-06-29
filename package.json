@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Open repo-local trust layer for AI coding agents: routing, evidence, freshness, repair, PR review, and a local Visual Inspector.",
   "type": "commonjs",
   "engines": {
@@ -65,6 +65,7 @@
     "kb:self-test-memory-providers": "node tools/self-test-memory-providers.js",
     "kb:self-test-external-memory": "node tools/self-test-external-memory.js",
     "kb:self-test-inspector-ui": "node tools/self-test-inspector-ui.js",
+    "kb:self-test-free-core-graph": "node tools/self-test-free-core-graph.js",
     "kb:self-test-inspector-launcher": "node tools/self-test-inspector-launcher.js --json",
     "kb:self-test-inspector-actions": "node tools/self-test-inspector-actions.js --json",
     "kb:self-test-agent-activity": "node tools/self-test-agent-activity.js --json",
