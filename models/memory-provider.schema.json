@@ -8,7 +8,7 @@
   "properties": {
     "id": { "type": "string" },
     "display_name": { "type": "string" },
-    "type": { "enum": ["local", "cloud", "managed", "self_hosted", "paid", "legacy"] },
+    "type": { "enum": ["local", "cloud", "managed", "self_hosted", "optional", "legacy"] },
     "recommended": { "type": "boolean" },
     "recommended_for": { "type": "array", "items": { "type": "string" } },
     "license": {

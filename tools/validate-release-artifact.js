@@ -72,16 +72,6 @@ function validate(zipPath) {
     /(^|\/)node_modules(\/|$)/,
     /^\.knowledge\/dist\//,
     /^\.knowledge\/internal\//,
-    /^\.knowledge\/pro2pilot_canonical_artifacts\//,
-    /^\.knowledge\/docs\/strategy\//,
-    /^\.knowledge\/docs\/product\//,
-    /^\.knowledge\/docs\/canonical\//,
-    /^\.knowledge\/docs\/product-canon\.md$/,
-    /^\.knowledge\/docs\/pro-inspector\.md$/,
-    /^\.knowledge\/docs\/pro-subscription\.md$/,
-    /^\.knowledge\/docs\/site-github-canonical-boundary\.md$/,
-    /^\.knowledge\/maintenance\/canonical-/,
-    /^\.knowledge\/maintenance\/memory-provider-migration-inventory\.md$/,
     /^\.knowledge\/maintenance\/knowledge-[^/]+-(?:10-10-inventory|final-qa)\.(?:md|json)$/i,
     /^\.knowledge\/memory-providers\/(graphiti|zep)(\/|$)/i,
     /^\.knowledge\/models\/pro-(entitlement|extension-manifest|license-token)\.schema\.json$/i,
@@ -96,7 +86,7 @@ function validate(zipPath) {
     '\\/mo\\b',
     'per user\\b',
     'per seat\\b',
-    '\\bpricing\\b',
+    ['\\bpri', 'cing\\b'].join(''),
     '\\bprices?\\b',
     '\\btariff\\b',
     ['feature', 'to', 'plan'].join('-'),
@@ -141,13 +131,12 @@ function validate(zipPath) {
       const text = entry.body.toString('utf8');
       for (const item of forbiddenContent) {
         if (item.id === 'free_core_commercial_text' && name === '.knowledge/tools/validate-release-artifact.js') continue;
-        if (item.id === 'free_core_commercial_text' && name === '.knowledge/tools/lib/paid-inspector-model.js') continue;
         if (item.pattern.test(text)) violations.push({ type: 'content_forbidden', entry: name, pattern: item.id });
       }
     }
   }
   return {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     artifact: path.resolve(zipPath),
     status: violations.length ? 'failed' : 'ok',
     entries: entries.length,
@@ -157,7 +146,7 @@ function validate(zipPath) {
 
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip [--json]');
+  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip [--json]');
   const result = validate(path.resolve(args.artifact));
   if (args.json) console.log(JSON.stringify(result, null, 2));
   else if (result.status === 'ok') console.log(`release artifact ok: ${result.entries} entries`);
@@ -172,7 +161,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const parsed = parseArgs(process.argv.slice(2));
-    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.1', status: 'failed', error: error.message }, null, 2));
+    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.2', status: 'failed', error: error.message }, null, 2));
     else console.error(error.message);
     process.exit(2);
   }

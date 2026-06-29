@@ -60,7 +60,6 @@ function copyKnowledge(targetRoot) {
         !rel.startsWith('.qa-tmp/') &&
         !rel.startsWith('.self-test-tmp/') &&
         !rel.startsWith('benchmark-runs/') &&
-        !rel.startsWith('marketing-proof-packs/') &&
         !rel.startsWith('maintenance/flow-logs/') &&
         !rel.startsWith('.lock') &&
         !rel.includes('/.lock/') &&
@@ -180,7 +179,7 @@ async function main() {
   for (const file of inspectorDataFiles) JSON.parse(fs.readFileSync(file, 'utf8'));
 
   const result = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

@@ -115,7 +115,7 @@ function runSuiteOnce(slug) {
   const critical = () => readJson(path.join(root, 'maps', 'file_criticality.json'), { files: [] });
 
   if (slug === 'smoke') {
-    const required = ['benchmarks/run-benchmarks.js', 'benchmarks/generate-marketing-pack.js', 'benchmarks/claim-rules.md', 'benchmarks/suites/suites.json'];
+    const required = ['benchmarks/run-benchmarks.js', 'benchmarks/claim-rules.md', 'benchmarks/suites/suites.json'];
     const missing = required.filter((rel) => !fs.existsSync(path.join(root, rel)));
     return missing.length ? { status: 'fail', claim_status: 'diagnostic', metrics: { missing: missing.length }, evidence: missing, limitations: ['harness files missing'] } :
       passResult({ harness_files_present: required.length, suites_declared: suitesCatalog.suites.length }, required, 'diagnostic');
@@ -357,7 +357,7 @@ function writeRun(runId, selectedSuite, results, args) {
   const marketable = rows.filter((row) => ['measured', 'measured-on-fixture'].includes(row.status));
   const blocked = rows.filter((row) => !['measured', 'measured-on-fixture'].includes(row.status));
   const manifest = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     run_id: runId,
     generated_at: new Date().toISOString(),
     suite: selectedSuite,
@@ -368,14 +368,14 @@ function writeRun(runId, selectedSuite, results, args) {
   };
   writeJsonAtomic(path.join(runDir, 'manifest.json'), manifest);
   writeJsonAtomic(path.join(runDir, 'environment.json'), {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     node_major: Number(process.versions.node.split('.')[0]),
     platform: process.platform,
     cwd: '<source-or-installed-knowledge-root>',
     network_required: false
   });
   writeJsonAtomic(path.join(runDir, 'gate-status.json'), {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     verdict: v,
     release_gate: readJson(path.join(root, 'maintenance', 'release-gate-report.json'), { status: 'not_run' }).status || 'not_run'
   });
@@ -389,8 +389,8 @@ function writeRun(runId, selectedSuite, results, args) {
   fs.writeFileSync(path.join(runDir, '03_FAILURES_AND_LIMITATIONS.md'), renderFailures(results), 'utf8');
   fs.writeFileSync(path.join(runDir, '04_PUBLIC_COPY.md'), renderPublicCopy(marketable), 'utf8');
   fs.writeFileSync(path.join(runDir, '05_METHODOLOGY.md'), renderMethodology(selectedSuite, args), 'utf8');
-  fs.writeFileSync(path.join(runDir, 'verification', 'reproduction.ps1'), `node .knowledge/benchmarks/run-benchmarks.js --suite ${selectedSuite} --runs ${args.runs} --json\nnode .knowledge/benchmarks/generate-marketing-pack.js --latest --json\n`, 'utf8');
-  fs.writeFileSync(path.join(runDir, 'verification', 'reproduction.sh'), `#!/usr/bin/env sh\nset -eu\nnode .knowledge/benchmarks/run-benchmarks.js --suite ${selectedSuite} --runs ${args.runs} --json\nnode .knowledge/benchmarks/generate-marketing-pack.js --latest --json\n`, 'utf8');
+  fs.writeFileSync(path.join(runDir, 'verification', 'reproduction.ps1'), `node .knowledge/benchmarks/run-benchmarks.js --suite ${selectedSuite} --runs ${args.runs} --json\n`, 'utf8');
+  fs.writeFileSync(path.join(runDir, 'verification', 'reproduction.sh'), `#!/usr/bin/env sh\nset -eu\nnode .knowledge/benchmarks/run-benchmarks.js --suite ${selectedSuite} --runs ${args.runs} --json\n`, 'utf8');
   fs.writeFileSync(path.join(runDir, 'artifacts', 'README.md'), '# Artifacts\n\nRaw suite JSON and metrics are stored in sibling folders.\n', 'utf8');
   const redaction = scanRun(runDir);
   fs.writeFileSync(path.join(runDir, 'verification', 'checksums.sha256'), redaction.checksums.join('\n') + '\n', 'utf8');
@@ -461,7 +461,7 @@ function renderPublicCopy(marketable) {
 ${marketable.map((row) => `- ${row.approved_wording} Evidence: ${row.claim_id}.`).join('\n') || '- No public benchmark claims are approved from this run.'}
 
 ## Landing proof block
-${marketable.slice(0, 3).map((row) => `${row.approved_wording} (${row.claim_id})`).join('\n') || 'Private benchmark diagnostics are complete; public proof is pending measured claims.'}
+${marketable.slice(0, 3).map((row) => `${row.approved_wording} (${row.claim_id})`).join('\n') || 'Benchmark diagnostics are complete; public proof is pending measured claims.'}
 
 ## LinkedIn post
 We ran local benchmark fixtures for .knowledge governance. The approved claims are listed in 01_CLAIM_EVIDENCE_MAP.md.
@@ -479,7 +479,7 @@ We tested routing, trust/freshness, PR impact, Team Mode and memory safety local
 - Limitations and next work.
 
 ## Demo video script
-Show release gate, Inspector, PR Impact, Team Mode run report and marketing proof pack.
+Show release gate, Inspector, PR Impact, Team Mode run report, and benchmark limitations.
 `;
 }
 
@@ -518,7 +518,7 @@ function main(argv = process.argv.slice(2)) {
   const results = selected.map((slug) => aggregateSuite(slug, runs));
   const written = writeRun(runId, selectedSuite, results, { runs, fixture: flags.fixture });
   const output = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     status: results.some((suite) => suite.status === 'fail') ? 'failed' : 'ok',
     verdict: written.manifest.verdict,
     run_id: runId,
@@ -535,7 +535,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const { flags } = parseCliArgs(process.argv.slice(2));
-    const output = { schema_version: '3.2.1', status: 'failed', error: sanitizeText(error.message) };
+    const output = { schema_version: '3.2.2', status: 'failed', error: sanitizeText(error.message) };
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else console.error(output.error);
     process.exit(2);

@@ -242,7 +242,7 @@ function buildUnlocked(options = {}) {
   }
 
   const index = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: generatedAt,
     generated_by: getAgentId(),
     mode: context.mode,

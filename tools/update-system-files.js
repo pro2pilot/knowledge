@@ -13,7 +13,7 @@ let activeKnowledgeRoot = defaultKnowledgeRoot;
 let activeRepoRoot = defaultRepoRoot;
 
 const DEFAULT_MANIFEST = {
-  schema_version: '3.2.1',
+  schema_version: '3.2.2',
   system_paths: [
     '.gitattributes',
     '.gitignore',
@@ -89,7 +89,6 @@ const DEFAULT_MANIFEST = {
   system_exclude_paths: [
     'benchmarks/results',
     'benchmark-runs',
-    'marketing-proof-packs',
     'dist',
     '.git',
     '.github',
@@ -791,7 +790,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const report = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     status: errors.length ? 'failed' : 'ok',
     phase: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),
     mode: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),

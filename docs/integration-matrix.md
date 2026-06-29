@@ -5,6 +5,8 @@
 | Codex | ready | `AGENTS.md`, `.agents/skills/` | Give Codex repo instructions and repeatable `.knowledge` workflows. |
 | Claude Code | ready | `CLAUDE.md`, `.claude/skills/` | Give Claude Code the same workflows and safety rules. |
 | OpenCode | ready | `.opencode/commands/` | Add command-style access to scan/lint/doctor/search/handoff. |
+| OpenClaw | ready | `AGENTS.md`, `.agents/skills/` | Add OpenClaw repo instructions and workspace skills for `.knowledge`. |
+| Hermes | ready bridge | `AGENTS.md` | Add a documented generic repo-local bridge without creating an unconfirmed vendor folder. |
 | Gemini CLI | ready | `GEMINI.md` | Add a repo-local instruction bridge into `.knowledge`. |
 | GitHub Copilot | ready | `.github/copilot-instructions.md` | Add Copilot repository instructions for `.knowledge`. |
 | Devin | ready | `.devin/rules/knowledge.md` | Add Devin/Cascade-style repo rules for `.knowledge`. |
@@ -12,7 +14,7 @@
 | Continue | ready | `.continue/rules/knowledge.md` | Add Continue rule-based `.knowledge` instructions. |
 | Roo Code | ready | `.roo/rules/knowledge.md` | Add Roo Code rule-based `.knowledge` instructions. |
 | Aider | ready | `CONVENTIONS.md`, `.aider.conf.yml` | Add Aider read-only conventions for `.knowledge`. |
-| OpenClaw / Hermes / Pi | documented bridge | `.knowledge/Quick-Start.md` or `AGENTS.md` if supported | Use generic instructions until a stable repo-local rules convention is confirmed. |
+| Pi / other agents | documented bridge | `.knowledge/Quick-Start.md` | Use generic instructions until a stable repo-local rules convention is confirmed. |
 | Git hooks | optional | `.git/hooks/*` managed block | Refresh knowledge after commit/merge/checkout. |
 | GitHub Actions | templates | `.knowledge/github-action-templates/` | Run health/PR/evaluation workflows in CI after copying templates. |
 | Pinecone Local | optional bridge | `external_memory/` | Local/dev/CI cold-archive emulator mode. |

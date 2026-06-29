@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "description": "Open repo-local trust layer for AI coding agents: routing, evidence, freshness, repair, PR review, and a local Visual Inspector.",
   "type": "commonjs",
   "engines": {
@@ -23,11 +23,8 @@
     "kb:metrics": "node tools/collect-metrics.js",
     "kb:evaluate": "node tools/evaluation-harness.js",
     "kb:benchmarks": "node benchmarks/run-benchmarks.js",
-    "kb:benchmarks:marketing": "node benchmarks/generate-marketing-pack.js --latest --json",
     "kb:pr-summary": "node tools/generate-pr-summary.js",
     "kb:pr-impact": "node tools/pr-impact.js --json",
-    "kb:export:debug": "node tools/export-debug-bundle.js --json",
-    "kb:export:pro": "node tools/export-pro-snapshot.js --json",
     "kb:inspector": "node inspector.js",
     "kb:inspector:open": "node inspector.js --open",
     "kb:restore-trust": "node tools/restore-trust.js --safe --json",
@@ -71,8 +68,7 @@
     "kb:self-test-agent-activity": "node tools/self-test-agent-activity.js --json",
     "kb:self-test-safe-queue": "node tools/self-test-safe-queue.js --json",
     "kb:self-test-agent-footer": "node tools/self-test-agent-footer.js --json",
-    "kb:self-test-restore-trust": "node tools/self-test-restore-trust.js --json",
-    "kb:paid-manifest": "node tools/validate-paid-manifest.js"
+    "kb:self-test-restore-trust": "node tools/self-test-restore-trust.js --json"
   },
   "keywords": [
     "ai-agents",
@@ -85,7 +81,9 @@
     "local-first",
     "claude-code",
     "codex",
-    "opencode"
+    "opencode",
+    "openclaw",
+    "hermes"
   ],
   "license": "Apache-2.0"
 }

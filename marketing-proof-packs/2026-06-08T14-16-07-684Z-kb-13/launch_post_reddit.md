@@ -1,1 +1,0 @@
-We ran a local proof pack for .knowledge. The useful part is that every claim has a claim ID, raw artifact, reproduction command and limitation. KB-13 Pro Inspector Governance: pro_score=94. All included claims are measured in this run.

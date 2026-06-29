@@ -36,7 +36,7 @@ function main() {
   assert(heartbeat.session.last_heartbeat_at, 'heartbeat missing');
   assert(report.recent_sessions.length >= 1, 'report missing sessions');
   assert(finish.session.status === 'done', 'finish did not mark done');
-  console.log(JSON.stringify({ schema_version: '3.2.1', status: 'pass', checks: ['start', 'heartbeat', 'report', 'finish', 'identity fields'] }, null, 2));
+  console.log(JSON.stringify({ schema_version: '3.2.2', status: 'pass', checks: ['start', 'heartbeat', 'report', 'finish', 'identity fields'] }, null, 2));
   fs.rmSync(root, { recursive: true, force: true });
 }
 

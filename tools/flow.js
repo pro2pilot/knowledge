@@ -18,11 +18,11 @@ const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { acquireTeamLock, appendTeamEvent, updateWorkspaceFlow } = require('./lib/team-store');
 
 const flows = {
-  scan: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
+  scan: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
   doctor: ['external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'doctor.js'],
-  lint: ['build-wiki-graph.js', 'lint-wiki.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
-  import: ['ingest-existing-project.js --merge', 'sync-tracked.js --scan --discover', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
-  release: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'validate-paid-manifest.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
+  lint: ['build-wiki-graph.js', 'lint-wiki.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
+  import: ['ingest-existing-project.js --merge', 'sync-tracked.js --scan --discover', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
+  release: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
 };
 
 const STEP_LABELS = {
@@ -33,7 +33,6 @@ const STEP_LABELS = {
   'check-updates.js': 'updates',
   'build-routing-bundle.js': 'routing',
   'build-search-index.js': 'search-idx',
-  'validate-paid-manifest.js': 'paid-manifest',
   'build-visual-inspector.js': 'inspector',
   'scan-secrets.js': 'secret-scan',
   'doctor.js': 'doctor',
@@ -124,7 +123,6 @@ function detailFor(step) {
   if (step.step === 'wiki-graph') return `${p.nodes ?? '-'} nodes / ${p.edges ?? '-'} edges`;
   if (step.step === 'search-idx') return `${p.documents ?? p.document_count ?? '-'} docs`;
   if (step.step === 'routing') return `${p.modules ?? '-'} modules`;
-  if (step.step === 'paid-manifest') return `${p.status || 'unknown'} / ${p.capabilities ?? '-'} capabilities`;
   if (step.step === 'inspector') return `${(p.output || '').replace(/^.*\//, '')}`;
   if (step.step === 'secret-scan') return `${p.status || 'unknown'} / ${(p.findings || []).length} findings`;
   if (step.step === 'ext-memory') return `${p.providers?.pinecone?.mode ?? p.providers?.[0]?.mode ?? 'disabled'}`;

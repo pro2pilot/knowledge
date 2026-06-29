@@ -40,8 +40,8 @@ https://pro2pilot.com/knowledge/
 Canonical asset:
 
 ```txt
-knowledge-v3.2.1.zip
-https://github.com/pro2pilot/knowledge/releases/tag/v3.2.1
+knowledge-v3.2.2.zip
+https://github.com/pro2pilot/knowledge/releases/tag/v3.2.2
 ```
 
 Extract the release so your repository contains `.knowledge/`, then tell your agent:
@@ -59,7 +59,7 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with `claude`, `opencode`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent.
+Replace `codex` with `claude`, `opencode`, `openclaw`, `hermes`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent.
 
 After import, the first operational file an agent reads is:
 
@@ -205,7 +205,7 @@ Build and validate the install artifact from this source checkout:
 
 ```bash
 node tools/package-release.js --json
-node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip --json
 node tools/release-gate.js --json
 ```
 

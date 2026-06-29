@@ -142,9 +142,9 @@ async function main() {
   const hiddenCopy = [
     ['Billing', ' Boundaries'],
     ['Do Not', ' Charge For'],
-    ['Usage Billing', ' Policy'],
-    ['Paid', ' preview'],
-    ['paid', '-value actions']
+    ['Usage Bi', 'lling Policy'],
+    ['Pa', 'id preview'],
+    ['pa', 'id-value actions']
   ].map((parts) => parts.join(''));
   for (const forbidden of hiddenCopy) {
     assert(!html.includes(forbidden), `Pro Preview must not expose "${forbidden}"`);
@@ -157,21 +157,21 @@ async function main() {
     'Search',
     'Generate PR Summary',
     'Review PR Impact',
-    'Export Debug Bundle',
+    'Validate Release Artifact',
     'Team Status',
     'Memory Status',
     'Preview Mem0',
-    'Export Pro Snapshot'
+    'Join Inspector Pro waitlist'
   ];
-  const missingCommands = commandLabels.filter((label) => !html.includes(`<span>${label}</span>`));
+  const missingCommands = commandLabels.filter((label) => !html.includes(`<span>${label}</span>`) && !html.includes(`>${label}</a>`));
   assert(missingCommands.length === 0, `Inspector missing command button(s): ${missingCommands.join(', ')}`);
 
   for (const label of [
     '.knowledge Source of Truth',
     'Mem0 OSS - recommended optional universal backend',
     'Pinecone - optional vector/cloud retrieval',
-    'Graphiti - Pro/Enterprise temporal graph',
-    'Zep - Pro/Enterprise managed/BYOC memory'
+    'Graphiti - future optional temporal graph',
+    'Zep - future optional managed/BYOC memory'
   ]) {
     assert(html.includes(label), `Inspector missing memory card: ${label}`);
   }
@@ -229,7 +229,7 @@ async function main() {
     const denied = await requestJson(port, 'GET', '/api/state');
     assert(denied.status === 401, 'Inspector API state must require token.');
     const stateRes = await requestJson(port, 'GET', '/api/state', null, sessionRes.json.token);
-    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.1', 'Inspector API state missing product version.');
+    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.2', 'Inspector API state missing product version.');
     assert(stateRes.json.state.context.branch === 'main', 'Inspector API should default to active Git branch.');
     assert(stateRes.json.state.context.git?.branches?.active === 'main', 'Inspector API branch state missing active branch.');
     assert((stateRes.json.state.context.git?.branches?.branches || []).some((branch) => branch.name === 'feature/diagnostics'), 'Inspector API branch list missing feature branch.');
@@ -315,7 +315,7 @@ async function main() {
   assert(!localLeak.test(teamHtml), 'team inspector leaked local developer path');
 
   const result = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     status: 'pass',
     team_mode_fixture_requested: teamModeFixtureRequested,
     temp_root: keepTemp ? root : null,

@@ -7,8 +7,8 @@ Provider split:
 ```txt
 Mem0 OSS = recommended optional universal local memory backend
 Pinecone = optional vector/cloud retrieval bridge
-Graphiti = Pro/Enterprise self-host temporal graph provider
-Zep = Pro/Enterprise managed or BYOC enterprise memory provider
+Graphiti = not included in free/core
+Zep = not included in free/core
 External memory = advisory only
 ```
 
@@ -96,12 +96,12 @@ Those commands dry-run by default. Pass `--live` only when `PINECONE_MODE`, `PIN
 
 ## Graphiti and Zep
 
-Graphiti and Zep are represented in the paid Inspector layer:
+Graphiti and Zep are not bundled in the free/core install asset:
 
-- Graphiti: Pro/Enterprise self-host temporal graph memory provider for provenance, validity windows and graph traversal.
-- Zep: Pro/Enterprise managed or BYOC memory provider for governed enterprise agent memory.
+- Graphiti-style temporal graph memory is out of scope for this free/core release.
+- Zep-style managed or BYOC memory is out of scope for this free/core release.
 
-Free core may show disabled preview cards, but it must not import paid implementations. Their manifests and adapter notes live outside the free release tree under the Pro Inspector directory and are excluded from `dist/knowledge-v3.2.1.zip`.
+Free core may mention these future provider categories, but it does not ship their adapters, manifests, runtime code, or provider-specific rules. They are excluded from `dist/knowledge-v3.2.2.zip`.
 
 ## Migrating from Claude MEM
 

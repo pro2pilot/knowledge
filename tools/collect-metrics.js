@@ -42,7 +42,7 @@ function main() {
   const externalMemoryReport = readJson(path.join(stateRoot, 'maintenance', 'external_memory_status.json'), { providers: [], metrics: {} });
   const externalMemoryMetrics = readJson(path.join(stateRoot, 'metrics', 'external_memory.json'), externalMemoryReport.metrics || {});
   const metrics = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: new Date().toISOString(),
     generated_by: getAgentId(),
     mode: context.mode,

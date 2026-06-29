@@ -292,7 +292,7 @@ console.log(JSON.stringify(names.filter((name)=>/graphiti|zep/i.test(name))));
   assert(proNames.length === 0, 'Graphiti/Zep pro provider files leaked into free release artifact');
 
   const result = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

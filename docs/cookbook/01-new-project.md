@@ -11,7 +11,7 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with the active runtime: `claude`, `opencode`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider`.
+Replace `codex` with the active runtime: `claude`, `opencode`, `openclaw`, `hermes`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider`.
 
 Expected output:
 

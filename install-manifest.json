@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.1",
+  "schema_version": "3.2.2",
   "system_paths": [
     ".gitattributes",
     ".gitignore",
@@ -75,7 +75,6 @@
   "system_exclude_paths": [
     "benchmarks/results",
     "benchmark-runs",
-    "marketing-proof-packs",
     "dist",
     ".git",
     ".github",

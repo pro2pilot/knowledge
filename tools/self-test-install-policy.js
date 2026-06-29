@@ -213,6 +213,8 @@ const runtimeExpectations = {
   codex: ['AGENTS.md', '.agents/skills/kb-metrics/SKILL.md'],
   claude: ['CLAUDE.md', '.claude/skills/kb-metrics/SKILL.md'],
   opencode: ['.opencode/commands/kb-metrics.md'],
+  openclaw: ['AGENTS.md', '.agents/skills/kb-metrics/SKILL.md'],
+  hermes: ['AGENTS.md'],
   gemini: ['GEMINI.md'],
   copilot: ['.github/copilot-instructions.md'],
   devin: ['.devin/rules/knowledge.md'],
@@ -264,7 +266,7 @@ function assertInstalledSystemComplete(repo) {
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.1.md',
+    '.release-notes/v3.2.2.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',
@@ -452,7 +454,7 @@ function main(argv = process.argv.slice(2)) {
         .map((runtime) => `node .knowledge/tools/install-agent-integrations.js --runtime ${runtime}`)
         .filter((command) => !quickStart.includes(command));
       assert(missing.length === 0, 'Quick-Start is missing runtime install commands.', { missing });
-      assert(quickStart.includes('OpenClaw') && quickStart.includes('Hermes') && quickStart.includes('Pi'), 'Quick-Start is missing generic compatibility notes.', {});
+      assert(quickStart.includes('--runtime openclaw') && quickStart.includes('--runtime hermes') && quickStart.includes('Pi'), 'Quick-Start is missing OpenClaw, Hermes, or generic Pi compatibility notes.', {});
       return { commands_checked: Object.keys(runtimeExpectations).length };
     });
 

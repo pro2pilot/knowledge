@@ -77,7 +77,7 @@ function main(argv = process.argv.slice(2)) {
   ensureDir(path.join(context.stateRoot, 'maintenance'));
   const steps = SAFE_STEPS.map((step) => runStep(context, step));
   const report = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: new Date().toISOString(),
     safe: true,
     status: steps.every((step) => step.status === 'passed') ? 'passed' : 'failed',

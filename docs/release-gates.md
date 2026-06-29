@@ -21,7 +21,7 @@ node tools/self-test-team-inspector-json.js
 node tools/self-test-inspector-ui.js
 node tools/flow.js release --no-color --json
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip --json
 ```
 
-Clean install smoke from `dist/knowledge-v3.2.1.zip` must pass before marking the release available.
+Clean install smoke from `dist/knowledge-v3.2.2.zip` must pass before marking the release available.

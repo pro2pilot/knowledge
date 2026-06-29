@@ -1,4 +1,0 @@
-suite_id,suite,status,claim_status,metric,value
-KB-12,Team Mode / Multi-worktree,pass,measured-on-fixture,workspaces,3
-KB-12,Team Mode / Multi-worktree,pass,measured-on-fixture,json_corruption_count,0
-KB-12,Team Mode / Multi-worktree,pass,measured-on-fixture,workspace_state_isolation_pass,1

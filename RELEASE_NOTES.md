@@ -1,5 +1,28 @@
 # Release Notes
 
+## v3.2.2 - Release cleanup and bridge integrations
+
+v3.2.2 cleans the public install surface and adds explicit bridge support for OpenClaw and Hermes.
+
+> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
+
+### Added
+
+- `--runtime openclaw` installs `AGENTS.md` plus `.agents/skills/`.
+- `--runtime hermes` installs the generic `AGENTS.md` bridge without creating an unconfirmed vendor folder.
+- Quick-Start and integration docs now list OpenClaw and Hermes directly while Pi remains a manual bridge target.
+
+### Changed
+
+- Active version and schema markers are updated to `3.2.2`.
+- Release artifact commands and validation examples now point to `dist/knowledge-v3.2.2.zip`.
+- Graphiti and Zep are described as not bundled in the free/core install asset.
+
+### Removed
+
+- Stale debug/pro export commands and marketing-pack generation from the public release line.
+- Source runtime proof folders that are not part of the install asset.
+
 ## v3.2.1 - Free Core trust graph hardening
 
 v3.2.1 raises the local free-core graph from a sparse wiki-dot view to an actionable source-of-truth and routing graph.
@@ -13,8 +36,7 @@ v3.2.1 raises the local free-core graph from a sparse wiki-dot view to an action
 - Inferred module-to-wiki and source-of-truth edges so a fresh release no longer renders as disconnected dots.
 - Inspector graph diagnostics for relation counts, broken edges, orphan pages, readiness, and rebuild commands.
 - A focused free-core graph self-test that fails if the graph regresses to zero useful relations.
-- `docs/free-core-graph.md` with the free/pro graph boundary and readiness checklist.
-- `docs/site-github-canonical-boundary.md` with the canonical split between website explanation and GitHub implementation proof.
+- `docs/free-core-graph.md` with the free/core graph boundary and readiness checklist.
 
 ### Changed
 
@@ -28,7 +50,7 @@ v3.2.1 raises the local free-core graph from a sparse wiki-dot view to an action
 ### Fixed
 
 - The free graph is no longer practically useless on a fresh seed with no typed wiki links.
-- The release packager and validator block generated QA maintenance files plus private strategy/product/pro-spec notes from the install ZIP.
+- The release packager and validator block generated QA maintenance files and non-install maintainer notes from the install ZIP.
 - Source-of-truth and external-memory advisory boundaries are visible in the free Inspector instead of living only in prose docs.
 
 ## v3.2.0 - Universal final-report hardening

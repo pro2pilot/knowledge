@@ -33,6 +33,8 @@ Install only the repo-local integration for the agent that is currently operatin
 | Codex | `node .knowledge/tools/install-agent-integrations.js --runtime codex` | `AGENTS.md`, `.agents/skills/` |
 | Claude Code | `node .knowledge/tools/install-agent-integrations.js --runtime claude` | `CLAUDE.md`, `.claude/skills/` |
 | OpenCode | `node .knowledge/tools/install-agent-integrations.js --runtime opencode` | `.opencode/commands/` |
+| OpenClaw | `node .knowledge/tools/install-agent-integrations.js --runtime openclaw` | `AGENTS.md`, `.agents/skills/` |
+| Hermes | `node .knowledge/tools/install-agent-integrations.js --runtime hermes` | `AGENTS.md` |
 | Gemini CLI | `node .knowledge/tools/install-agent-integrations.js --runtime gemini` | `GEMINI.md` |
 | GitHub Copilot | `node .knowledge/tools/install-agent-integrations.js --runtime copilot` | `.github/copilot-instructions.md` |
 | Devin | `node .knowledge/tools/install-agent-integrations.js --runtime devin` | `.devin/rules/knowledge.md` |
@@ -47,7 +49,7 @@ Power users can install every supported integration explicitly:
 node .knowledge/tools/install-agent-integrations.js --all
 ```
 
-OpenClaw, Hermes, Pi, and other agents without a confirmed repo-local rules-file convention should use the generic bridge: read or paste `.knowledge/Quick-Start.md`, or install `AGENTS.md` with `--runtime codex` only when that agent accepts `AGENTS.md`. Do not create vendor folders for them until their documented convention is confirmed.
+OpenClaw uses the `AGENTS.md` plus `.agents/skills/` workspace-skills bridge. Hermes uses an explicit `AGENTS.md` bridge without a vendor folder. Pi and other agents without a confirmed repo-local rules-file convention should read or paste `.knowledge/Quick-Start.md` until their documented convention is confirmed.
 
 ## Required first action
 
@@ -320,16 +322,16 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.1.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
+Use `dist/knowledge-v3.2.2.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
 
 ```bash
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.1.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip --json
 ```
 
-## Free Inspector vs Pro Inspector
+## Free Inspector vs Inspector Pro
 
-Free Inspector is local, static, one-repo, and command-copy by default. Pro Inspector is the separate paid app for PR impact, repair ownership, policy packs, memory governance, provider fleet status, multi-repo/team dashboard, and audit/history.
+Free Inspector is local, static, one-repo, and command-copy by default. Inspector Pro is the separate waitlist product for deeper team workflows such as repair ownership, policy packs, memory governance, provider fleet status, multi-repo dashboards, and audit/history.
 
 Open:
 

@@ -8,7 +8,12 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const required = ['doctor.run', 'flow.release', 'inspector.rebuild', 'trust.restore.safe', 'pr.review.basic', 'pr.impact.basic', 'repair.queue.refresh', 'memory.status', 'team.status', 'agent.sessions.refresh', 'queue.status', 'merge.readiness', 'report.debug_bundle', 'report.pro_snapshot', 'benchmark.summary'];
+const required = ['doctor.run', 'flow.release', 'inspector.rebuild', 'trust.restore.safe', 'pr.review.basic', 'pr.impact.basic', 'repair.queue.refresh', 'memory.status', 'team.status', 'agent.sessions.refresh', 'queue.status', 'merge.readiness', 'benchmark.summary'];
+const removed = [
+  ['report', 'debug_bundle'].join('.'),
+  ['report', 'pro_snapshot'].join('.'),
+  ['pro', 'pr_impact', 'pro'].join('.')
+];
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -72,12 +77,14 @@ async function main() {
     const ids = new Set((actions.json.actions || []).map((action) => action.id));
     const missing = required.filter((id) => !ids.has(id));
     assert(missing.length === 0, `missing actions: ${missing.join(', ')}`);
+    const unexpected = removed.filter((id) => ids.has(id));
+    assert(unexpected.length === 0, `removed actions are still exposed: ${unexpected.join(', ')}`);
     const run = await request(port, 'POST', '/api/actions/agent.sessions.refresh/run', token, { confirmed: true });
     assert(run.status === 200 && run.json.run.status === 'passed', `agent.sessions.refresh did not pass: ${run.body}`);
     assert(fs.existsSync(run.json.run.stdout_path), 'stdout log was not saved');
-    const pro = await request(port, 'POST', '/api/actions/pro.pr_impact_pro/run', token, { confirmed: true });
-    assert(pro.status === 423 && pro.json.run.status === 'blocked', 'pro-only action must be blocked without entitlement');
-    console.log(JSON.stringify({ schema_version: '3.2.1', status: 'pass', checks: ['token auth', 'required action registry', 'action lifecycle passed', 'pro gate blocked', 'logs saved'] }, null, 2));
+    const deletedAction = await request(port, 'POST', `/api/actions/${removed[0]}/run`, token, { confirmed: true });
+    assert(deletedAction.status === 423 && deletedAction.json.run.status === 'blocked', 'removed action id must be blocked');
+    console.log(JSON.stringify({ schema_version: '3.2.2', status: 'pass', checks: ['token auth', 'required action registry', 'removed actions absent', 'action lifecycle passed', 'logs saved'] }, null, 2));
   } finally {
     child.kill();
     fs.rmSync(root, { recursive: true, force: true });

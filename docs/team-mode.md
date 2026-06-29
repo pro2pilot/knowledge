@@ -2,7 +2,7 @@
 
 ## Назначение файла
 
-Этот файл превращает приложенный текст про team mode в проектную спецификацию для `.knowledge 3.2.1`. Режим должен быть экспериментальным, но рабочим: несколько агентов работают в разных Git worktrees/branches, имеют общий team registry, отдельные workspace states, стабильные agent IDs, централизованные locks/events/status и безопасную merge-модель через Git.
+Этот файл превращает приложенный текст про team mode в проектную спецификацию для `.knowledge 3.2.2`. Режим должен быть экспериментальным, но рабочим: несколько агентов работают в разных Git worktrees/branches, имеют общий team registry, отдельные workspace states, стабильные agent IDs, централизованные locks/events/status и безопасную merge-модель через Git.
 
 ## Product summary
 
@@ -32,7 +32,7 @@
 | `team-init`, `workspace-register`, `team-status`, `workspace-unregister` | Использовать полностью. | Минимальный registry workflow. |
 | Locks/events centralization | Использовать полностью. | Нужна защита от JSON corruption и conflict visibility. |
 | Context-aware core scripts | Использовать полностью. | Без этого team mode останется декоративным. |
-| Inspector team panel in free | Использовать как readonly/basic. | Free видит локальный status; paid управляет collaboration/history. |
+| Inspector team panel in free | Использовать как readonly/basic. | Free видит локальный status; deeper collaboration/history remain outside free core. |
 | CI fallback repo-local | Использовать полностью. | GitHub Actions не должен требовать central teamRoot. |
 | Self-test with temp repo + 2 worktrees | Использовать полностью. | Это Definition of Done. |
 
@@ -610,7 +610,7 @@ Free local Inspector should show team-mode panel if team metadata exists:
 - warnings;
 - copied commands for next step.
 
-Paid Inspector adds:
+Inspector Pro can add:
 
 - active workspace dashboard;
 - compare workspaces;
@@ -788,5 +788,4 @@ team mode is done when:
 - all commands support `--json`;
 - Windows/PowerShell paths, spaces and Cyrillic paths pass tests;
 - Inspector has Team Mode panel;
-- paid Inspector plan can build on top of the same registry without changing free core semantics.
-
+- Inspector Pro can build on top of the same registry without changing free core semantics.

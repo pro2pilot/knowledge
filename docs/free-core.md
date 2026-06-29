@@ -12,8 +12,6 @@ node .knowledge/tools/flow.js release --no-color --json
 node .knowledge/tools/pr-impact.js --json
 node .knowledge/tools/restore-trust.js --safe --json
 node .knowledge/tools/build-wiki-graph.js
-node .knowledge/tools/export-debug-bundle.js --json
-node .knowledge/tools/export-pro-snapshot.js --json
 node .knowledge/tools/agent-session.js report --json
 node .knowledge/tools/team-status.js --json
 node .knowledge/tools/worktree-status.js --json

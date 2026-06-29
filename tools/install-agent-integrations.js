@@ -21,6 +21,11 @@ const RUNTIME_ALIASES = {
   anthropic: 'claude',
   opencode: 'opencode',
   'open-code': 'opencode',
+  openclaw: 'openclaw',
+  'open-claw': 'openclaw',
+  'openclaw-cli': 'openclaw',
+  hermes: 'hermes',
+  'hermes-cli': 'hermes',
   gemini: 'gemini',
   'gemini-cli': 'gemini',
   copilot: 'copilot',
@@ -42,7 +47,7 @@ function normalizeRuntime(value) {
 }
 
 function supportedRuntimeIds() {
-  return ['codex', 'claude', 'opencode', 'gemini', 'copilot', 'devin', 'windsurf', 'continue', 'roo', 'aider'];
+  return ['codex', 'claude', 'opencode', 'openclaw', 'hermes', 'gemini', 'copilot', 'devin', 'windsurf', 'continue', 'roo', 'aider'];
 }
 
 function runtimeCommands() {
@@ -328,6 +333,17 @@ function installOpenCode(context, installed) {
   ).length;
 }
 
+function installOpenClaw(context, installed) {
+  const repoRoot = context.targetRoot;
+  const kitRoot = context.systemRoot;
+  installMarkdownFile(repoRoot, kitRoot, 'AGENTS.md', path.join('openclaw', 'AGENTS.md'), 'OpenClaw .knowledge instructions', installed, 'agents_md');
+  installed.openclaw_skills = copyDir(path.join(kitRoot, 'agent-integrations', 'codex', 'skills'), path.join(repoRoot, '.agents', 'skills')).length;
+}
+
+function installHermes(context, installed) {
+  installMarkdownFile(context.targetRoot, context.systemRoot, 'AGENTS.md', path.join('hermes', 'AGENTS.md'), 'Hermes .knowledge bridge', installed, 'agents_md');
+}
+
 function installGemini(context, installed) {
   installMarkdownFile(context.targetRoot, context.systemRoot, 'GEMINI.md', path.join('gemini', 'GEMINI.md'), 'Gemini CLI .knowledge notes', installed, 'gemini_md');
 }
@@ -382,6 +398,16 @@ const INTEGRATIONS = {
     paths: ['.opencode/commands/**'],
     install: installOpenCode
   },
+  openclaw: {
+    label: 'OpenClaw',
+    paths: ['AGENTS.md', '.agents/skills/**'],
+    install: installOpenClaw
+  },
+  hermes: {
+    label: 'Hermes',
+    paths: ['AGENTS.md'],
+    install: installHermes
+  },
   gemini: {
     label: 'Gemini CLI',
     paths: ['GEMINI.md'],
@@ -426,6 +452,8 @@ function detectRuntimeFromEnv(env = process.env) {
     ['codex', ['CODEX_HOME', 'CODEX_SANDBOX', 'CODEX_CLI_SANDBOX', 'CODEX_ENV_PWD']],
     ['claude', ['CLAUDECODE', 'CLAUDE_CODE', 'ANTHROPIC_CLAUDE_CODE']],
     ['opencode', ['OPENCODE', 'OPENCODE_APP']],
+    ['openclaw', ['OPENCLAW_HOME', 'OPENCLAW_WORKSPACE']],
+    ['hermes', ['HERMES_HOME', 'HERMES_AGENT']],
     ['gemini', ['GEMINI_CLI', 'GEMINI_API_KEY']],
     ['copilot', ['GITHUB_COPILOT_AGENT', 'COPILOT_AGENT']],
     ['continue', ['CONTINUE_GLOBAL_DIR']],

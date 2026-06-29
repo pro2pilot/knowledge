@@ -10,7 +10,7 @@
     "description": { "type": "string" },
     "risk": {
       "type": "string",
-      "enum": ["read_only", "local_write", "network_or_provider", "destructive", "pro_only"]
+      "enum": ["read_only", "local_write", "network_or_provider", "destructive", "extension_locked"]
     },
     "required_entitlement": { "type": ["string", "null"] },
     "command": { "type": ["string", "null"] },

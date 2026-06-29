@@ -54,7 +54,7 @@ function appendTeamEvent(context, type, payload = {}) {
 
 function readRegistry(teamRoot) {
   return readJson(path.join(teamRoot, 'registry.json'), {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     created_at: nowIso(),
     updated_at: null,
     repos: []
@@ -92,7 +92,7 @@ function initTeam(context) {
   const repoJsonPath = path.join(base, 'repo.json');
   const existing = readJson(repoJsonPath, {});
   const repoJson = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     repoId: context.repoId,
     targetRoot: context.targetRoot,
     projectKnowledgeRoot: context.projectKnowledgeRoot,
@@ -149,7 +149,7 @@ function registerWorkspace(context, extra = {}) {
     ...(duplicateAgentWorkspaces.length ? [`agentId duplicate in active workspaces: ${duplicateAgentWorkspaces.join(', ')}`] : [])
   ]));
   const workspace = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     workspaceId: context.workspaceId,
     agentId: context.agentId,
     repoId: context.repoId,
@@ -311,7 +311,7 @@ function listTeamStatus(teamRoot) {
     return Number.isFinite(ts) && Date.now() - ts > staleAfterMs;
   });
   return {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: nowIso(),
     teamRoot,
     registry,

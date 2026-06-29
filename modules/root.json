@@ -8,7 +8,7 @@
       ".knowledge/"
     ],
     "does_not_own": [
-      "paid Pro2Pilot Inspector implementation",
+      "separate Inspector Pro implementation",
       "user source code outside routing and trust scans"
     ],
     "external_dependencies": [

@@ -11,7 +11,7 @@ What changed:
 - Doctor warns when legacy Claude MEM artifacts are found.
 - Mem0 OSS is the recommended optional local/core provider.
 - Pinecone remains an optional vector/cloud retrieval bridge.
-- Graphiti and Zep live in the paid Inspector provider layer.
+- Graphiti and Zep are not bundled in the free/core install asset.
 
 Safe migration:
 

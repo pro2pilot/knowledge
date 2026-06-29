@@ -1,1 +1,0 @@
-.knowledge is a repo-local knowledge governance layer for AI coding agents. Latest local benchmark proof: claims pending further measured runs. We are keeping preview/planned suites out of public copy.

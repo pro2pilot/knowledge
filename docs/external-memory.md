@@ -14,10 +14,10 @@ Free/core provider positioning:
 - Pinecone: optional vector/cloud retrieval bridge.
 - Legacy Claude MEM: migration-only advisory artifacts, not a first-class provider.
 
-Paid Inspector provider positioning:
+Optional provider positioning:
 
-- Graphiti: self-host temporal graph/provenance memory.
-- Zep: managed or BYOC enterprise memory.
+- Graphiti: future temporal graph/provenance category, not included in free/core.
+- Zep: future managed/BYOC memory category, not included in free/core.
 
 Run:
 

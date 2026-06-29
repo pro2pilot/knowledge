@@ -72,15 +72,15 @@ function loadProviderManifests(context, options = {}) {
     }
   }
 
-  const paidRoot = options.paidRoot || process.env.KNOWLEDGE_PAID_INSPECTOR_ROOT || null;
-  if (paidRoot) {
-    const paidDir = path.join(path.resolve(paidRoot), 'memory-providers');
-    if (fs.existsSync(paidDir)) {
-      for (const entry of fs.readdirSync(paidDir, { withFileTypes: true })) {
+  const extensionRoot = options.extensionRoot || process.env.KNOWLEDGE_OPTIONAL_PROVIDER_ROOT || null;
+  if (extensionRoot) {
+    const extensionDir = path.join(path.resolve(extensionRoot), 'memory-providers');
+    if (fs.existsSync(extensionDir)) {
+      for (const entry of fs.readdirSync(extensionDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
-        const filePath = path.join(paidDir, entry.name, 'manifest.json');
+        const filePath = path.join(extensionDir, entry.name, 'manifest.json');
         if (!fs.existsSync(filePath)) continue;
-        manifests.push(readManifest(filePath, 'paid_inspector'));
+        manifests.push(readManifest(filePath, 'optional_extension'));
       }
     }
   }
@@ -176,7 +176,7 @@ function genericProviderStatus(context, manifest) {
   }
   if (manifest.id === 'mem0-oss') warnings.push('Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.');
   if (manifest.install?.requires_network) warnings.push('Install/update requires explicit user action and may use network outside status/report mode.');
-  if (manifest.type === 'paid') warnings.push('Provider implementation lives in the paid Inspector layer.');
+  if (manifest.type === 'optional') warnings.push('Provider implementation is optional and is not bundled into free core.');
   return {
     provider_id: manifest.id,
     provider: manifest.id,
@@ -313,7 +313,7 @@ function buildExternalMemoryReport(context, options = {}) {
   ]));
   const providerStatuses = Object.fromEntries(providers.map((provider) => [provider.provider_id.replace(/-/g, '_'), provider]));
   const metrics = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -327,7 +327,7 @@ function buildExternalMemoryReport(context, options = {}) {
     unknown_license_count: providers.filter((provider) => !provider.license_spdx || provider.license_spdx === 'unknown').length
   };
   const report = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -422,7 +422,7 @@ function recordInstall(context, providerId, flags = {}, options = {}) {
   }
   const dir = providerStateDir(context, manifest);
   const receipt = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     installed_at: null,
@@ -463,7 +463,7 @@ function recordUpdate(context, providerId, flags = {}, options = {}) {
   requireConfirmation(flags, 'update');
   const toVersion = requireVersion(flags.to || flags.version, 'update');
   const receipt = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     updated_at: null,
@@ -498,7 +498,7 @@ function uninstallProvider(context, providerId, flags = {}, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), {});
   const uninstall = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     provider_id: manifest.id,
     uninstalled_at: nowIso(),
     uninstall_mode: 'manual_receipt',
@@ -573,7 +573,7 @@ function listProviders(context, options = {}) {
   const manifests = loadProviderManifests(context, options);
   return {
     ok: true,
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: nowIso(),
     mode: context.mode,
     providers: manifests.map((manifest) => ({

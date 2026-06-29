@@ -25,6 +25,6 @@
 - User data path: provider-managed or configured vector index.
 - Update policy: external service/client managed by user.
 
-## Paid Inspector Providers
+## Optional Inspector Providers
 
-Graphiti and Zep provider contracts are modeled in the paid Inspector directory. They are not bundled into the free `.knowledge` core.
+Graphiti and Zep provider contracts are not bundled into the free `.knowledge` core.

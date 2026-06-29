@@ -71,7 +71,7 @@ async function main() {
     const denied = await request(port, 'GET', '/api/state');
     assert(denied.status === 401, 'api state must require session token');
     const stateRes = await request(port, 'GET', '/api/state', session.token);
-    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.1', 'api state did not return product 3.2.1');
+    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.2', 'api state did not return product 3.2.2');
     const html = await request(port, 'GET', '/');
     for (const label of ['Home', 'Review', 'Knowledge Trust', 'Agents Activity', 'Reports', 'Settings', 'Pro Preview']) {
       assert(html.body.includes(`>${label}</button>`), `missing nav label ${label}`);
@@ -79,7 +79,7 @@ async function main() {
     assert(!html.body.includes('>Command Center</button>'), 'Command Center must not be a top-level tab');
     assert(!html.body.includes('>Metrics</button>'), 'Metrics must not be a top-level tab');
     assert(html.body.includes('data-table-search="modules"'), 'launcher HTML should share tabular Inspector renderer');
-    const result = { schema_version: '3.2.1', status: 'pass', checks: ['one-file launcher starts', 'click launcher files exist', 'trust gate asset exists', 'launcher helper exists', 'session token required', 'canonical nav renders', 'shared Inspector renderer renders'] };
+    const result = { schema_version: '3.2.2', status: 'pass', checks: ['one-file launcher starts', 'click launcher files exist', 'trust gate asset exists', 'launcher helper exists', 'session token required', 'canonical nav renders', 'shared Inspector renderer renders'] };
     console.log(JSON.stringify(result, null, 2));
   } finally {
     child.kill();

@@ -1,6 +1,6 @@
 # .knowledge Competitive Benchmark Harness
 
-This harness runs local, reproducible benchmark suites for `.knowledge 3.2.1`.
+This harness runs local, reproducible benchmark suites for `.knowledge 3.2.2`.
 
 It is intentionally claim-safe:
 
@@ -21,7 +21,6 @@ node .knowledge/benchmarks/run-benchmarks.js --suite kb-11-memory-providers --ru
 node .knowledge/benchmarks/run-benchmarks.js --suite kb-12-team-mode --runs 10 --json
 node .knowledge/benchmarks/run-benchmarks.js --suite kb-14-no-cloud --runs 5 --json
 node .knowledge/benchmarks/run-benchmarks.js --suite all --fixture all --runs 5 --json
-node .knowledge/benchmarks/generate-marketing-pack.js --latest --json
 ```
 
 In source checkout, omit the `.knowledge/` prefix.

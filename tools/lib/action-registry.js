@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const RISKS = new Set(['read_only', 'local_write', 'network_or_provider', 'destructive', 'pro_only']);
+const RISKS = new Set(['read_only', 'local_write', 'network_or_provider', 'destructive', 'extension_locked']);
 const RISK_REQUIRES_CONFIRMATION = new Set(['network_or_provider', 'destructive']);
 
 const ACTIONS = [
@@ -92,33 +92,12 @@ const ACTIONS = [
     description: 'Check local worktree and merge-readiness signals.'
   },
   {
-    id: 'report.debug_bundle',
-    label: 'Export Debug Bundle',
-    risk: 'local_write',
-    command: ['tools/export-debug-bundle.js', '--json'],
-    description: 'Write a redacted local debug bundle.'
-  },
-  {
-    id: 'report.pro_snapshot',
-    label: 'Export Pro Snapshot',
-    risk: 'local_write',
-    command: ['tools/export-pro-snapshot.js', '--json'],
-    description: 'Write a sanitized bridge snapshot for future Pro import.'
-  },
-  {
     id: 'benchmark.summary',
     label: 'Benchmark Summary',
     risk: 'local_write',
     command: ['benchmarks/run-benchmarks.js', '--suite', 'smoke', '--json'],
     description: 'Run the local benchmark harness smoke suite and record evidence.'
   },
-  {
-    id: 'pro.pr_impact_pro',
-    label: 'PR Impact Pro',
-    risk: 'pro_only',
-    required_entitlement: 'pr_impact_pro',
-    description: 'Locked Pro preview for advanced PR risk scoring and policy packs.'
-  }
 ];
 
 function normalizeAction(action) {
@@ -154,18 +133,18 @@ function readJson(filePath, fallback) {
 }
 
 function loadEntitlements(knowledgeRoot, env = process.env) {
-  const entitlementsPath = path.join(knowledgeRoot, 'pro', 'entitlements.json');
-  const licensePath = path.join(knowledgeRoot, 'pro', 'license.json');
+  const entitlementsPath = path.join(knowledgeRoot, 'extensions', 'entitlements.json');
+  const licensePath = path.join(knowledgeRoot, 'extensions', 'license.json');
   const data = readJson(entitlementsPath, readJson(licensePath, {}));
-  const devMode = env.KNOWLEDGE_PRO_DEV_ENTITLEMENT === '1';
+  const devMode = env.KNOWLEDGE_EXTENSION_DEV_ENTITLEMENT === '1';
   const entitlements = Array.from(new Set([
     ...(Array.isArray(data.entitlements) ? data.entitlements : []),
-    ...(devMode ? ['pro_base', 'pr_impact_pro', 'repair_planner', 'policy_packs'] : [])
+    ...(devMode ? ['extension_base', 'repair_planner', 'policy_packs'] : [])
   ]));
   return {
     active: Boolean(devMode || data.active || data.plan),
     source: devMode ? 'dev_env' : data.source || (data.plan ? 'local_license' : 'free'),
-    plan: data.plan || (devMode ? 'dev_pro' : 'free'),
+    plan: data.plan || (devMode ? 'dev_extension' : 'free'),
     dev_mode: devMode,
     entitlements,
     expires_at: data.expires_at || null,
@@ -175,8 +154,8 @@ function loadEntitlements(knowledgeRoot, env = process.env) {
 
 function canRunAction(action, entitlementState = {}) {
   if (!action) return { ok: false, reason: 'unknown_action' };
-  if (action.risk === 'pro_only') {
-    const needed = action.required_entitlement || 'pro_base';
+  if (action.risk === 'extension_locked') {
+    const needed = action.required_entitlement || 'extension_base';
     if (!entitlementState.entitlements?.includes(needed)) {
       return { ok: false, reason: 'missing_entitlement', required_entitlement: needed };
     }

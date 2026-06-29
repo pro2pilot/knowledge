@@ -13,9 +13,9 @@ The free/core graph must be useful without Pro Inspector. It explains local trus
 | External memory boundary | Included: advisory-only node and edge | Included with provider governance and fleet status |
 | Interactive exploration | Static local SVG and diagnostics | Interactive graph, filters, drilldowns, persisted views |
 | PR impact graph | Basic local PR impact data is free | Advanced interactive PR impact graph is Pro |
-| Temporal memory graph | Not included | Graphiti/Zep-style temporal/provider graph belongs to Pro/Enterprise |
+| Temporal memory graph | Not included | Graphiti/Zep-style temporal/provider graph is outside free/core |
 
-## 3.2.1 Readiness Target
+## 3.2.2 Readiness Target
 
 | Criterion | Target | Implementation |
 |---|---:|---|

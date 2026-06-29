@@ -1,9 +1,0 @@
-{
-  "schema_version": "3.2.0",
-  "run_id": "2026-06-08T09-44-21-359Z-all",
-  "source_benchmark_run": "benchmark-runs/2026-06-08T09-44-21-359Z-all",
-  "generated_at": "2026-06-08T09:48:54.245Z",
-  "public_claims_approved": 14,
-  "public_claims_blocked": 2,
-  "verdict": "partial"
-}

@@ -43,8 +43,7 @@ function scanSource() {
     ['.self-test-tmp/', 'self-test temp'],
     ['dist/', 'release output'],
     ['maintenance/flow-logs/', 'runtime flow logs'],
-    ['benchmark-runs/', 'benchmark runtime reports'],
-    ['marketing-proof-packs/', 'marketing runtime reports']
+    ['benchmark-runs/', 'benchmark runtime reports']
   ];
   for (const file of files) {
     for (const [prefix, reason] of forbiddenDirs) {
@@ -75,16 +74,16 @@ function main(argv = process.argv.slice(2)) {
   const issues = [];
   if (release.status !== 'ok') issues.push('release artifact is missing or invalid');
   const result = {
-    schema_version: '3.2.1',
+    schema_version: '3.2.2',
     generated_at: new Date().toISOString(),
     status: issues.length ? 'failed' : 'ok',
     distinction: {
       source_checkout: 'dev/source deliverable with tests, docs, temp-output exclusions and package tooling',
-      install_artifact: 'dist/knowledge-v3.2.1.zip'
+      install_artifact: 'dist/knowledge-v3.2.2.zip'
     },
     source,
     release_artifact: {
-      path: 'dist/knowledge-v3.2.1.zip',
+      path: 'dist/knowledge-v3.2.2.zip',
       status: release.status,
       entries: release.entries || 0,
       violations: release.violations || []
@@ -104,7 +103,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const { flags } = parseCliArgs(process.argv.slice(2));
-    const result = { schema_version: '3.2.1', status: 'failed', error: error.message };
+    const result = { schema_version: '3.2.2', status: 'failed', error: error.message };
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.error(error.message);
     process.exit(2);
