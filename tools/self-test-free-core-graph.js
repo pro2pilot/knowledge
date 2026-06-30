@@ -6,6 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
+const systemVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.5';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -30,7 +31,7 @@ function main() {
   runNode('tools/build-wiki-graph.js', ['--quiet']);
   const graph = readJson('maps/wiki_graph.json');
 
-  assert(graph.schema_version === '3.2.4', 'graph schema_version must be 3.2.4');
+  assert(graph.schema_version === systemVersion, `graph schema_version must be ${systemVersion}`);
   assert(graph.view === 'free_core_trust_graph', 'graph view must be free_core_trust_graph');
   assert(graph.node_count >= 12, `graph should have useful nodes, got ${graph.node_count}`);
   assert(graph.edge_count >= 12, `graph should have useful relations, got ${graph.edge_count}`);
@@ -48,6 +49,10 @@ function main() {
   const html = fs.readFileSync(path.join(root, 'inspector', 'index.html'), 'utf8');
   for (const needle of [
     'data-free-core-graph="true"',
+    'data-graph-shelf="free-core"',
+    'data-graph-toggle="free-core"',
+    'data-graph-node="true"',
+    'data-graph-detail="true"',
     'Free Core Trust Graph',
     'Source-of-truth order',
     'Graph diagnostics',
@@ -56,9 +61,10 @@ function main() {
   ]) {
     assert(html.includes(needle), `Inspector graph UI missing ${needle}`);
   }
+  assert(!html.includes('class="graph-link"'), 'Inspector graph nodes must not navigate to raw pages');
 
   console.log(JSON.stringify({
-    schema_version: '3.2.4',
+    schema_version: systemVersion,
     status: 'pass',
     graph: {
       nodes: graph.node_count,
@@ -74,6 +80,7 @@ function main() {
       'advisory boundary is visible',
       'free graph excludes Graphiti/Zep implementation nodes',
       'Inspector renders free-core graph UI'
+      ,'Inspector graph is collapsible and uses in-page node drilldown'
     ]
   }, null, 2));
 }

@@ -35,7 +35,7 @@ function readJson(filePath) {
 function runNode(args, cwd, env = {}) {
   const res = spawnSync(process.execPath, args, {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...process.env, KNOWLEDGE_FLOW_NO_OPEN: '1', ...env },
     encoding: 'utf8',
     timeout: Number.isFinite(childTimeoutMs) ? childTimeoutMs : 120000,
     windowsHide: true
@@ -280,7 +280,7 @@ function assertInstalledSystemComplete(repo) {
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.4.md',
+    '.release-notes/v3.2.5.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',

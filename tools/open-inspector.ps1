@@ -7,12 +7,37 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($KnowledgeRoot)) {
   $KnowledgeRoot = Split-Path -Parent $PSScriptRoot
 }
-$KnowledgeRoot = (Resolve-Path -LiteralPath $KnowledgeRoot).Path
+
+function Resolve-KnowledgeRoot {
+  param([string]$Root)
+  $resolved = (Resolve-Path -LiteralPath $Root).Path
+  $directEntry = Join-Path $resolved "inspector.js"
+  if (Test-Path -LiteralPath $directEntry) {
+    return $resolved
+  }
+  $nested = Join-Path $resolved ".knowledge"
+  $nestedEntry = Join-Path $nested "inspector.js"
+  if (Test-Path -LiteralPath $nestedEntry) {
+    return (Resolve-Path -LiteralPath $nested).Path
+  }
+  throw "Missing Inspector entrypoint. Expected $directEntry or $nestedEntry"
+}
+
+try {
+  $KnowledgeRoot = Resolve-KnowledgeRoot $KnowledgeRoot
+} catch {
+  [void][System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
+  [System.Windows.Forms.MessageBox]::Show(
+    "Inspector did not start.`r`n`r`n$($_.Exception.Message)",
+    ".knowledge Inspector",
+    [System.Windows.Forms.MessageBoxButtons]::OK,
+    [System.Windows.Forms.MessageBoxIcon]::Error
+  )
+  exit 1
+}
 $InspectorEntry = Join-Path $KnowledgeRoot "inspector.js"
 $MaintenanceDir = Join-Path $KnowledgeRoot "maintenance"
 $LogPath = Join-Path $MaintenanceDir "inspector-launch.log"
-
-New-Item -ItemType Directory -Force -Path $MaintenanceDir | Out-Null
 
 function Write-LaunchLog {
   param([string]$Message)
@@ -44,6 +69,7 @@ try {
     throw "Missing Inspector entrypoint: $InspectorEntry"
   }
 
+  New-Item -ItemType Directory -Force -Path $MaintenanceDir | Out-Null
   $node = Resolve-Node
   Write-LaunchLog "Starting Inspector with node: $node"
 

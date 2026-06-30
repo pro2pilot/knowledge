@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.5",
   "system_paths": [
     ".gitattributes",
     ".gitignore",
@@ -84,6 +84,7 @@
     ".qa-tmp",
     "node_modules",
     "maintenance/install-backups",
+    "maintenance/update-downloads",
     "maintenance/flow-logs",
     "maintenance/events",
     "maintenance/dev-notes",

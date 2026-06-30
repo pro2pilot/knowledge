@@ -8,6 +8,7 @@ const path = require('path');
 const { spawnSync, spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.5';
 const keepTemp = process.argv.includes('--keep-temp');
 const teamModeFixtureRequested = process.argv.includes('--team-mode-fixture');
 let rootForCleanup = null;
@@ -117,6 +118,7 @@ async function main() {
     '--state-root', state
   ];
   parseJson(runNode(path.join(systemRoot, 'tools', 'external-memory-status.js'), baseArgs), 'external-memory-status');
+  parseJson(runNode(path.join(systemRoot, 'tools', 'build-wiki-graph.js'), baseArgs), 'build wiki graph');
   const build = parseJson(runNode(path.join(systemRoot, 'tools', 'build-visual-inspector.js'), baseArgs), 'build inspector');
   assert((build.features || []).includes('canonical_navigation'), 'status missing canonical_navigation feature');
   assert((build.features || []).includes('git_branch_diagnostics'), 'status missing git_branch_diagnostics feature');
@@ -192,6 +194,11 @@ async function main() {
   assert(html.includes('metric-card'), 'Inspector metric cards should use metric-card styling');
   assert(html.includes('Repair trust with an agent'), 'Inspector missing simple agent repair entrypoint');
   assert(html.includes('Trust repair prompt for agent'), 'Knowledge Trust missing repair prompt copy action');
+  assert(html.includes('data-graph-shelf="free-core"'), 'Knowledge Trust graph shelf is missing.');
+  assert(html.includes('data-graph-toggle="free-core"'), 'Knowledge Trust graph collapse control is missing.');
+  assert(html.includes('data-graph-node="true"'), 'Knowledge Trust graph node drilldown hooks are missing.');
+  assert(html.includes('data-graph-detail="true"'), 'Knowledge Trust graph detail panel is missing.');
+  assert(!html.includes('class="graph-link"'), 'Graph nodes must not navigate to raw/broken pages.');
 
   fs.mkdirSync(path.join(project, 'modules'), { recursive: true });
   fs.mkdirSync(path.join(project, 'maintenance'), { recursive: true });
@@ -229,7 +236,7 @@ async function main() {
     const denied = await requestJson(port, 'GET', '/api/state');
     assert(denied.status === 401, 'Inspector API state must require token.');
     const stateRes = await requestJson(port, 'GET', '/api/state', null, sessionRes.json.token);
-    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.4', 'Inspector API state missing product version.');
+    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === systemVersion, 'Inspector API state missing product version.');
     assert(stateRes.json.state.context.branch === 'main', 'Inspector API should default to active Git branch.');
     assert(stateRes.json.state.context.git?.branches?.active === 'main', 'Inspector API branch state missing active branch.');
     assert((stateRes.json.state.context.git?.branches?.branches || []).some((branch) => branch.name === 'feature/diagnostics'), 'Inspector API branch list missing feature branch.');
@@ -240,6 +247,8 @@ async function main() {
     assert(pageRes.body.includes('data-table-search="modules"'), 'live Inspector should render shared Knowledge Trust table filters.');
     assert(pageRes.body.includes('Trust repair prompt for agent'), 'live Inspector missing trust repair prompt copy action.');
     assert(pageRes.body.includes('metric-card'), 'live Inspector missing metric card styling.');
+    assert(pageRes.body.includes('data-shutdown="true"'), 'live Inspector missing Turn off button.');
+    assert(pageRes.body.includes('data-graph-toggle="free-core"'), 'live Inspector missing graph collapse control.');
     const deniedOnboarding = await requestJson(port, 'POST', '/api/settings/onboarding', { user_mode: 'advanced' });
     assert(deniedOnboarding.status === 401, 'onboarding save must require token.');
     const onboardingRes = await requestJson(port, 'POST', '/api/settings/onboarding', {
@@ -315,7 +324,7 @@ async function main() {
   assert(!localLeak.test(teamHtml), 'team inspector leaked local developer path');
 
   const result = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion,
     status: 'pass',
     team_mode_fixture_requested: teamModeFixtureRequested,
     temp_root: keepTemp ? root : null,
@@ -338,6 +347,9 @@ async function main() {
       'trust repair agent prompt renders',
       'onboarding card collapses after save',
       'update status API renders launch check status',
+      'turn off button renders in live Inspector',
+      'collapsible graph shelf renders',
+      'graph node drilldown hooks render',
       'empty states render'
       ,'team-mode inspector data.json parses'
       ,'team-mode inspector DOM renders workspace status'

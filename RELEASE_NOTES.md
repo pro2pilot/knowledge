@@ -1,5 +1,30 @@
 # Release Notes
 
+## v3.2.5 - Inspector first-run, updater, graph shelf, and shutdown
+
+v3.2.5 makes the local Inspector the obvious post-install control surface. After
+install/import, `.knowledge` is already usable and the agent-facing follow-up now
+states that Inspector is open for First-run setup of behavior, autonomy rules,
+and chat/report preferences.
+
+### Added
+
+- Live Inspector `Turn off` button to close the server and release the port.
+- Collapsible Free Core Trust Graph shelf immediately under Knowledge Trust
+  metrics.
+- In-page graph node detail panel for module, wiki/advisory, and source-of-truth
+  nodes.
+- Real Inspector update dry-run/apply flow using the verified release asset and
+  `update-system-files.js`.
+- Deterministic updater e2e simulation for future release zips.
+
+### Fixed
+
+- Inspector launcher now normalizes project roots to `.knowledge` before logging,
+  so it no longer creates a stray `maintenance/` folder beside `.knowledge`.
+- Update status is visible on Home when a newer release is available or a check
+  fails.
+
 ## v3.2.4 - Install source and integration selection hotfix
 
 v3.2.4 tightens the public install path so agents select the current curated

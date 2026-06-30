@@ -4,8 +4,9 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
+const zlib = require('zlib');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext, jsonContext } = require('./lib/path-context');
 const { readJson, ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { listActions, loadEntitlements } = require('./lib/action-registry');
@@ -34,14 +35,14 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.4',
+  schema_version: '3.2.5',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.4',
+  schema_version: '3.2.5',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -49,7 +50,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.4',
+  schema_version: '3.2.5',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -57,7 +58,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.4',
+  schema_version: '3.2.5',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -214,6 +215,8 @@ function branchDiagnostics(branchName = null) {
 
 let launchUpdateCheck = null;
 let launchUpdateStatus = null;
+let server = null;
+let shutdownScheduled = false;
 
 function runUpdateCheckOnLaunch() {
   if (process.env.KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH === '1') return null;
@@ -243,12 +246,17 @@ async function updateStatus() {
   return launchUpdateStatus || checkUpdates.readStatus();
 }
 
-function updateDryRunPlan(status) {
-  const asset = status?.asset_url || '<release-zip>';
+function updateDryRunPlan(status, prepared = null) {
+  const asset = prepared?.asset_path || status?.asset_url || '<release-zip>';
   return {
-    status: 'manual_plan_required',
-    message: 'Download or extract the release asset, review the dry-run, then apply only after user confirmation.',
+    status: prepared ? 'dry_run_ready' : 'manual_plan_required',
+    message: prepared
+      ? 'Release asset was downloaded, validated and dry-run against the current .knowledge root.'
+      : 'Download or extract the release asset, review the dry-run, then apply only after user confirmation.',
     release_asset: asset,
+    prepared_source_root: prepared?.source_root || null,
+    validation: prepared?.validation || null,
+    dry_run: prepared?.dry_run || null,
     commands: [
       'node .knowledge/tools/check-updates.js --json',
       'node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --target-knowledge-root .knowledge --dry-run --json',
@@ -256,6 +264,203 @@ function updateDryRunPlan(status) {
       'node .knowledge/tools/update-system-files.js --verify-upgrade --json'
     ]
   };
+}
+
+function eocdOffset(buffer) {
+  for (let i = buffer.length - 22; i >= 0; i -= 1) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) return i;
+  }
+  throw new Error('ZIP end of central directory not found.');
+}
+
+function extractZip(zipPath, dest) {
+  const buffer = fs.readFileSync(zipPath);
+  const eocd = eocdOffset(buffer);
+  const count = buffer.readUInt16LE(eocd + 10);
+  let ptr = buffer.readUInt32LE(eocd + 16);
+  const destRoot = path.resolve(dest);
+  for (let i = 0; i < count; i += 1) {
+    if (buffer.readUInt32LE(ptr) !== 0x02014b50) throw new Error(`Invalid central directory header at ${ptr}.`);
+    const method = buffer.readUInt16LE(ptr + 10);
+    const compressedSize = buffer.readUInt32LE(ptr + 20);
+    const nameLength = buffer.readUInt16LE(ptr + 28);
+    const extraLength = buffer.readUInt16LE(ptr + 30);
+    const commentLength = buffer.readUInt16LE(ptr + 32);
+    const localOffset = buffer.readUInt32LE(ptr + 42);
+    const name = buffer.slice(ptr + 46, ptr + 46 + nameLength).toString('utf8');
+    if (buffer.readUInt32LE(localOffset) !== 0x04034b50) throw new Error(`Invalid local header for ${name}.`);
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = buffer.slice(dataStart, dataStart + compressedSize);
+    const body = method === 0 ? compressed : zlib.inflateRawSync(compressed);
+    const target = path.resolve(destRoot, name);
+    if (target !== destRoot && !target.startsWith(destRoot + path.sep)) throw new Error(`Unsafe zip entry: ${name}`);
+    if (name.endsWith('/')) {
+      ensureDir(target);
+    } else {
+      ensureDir(path.dirname(target));
+      fs.writeFileSync(target, body);
+    }
+    ptr += 46 + nameLength + extraLength + commentLength;
+  }
+}
+
+function safeVersion(value) {
+  return String(value || '').replace(/^v/i, '').replace(/[^0-9A-Za-z._-]/g, '');
+}
+
+function updateDownloadsRoot() {
+  return path.join(context.projectKnowledgeRoot, 'maintenance', 'update-downloads');
+}
+
+function localPathFromAssetUrl(assetUrl) {
+  const raw = String(assetUrl || '');
+  if (!raw) return null;
+  if (raw.startsWith('file://')) {
+    try { return decodeURIComponent(new URL(raw).pathname.replace(/^\/([A-Za-z]:)/, '$1')); } catch { return null; }
+  }
+  if (/^[A-Za-z]:[\\/]/.test(raw) || raw.startsWith('\\\\') || raw.startsWith('/')) return raw;
+  return null;
+}
+
+async function downloadReleaseAsset(status) {
+  const latest = safeVersion(status?.latest_version);
+  if (!latest || status?.status !== 'update_available') {
+    throw new Error('No newer release is available for update.');
+  }
+  if (!status.asset_url) throw new Error('Latest release has no exact knowledge-v<version>.zip asset.');
+  const downloads = updateDownloadsRoot();
+  ensureDir(downloads);
+  const fileName = status.asset_name || `knowledge-v${latest}.zip`;
+  const zipPath = path.join(downloads, fileName);
+  const local = localPathFromAssetUrl(status.asset_url);
+  if (local) {
+    const source = path.resolve(local);
+    if (!fs.existsSync(source)) throw new Error(`Local update asset does not exist: ${source}`);
+    if (path.resolve(source) !== path.resolve(zipPath)) fs.copyFileSync(source, zipPath);
+    return zipPath;
+  }
+  const response = await fetch(status.asset_url, {
+    method: 'GET',
+    headers: { 'Accept': 'application/zip, application/octet-stream', 'User-Agent': 'dot-knowledge-inspector-update' }
+  });
+  if (!response.ok) throw new Error(`Release asset download failed: ${response.status} ${response.statusText}`);
+  const body = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(zipPath, body);
+  return zipPath;
+}
+
+function findExtractedKnowledgeRoot(extractRoot) {
+  const direct = path.join(extractRoot, 'tools', 'flow.js');
+  const nested = path.join(extractRoot, '.knowledge', 'tools', 'flow.js');
+  if (fs.existsSync(direct)) return extractRoot;
+  if (fs.existsSync(nested)) return path.join(extractRoot, '.knowledge');
+  const entries = fs.readdirSync(extractRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  for (const entry of entries) {
+    const candidate = path.join(extractRoot, entry.name, '.knowledge');
+    if (fs.existsSync(path.join(candidate, 'tools', 'flow.js'))) return candidate;
+  }
+  throw new Error('Extracted release does not contain a .knowledge/tools/flow.js root.');
+}
+
+function runTool(script, args, label) {
+  const scriptPath = path.join(context.projectKnowledgeRoot, 'tools', script);
+  const fallbackPath = path.join(context.systemRoot, 'tools', script);
+  const toolPath = fs.existsSync(scriptPath) ? scriptPath : fallbackPath;
+  const res = spawnSync(process.execPath, [toolPath, ...args], {
+    cwd: context.targetRoot,
+    env: {
+      ...process.env,
+      KNOWLEDGE_SYSTEM_ROOT: context.systemRoot,
+      KNOWLEDGE_TARGET_ROOT: context.targetRoot,
+      KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT: context.projectKnowledgeRoot,
+      KNOWLEDGE_STATE_ROOT: context.stateRoot,
+      KNOWLEDGE_FLOW_NO_OPEN: '1'
+    },
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 300000
+  });
+  let json = null;
+  try { json = JSON.parse((res.stdout || '').trim()); } catch {}
+  return {
+    label,
+    command: `node .knowledge/tools/${script}${args.length ? ' ' + args.join(' ') : ''}`,
+    exit: res.status,
+    ok: res.status === 0,
+    json,
+    stdout: (res.stdout || '').trim().slice(0, 12000),
+    stderr: (res.stderr || '').trim().slice(0, 4000)
+  };
+}
+
+async function prepareUpdate(status, expectedVersion = null) {
+  const latest = safeVersion(status?.latest_version);
+  if (expectedVersion && safeVersion(expectedVersion) !== latest) {
+    throw new Error(`Expected update version ${expectedVersion}, but latest is ${latest}.`);
+  }
+  const zipPath = await downloadReleaseAsset(status);
+  const extractRoot = path.join(updateDownloadsRoot(), `extracted-${latest}-${Date.now()}`);
+  ensureDir(extractRoot);
+  extractZip(zipPath, extractRoot);
+  const sourceRoot = findExtractedKnowledgeRoot(extractRoot);
+  const pkg = readJson(path.join(sourceRoot, 'package.json'), {});
+  if (safeVersion(pkg.version) !== latest) {
+    throw new Error(`Release asset version mismatch: expected ${latest}, got ${pkg.version || 'unknown'}.`);
+  }
+  const validation = runTool('validate-release-artifact.js', [zipPath, '--json'], 'validate_release_artifact');
+  if (!validation.ok || validation.json?.status === 'failed') {
+    throw new Error(`Release artifact validation failed: ${validation.stderr || validation.stdout || 'invalid artifact'}`);
+  }
+  const dryRun = runTool('update-system-files.js', [
+    '--from', sourceRoot,
+    '--target-knowledge-root', context.projectKnowledgeRoot,
+    '--dry-run',
+    '--json'
+  ], 'update_dry_run');
+  return {
+    version: latest,
+    asset_path: zipPath,
+    extract_root: extractRoot,
+    source_root: sourceRoot,
+    validation,
+    dry_run: dryRun
+  };
+}
+
+async function applyPreparedUpdate(prepared) {
+  const apply = runTool('update-system-files.js', [
+    '--from', prepared.source_root,
+    '--target-knowledge-root', context.projectKnowledgeRoot,
+    '--apply',
+    '--yes',
+    '--json'
+  ], 'update_apply');
+  const verify = runTool('update-system-files.js', [
+    '--from', prepared.source_root,
+    '--target-knowledge-root', context.projectKnowledgeRoot,
+    '--verify-upgrade',
+    '--json'
+  ], 'verify_upgrade');
+  let refreshedStatus = null;
+  try {
+    refreshedStatus = await checkUpdates.checkNow(checkUpdates.getConfig(), 'post_update_apply');
+    launchUpdateStatus = refreshedStatus;
+  } catch (error) {
+    refreshedStatus = { status: 'check_failed', reason: 'post_update_apply', error: error.message };
+  }
+  return { apply, verify, refreshed_status: refreshedStatus };
+}
+
+function scheduleShutdown() {
+  if (shutdownScheduled) return;
+  shutdownScheduled = true;
+  setTimeout(() => {
+    if (!server) process.exit(0);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 1200).unref();
+  }, 60).unref();
 }
 
 function state() {
@@ -285,7 +490,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.4',
+      version: safeJson('package.json', {}).version || '3.2.5',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,
@@ -406,21 +611,49 @@ async function handle(req, res) {
     return sendJson(res, result.ok ? 200 : 404, result);
   }
   if (req.method === 'GET' && url.pathname === '/api/update/status') {
-    const status = await updateStatus();
+    let status;
+    if (url.searchParams.get('refresh') === '1') {
+      status = await checkUpdates.checkNow(checkUpdates.getConfig(), 'inspector_manual_refresh');
+      launchUpdateStatus = status;
+    } else {
+      status = await updateStatus();
+    }
     return sendJson(res, 200, { ok: true, status, release: status });
   }
   if (req.method === 'POST' && url.pathname === '/api/update/dry-run') {
     const status = await updateStatus();
-    return sendJson(res, 200, { ok: true, status, dry_run: updateDryRunPlan(status) });
+    try {
+      const prepared = await prepareUpdate(status);
+      return sendJson(res, prepared.dry_run.ok ? 200 : 422, { ok: prepared.dry_run.ok, status, dry_run: updateDryRunPlan(status, prepared), prepared });
+    } catch (error) {
+      return sendJson(res, 422, { ok: false, status, error: error.message, dry_run: updateDryRunPlan(status) });
+    }
   }
   if (req.method === 'POST' && url.pathname === '/api/update/apply') {
     const status = await updateStatus();
-    return sendJson(res, 409, {
-      ok: false,
-      status,
-      error: 'manual_confirmation_required',
-      message: 'Inspector does not apply updates silently. Review the dry-run plan and run update-system-files manually when ready.'
-    });
+    const body = await readBody(req);
+    if (body.confirm !== true) {
+      return sendJson(res, 409, {
+        ok: false,
+        status,
+        error: 'manual_confirmation_required',
+        message: 'Inspector applies updates only after explicit confirmation.'
+      });
+    }
+    try {
+      const prepared = await prepareUpdate(status, body.expectedVersion || null);
+      if (!prepared.dry_run.ok) return sendJson(res, 422, { ok: false, status, prepared, error: 'dry_run_failed' });
+      const apply = await applyPreparedUpdate(prepared);
+      const ok = apply.apply.ok && apply.verify.ok;
+      return sendJson(res, ok ? 200 : 500, { ok, status, prepared, apply });
+    } catch (error) {
+      return sendJson(res, 500, { ok: false, status, error: error.message });
+    }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/shutdown') {
+    sendJson(res, 200, { ok: true, status: 'shutting_down', message: 'Inspector server is closing and the port will be released.' });
+    scheduleShutdown();
+    return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/settings/onboarding') {
@@ -464,9 +697,10 @@ function openLocalBrowser(url) {
 
 ensureDir(path.join(context.stateRoot, 'maintenance', 'action-runs'));
 runUpdateCheckOnLaunch();
-http.createServer((req, res) => {
+server = http.createServer((req, res) => {
   Promise.resolve(handle(req, res)).catch((error) => sendJson(res, 500, { ok: false, error: error.stack || error.message }));
-}).listen(port, host, () => {
+});
+server.listen(port, host, () => {
   const url = `http://${host}:${port}/?token=${token}`;
   const payload = { ok: true, url, host, port, session_token: token, scope: 'local-inspector' };
   console.log(JSON.stringify(payload, null, 2));

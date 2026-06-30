@@ -50,6 +50,7 @@ function shouldExclude(relPath, entry) {
   if (rel.startsWith('maintenance/events/')) return { exclude: true, reason: 'events' };
   if (rel.startsWith('maintenance/dev-notes/')) return { exclude: true, reason: 'source_dev_notes' };
   if (rel.startsWith('maintenance/install-backups/')) return { exclude: true, reason: 'install_backups' };
+  if (rel.startsWith('maintenance/update-downloads/')) return { exclude: true, reason: 'update_downloads' };
   if (/^maintenance\/knowledge-[^/]+-(?:10-10-inventory|final-qa)\.(?:md|json)$/i.test(rel)) {
     return { exclude: true, reason: 'release_qa_or_inventory_notes' };
   }

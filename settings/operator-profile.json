@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.5",
   "user_mode": "simple",
   "first_run_onboarding_completed": false,
   "detected_agent_runtime": null

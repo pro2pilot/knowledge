@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.5",
   "concurrent_work_policy": "Safe Queue",
   "merge_policy": "Manual Only",
   "auto_merge": false,

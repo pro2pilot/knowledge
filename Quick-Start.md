@@ -351,11 +351,11 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.4.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
+Use `dist/knowledge-v3.2.5.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
 
 ```bash
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.4.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.5.zip --json
 ```
 
 ## Free Inspector vs Inspector Pro

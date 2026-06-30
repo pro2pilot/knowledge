@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.5",
   "mode": "compact",
   "show_token_metrics": true,
   "show_restore_action": true,

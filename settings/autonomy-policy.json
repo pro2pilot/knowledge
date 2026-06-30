@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.5",
   "agents_can_do_without_asking": "run checks and reports",
   "network_actions_require_confirmation": true,
   "destructive_actions_require_confirmation": true,

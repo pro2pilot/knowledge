@@ -114,7 +114,7 @@ function writeConfig(updates) {
   fs.writeFileSync(configPath, `${base.trimEnd()}\n\n${block}`, 'utf8');
 }
 function semverParts(version) {
-  return String(version || '0.0.0').replace(/^v/i, '').split(/[.+-]/)[0].split('.').map((p) => Number(p.replace(/\D/g, '') || 0));
+  return String(version || '0.0.0').replace(/^v/i, '').split(/[+-]/)[0].split('.').map((p) => Number(p.replace(/\D/g, '') || 0));
 }
 function compareVersions(a, b) {
   const aa = semverParts(a); const bb = semverParts(b);
@@ -190,7 +190,7 @@ function selectReleaseAsset(latest) {
 
 function makeStatusBase(config) {
   return {
-    schema_version: '3.2.4',
+    schema_version: '3.2.5',
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,

@@ -266,7 +266,7 @@ Build and validate the install artifact from this source checkout:
 
 ```bash
 node tools/package-release.js --json
-node tools/validate-release-artifact.js dist/knowledge-v3.2.4.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.5.zip --json
 node tools/release-gate.js --json
 ```
 

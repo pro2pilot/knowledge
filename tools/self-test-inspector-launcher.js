@@ -8,6 +8,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.5';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -42,6 +43,14 @@ async function wait(port, child) {
   throw new Error('launcher did not become ready');
 }
 
+async function waitForExit(child) {
+  for (let i = 0; i < 40; i += 1) {
+    if (child.exitCode !== null) return child.exitCode;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('launcher did not exit after shutdown');
+}
+
 async function main() {
   assert(fs.existsSync(path.join(systemRoot, 'open-inspector.vbs')), 'click launcher missing');
   assert(fs.existsSync(path.join(systemRoot, 'assets', 'knowledge-trust-gate-light-readme.svg')), 'trust gate README SVG asset missing');
@@ -71,7 +80,7 @@ async function main() {
     const denied = await request(port, 'GET', '/api/state');
     assert(denied.status === 401, 'api state must require session token');
     const stateRes = await request(port, 'GET', '/api/state', session.token);
-    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.4', 'api state did not return product 3.2.4');
+    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === systemVersion, `api state did not return product ${systemVersion}`);
     const html = await request(port, 'GET', '/');
     for (const label of ['Home', 'Review', 'Knowledge Trust', 'Agents Activity', 'Reports', 'Settings', 'Pro Preview']) {
       assert(html.body.includes(`>${label}</button>`), `missing nav label ${label}`);
@@ -79,10 +88,15 @@ async function main() {
     assert(!html.body.includes('>Command Center</button>'), 'Command Center must not be a top-level tab');
     assert(!html.body.includes('>Metrics</button>'), 'Metrics must not be a top-level tab');
     assert(html.body.includes('data-table-search="modules"'), 'launcher HTML should share tabular Inspector renderer');
-    const result = { schema_version: '3.2.4', status: 'pass', checks: ['one-file launcher starts', 'click launcher files exist', 'trust gate asset exists', 'launcher helper exists', 'session token required', 'canonical nav renders', 'shared Inspector renderer renders'] };
+    assert(html.body.includes('data-shutdown="true"'), 'launcher HTML should include Turn off button');
+    const shutdown = await request(port, 'POST', '/api/shutdown', session.token);
+    assert(shutdown.status === 200 && shutdown.json?.status === 'shutting_down', 'shutdown endpoint should acknowledge');
+    const exitCode = await waitForExit(child);
+    assert(exitCode === 0, `launcher exited with ${exitCode}`);
+    const result = { schema_version: systemVersion, status: 'pass', checks: ['one-file launcher starts', 'click launcher files exist', 'trust gate asset exists', 'launcher helper exists', 'session token required', 'canonical nav renders', 'shared Inspector renderer renders', 'turn off shutdown endpoint works'] };
     console.log(JSON.stringify(result, null, 2));
   } finally {
-    child.kill();
+    if (child.exitCode === null) child.kill();
     fs.rmSync(root, { recursive: true, force: true });
   }
 }

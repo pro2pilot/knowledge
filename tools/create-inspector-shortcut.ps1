@@ -8,7 +8,25 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($KnowledgeRoot)) {
   $KnowledgeRoot = Split-Path -Parent $PSScriptRoot
 }
-$KnowledgeRoot = (Resolve-Path -LiteralPath $KnowledgeRoot).Path
+
+function Resolve-KnowledgeRoot {
+  param([string]$Root)
+  $resolved = (Resolve-Path -LiteralPath $Root).Path
+  $directLauncher = Join-Path $resolved "open-inspector.vbs"
+  $directEntry = Join-Path $resolved "inspector.js"
+  if ((Test-Path -LiteralPath $directLauncher) -and (Test-Path -LiteralPath $directEntry)) {
+    return $resolved
+  }
+  $nested = Join-Path $resolved ".knowledge"
+  $nestedLauncher = Join-Path $nested "open-inspector.vbs"
+  $nestedEntry = Join-Path $nested "inspector.js"
+  if ((Test-Path -LiteralPath $nestedLauncher) -and (Test-Path -LiteralPath $nestedEntry)) {
+    return (Resolve-Path -LiteralPath $nested).Path
+  }
+  throw "Missing Inspector launcher. Expected $directLauncher or $nestedLauncher"
+}
+
+$KnowledgeRoot = Resolve-KnowledgeRoot $KnowledgeRoot
 
 $launcher = Join-Path $KnowledgeRoot "open-inspector.vbs"
 if (-not (Test-Path -LiteralPath $launcher)) {

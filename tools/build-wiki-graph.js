@@ -440,7 +440,7 @@ function buildUnlocked(options = {}) {
   const relation_counts = relationCounts(edges);
 
   const graph = {
-    schema_version: '3.2.4',
+    schema_version: '3.2.5',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,

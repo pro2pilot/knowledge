@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.2.5 Inspector first-run, updater, graph shelf, and shutdown
+
+- Added a live Inspector `Turn off` control that closes the local server and
+  releases the active port.
+- Moved the Free Core Trust Graph directly under Knowledge Trust metrics and
+  made it collapsible with in-page node drilldown.
+- Made Inspector update actions real: check, validate release zip, dry-run,
+  apply with confirmation, verify upgrade, and preserve project knowledge.
+- Added deterministic update e2e coverage that simulates a future release.
+- Normalized Inspector launcher roots so passing a project root no longer
+  creates a stray root-level `maintenance/` folder.
+- Updated install/import follow-up copy to state that `.knowledge` already works
+  and Inspector is open for First-run setup.
+
 ## 3.2.4 install source and integration selection hotfix
 
 - Changed update asset selection to accept only the exact `knowledge-v<tag>.zip`

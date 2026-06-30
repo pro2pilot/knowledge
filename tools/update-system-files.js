@@ -13,7 +13,7 @@ let activeKnowledgeRoot = defaultKnowledgeRoot;
 let activeRepoRoot = defaultRepoRoot;
 
 const DEFAULT_MANIFEST = {
-  schema_version: '3.2.4',
+  schema_version: '3.2.5',
   system_paths: [
     '.gitattributes',
     '.gitignore',
@@ -96,6 +96,7 @@ const DEFAULT_MANIFEST = {
     '.qa-tmp',
     'node_modules',
     'maintenance/install-backups',
+    'maintenance/update-downloads',
     'maintenance/flow-logs',
     'maintenance/events',
     'maintenance/dev-notes',
@@ -790,7 +791,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const report = {
-    schema_version: '3.2.4',
+    schema_version: '3.2.5',
     status: errors.length ? 'failed' : 'ok',
     phase: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),
     mode: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),

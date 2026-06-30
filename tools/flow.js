@@ -12,7 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext, contextEnv, jsonContext } = require('./lib/path-context');
 const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { acquireTeamLock, appendTeamEvent, updateWorkspaceFlow } = require('./lib/team-store');
@@ -152,11 +152,38 @@ function onboardingFollowUp(context, flowName) {
   const profile = readJsonIfExists(path.join(context.projectKnowledgeRoot, 'settings', 'operator-profile.json'), {});
   const completed = profile.first_run_onboarding_completed === true;
   if (completed) return null;
+  const chatMessage = '.knowledge is installed and already working. I opened the local Inspector for First-run setup so you can tune agent behavior, autonomy rules, and chat/report preferences for full capabilities.';
   return {
     required: true,
     reason: Object.prototype.hasOwnProperty.call(profile, 'first_run_onboarding_completed') ? 'not_completed' : 'upgrade_missing_completion_marker',
     command: 'node .knowledge/inspector.js',
-    note: 'Open the live Inspector now and complete First-run setup before relying on generated reports.'
+    note: 'The system is ready. Complete First-run setup in the live Inspector for full behavior and autonomy controls.',
+    chat_message: chatMessage,
+    auto_launch: true,
+    auto_launch_disable_env: 'KNOWLEDGE_FLOW_NO_OPEN=1'
+  };
+}
+
+function launchInspectorForOnboarding(context) {
+  const entry = path.join(context.projectKnowledgeRoot, 'inspector.js');
+  if (!fs.existsSync(entry)) {
+    return { attempted: true, status: 'missing_entrypoint', entry };
+  }
+  if (process.env.KNOWLEDGE_FLOW_NO_OPEN === '1' || process.env.CI === 'true') {
+    return { attempted: false, status: 'disabled', reason: process.env.CI === 'true' ? 'ci' : 'KNOWLEDGE_FLOW_NO_OPEN' };
+  }
+  const child = spawn(process.execPath, [entry, '--open'], {
+    cwd: context.targetRoot,
+    env: contextEnv(context),
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  });
+  child.unref();
+  return {
+    attempted: true,
+    status: 'started',
+    command: 'node .knowledge/inspector.js --open'
   };
 }
 
@@ -210,6 +237,9 @@ function runFlow(options) {
   const logRel = writeFlowLog(name, started, results, totalMs, context);
   const overall = ok === total ? 'ok' : 'failed';
   const onboarding = onboardingFollowUp(context, name);
+  if (overall === 'ok' && onboarding?.required && !json && !quiet) {
+    onboarding.launch = launchInspectorForOnboarding(context);
+  }
   const out = {
     flow: name,
     mode: context.mode,
@@ -247,7 +277,9 @@ function main(argv = process.argv.slice(2)) {
     else {
       console.log(`flow.${args.name}: ${out.steps_ok}/${out.steps_total} ok / ${out.duration_total_ms} ms / log: ${out.flow_log}`);
       if (out.onboarding_follow_up?.required) {
-        console.log(`next: ${out.onboarding_follow_up.command}`);
+        if (out.onboarding_follow_up.chat_message) console.log(out.onboarding_follow_up.chat_message);
+        if (out.onboarding_follow_up.launch?.status === 'started') console.log('Inspector opened for First-run setup.');
+        else console.log(`next: ${out.onboarding_follow_up.command}`);
         console.log(out.onboarding_follow_up.note);
       }
     }
