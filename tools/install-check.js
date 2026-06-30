@@ -47,6 +47,44 @@ function isDirectory(filePath) {
   try { return fs.statSync(filePath).isDirectory(); } catch { return false; }
 }
 
+function isFile(filePath) {
+  try { return fs.statSync(filePath).isFile(); } catch { return false; }
+}
+
+function safeReadJson(filePath) {
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '')); }
+  catch { return null; }
+}
+
+function isKnowledgeSourceCheckout(dirPath, name = path.basename(dirPath)) {
+  const lower = String(name || '').toLowerCase();
+  const pkg = safeReadJson(path.join(dirPath, 'package.json')) || {};
+  const hasKnowledgePackage = pkg.name === 'dot-knowledge' || pkg.name === 'knowledge' || /knowledge/.test(String(pkg.name || ''));
+  const hasReleaseTool = isFile(path.join(dirPath, 'tools', 'package-release.js'));
+  const hasInstallManifest = isFile(path.join(dirPath, 'install-manifest.json'));
+  const hasQuickStart = isFile(path.join(dirPath, 'Quick-Start.md'));
+  const hasSourceGit = isDirectory(path.join(dirPath, '.git'));
+  return (
+    lower === 'knowledge-src' ||
+    lower.startsWith('knowledge-src') ||
+    (hasKnowledgePackage && hasReleaseTool && hasInstallManifest) ||
+    (hasSourceGit && hasReleaseTool && hasQuickStart)
+  );
+}
+
+function detectSiblingSourceCheckouts() {
+  const out = [];
+  let entries = [];
+  try { entries = fs.readdirSync(repoRoot, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (['.knowledge', '.agents', '.claude', '.opencode', 'node_modules', '.git'].includes(entry.name)) continue;
+    const full = path.join(repoRoot, entry.name);
+    if (isKnowledgeSourceCheckout(full, entry.name)) out.push(rel(full));
+  }
+  return out.sort();
+}
+
 function moveDirectory(src, dst) {
   ensureDir(path.dirname(dst));
   try {
@@ -113,6 +151,23 @@ function analyze(options = {}) {
   const nestedGithub = path.join(knowledgeRoot, '.github');
   if (isDirectory(nestedGithub)) {
     issue(issues, 'error', 'source_repo_copied_into_knowledge', 'A source .github directory exists inside .knowledge. This usually means the whole source repo was copied instead of the release artifact.', '.knowledge/.github');
+  }
+
+  const siblingSourceCheckouts = detectSiblingSourceCheckouts();
+  for (const sourceCheckout of siblingSourceCheckouts) {
+    issue(
+      issues,
+      'error',
+      'source_checkout_in_target_root',
+      `Knowledge source checkout detected at ${sourceCheckout}. Install from the release asset only, and keep source checkouts outside the target project.`,
+      sourceCheckout
+    );
+  }
+  if (siblingSourceCheckouts.length) {
+    fixesAvailable.push({
+      code: 'move_source_checkout_outside_target',
+      command: 'Move the source checkout folder outside this repository, then rerun node .knowledge/tools/install-check.js --json.'
+    });
   }
 
   for (const required of requiredSystemFiles) {

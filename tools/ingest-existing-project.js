@@ -36,12 +36,48 @@ function nowIso() { return new Date().toISOString(); }
 function rel(p) { return path.relative(repoRoot, p).replace(/\\/g, '/'); }
 function normalizeModuleId(value) { return String(value || 'root').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'root'; }
 
+function isFile(p) {
+  try { return fs.statSync(p).isFile(); } catch { return false; }
+}
+
+function isDirectory(p) {
+  try { return fs.statSync(p).isDirectory(); } catch { return false; }
+}
+
+function isKnowledgeSourceCheckoutDir(full, name = path.basename(full)) {
+  const lower = String(name || '').toLowerCase();
+  const pkg = safeReadJson(path.join(full, 'package.json'), {}) || {};
+  const hasKnowledgePackage = pkg.name === 'dot-knowledge' || pkg.name === 'knowledge' || /knowledge/.test(String(pkg.name || ''));
+  const hasReleaseTool = isFile(path.join(full, 'tools', 'package-release.js'));
+  const hasInstallManifest = isFile(path.join(full, 'install-manifest.json'));
+  const hasQuickStart = isFile(path.join(full, 'Quick-Start.md'));
+  const hasSourceGit = isDirectory(path.join(full, '.git'));
+  return (
+    lower === 'knowledge-src' ||
+    lower.startsWith('knowledge-src') ||
+    (hasKnowledgePackage && hasReleaseTool && hasInstallManifest) ||
+    (hasSourceGit && hasReleaseTool && hasQuickStart)
+  );
+}
+
+function ignoredSourceCheckouts() {
+  let entries = [];
+  try { entries = fs.readdirSync(repoRoot, { withFileTypes: true }); } catch { return []; }
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .filter((entry) => !['.knowledge', '.agents', '.claude', '.opencode', 'node_modules', '.git'].includes(entry.name))
+    .filter((entry) => isKnowledgeSourceCheckoutDir(path.join(repoRoot, entry.name), entry.name))
+    .map((entry) => `${entry.name}/`)
+    .sort();
+}
+
 function listTopLevelDirectories() {
   return fs.readdirSync(repoRoot, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
     .filter((name) => name === '.github' || !name.startsWith('.'))
-    .filter((name) => !['node_modules', '.knowledge', '.knowledge', '.agents', '.claude', '.opencode'].includes(name));
+    .filter((name) => !['node_modules', '.knowledge', '.knowledge', '.agents', '.claude', '.opencode'].includes(name))
+    .filter((name) => !isKnowledgeSourceCheckoutDir(path.join(repoRoot, name), name));
 }
 
 function detectTechnologies() {
@@ -293,6 +329,7 @@ function main(argv = process.argv.slice(2)) {
 
     const generatedAt = nowIso();
     const detectedModules = detectModules();
+    const ignoredSourceCheckoutPaths = ignoredSourceCheckouts();
     const technologies = detectTechnologies();
     const existingIndex = safeReadJson(path.join(knowledgeRoot, 'project_index.json'), { status: 'stub' });
     if (!options.force && !['stub', 'heuristic_ingest', undefined, null].includes(existingIndex.status) && !options.merge) {
@@ -425,6 +462,7 @@ function main(argv = process.argv.slice(2)) {
       generated_at: generatedAt,
       modules_detected: detectedModules.length,
       modules_total: mergedModules.length,
+      ignored_source_checkouts: ignoredSourceCheckoutPaths,
       technologies,
       root_module: mergedModules.some((m) => m.module_id === 'root'),
       mode: options.force ? 'force' : 'merge',

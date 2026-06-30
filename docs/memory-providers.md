@@ -101,7 +101,7 @@ Graphiti and Zep are not bundled in the free/core install asset:
 - Graphiti-style temporal graph memory is out of scope for this free/core release.
 - Zep-style managed or BYOC memory is out of scope for this free/core release.
 
-Free core may mention these future provider categories, but it does not ship their adapters, manifests, runtime code, or provider-specific rules. They are excluded from `dist/knowledge-v3.2.2.zip`.
+Free core may mention these future provider categories, but it does not ship their adapters, manifests, runtime code, or provider-specific rules. They are excluded from `dist/knowledge-v3.2.3.zip`.
 
 ## Migrating from Claude MEM
 

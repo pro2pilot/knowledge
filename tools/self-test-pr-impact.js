@@ -52,7 +52,7 @@ function seedFixture(parent, name) {
   writeFile(path.join(repo, 'src', 'no-evidence.js'), 'export const evidence = false;\n');
   writeJson(path.join(knowledge, 'evidence', 'auth.json'), { file: 'src/auth.js', checked: true });
   writeJson(path.join(knowledge, 'modules', 'module_registry.json'), {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     modules: [
       {
         module_id: 'auth',
@@ -96,7 +96,7 @@ function seedFixture(parent, name) {
     evidence_files: []
   });
   writeJson(path.join(knowledge, 'maintenance', 'trust_report.json'), {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     modules: {
       trusted: ['auth', 'no_evidence'],
       routing_trusted: ['stale'],
@@ -194,7 +194,7 @@ function main() {
   assert(runtimeResult.status === 'block', 'staged runtime file should block');
 
   const output = {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

@@ -357,7 +357,7 @@ function writeRun(runId, selectedSuite, results, args) {
   const marketable = rows.filter((row) => ['measured', 'measured-on-fixture'].includes(row.status));
   const blocked = rows.filter((row) => !['measured', 'measured-on-fixture'].includes(row.status));
   const manifest = {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     run_id: runId,
     generated_at: new Date().toISOString(),
     suite: selectedSuite,
@@ -368,14 +368,14 @@ function writeRun(runId, selectedSuite, results, args) {
   };
   writeJsonAtomic(path.join(runDir, 'manifest.json'), manifest);
   writeJsonAtomic(path.join(runDir, 'environment.json'), {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     node_major: Number(process.versions.node.split('.')[0]),
     platform: process.platform,
     cwd: '<source-or-installed-knowledge-root>',
     network_required: false
   });
   writeJsonAtomic(path.join(runDir, 'gate-status.json'), {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     verdict: v,
     release_gate: readJson(path.join(root, 'maintenance', 'release-gate-report.json'), { status: 'not_run' }).status || 'not_run'
   });
@@ -518,7 +518,7 @@ function main(argv = process.argv.slice(2)) {
   const results = selected.map((slug) => aggregateSuite(slug, runs));
   const written = writeRun(runId, selectedSuite, results, { runs, fixture: flags.fixture });
   const output = {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     status: results.some((suite) => suite.status === 'fail') ? 'failed' : 'ok',
     verdict: written.manifest.verdict,
     run_id: runId,
@@ -535,7 +535,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const { flags } = parseCliArgs(process.argv.slice(2));
-    const output = { schema_version: '3.2.2', status: 'failed', error: sanitizeText(error.message) };
+    const output = { schema_version: '3.2.3', status: 'failed', error: sanitizeText(error.message) };
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else console.error(output.error);
     process.exit(2);

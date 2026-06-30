@@ -229,7 +229,7 @@ async function main() {
     const denied = await requestJson(port, 'GET', '/api/state');
     assert(denied.status === 401, 'Inspector API state must require token.');
     const stateRes = await requestJson(port, 'GET', '/api/state', null, sessionRes.json.token);
-    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.2', 'Inspector API state missing product version.');
+    assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === '3.2.3', 'Inspector API state missing product version.');
     assert(stateRes.json.state.context.branch === 'main', 'Inspector API should default to active Git branch.');
     assert(stateRes.json.state.context.git?.branches?.active === 'main', 'Inspector API branch state missing active branch.');
     assert((stateRes.json.state.context.git?.branches?.branches || []).some((branch) => branch.name === 'feature/diagnostics'), 'Inspector API branch list missing feature branch.');
@@ -315,7 +315,7 @@ async function main() {
   assert(!localLeak.test(teamHtml), 'team inspector leaked local developer path');
 
   const result = {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     status: 'pass',
     team_mode_fixture_requested: teamModeFixtureRequested,
     temp_root: keepTemp ? root : null,

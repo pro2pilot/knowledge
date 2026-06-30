@@ -24,7 +24,7 @@ function main() {
   assert(compact.footer.includes('estimated context saved'), 'compact footer missing estimated context saved');
   assert(full.footer.includes('## .knowledge report'), 'full footer missing heading');
   assert(full.footer.includes('node .knowledge/inspector.js'), 'full footer missing Open Inspector command');
-  console.log(JSON.stringify({ schema_version: '3.2.2', status: 'pass', checks: ['compact footer', 'full footer', 'estimated token labels', 'open inspector action'] }, null, 2));
+  console.log(JSON.stringify({ schema_version: '3.2.3', status: 'pass', checks: ['compact footer', 'full footer', 'estimated token labels', 'open inspector action'] }, null, 2));
 }
 
 try { main(); } catch (error) { console.error(error.stack || error.message); process.exit(1); }

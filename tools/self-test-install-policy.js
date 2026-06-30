@@ -230,6 +230,18 @@ function existsRel(repo, relPath) {
   return fs.existsSync(path.join(repo, relPath));
 }
 
+function createKnowledgeSourceCheckout(repo, dirName = 'knowledge-src') {
+  const checkout = path.join(repo, dirName);
+  ensureDir(path.join(checkout, '.git'));
+  ensureDir(path.join(checkout, 'tools'));
+  fs.writeFileSync(path.join(checkout, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf8');
+  writeJson(path.join(checkout, 'package.json'), { name: 'dot-knowledge', version: '0.0.0-source' });
+  writeJson(path.join(checkout, 'install-manifest.json'), { schema_version: 'source-fixture', system_paths: [] });
+  fs.writeFileSync(path.join(checkout, 'Quick-Start.md'), '# Source checkout fixture\n', 'utf8');
+  fs.writeFileSync(path.join(checkout, 'tools', 'package-release.js'), "'use strict';\n", 'utf8');
+  return checkout;
+}
+
 function gitattributesText(repo) {
   return fs.existsSync(path.join(repo, '.gitattributes')) ? fs.readFileSync(path.join(repo, '.gitattributes'), 'utf8') : '';
 }
@@ -262,11 +274,13 @@ function assertInstalledSystemComplete(repo) {
   const manifest = readJson(path.join(sourceRoot, 'install-manifest.json'));
   const missingTopLevel = manifest.system_paths.filter((relPath) => !fs.existsSync(path.join(repo, '.knowledge', relPath)));
   const keyFiles = [
+    'INSTALL.md',
+    'install-policy.json',
     'install-manifest.json',
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.2.md',
+    '.release-notes/v3.2.3.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',
@@ -301,6 +315,8 @@ function main(argv = process.argv.slice(2)) {
       assert(Number.isInteger(packageSummary.excluded_entries_count), 'package-release summary is missing excluded_entries_count.', packageSummary);
       assert(Number.isInteger(packageSummary.excluded_files_count), 'package-release summary is missing excluded_files_count.', packageSummary);
       assert(entries.every((entry) => entry.startsWith('.knowledge/')), 'Artifact contains entries outside .knowledge/.', { entries: entries.slice(0, 20) });
+      assert(entries.includes('.knowledge/INSTALL.md'), 'Artifact does not contain INSTALL.md.', {});
+      assert(entries.includes('.knowledge/install-policy.json'), 'Artifact does not contain install-policy.json.', {});
       assert(entries.includes('.knowledge/.gitignore'), 'Artifact does not contain installed .knowledge/.gitignore.', {});
       assert(entries.includes('.knowledge/install-manifest.json'), 'Artifact does not contain install-manifest.json.', {});
       assert(entries.includes('.knowledge/memory-providers/mem0/manifest.json'), 'Artifact does not contain Mem0 provider manifest.', {});
@@ -390,6 +406,47 @@ function main(argv = process.argv.slice(2)) {
       assert(check.exit !== 0 && parsed.status === 'failed', '.knowledge/.github should fail install-check.', parsed);
       assert(codes.includes('source_repo_copied_into_knowledge'), '.knowledge/.github diagnostic code missing.', parsed);
       return { status: parsed.status, issue_codes: codes };
+    });
+
+    record(results, 'sibling knowledge source checkout is blocked before import', () => {
+      const repo = path.join(root, 'bad sibling source checkout repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'bad-sibling-source-repo', private: true });
+      createKnowledgeSourceCheckout(repo, 'knowledge-src');
+      const check = runNode(['.knowledge/tools/install-check.js', '--json'], repo);
+      const parsed = parseJsonResult(check);
+      const codes = parsed.issues.map((item) => item.code);
+      assert(check.exit !== 0 && parsed.status === 'failed', 'Sibling source checkout should fail install-check.', parsed);
+      assert(codes.includes('source_checkout_in_target_root'), 'Sibling source checkout diagnostic code missing.', parsed);
+      const importResult = runNode(['.knowledge/tools/flow.js', 'import', '--no-color'], repo);
+      assert(importResult.exit !== 0, 'flow import should stop before ingest when a source checkout is present.', importResult);
+      assert(!fs.existsSync(path.join(repo, '.knowledge', 'modules', 'knowledge_src.json')), 'flow import created a knowledge_src module despite failed install-check.', {});
+      return { status: parsed.status, issue_codes: codes, import_exit: importResult.exit };
+    });
+
+    record(results, 'direct ingest and sync ignore sibling knowledge source checkout', () => {
+      const repo = path.join(root, 'direct ingest source checkout repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'direct-ingest-source-repo', private: true });
+      createKnowledgeSourceCheckout(repo, 'knowledge-src');
+      const ingest = runNode(['.knowledge/tools/ingest-existing-project.js', '--merge', '--no-sync'], repo);
+      const ingestJson = parseJsonResult(ingest);
+      assert(ingest.exit === 0, 'direct ingest should complete while ignoring source checkout.', { ingest, ingestJson });
+      assert((ingestJson.ignored_source_checkouts || []).includes('knowledge-src/'), 'ingest did not report ignored source checkout.', ingestJson);
+      assert(!(ingestJson.ignored_source_checkouts || []).includes('.knowledge/'), 'ingest should not report installed .knowledge as an ignored source checkout.', ingestJson);
+      const registry = readJson(path.join(repo, '.knowledge', 'modules', 'module_registry.json'));
+      const moduleIds = (registry.modules || []).map((module) => module.module_id);
+      assert(!moduleIds.includes('knowledge_src'), 'ingest registered knowledge-src as a project module.', { moduleIds });
+      const sync = runNode(['.knowledge/tools/sync-tracked.js', '--scan', '--discover'], repo);
+      const syncJson = parseJsonResult(sync);
+      assert(sync.exit === 0, 'sync should complete while ignoring source checkout.', { sync, syncJson });
+      const badNewFiles = (syncJson.new_files || []).filter((file) => String(file.path || '').startsWith('knowledge-src/'));
+      assert(badNewFiles.length === 0, 'sync discovered files from ignored source checkout.', { badNewFiles, syncJson });
+      return { ignored_source_checkouts: ingestJson.ignored_source_checkouts, modules: moduleIds, sync_new_files: (syncJson.new_files || []).length };
     });
 
     record(results, 'install-agent-integrations creates only selected runtime files', () => {

@@ -10,7 +10,7 @@ const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { parseCliArgs } = require('./lib/path-context');
 
 const root = path.resolve(__dirname, '..');
-const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.2';
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.3';
 const artifactRel = `dist/knowledge-v${version}.zip`;
 
 function sanitizeText(value) {
@@ -169,7 +169,7 @@ function main(argv = process.argv.slice(2)) {
     : { status: 'skipped', root: '<clean-install-smoke>', steps: [] };
   const failures = [...steps, ...(cleanInstall.steps || [])].filter((step) => step.status !== 'pass');
   const report = {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     generated_at: new Date().toISOString(),
     status: failures.length ? 'failed' : 'passed',
     gate_status: failures.length ? 'blocked' : 'benchmark-ready',
@@ -189,7 +189,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const failed = {
-      schema_version: '3.2.2',
+      schema_version: '3.2.3',
       generated_at: new Date().toISOString(),
       status: 'failed',
       gate_status: 'blocked',

@@ -2,7 +2,7 @@
 
 ## Назначение файла
 
-Этот файл превращает приложенный текст про team mode в проектную спецификацию для `.knowledge 3.2.2`. Режим должен быть экспериментальным, но рабочим: несколько агентов работают в разных Git worktrees/branches, имеют общий team registry, отдельные workspace states, стабильные agent IDs, централизованные locks/events/status и безопасную merge-модель через Git.
+Этот файл превращает приложенный текст про team mode в проектную спецификацию для `.knowledge 3.2.3`. Режим должен быть экспериментальным, но рабочим: несколько агентов работают в разных Git worktrees/branches, имеют общий team registry, отдельные workspace states, стабильные agent IDs, централизованные locks/events/status и безопасную merge-модель через Git.
 
 ## Product summary
 

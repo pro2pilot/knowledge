@@ -10,7 +10,7 @@ function main(argv = process.argv.slice(2)) {
   const rawTeamRoot = flags.teamRoot || process.env.KNOWLEDGE_TEAM_ROOT || '';
   if (!rawTeamRoot) {
     const out = {
-      schema_version: '3.2.2',
+      schema_version: '3.2.3',
       generated_at: new Date().toISOString(),
       mode: 'repo',
       safe_queue: { default: true, status: 'available_without_team_root' },

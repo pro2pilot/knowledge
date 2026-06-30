@@ -49,6 +49,12 @@ const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.openco
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.php', '.cs', '.sql', '.toml', '.yaml', '.yml', '.json', '.prisma']);
 
 function exists(filePath) { return fs.existsSync(filePath); }
+function isFile(filePath) {
+  try { return fs.statSync(filePath).isFile(); } catch { return false; }
+}
+function isDirectory(filePath) {
+  try { return fs.statSync(filePath).isDirectory(); } catch { return false; }
+}
 function resolveArtifactPath(relPath) {
   const raw = String(relPath || '');
   const clean = raw.replace(/^\.knowledge[\\/]/, '');
@@ -74,8 +80,30 @@ function parseTouchedHint() {
   }
 }
 
+function isKnowledgeSourceCheckoutPath(pathStr) {
+  const normalized = normalizeRelative(pathStr);
+  if (!normalized) return false;
+  const top = normalized.split('/')[0];
+  if (!top || top.startsWith('.')) return false;
+  const full = path.join(repoRoot, top);
+  const lower = top.toLowerCase();
+  const pkg = safeReadJson(path.join(full, 'package.json'), {}) || {};
+  const hasKnowledgePackage = pkg.name === 'dot-knowledge' || pkg.name === 'knowledge' || /knowledge/.test(String(pkg.name || ''));
+  const hasReleaseTool = isFile(path.join(full, 'tools', 'package-release.js'));
+  const hasInstallManifest = isFile(path.join(full, 'install-manifest.json'));
+  const hasQuickStart = isFile(path.join(full, 'Quick-Start.md'));
+  const hasSourceGit = isDirectory(path.join(full, '.git'));
+  return (
+    lower === 'knowledge-src' ||
+    lower.startsWith('knowledge-src') ||
+    (hasKnowledgePackage && hasReleaseTool && hasInstallManifest) ||
+    (hasSourceGit && hasReleaseTool && hasQuickStart)
+  );
+}
+
 function isIgnored(pathStr) {
   const normalized = normalizeRelative(pathStr);
+  if (isKnowledgeSourceCheckoutPath(normalized)) return true;
   if (normalized.split('/').some((part) => part.startsWith('.tmp-'))) return true;
   const parts = normalized.split('/');
   return IGNORED_SEGMENTS.some((segment) => parts.includes(segment));
@@ -202,7 +230,7 @@ function mainUnlocked() {
   const criticalPaths = safeReadJson(paths.criticalPaths, { generated_at: null, paths: [] });
   const automationStatus = safeReadJson(paths.automationStatus, { mode: 'event-driven' });
   const handoffSummary = safeReadJson(paths.handoffSummary, {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     generated_at: null,
     generated_by: null,
     project_operational_summary: 'Generated handoff summary for the current .knowledge state.',

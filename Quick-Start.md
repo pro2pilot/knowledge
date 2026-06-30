@@ -223,6 +223,11 @@ Before trusting an install, run:
 node .knowledge/tools/install-check.js --json
 ```
 
+If it reports `source_checkout_in_target_root`, a source checkout such as
+`knowledge-src/` is inside the target project. Move that folder outside the
+project before running import. Do not continue with `flow.js import` while a
+source checkout is present in the target root.
+
 If it reports a nested `.knowledge/.git`, fix only with explicit confirmation:
 
 ```bash
@@ -322,11 +327,11 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.2.zip` as the install artifact. Do not copy the source checkout into `.knowledge/`.
+Use `dist/knowledge-v3.2.3.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
 
 ```bash
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.3.zip --json
 ```
 
 ## Free Inspector vs Inspector Pro

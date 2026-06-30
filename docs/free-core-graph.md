@@ -15,7 +15,7 @@ The free/core graph must be useful without Pro Inspector. It explains local trus
 | PR impact graph | Basic local PR impact data is free | Advanced interactive PR impact graph is Pro |
 | Temporal memory graph | Not included | Graphiti/Zep-style temporal/provider graph is outside free/core |
 
-## 3.2.2 Readiness Target
+## 3.2.3 Readiness Target
 
 | Criterion | Target | Implementation |
 |---|---:|---|

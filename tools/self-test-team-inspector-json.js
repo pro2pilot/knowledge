@@ -179,7 +179,7 @@ async function main() {
   for (const file of inspectorDataFiles) JSON.parse(fs.readFileSync(file, 'utf8'));
 
   const result = {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

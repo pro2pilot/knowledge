@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.2",
+  "schema_version": "3.2.3",
   "id": "pinecone",
   "display_name": "Pinecone",
   "type": "cloud",

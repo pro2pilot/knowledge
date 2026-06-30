@@ -1,0 +1,25 @@
+{
+  "schema_version": "3.2.3",
+  "install_artifact": "github_release_asset",
+  "asset_name_pattern": "^knowledge-v\\d+\\.\\d+\\.\\d+\\.zip$",
+  "canonical_release_url": "https://github.com/pro2pilot/knowledge/releases/latest",
+  "forbid": [
+    "git clone into target project",
+    "GitHub Code > Download ZIP",
+    "GitHub Source code (zip)",
+    "GitHub Source code (tar.gz)",
+    "release zipball_url",
+    "release tarball_url",
+    "source checkout as install package"
+  ],
+  "forbidden_target_paths": [
+    "knowledge-src/",
+    ".knowledge/.git/",
+    ".knowledge/.github/"
+  ],
+  "required_target_paths": [
+    ".knowledge/"
+  ],
+  "post_install_check": "node .knowledge/tools/install-check.js --json",
+  "first_import_command": "node .knowledge/tools/flow.js import"
+}

@@ -1,5 +1,31 @@
 # Release Notes
 
+## v3.2.3 - Install source-checkout hotfix
+
+v3.2.3 closes an install footgun where an agent could clone this repository
+into a target project, leave it as `knowledge-src/`, and then import that
+source checkout as if it were project code.
+
+> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
+
+### Added
+
+- Root `INSTALL.md` with an agent-focused install contract.
+- Machine-readable `install-policy.json` for agents and tooling.
+- `install-check` detection for source checkouts in the target root, including `knowledge-src/`.
+- Release self-tests that prove source checkouts are blocked before import and ignored by direct ingest/sync fallbacks.
+
+### Changed
+
+- `flow import` now runs `install-check` before ingest.
+- `ingest-existing-project.js` ignores detected `.knowledge` source checkouts instead of registering them as project modules.
+- `sync-tracked.js --scan --discover` ignores detected `.knowledge` source checkouts.
+- README keeps the install warning visible while moving detailed agent-only instructions into a collapsed contract.
+
+### Fixed
+
+- A fresh install can no longer silently produce `knowledge_src` modules and large repair queues from installer source files left in the target project.
+
 ## v3.2.2 - Release cleanup and bridge integrations
 
 v3.2.2 cleans the public install surface and adds explicit bridge support for OpenClaw and Hermes.

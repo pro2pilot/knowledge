@@ -1,9 +1,10 @@
 {
-  "schema_version": "3.2.2",
+  "schema_version": "3.2.3",
   "system_paths": [
     ".gitattributes",
     ".gitignore",
     ".release-notes",
+    "INSTALL.md",
     "README.md",
     "Quick-Start.md",
     "Portal.md",
@@ -15,6 +16,7 @@
     "LICENSE",
     "NOTICE",
     "package.json",
+    "install-policy.json",
     "config.yaml",
     "inspector.js",
     "open-inspector.vbs",

@@ -1,5 +1,53 @@
 # .knowledge by Pro2Pilot
 
+> **AI agents/installers:** install from the latest GitHub release asset, not from repo source. See the collapsed install contract below.
+
+<details>
+<summary><strong>AI agents: use latest release asset, never repo source</strong></summary>
+
+If you are installing `.knowledge` into another project:
+
+- Do not clone this repository into the target project.
+- Do not use GitHub **Code > Download ZIP**.
+- Do not use GitHub-generated `Source code (zip)` or `Source code (tar.gz)`.
+- Download only the latest release asset named `knowledge-vX.Y.Z.zip`.
+- Extract it so the target repository contains `.knowledge/`.
+
+Correct installed shape:
+
+```txt
+.knowledge/
+.agents/skills/        # only after agent integration install
+AGENTS.md              # or the selected agent rules file
+```
+
+Incorrect installed shape:
+
+```txt
+knowledge-src/
+.knowledge/.git/
+.knowledge/.github/
+```
+
+Canonical install source:
+
+```txt
+https://github.com/pro2pilot/knowledge/releases/latest
+```
+
+After extraction, run:
+
+```bash
+node .knowledge/tools/install-check.js --json
+node .knowledge/tools/install-agent-integrations.js --runtime codex
+node .knowledge/tools/flow.js import
+node .knowledge/inspector.js
+```
+
+Replace `codex` with the active agent runtime when needed.
+
+</details>
+
 <p align="center">
   <img src="assets/knowledge-trust-gate-light-readme.svg" alt=".knowledge trust gate: code, tests, agents, memory, and PR review pass through the local trust layer" width="100%">
 </p>
@@ -40,8 +88,8 @@ https://pro2pilot.com/knowledge/
 Canonical asset:
 
 ```txt
-knowledge-v3.2.2.zip
-https://github.com/pro2pilot/knowledge/releases/tag/v3.2.2
+knowledge-v3.2.3.zip
+https://github.com/pro2pilot/knowledge/releases/tag/v3.2.3
 ```
 
 Extract the release so your repository contains `.knowledge/`, then tell your agent:
@@ -205,7 +253,7 @@ Build and validate the install artifact from this source checkout:
 
 ```bash
 node tools/package-release.js --json
-node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.3.zip --json
 node tools/release-gate.js --json
 ```
 

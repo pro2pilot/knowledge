@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.2.3 install source-checkout hotfix
+
+- Added `INSTALL.md` and `install-policy.json` so agents have a clear release-asset install contract.
+- Added `install-check` detection for `knowledge-src/` and other `.knowledge` source checkouts left in the target root.
+- Added pre-import protection by running `install-check` at the start of `flow import`.
+- Updated ingest/sync to ignore detected `.knowledge` source checkouts instead of treating them as project modules.
+- Added release self-tests for the `knowledge-src/` failure mode.
+
 ## 3.2.2 release cleanup
 
 - Added explicit OpenClaw and Hermes integration commands without creating unconfirmed vendor folders.

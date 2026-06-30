@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.2",
+  "schema_version": "3.2.3",
   "id": "supabase",
   "name": "Supabase Project",
   "description": "Database migrations, RLS policies, edge functions, storage, auth, and generated types for Supabase projects.",

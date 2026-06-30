@@ -1,4 +1,4 @@
-version: 3.2.2
+version: 3.2.3
 config_schema_version: 1
 distribution: public_release
 project_index: .knowledge/project_index.json

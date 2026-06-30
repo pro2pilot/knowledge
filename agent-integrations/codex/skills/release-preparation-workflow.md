@@ -57,6 +57,8 @@ knowledge-v<VERSION>.zip.sha256
 
 Do not use GitHub’s automatically generated source archive as the primary install artifact if the project has a dedicated release-packaging command.
 
+For `.knowledge`, agents must install from the versioned release asset only. A cloned repo, GitHub Code > Download ZIP archive, GitHub source-code ZIP/TAR, `zipball_url`, `tarball_url`, or target-root `knowledge-src/` checkout is not an install package.
+
 ---
 
 ## 2. Required inputs
@@ -68,12 +70,12 @@ REPO_FULL_NAME          Example: pro2pilot/knowledge
 LOCAL_REPO_PATH         Example: C:\path\to\knowledge
 BASE_BRANCH             Usually: main
 WORK_BRANCH             Example: fix/install-git-policy
-TARGET_VERSION          Example: 3.2.2
+TARGET_VERSION          Example: 3.2.3
 PREVIOUS_VERSION        Example: 3.1.9
 EXPECTED_GH_ACCOUNT     GitHub username expected to push/release
 EXPECTED_GIT_AUTHOR     Optional expected git user.name
 EXPECTED_GIT_EMAIL      Optional expected git user.email
-RELEASE_TITLE           Example: v3.2.2 — Universal final-report hardening
+RELEASE_TITLE           Example: v3.2.3 — Universal final-report hardening
 ```
 
 If `TARGET_VERSION` or `EXPECTED_GH_ACCOUNT` is missing, ask before continuing.
@@ -412,6 +414,7 @@ No old feature claim remains false.
 No new user-facing feature is undocumented.
 No command path is wrong.
 No archive/install instruction points users to GitHub source zip as the primary artifact when a curated artifact exists.
+Agent-facing install copy says to use `knowledge-v<TARGET_VERSION>.zip`, not repo source, and treats `knowledge-src/` in the target root as forbidden before import.
 ```
 
 Stop if docs are stale or misleading.
@@ -522,6 +525,8 @@ Verify artifact invariants:
 contains .knowledge/
 contains .knowledge/Quick-Start.md
 contains .knowledge/README.md
+contains .knowledge/INSTALL.md
+contains .knowledge/install-policy.json
 contains .knowledge/tools/flow.js
 contains .knowledge/tools/install-check.js
 contains .knowledge/.gitignore
@@ -530,6 +535,7 @@ does not contain .knowledge/.github/
 does not contain dist/
 does not contain runtime logs/events/locks/temp/backups
 text files are LF-normalized if package-release claims that behavior
+install policy forbids GitHub source archives and target-root `knowledge-src/`
 ```
 
 Record in `07-qa-report.md`.
@@ -549,6 +555,8 @@ Expected:
 ```txt
 status: ok
 tests_failed: 0
+source_checkout_in_target_root regression passed
+direct ingest/sync ignored `knowledge-src/` without creating `knowledge_src`
 ```
 
 Record full output in `07-qa-report.md`.
@@ -631,6 +639,30 @@ post-fix ok
 .knowledge/.git removed or moved
 install_check_report.json contains pre_fix, fixes_applied, post_fix
 top-level status equals post_fix status
+```
+
+Record in `07-qa-report.md`.
+
+Also create a sibling source-checkout smoke fixture:
+
+```powershell
+New-Item -ItemType Directory -Force ".\knowledge-src\.git" | Out-Null
+New-Item -ItemType Directory -Force ".\knowledge-src\tools" | Out-Null
+Set-Content ".\knowledge-src\package.json" '{"name":"dot-knowledge","version":"source-fixture"}'
+Set-Content ".\knowledge-src\install-manifest.json" '{"schema_version":"source-fixture","system_paths":[]}'
+Set-Content ".\knowledge-src\Quick-Start.md" '# source fixture'
+Set-Content ".\knowledge-src\tools\package-release.js" "'use strict';"
+node .knowledge/tools/install-check.js --json
+node .knowledge/tools/flow.js import --no-color
+```
+
+Verify:
+
+```txt
+install-check fails
+issue source_checkout_in_target_root present
+flow import stops before ingest
+.knowledge/modules/knowledge_src.json is absent
 ```
 
 Record in `07-qa-report.md`.
@@ -766,6 +798,7 @@ All must be true:
 [ ] self-test passed
 [ ] fresh artifact smoke passed
 [ ] bad install smoke passed
+[ ] source-checkout-in-target-root smoke passed
 [ ] existing update smoke passed
 [ ] git add smoke clean
 [ ] release workspace created
@@ -920,6 +953,7 @@ QA:
 - self-test:
 - fresh artifact smoke:
 - bad install smoke:
+- source-checkout-in-target-root smoke:
 - existing update smoke:
 - git add smoke:
 

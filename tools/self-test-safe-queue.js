@@ -31,7 +31,7 @@ function main() {
   const status = run(['tools/team-status.js', '--team-root', teamRoot], systemRoot);
   assert(registered.workspace.workspaceId === 'ws-1', 'workspace did not register');
   assert(status.workspaces_total >= 1, 'team status did not see registered workspace');
-  console.log(JSON.stringify({ schema_version: '3.2.2', status: 'pass', checks: ['Safe Queue default', 'Manual Only merge default', 'workspace registration visible'] }, null, 2));
+  console.log(JSON.stringify({ schema_version: '3.2.3', status: 'pass', checks: ['Safe Queue default', 'Manual Only merge default', 'workspace registration visible'] }, null, 2));
   fs.rmSync(root, { recursive: true, force: true });
 }
 

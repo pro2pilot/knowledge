@@ -91,16 +91,16 @@ function shouldExclude(relPath, entry) {
     'maintenance/install_check_report.json',
     'maintenance/update_system_files_report.json',
     'maintenance/applied_templates.json',
-    'maintenance/knowledge-3.2.2-10-10-inventory.md',
-    'maintenance/knowledge-3.2.2-10-10-inventory.md',
+    'maintenance/knowledge-3.2.3-10-10-inventory.md',
+    'maintenance/knowledge-3.2.3-10-10-inventory.md',
     'maintenance/competitive-10-10-inventory.md',
     'maintenance/phase-0-inventory.md',
     'maintenance/release-gate-report.json',
     'maintenance/release-gate-report.md',
-    'maintenance/knowledge-3.2.2-final-qa.md',
-    'maintenance/knowledge-3.2.2-final-qa.json',
-    'maintenance/knowledge-3.2.2-final-qa.md',
-    'maintenance/knowledge-3.2.2-final-qa.json',
+    'maintenance/knowledge-3.2.3-final-qa.md',
+    'maintenance/knowledge-3.2.3-final-qa.json',
+    'maintenance/knowledge-3.2.3-final-qa.md',
+    'maintenance/knowledge-3.2.3-final-qa.json',
     'maintenance/pro-inspector-snapshot.json',
     'maintenance/debug-bundle.json'
   ]);
@@ -271,6 +271,8 @@ function main(argv = process.argv.slice(2)) {
   if (entries.some((entry) => /(^|\/)\.git(\/|$)/.test(entry.name))) errors.push('Unsafe artifact would include .knowledge/.git.');
   if (entries.some((entry) => entry.name.startsWith('.knowledge/.github/'))) errors.push('Unsafe artifact would include .knowledge/.github/.');
   if (!entries.some((entry) => entry.name === '.knowledge/Quick-Start.md')) errors.push('Quick-Start.md is missing from artifact.');
+  if (!entries.some((entry) => entry.name === '.knowledge/INSTALL.md')) errors.push('INSTALL.md is missing from artifact.');
+  if (!entries.some((entry) => entry.name === '.knowledge/install-policy.json')) errors.push('install-policy.json is missing from artifact.');
   if (!entries.some((entry) => entry.name === '.knowledge/.gitignore')) errors.push('Installed .knowledge/.gitignore is missing from artifact.');
   if (!entries.some((entry) => entry.name === '.knowledge/tools/flow.js')) errors.push('tools/flow.js is missing from artifact.');
   if (!entries.some((entry) => entry.name === '.knowledge/tools/install-check.js')) warnings.push('tools/install-check.js is not present yet.');

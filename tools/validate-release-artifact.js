@@ -103,6 +103,8 @@ function validate(zipPath) {
   const violations = [];
   const names = new Set(entries.map((entry) => normalizeRel(entry.name)));
   for (const required of [
+    '.knowledge/INSTALL.md',
+    '.knowledge/install-policy.json',
     '.knowledge/inspector.js',
     '.knowledge/open-inspector.vbs',
     '.knowledge/assets/knowledge-trust-gate-light-readme.svg',
@@ -136,7 +138,7 @@ function validate(zipPath) {
     }
   }
   return {
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     artifact: path.resolve(zipPath),
     status: violations.length ? 'failed' : 'ok',
     entries: entries.length,
@@ -146,7 +148,7 @@ function validate(zipPath) {
 
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.2.zip [--json]');
+  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.3.zip [--json]');
   const result = validate(path.resolve(args.artifact));
   if (args.json) console.log(JSON.stringify(result, null, 2));
   else if (result.status === 'ok') console.log(`release artifact ok: ${result.entries} entries`);
@@ -161,7 +163,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const parsed = parseArgs(process.argv.slice(2));
-    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.2', status: 'failed', error: error.message }, null, 2));
+    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.3', status: 'failed', error: error.message }, null, 2));
     else console.error(error.message);
     process.exit(2);
   }

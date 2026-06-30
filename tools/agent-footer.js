@@ -70,7 +70,7 @@ function main(argv = process.argv.slice(2)) {
   const footer = renderFooter(context, settings);
   const result = {
     ok: true,
-    schema_version: '3.2.2',
+    schema_version: '3.2.3',
     mode: settings.mode || 'compact',
     footer
   };
