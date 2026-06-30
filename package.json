@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.2.3",
+  "version": "3.2.4",
   "description": "Open repo-local trust layer for AI coding agents: routing, evidence, freshness, repair, PR review, and a local Visual Inspector.",
   "type": "commonjs",
   "engines": {
@@ -50,6 +50,7 @@
     "kb:updates:check": "node tools/check-updates.js",
     "kb:updates:enable": "node tools/check-updates.js --enable --interval=7d",
     "kb:updates:disable": "node tools/check-updates.js --disable",
+    "kb:self-test-update-checks": "node tools/self-test-update-checks.js",
     "kb:team:init": "node tools/team-init.js --json",
     "kb:team:register": "node tools/workspace-register.js --json",
     "kb:team:status": "node tools/team-status.js --json",

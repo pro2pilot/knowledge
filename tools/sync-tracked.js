@@ -230,7 +230,7 @@ function mainUnlocked() {
   const criticalPaths = safeReadJson(paths.criticalPaths, { generated_at: null, paths: [] });
   const automationStatus = safeReadJson(paths.automationStatus, { mode: 'event-driven' });
   const handoffSummary = safeReadJson(paths.handoffSummary, {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     generated_at: null,
     generated_by: null,
     project_operational_summary: 'Generated handoff summary for the current .knowledge state.',

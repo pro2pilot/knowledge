@@ -280,7 +280,7 @@ function assertInstalledSystemComplete(repo) {
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.3.md',
+    '.release-notes/v3.2.4.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',
@@ -488,13 +488,68 @@ function main(argv = process.argv.slice(2)) {
       return { status: parsed.status, commands: parsed.commands.length };
     });
 
+    record(results, 'install-agent-integrations without runtime does not create agent files', () => {
+      const repo = path.join(root, 'no runtime repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'no-runtime-repo', private: true });
+      const cleared = {
+        KNOWLEDGE_AGENT_RUNTIME: '',
+        KNOWLEDGE_RUNTIME: '',
+        CODEX_HOME: '',
+        CODEX_SANDBOX: '',
+        CODEX_CLI_SANDBOX: '',
+        CODEX_ENV_PWD: '',
+        CLAUDECODE: '',
+        CLAUDE_CODE: '',
+        ANTHROPIC_CLAUDE_CODE: '',
+        OPENCODE: '',
+        OPENCODE_APP: ''
+      };
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--no-package-scripts'], repo, cleared);
+      const parsed = parseJsonResult(integrations);
+      assert(integrations.exit === 0 && parsed.status === 'runtime_required', 'No-runtime install should require a runtime.', { integrations, parsed });
+      const created = allIntegrationPaths.filter((relPath) => existsRel(repo, relPath));
+      assert(created.length === 0, 'No-runtime install created integration files.', { created, parsed });
+      assert(!existsRel(repo, '.gitattributes'), 'No-runtime install created .gitattributes.', { parsed });
+      return { status: parsed.status, created };
+    });
+
+    record(results, 'install-agent-integrations detects explicit runtime from env only', () => {
+      const repo = path.join(root, 'env runtime codex repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'env-runtime-codex-repo', private: true });
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--no-package-scripts'], repo, { KNOWLEDGE_AGENT_RUNTIME: 'codex' });
+      const parsed = parseJsonResult(integrations);
+      assert(integrations.exit === 0 && parsed.status === 'ok' && parsed.source === 'env:KNOWLEDGE_AGENT_RUNTIME', 'Env runtime should install only the explicit runtime.', { integrations, parsed });
+      return assertRuntimeOnly(repo, 'codex');
+    });
+
+    record(results, 'install-agent-integrations requires confirmation for --all', () => {
+      const repo = path.join(root, 'all runtimes unconfirmed repo');
+      ensureDir(repo);
+      initGitRepo(repo);
+      extractZip(packageSummary.output_path, repo);
+      writeJson(path.join(repo, 'package.json'), { name: 'all-runtimes-unconfirmed-repo', private: true });
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all', '--no-package-scripts'], repo);
+      const parsed = parseJsonResult(integrations);
+      assert(integrations.exit === 0 && parsed.status === 'all_requires_confirmation', '--all should require explicit confirmation.', { integrations, parsed });
+      const created = allIntegrationPaths.filter((relPath) => existsRel(repo, relPath));
+      assert(created.length === 0, 'Unconfirmed --all created integration files.', { created, parsed });
+      assert(String(parsed.all_command || '').includes('--confirm-all'), 'Confirmed --all command should include --confirm-all.', parsed);
+      return { status: parsed.status, created };
+    });
+
     record(results, 'install-agent-integrations --all creates the full integration set', () => {
       const repo = path.join(root, 'all runtimes repo');
       ensureDir(repo);
       initGitRepo(repo);
       extractZip(packageSummary.output_path, repo);
       writeJson(path.join(repo, 'package.json'), { name: 'all-runtimes-repo', private: true });
-      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all', '--no-package-scripts'], repo);
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all', '--confirm-all', '--no-package-scripts'], repo);
       const parsed = parseJsonResult(integrations);
       assert(integrations.exit === 0 && parsed.status === 'ok' && parsed.mode === 'all', '--all install failed.', { integrations, parsed });
       const missing = allIntegrationPaths.filter((relPath) => !existsRel(repo, relPath));
@@ -512,6 +567,7 @@ function main(argv = process.argv.slice(2)) {
         .filter((command) => !quickStart.includes(command));
       assert(missing.length === 0, 'Quick-Start is missing runtime install commands.', { missing });
       assert(quickStart.includes('--runtime openclaw') && quickStart.includes('--runtime hermes') && quickStart.includes('Pi'), 'Quick-Start is missing OpenClaw, Hermes, or generic Pi compatibility notes.', {});
+      assert(quickStart.includes('--all --confirm-all'), 'Quick-Start should require --confirm-all for every-integration setup.', {});
       return { commands_checked: Object.keys(runtimeExpectations).length };
     });
 
@@ -521,7 +577,7 @@ function main(argv = process.argv.slice(2)) {
       initGitRepo(repo);
       extractZip(packageSummary.output_path, repo);
       writeJson(path.join(repo, 'package.json'), { name: 'integration-contract-repo', private: true });
-      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all'], repo);
+      const integrations = runNode(['.knowledge/tools/install-agent-integrations.js', '--all', '--confirm-all'], repo);
       assert(integrations.exit === 0, 'install-agent-integrations failed for integration contract test.', integrations);
       const agentsMd = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
       const claudeMd = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8');

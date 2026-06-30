@@ -59,6 +59,17 @@ Do not use GitHub’s automatically generated source archive as the primary inst
 
 For `.knowledge`, agents must install from the versioned release asset only. A cloned repo, GitHub Code > Download ZIP archive, GitHub source-code ZIP/TAR, `zipball_url`, `tarball_url`, or target-root `knowledge-src/` checkout is not an install package.
 
+Public install instructions should point agents to the versionless latest
+release URL:
+
+```txt
+https://github.com/pro2pilot/knowledge/releases/latest
+```
+
+Agents should then download only the attached asset named
+`knowledge-vX.Y.Z.zip` that matches the release tag shown on that latest page.
+Do not make agent-facing install copy depend on a hardcoded old release number.
+
 ---
 
 ## 2. Required inputs
@@ -70,12 +81,12 @@ REPO_FULL_NAME          Example: pro2pilot/knowledge
 LOCAL_REPO_PATH         Example: C:\path\to\knowledge
 BASE_BRANCH             Usually: main
 WORK_BRANCH             Example: fix/install-git-policy
-TARGET_VERSION          Example: 3.2.3
+TARGET_VERSION          Example: 3.2.4
 PREVIOUS_VERSION        Example: 3.1.9
 EXPECTED_GH_ACCOUNT     GitHub username expected to push/release
 EXPECTED_GIT_AUTHOR     Optional expected git user.name
 EXPECTED_GIT_EMAIL      Optional expected git user.email
-RELEASE_TITLE           Example: v3.2.3 — Universal final-report hardening
+RELEASE_TITLE           Example: v3.2.4 — Universal final-report hardening
 ```
 
 If `TARGET_VERSION` or `EXPECTED_GH_ACCOUNT` is missing, ask before continuing.
@@ -415,6 +426,8 @@ No new user-facing feature is undocumented.
 No command path is wrong.
 No archive/install instruction points users to GitHub source zip as the primary artifact when a curated artifact exists.
 Agent-facing install copy says to use `knowledge-v<TARGET_VERSION>.zip`, not repo source, and treats `knowledge-src/` in the target root as forbidden before import.
+Agent-facing public install copy points to `/releases/latest`, not only a fixed old release tag.
+Update/install tooling rejects generic asset names such as `default.knowledge.zip`, `.knowledge.zip`, and `knowledge.zip`.
 ```
 
 Stop if docs are stale or misleading.
@@ -891,6 +904,29 @@ Publish only after user approval:
 
 ```powershell
 gh release edit v<TARGET_VERSION> --repo <REPO_FULL_NAME> --draft=false --latest
+```
+
+After publishing, mark older public GitHub Releases as archived so future
+agents do not treat old pages as new-install instructions. Preserve the old
+body below an archive warning:
+
+```md
+> [!WARNING]
+> Archived release. Do not use this page for new installs.
+> For new installs, always use the current latest GitHub release:
+> https://github.com/pro2pilot/knowledge/releases/latest
+>
+> Download only the attached asset named `knowledge-vX.Y.Z.zip` that matches
+> the latest release tag. Do not use GitHub "Source code" archives,
+> `default.knowledge.zip`, `.knowledge.zip`, `knowledge.zip`, or `git clone` as
+> an install package.
+```
+
+If any old release still has a generic install asset name, rename the asset so
+it is visibly archived instead of installer-looking. Example:
+
+```txt
+ARCHIVED-DO-NOT-INSTALL-default.knowledge.zip
 ```
 
 Post-release verify:

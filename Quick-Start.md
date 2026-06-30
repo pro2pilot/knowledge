@@ -43,10 +43,34 @@ Install only the repo-local integration for the agent that is currently operatin
 | Roo Code | `node .knowledge/tools/install-agent-integrations.js --runtime roo` | `.roo/rules/knowledge.md` |
 | Aider | `node .knowledge/tools/install-agent-integrations.js --runtime aider` | `CONVENTIONS.md`, `.aider.conf.yml` |
 
-Power users can install every supported integration explicitly:
+Do not install every integration during first setup. Other agents can join later
+by running their own `--runtime <agent>` command against the already installed
+`.knowledge/` folder.
+
+Power users can install every supported integration only when a human explicitly
+requests it:
 
 ```bash
-node .knowledge/tools/install-agent-integrations.js --all
+node .knowledge/tools/install-agent-integrations.js --all --confirm-all
+```
+
+## Connect another agent later
+
+If `.knowledge/` is already installed and a different agent joins this same
+repository, do not reinstall the system and do not run `--all`. The new agent
+only installs its own repo-local bridge:
+
+```bash
+node .knowledge/tools/install-check.js --json
+node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/flow.js doctor
+```
+
+Then the new agent starts from:
+
+```txt
+.knowledge/maintenance/routing_bundle.json
+.knowledge/maintenance/handoff_summary.json
 ```
 
 OpenClaw uses the `AGENTS.md` plus `.agents/skills/` workspace-skills bridge. Hermes uses an explicit `AGENTS.md` bridge without a vendor folder. Pi and other agents without a confirmed repo-local rules-file convention should read or paste `.knowledge/Quick-Start.md` until their documented convention is confirmed.
@@ -327,11 +351,11 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.3.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
+Use `dist/knowledge-v3.2.4.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
 
 ```bash
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.3.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.4.zip --json
 ```
 
 ## Free Inspector vs Inspector Pro

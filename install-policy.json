@@ -1,8 +1,14 @@
 {
-  "schema_version": "3.2.3",
+  "schema_version": "3.2.4",
   "install_artifact": "github_release_asset",
   "asset_name_pattern": "^knowledge-v\\d+\\.\\d+\\.\\d+\\.zip$",
   "canonical_release_url": "https://github.com/pro2pilot/knowledge/releases/latest",
+  "canonical_release_asset_rule": "Download the attached asset whose name matches knowledge-vX.Y.Z.zip on the latest GitHub release. Do not use a fixed version number from old docs.",
+  "forbidden_asset_names": [
+    "default.knowledge.zip",
+    ".knowledge.zip",
+    "knowledge.zip"
+  ],
   "forbid": [
     "git clone into target project",
     "GitHub Code > Download ZIP",

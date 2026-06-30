@@ -1,5 +1,35 @@
 # Release Notes
 
+## v3.2.4 - Install source and integration selection hotfix
+
+v3.2.4 tightens the public install path so agents select the current curated
+release asset instead of old generic assets, GitHub source archives, or source
+checkouts copied into target repositories.
+
+> **Install note:** For new installs, always start from
+> https://github.com/pro2pilot/knowledge/releases/latest and download the
+> attached asset named `knowledge-vX.Y.Z.zip` that matches the latest release
+> tag. Do not use GitHub "Source code" archives, GitHub "Download ZIP",
+> `default.knowledge.zip`, `.knowledge.zip`, `knowledge.zip`, or `git clone` as
+> an install package.
+
+### Fixed
+
+- Update checks now accept only the exact `knowledge-v<tag>.zip` asset from the
+  latest GitHub release and no longer fall back to generic or older ZIP assets.
+- First-run integration install no longer treats `--all` as a normal setup path;
+  installing every agent bridge now requires explicit `--all --confirm-all`.
+- A no-runtime integration run now returns `runtime_required` without creating
+  `AGENTS.md`, `CLAUDE.md`, `.agents/`, `.claude/`, `.opencode/`, or other
+  vendor bridge folders.
+
+### Added
+
+- Agent-facing docs for connecting another agent later to the same already
+  installed `.knowledge/` repository.
+- A focused update-selection self-test that proves old/generic assets are not
+  selected when a current exact release asset exists.
+
 ## v3.2.3 - Install source-checkout hotfix
 
 v3.2.3 closes an install footgun where an agent could clone this repository

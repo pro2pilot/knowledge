@@ -183,15 +183,14 @@ async function fetchLatestRelease(config) {
 function selectReleaseAsset(latest) {
   const assets = Array.isArray(latest?.assets) ? latest.assets : [];
   const version = String(latest?.tag_name || '').replace(/^v/i, '');
-  return assets.find((asset) => /^knowledge-v\d+\.\d+\.\d+.*\.zip$/i.test(asset.name || '')) ||
-    assets.find((asset) => version && String(asset.name || '').toLowerCase() === `knowledge-v${version}.zip`.toLowerCase()) ||
-    assets.find((asset) => /\.zip$/i.test(asset.name || '')) ||
-    null;
+  if (!version) return null;
+  const exactName = `knowledge-v${version}.zip`.toLowerCase();
+  return assets.find((asset) => String(asset.name || '').toLowerCase() === exactName) || null;
 }
 
 function makeStatusBase(config) {
   return {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,

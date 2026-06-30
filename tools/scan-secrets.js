@@ -146,7 +146,7 @@ function main(argv = process.argv.slice(2)) {
     : 'clean';
 
   const report = {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,

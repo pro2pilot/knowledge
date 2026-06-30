@@ -202,7 +202,7 @@ async function main() {
   assert(unreg.workspace.status === 'archived', 'workspace unregister did not archive');
 
   const result = {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

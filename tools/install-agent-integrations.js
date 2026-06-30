@@ -466,7 +466,15 @@ function detectRuntimeFromEnv(env = process.env) {
 }
 
 function resolveRequestedRuntime(options = {}) {
-  if (options.all) return { all: true, runtimes: supportedRuntimeIds(), source: 'flag:--all' };
+  if (options.all && !options.confirmAll) {
+    return {
+      all: false,
+      runtimes: [],
+      source: 'flag:--all',
+      allRequiresConfirmation: true
+    };
+  }
+  if (options.all) return { all: true, runtimes: supportedRuntimeIds(), source: 'flag:--all --confirm-all' };
   const requested = normalizeRuntime(options.runtime);
   if (requested) return { all: false, runtimes: [requested], source: 'flag:--runtime' };
   if (options.runtime) return { all: false, runtimes: [], unknown: String(options.runtime), source: 'flag:--runtime' };
@@ -481,7 +489,18 @@ function runtimeRequired(reason = 'No supported agent runtime was detected.') {
     reason,
     supported_runtimes: supportedRuntimeIds(),
     commands: runtimeCommands(),
-    all_command: 'node .knowledge/tools/install-agent-integrations.js --all'
+    note: 'Install only the active agent runtime during first setup. Other agents can add their own runtime later.'
+  };
+}
+
+function allRequiresConfirmation() {
+  return {
+    status: 'all_requires_confirmation',
+    reason: '`--all` installs every supported agent bridge and is not a first-run default.',
+    recommendation: 'Use one --runtime command for the active agent. Only use --all with --confirm-all when a human explicitly wants every integration folder.',
+    supported_runtimes: supportedRuntimeIds(),
+    commands: runtimeCommands(),
+    all_command: 'node .knowledge/tools/install-agent-integrations.js --all --confirm-all'
   };
 }
 
@@ -490,6 +509,14 @@ function installAgentIntegrations(options = {}) {
   const repoRoot = context.targetRoot;
   const lockDir = path.join(context.stateRoot, '.lock');
   const requested = resolveRequestedRuntime(options);
+
+  if (requested.allRequiresConfirmation) {
+    return {
+      ...allRequiresConfirmation(),
+      repo_root: repoRoot,
+      knowledge_root: context.systemRoot
+    };
+  }
 
   if (!requested.runtimes.length) {
     const reason = requested.unknown
@@ -558,6 +585,7 @@ if (require.main === module) {
     const options = {
       runtime: parsed.runtime,
       all: parsed.all === true,
+      confirmAll: parsed.confirmAll === true,
       updatePackageScripts: !process.argv.includes('--no-package-scripts')
     };
     if (parsed.listRuntimes) {

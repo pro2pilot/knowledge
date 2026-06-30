@@ -30,7 +30,7 @@ function main() {
   runNode('tools/build-wiki-graph.js', ['--quiet']);
   const graph = readJson('maps/wiki_graph.json');
 
-  assert(graph.schema_version === '3.2.3', 'graph schema_version must be 3.2.3');
+  assert(graph.schema_version === '3.2.4', 'graph schema_version must be 3.2.4');
   assert(graph.view === 'free_core_trust_graph', 'graph view must be free_core_trust_graph');
   assert(graph.node_count >= 12, `graph should have useful nodes, got ${graph.node_count}`);
   assert(graph.edge_count >= 12, `graph should have useful relations, got ${graph.edge_count}`);
@@ -58,7 +58,7 @@ function main() {
   }
 
   console.log(JSON.stringify({
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     status: 'pass',
     graph: {
       nodes: graph.node_count,

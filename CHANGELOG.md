@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.2.4 install source and integration selection hotfix
+
+- Changed update asset selection to accept only the exact `knowledge-v<tag>.zip`
+  asset attached to the latest GitHub release.
+- Added a focused update-selection self-test so generic or old ZIP assets cannot
+  be silently selected.
+- Changed first-run integration behavior so `--all` requires
+  `--all --confirm-all` and no-runtime runs create no agent bridge files.
+- Added docs for connecting another agent later without reinstalling the system
+  or creating every vendor integration folder.
+- Updated README install copy to point agents at `/releases/latest` instead of a
+  fixed release tag.
+
 ## 3.2.3 install source-checkout hotfix
 
 - Added `INSTALL.md` and `install-policy.json` so agents have a clear release-asset install contract.

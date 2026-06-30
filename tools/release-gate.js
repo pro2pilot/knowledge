@@ -10,7 +10,7 @@ const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { parseCliArgs } = require('./lib/path-context');
 
 const root = path.resolve(__dirname, '..');
-const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.3';
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.4';
 const artifactRel = `dist/knowledge-v${version}.zip`;
 
 function sanitizeText(value) {
@@ -142,6 +142,7 @@ function main(argv = process.argv.slice(2)) {
     ['self-test Safe Queue', [process.execPath, ['tools/self-test-safe-queue.js', '--json'], 180000]],
     ['self-test Agent Footer', [process.execPath, ['tools/self-test-agent-footer.js', '--json'], 120000]],
     ['self-test Restore Trust', [process.execPath, ['tools/self-test-restore-trust.js', '--json'], 120000]],
+    ['self-test Update Checks', [process.execPath, ['tools/self-test-update-checks.js'], 120000]],
     ['self-test install policy', [process.execPath, ['tools/self-test-install-policy.js'], 420000]],
     ['self-test memory providers', [process.execPath, ['tools/self-test-memory-providers.js'], 180000]],
     ['self-test external memory', [process.execPath, ['tools/self-test-external-memory.js'], 180000]],
@@ -169,7 +170,7 @@ function main(argv = process.argv.slice(2)) {
     : { status: 'skipped', root: '<clean-install-smoke>', steps: [] };
   const failures = [...steps, ...(cleanInstall.steps || [])].filter((step) => step.status !== 'pass');
   const report = {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     generated_at: new Date().toISOString(),
     status: failures.length ? 'failed' : 'passed',
     gate_status: failures.length ? 'blocked' : 'benchmark-ready',
@@ -189,7 +190,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const failed = {
-      schema_version: '3.2.3',
+      schema_version: '3.2.4',
       generated_at: new Date().toISOString(),
       status: 'failed',
       gate_status: 'blocked',

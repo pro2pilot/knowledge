@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.3",
+  "schema_version": "3.2.4",
   "distribution_state": "policy_seed",
   "mode": "concurrent_safe",
   "write_policy": {

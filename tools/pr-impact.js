@@ -452,7 +452,7 @@ function analyze(options = {}) {
   })).sort((a, b) => a.module_id.localeCompare(b.module_id));
 
   const result = {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     generated_at: new Date().toISOString(),
     status: changedFiles.length ? (policyWarnings.some((item) => item.severity === 'block') ? 'block' : 'ok') : 'empty',
     context: jsonContext(context),
@@ -507,7 +507,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const parsed = parseCliArgs(process.argv.slice(2));
-    if (parsed.flags.json) console.log(JSON.stringify({ schema_version: '3.2.3', status: 'failed', error: error.message }, null, 2));
+    if (parsed.flags.json) console.log(JSON.stringify({ schema_version: '3.2.4', status: 'failed', error: error.message }, null, 2));
     else console.error(error.stack || error.message);
     process.exit(1);
   }

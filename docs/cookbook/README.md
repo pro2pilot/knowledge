@@ -25,6 +25,9 @@ What should be checked before trusting the result?
 - `05-pr-review.md` — create a review-facing summary.
 - `06-external-memory.md` — use optional Pinecone/external archive safely.
 
+- `07-team-worktree-pr.md` - coordinate multi-worktree agent PR work.
+- `08-connect-another-agent.md` - add another agent runtime to an existing `.knowledge` repo.
+
 ## Relationship to Quick-Start
 
 - `Quick-Start.md` is the single canonical onboarding prompt for any agent.

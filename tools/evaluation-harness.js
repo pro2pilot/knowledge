@@ -46,7 +46,7 @@ function main() {
   const results = checks.map(([name, rel]) => ({ name, ...run(rel) }));
   const score = Math.round(results.filter((r) => r.status === 'pass').length / results.length * 100);
   const report = {
-    schema_version: '3.2.3',
+    schema_version: '3.2.4',
     generated_at: new Date().toISOString(),
     mode: context.mode,
     score,

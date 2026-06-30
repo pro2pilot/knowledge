@@ -188,7 +188,7 @@ function applyOne(id, options = {}) {
   planned.push(repairAdded.length === 0 ? '= unchanged maintenance/repair_queue.json' : `~ modify  maintenance/repair_queue.json (+${repairAdded.length} items)`);
 
   const appliedPath = path.join(knowledgeRoot, 'maintenance', 'applied_templates.json');
-  const applied = readJson(appliedPath, { schema_version: '3.2.3', generated_at: null, templates: [] });
+  const applied = readJson(appliedPath, { schema_version: '3.2.4', generated_at: null, templates: [] });
   const before = applied.templates.find((t) => t.id === tpl.id);
   if (!before) {
     applied.templates.push({

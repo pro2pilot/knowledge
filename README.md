@@ -44,7 +44,9 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with the active agent runtime when needed.
+Replace `codex` with the active agent runtime when needed. Install only the
+active runtime during first setup; other agents can connect later by running
+their own `--runtime <agent>` command.
 
 </details>
 
@@ -85,12 +87,15 @@ https://pro2pilot.com/knowledge/
 
 > **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Canonical asset:
+Canonical install source:
 
 ```txt
-knowledge-v3.2.3.zip
-https://github.com/pro2pilot/knowledge/releases/tag/v3.2.3
+https://github.com/pro2pilot/knowledge/releases/latest
 ```
+
+Download the attached asset named `knowledge-vX.Y.Z.zip`, where `X.Y.Z`
+matches the latest release tag. Do not install from an old release page, a
+GitHub-generated source archive, or a repository checkout.
 
 Extract the release so your repository contains `.knowledge/`, then tell your agent:
 
@@ -107,7 +112,15 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with `claude`, `opencode`, `openclaw`, `hermes`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent.
+Replace `codex` with `claude`, `opencode`, `openclaw`, `hermes`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent. Do not install every integration on first setup.
+
+To connect another agent later, keep the existing `.knowledge/` folder and run
+only that agent's runtime bridge:
+
+```bash
+node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/flow.js doctor
+```
 
 After import, the first operational file an agent reads is:
 
@@ -253,7 +266,7 @@ Build and validate the install artifact from this source checkout:
 
 ```bash
 node tools/package-release.js --json
-node tools/validate-release-artifact.js dist/knowledge-v3.2.3.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.4.zip --json
 node tools/release-gate.js --json
 ```
 

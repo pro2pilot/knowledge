@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.3",
+  "schema_version": "3.2.4",
   "id": "node-monorepo",
   "name": "Node Monorepo",
   "description": "Workspace packages, app/service boundaries, shared libraries, build graph, and package-level trust for Node monorepos.",
