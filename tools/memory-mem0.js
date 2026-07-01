@@ -2,9 +2,11 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const { spawnSync } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
 const { providerStateDir, findManifest, buildExternalMemoryReport } = require('./lib/memory-providers');
+const { ensureDir, readJson, writeJsonAtomic, withLock } = require('./lib/json-store');
 const {
   checkPythonModule,
   discoverPython,
@@ -22,6 +24,7 @@ const {
 
 const DEFAULT_FAST_PYTHON_TIMEOUT_MS = 5000;
 const DEFAULT_LIVE_HEALTH_TIMEOUT_MS = 30000;
+const DEFAULT_LIVE_OPERATION_TIMEOUT_MS = 30000;
 
 function numericTimeout(value, fallback) {
   const parsed = Number(value);
@@ -35,12 +38,42 @@ function pythonTimeoutFlag(flags) {
 }
 
 function normalizeDiagnosticCode(code) {
-  return code === 'python_invalid' ? 'python_not_usable' : code;
+  const value = String(code || '');
+  if (value === 'python_invalid') return 'python_not_usable';
+  if (value === 'python_not_found') return 'python_missing';
+  if (value === 'mem0_package_missing') return 'mem0_runtime_missing';
+  if (value === 'python_module_error') return 'mem0_import_failed';
+  if (value === 'python_timeout') return 'live_operation_timeout';
+  if (value === 'mem0_storage_permission_error') return 'qdrant_path_permission_denied';
+  if (value === 'mem0_runtime_error') return 'unknown_live_adapter_error';
+  return value;
+}
+
+function expectedMem0Version(context) {
+  try {
+    const manifest = findManifest(context, 'mem0-oss');
+    const pin = String(manifest.source?.version_pin || '');
+    const match = pin.match(/==(.+)$/);
+    return match ? match[1] : String(manifest.source?.version || '2.0.4');
+  } catch {
+    return '2.0.4';
+  }
+}
+
+function versionMatches(actual, expected) {
+  if (!actual || !expected) return false;
+  const clean = (value) => String(value || '').trim().replace(/^v/i, '');
+  return clean(actual) === clean(expected);
 }
 
 function adapterFile(context) {
   const manifest = findManifest(context, 'mem0-oss');
   return path.join(providerStateDir(context, manifest), 'adapter-records.jsonl');
+}
+
+function runtimeStatusFile(context) {
+  const manifest = findManifest(context, 'mem0-oss');
+  return path.join(providerStateDir(context, manifest), 'runtime_status.json');
 }
 
 function selectedAdapter(flags) {
@@ -54,13 +87,58 @@ function parseMetadata(flags) {
   catch (error) { throw new Error(`Invalid --metadata JSON: ${error.message}`); }
 }
 
-function liveConfig(flags) {
-  if (flags.configJson) return String(flags.configJson);
-  if (flags.config) {
-    const fs = require('fs');
-    return fs.readFileSync(path.resolve(String(flags.config)), 'utf8');
+function defaultLiveConfigPath(context) {
+  const manifest = findManifest(context, 'mem0-oss');
+  const candidate = path.join(providerStateDir(context, manifest), 'config.json');
+  return candidate;
+}
+
+function liveConfigPath(flags, context) {
+  if (flags.config) return path.resolve(String(flags.config));
+  if (context) {
+    const configPath = defaultLiveConfigPath(context);
+    if (fs.existsSync(configPath)) return configPath;
   }
+  return null;
+}
+
+function liveConfig(flags, context) {
+  if (flags.configJson) return String(flags.configJson);
+  const configPath = liveConfigPath(flags, context);
+  if (configPath) return fs.readFileSync(configPath, 'utf8');
   return process.env.KNOWLEDGE_MEM0_CONFIG_JSON || '{}';
+}
+
+function sanitizeLiveConfig(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return config;
+  const next = { ...config };
+  delete next.user_id;
+  return next;
+}
+
+function restoreCanonicalLiveConfig(flags, context) {
+  const configPath = liveConfigPath(flags, context);
+  if (!configPath || !fs.existsSync(configPath)) return false;
+  let config;
+  try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); }
+  catch { return false; }
+  if (!Object.prototype.hasOwnProperty.call(config, 'user_id')) return false;
+  writeJsonAtomic(configPath, sanitizeLiveConfig(config));
+  return true;
+}
+
+function liveProcessEnv(flags, context) {
+  const env = {
+    ...process.env,
+    KNOWLEDGE_MEM0_CONFIG_JSON: liveConfig(flags, context)
+  };
+  if (!env.MEM0_TELEMETRY) env.MEM0_TELEMETRY = 'False';
+  if (!env.MEM0_TELEMETRY_SAMPLE_RATE) env.MEM0_TELEMETRY_SAMPLE_RATE = '0';
+  if (flags.mem0Dir) env.MEM0_DIR = path.resolve(String(flags.mem0Dir));
+  else if (!env.MEM0_DIR && flags.config) env.MEM0_DIR = path.join(path.dirname(path.resolve(String(flags.config))), 'runtime');
+  else if (!env.MEM0_DIR && context) env.MEM0_DIR = path.join(path.dirname(defaultLiveConfigPath(context)), 'runtime');
+  if (env.MEM0_DIR) ensureDir(env.MEM0_DIR);
+  return env;
 }
 
 function pythonDiscoveryOptions(flags, timeoutMs = DEFAULT_FAST_PYTHON_TIMEOUT_MS) {
@@ -76,7 +154,7 @@ function liveHealthOp(payload) {
 }
 
 function liveMem0TimeoutMs(flags, payload) {
-  const fallback = liveHealthOp(payload) ? DEFAULT_LIVE_HEALTH_TIMEOUT_MS : DEFAULT_FAST_PYTHON_TIMEOUT_MS;
+  const fallback = liveHealthOp(payload) ? DEFAULT_LIVE_HEALTH_TIMEOUT_MS : DEFAULT_LIVE_OPERATION_TIMEOUT_MS;
   return numericTimeout(flags.timeoutMs, fallback);
 }
 
@@ -90,8 +168,8 @@ function liveImportOptions(flags, payload) {
 
 function classifyLivePythonError(error) {
   const code = error && error.code;
-  if (code === 'ENOENT') return 'python_not_found';
-  if (code === 'ETIMEDOUT') return 'python_timeout';
+  if (code === 'ENOENT') return 'python_missing';
+  if (code === 'ETIMEDOUT') return 'live_operation_timeout';
   if (code === 'EACCES' || code === 'EPERM') return 'python_permission_error';
   return 'python_runtime_error';
 }
@@ -110,35 +188,44 @@ function friendlyLivePythonError(error, payload) {
 function pythonInstallNextCommands(selectedPython) {
   if (!selectedPython) {
     return [
-      'Install Python or pass --python "<path-to-python.exe>"',
       'node .knowledge/tools/memory-mem0.js health --adapter live --python "<path-to-python.exe>" --json'
     ];
   }
   return [
-    packageInstallCommand(selectedPython, 'mem0ai==2.0.4'),
-    'node .knowledge/tools/memory-mem0.js health --adapter live --json'
+    packageInstallCommand(selectedPython, 'mem0ai==2.0.4')
   ];
 }
 
-function liveFailureNextCommands(diagnosticCode, selectedPython) {
-  if (diagnosticCode === 'mem0_package_missing') return pythonInstallNextCommands(selectedPython);
-  if (diagnosticCode === 'python_timeout') {
-    const pythonArg = selectedPython ? ` --python ${quoteForCommand(selectedPython)}` : '';
+function timeoutRetryCommand(operation = 'health', selectedPython) {
+  const pythonArg = selectedPython ? ` --python ${quoteForCommand(selectedPython)}` : '';
+  if (operation === 'list') {
+    return `node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory${pythonArg} --timeout-ms 60000 --json`;
+  }
+  return `node .knowledge/tools/memory-mem0.js health --adapter live${pythonArg} --timeout-ms 60000 --json`;
+}
+
+function liveFailureNextCommands(diagnosticCode, selectedPython, operation = 'health') {
+  if (diagnosticCode === 'mem0_runtime_missing') return pythonInstallNextCommands(selectedPython);
+  if (diagnosticCode === 'mem0_version_mismatch') return pythonInstallNextCommands(selectedPython);
+  if (diagnosticCode === 'live_operation_timeout') {
     return [
-      'Retry once after Python warms up; first import mem0 on Windows can be slower than normal.',
-      `node .knowledge/tools/memory-mem0.js health --adapter live${pythonArg} --timeout-ms 60000 --json`
+      timeoutRetryCommand(operation, selectedPython)
     ];
   }
-  if (diagnosticCode === 'mem0_storage_permission_error') {
+  if (diagnosticCode === 'qdrant_lock_busy') {
     return [
-      'Configure Mem0/Qdrant to use a writable persistent storage directory, then rerun the live command.',
-      'Check directory permissions for qdrant lock files; .knowledge will not delete locks or repair permissions automatically.'
+      'node .knowledge/tools/memory-mem0.js health --adapter live --json'
+    ];
+  }
+  if (diagnosticCode === 'qdrant_path_permission_denied') {
+    return [
+      'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'
     ];
   }
   return ['Fix the selected Python runtime, then rerun node .knowledge/tools/memory-mem0.js health --adapter live --json'];
 }
 
-function classifyMem0RuntimeFailure(parsed = {}, res = {}) {
+function classifyMem0RuntimeFailure(parsed = {}, res = {}, payload = {}) {
   const text = [
     parsed.error,
     parsed.stderr,
@@ -146,16 +233,140 @@ function classifyMem0RuntimeFailure(parsed = {}, res = {}) {
     res.stderr,
     res.stdout
   ].filter(Boolean).join('\n');
+  const mayUseEmbeddingProvider = ['remember', 'recall'].includes(String(payload?.op || ''));
+  if (/(?:already locked|lock busy|currently accessed|resource temporarily unavailable)/i.test(text) && /(?:qdrant|\.lock|lock[- ]?file)/i.test(text)) {
+    return {
+      diagnostic_code: 'qdrant_lock_busy',
+      next_commands: liveFailureNextCommands('qdrant_lock_busy')
+    };
+  }
   if (/permission denied/i.test(text) && /(?:qdrant|\.lock|lock[- ]?file)/i.test(text)) {
     return {
-      diagnostic_code: 'mem0_storage_permission_error',
-      next_commands: liveFailureNextCommands('mem0_storage_permission_error')
+      diagnostic_code: 'qdrant_path_permission_denied',
+      next_commands: liveFailureNextCommands('qdrant_path_permission_denied')
+    };
+  }
+  if (/api key|credentials|OPENAI_API_KEY|authentication/i.test(text) && (/embed|embedding|openai/i.test(text) || mayUseEmbeddingProvider)) {
+    return {
+      diagnostic_code: 'embedding_provider_missing_credentials',
+      next_commands: ['Configure the embedding provider credentials, then rerun the explicit live command.']
+    };
+  }
+  if (/quota|rate limit|insufficient_quota/i.test(text) && (/embed|embedding|openai/i.test(text) || mayUseEmbeddingProvider)) {
+    return {
+      diagnostic_code: 'embedding_provider_quota_exceeded',
+      next_commands: ['Use the optional local embedder recipe or retry after quota is available.']
+    };
+  }
+  if (/network|timed out|connection|ECONNRESET|ENOTFOUND/i.test(text) && (/embed|embedding|openai/i.test(text) || mayUseEmbeddingProvider)) {
+    return {
+      diagnostic_code: 'embedding_provider_network_error',
+      next_commands: ['Retry the explicit live command after network access is available.']
     };
   }
   return null;
 }
 
-function runLiveMem0(flags, payload) {
+function filterSafeStderr(value) {
+  const lines = String(value || '').split(/\r?\n/);
+  const kept = [];
+  let droppingQdrantShutdown = false;
+  for (const line of lines) {
+    if (/Exception ignored while calling deallocator .*QdrantClient\.__del__/i.test(line)) {
+      droppingQdrantShutdown = true;
+      continue;
+    }
+    if (droppingQdrantShutdown) {
+      if (/Traceback|qdrant_client|qdrant_local|sys\.meta_path is None|Python is likely shutting down/i.test(line)) continue;
+      droppingQdrantShutdown = false;
+    }
+    if (/ResourceWarning|unclosed.*(?:qdrant|client)|grpc.*shutdown/i.test(line)) continue;
+    if (/Failed to load spaCy .* model: spaCy is not installed\. Install it with: pip install mem0ai\[nlp\]/i.test(line)) continue;
+    kept.push(line);
+  }
+  return kept.join('\n').trim();
+}
+
+function liveLockDir(context) {
+  const manifest = findManifest(context, 'mem0-oss');
+  return path.join(providerStateDir(context, manifest), '.runtime', 'live-qdrant.lock');
+}
+
+function runLivePythonProcess(selectedPython, flags, payload, context, script) {
+  return spawnSync(selectedPython, ['-c', script], {
+    input: JSON.stringify(payload),
+    encoding: 'utf8',
+    env: liveProcessEnv(flags, context),
+    windowsHide: true,
+    timeout: liveMem0TimeoutMs(flags, payload)
+  });
+}
+
+function liveOperationUsesLocalQdrant(payload) {
+  return payload && !liveHealthOp(payload);
+}
+
+function runLiveMem0(flags, payload, context) {
+  if (
+    process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE === '1' &&
+    process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_FORCE_MEM0_MISSING === '1'
+  ) {
+    const selectedPython = String(flags.python || process.env.KNOWLEDGE_MEM0_PYTHON || process.env.MEM0_PYTHON || 'python');
+    return redactSecrets({
+      ok: false,
+      diagnostic_code: 'mem0_runtime_missing',
+      error: 'Mem0 Python package is not importable.',
+      python_discovery: {
+        status: 'found',
+        diagnostic_code: 'python_available',
+        selected: {
+          command: selectedPython,
+          source: 'test hook',
+          explicit: Boolean(flags.python),
+          status: 'ok',
+          diagnostic_code: 'python_available',
+          executable: selectedPython
+        },
+        candidates_checked: 1,
+        candidates: []
+      },
+      selected_python: selectedPython,
+      next_commands: liveFailureNextCommands('mem0_runtime_missing', selectedPython, payload?.op)
+    });
+  }
+  if (
+    process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE === '1' &&
+    process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_FORCE_MEM0_VERSION_MISMATCH === '1'
+  ) {
+    const selectedPython = String(flags.python || process.env.KNOWLEDGE_MEM0_PYTHON || process.env.MEM0_PYTHON || 'python');
+    const expectedVersion = expectedMem0Version(context);
+    const actualVersion = process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_MEM0_VERSION === '__missing__'
+      ? null
+      : process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_MEM0_VERSION || '1.0.0';
+    return redactSecrets({
+      ok: false,
+      diagnostic_code: 'mem0_version_mismatch',
+      error: `Mem0 Python package version ${actualVersion} does not match required ${expectedVersion}.`,
+      version: actualVersion,
+      expected_version: expectedVersion,
+      python_discovery: {
+        status: 'found',
+        diagnostic_code: 'python_available',
+        selected: {
+          command: selectedPython,
+          source: 'test hook',
+          explicit: Boolean(flags.python),
+          status: 'ok',
+          diagnostic_code: 'python_available',
+          executable: selectedPython
+        },
+        candidates_checked: 1,
+        candidates: []
+      },
+      selected_python: selectedPython,
+      next_commands: liveFailureNextCommands('mem0_version_mismatch', selectedPython, payload?.op)
+    });
+  }
   const discovery = discoverPython(pythonDiscoveryOptions(flags));
   if (!discovery.selected) {
     const diagnosticCode = normalizeDiagnosticCode(discovery.diagnostic_code || 'python_not_found');
@@ -165,9 +376,9 @@ function runLiveMem0(flags, payload) {
       error: 'No usable Python runtime was found by bounded discovery.',
       python_discovery: discovery,
       selected_python: null,
-      next_commands: diagnosticCode === 'python_not_found'
+      next_commands: diagnosticCode === 'python_missing'
         ? (discovery.next_commands || pythonInstallNextCommands(null))
-        : liveFailureNextCommands(diagnosticCode, null)
+        : liveFailureNextCommands(diagnosticCode, null, payload?.op)
     });
   }
   const selectedPython = discovery.selected.executable || discovery.selected.command;
@@ -180,7 +391,20 @@ function runLiveMem0(flags, payload) {
       error: moduleCheck.error || 'Mem0 Python package is not importable.',
       python_discovery: discovery,
       selected_python: selectedPython,
-      next_commands: liveFailureNextCommands(diagnosticCode, selectedPython)
+      next_commands: liveFailureNextCommands(diagnosticCode, selectedPython, payload?.op)
+    });
+  }
+  const expectedVersion = expectedMem0Version(context);
+  if (!versionMatches(moduleCheck.version, expectedVersion)) {
+    return redactSecrets({
+      ok: false,
+      diagnostic_code: 'mem0_version_mismatch',
+      error: `Mem0 Python package version ${moduleCheck.version} does not match required ${expectedVersion}.`,
+      version: moduleCheck.version || null,
+      expected_version: expectedVersion,
+      python_discovery: discovery,
+      selected_python: selectedPython,
+      next_commands: liveFailureNextCommands('mem0_version_mismatch', selectedPython, payload?.op)
     });
   }
   if (liveHealthOp(payload)) {
@@ -191,11 +415,13 @@ function runLiveMem0(flags, payload) {
       python_discovery: discovery,
       selected_python: selectedPython,
       next_commands: [],
-      version: moduleCheck.version || null
+      version: moduleCheck.version || null,
+      expected_version: expectedVersion
     });
   }
   const script = String.raw`
-import json, os, sys
+import json, os, sys, warnings
+warnings.filterwarnings("ignore", category=ResourceWarning, message=r".*(unclosed|qdrant|client).*")
 payload = json.loads(sys.stdin.read() or "{}")
 try:
     import mem0
@@ -213,6 +439,9 @@ def make_memory():
     except TypeError:
         return Memory()
 
+def user_filter(user_id):
+    return {"user_id": user_id} if user_id else {}
+
 try:
     op = payload.get("op")
     user_id = payload.get("user_id") or "knowledge-repo"
@@ -225,33 +454,44 @@ try:
             result = memory.add(text, user_id=user_id, infer=bool(payload.get("infer", False)))
             result = {"ok": True, "operation": op, "raw": result}
         elif op == "recall":
-            result = memory.search(payload.get("query") or "", user_id=user_id)
+            result = memory.search(payload.get("query") or "", filters=user_filter(user_id))
             result = {"ok": True, "operation": op, "raw": result}
         elif op == "list":
-            result = memory.get_all(user_id=user_id)
+            result = memory.get_all(filters=user_filter(user_id))
             result = {"ok": True, "operation": op, "raw": result}
         elif op == "forget":
             memory.delete(memory_id=payload.get("id"))
             result = {"ok": True, "operation": op, "deleted": True}
         else:
             result = {"ok": False, "error": "unknown op"}
-        close = getattr(memory, "close", None)
-        if callable(close):
-            close()
+        for close_name in ("close", "shutdown"):
+            close = getattr(memory, close_name, None)
+            if callable(close):
+                close()
     print(json.dumps(result, default=str))
 except Exception as exc:
     print(json.dumps({"ok": False, "error": str(exc)}))
 `;
-  const res = spawnSync(selectedPython, ['-c', script], {
-    input: JSON.stringify(payload),
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      KNOWLEDGE_MEM0_CONFIG_JSON: liveConfig(flags)
-    },
-    windowsHide: true,
-    timeout: liveMem0TimeoutMs(flags, payload)
-  });
+  let res;
+  try {
+    res = liveOperationUsesLocalQdrant(payload)
+      ? withLock(liveLockDir(context), () => runLivePythonProcess(selectedPython, flags, payload, context, script), {
+        timeoutMs: numericTimeout(flags.lockTimeoutMs, 10000)
+      })
+      : runLivePythonProcess(selectedPython, flags, payload, context, script);
+  } catch (error) {
+    restoreCanonicalLiveConfig(flags, context);
+    return redactSecrets({
+      ok: false,
+      diagnostic_code: /Timed out waiting for knowledge lock/.test(error.message) ? 'qdrant_lock_busy' : 'unknown_live_adapter_error',
+      error: error.message,
+      python_discovery: discovery,
+      selected_python: selectedPython,
+      next_commands: liveFailureNextCommands(/Timed out waiting for knowledge lock/.test(error.message) ? 'qdrant_lock_busy' : 'unknown_live_adapter_error', selectedPython, payload?.op),
+      version: moduleCheck.version || null
+    });
+  }
+  restoreCanonicalLiveConfig(flags, context);
   let parsed = {};
   try { parsed = JSON.parse((res.stdout || '').trim() || '{}'); }
   catch { parsed = { ok: false, stdout: (res.stdout || '').trim() }; }
@@ -259,10 +499,11 @@ except Exception as exc:
     parsed.ok = false;
     parsed.diagnostic_code = classifyLivePythonError(res.error);
     parsed.error = friendlyLivePythonError(res.error, payload);
-    parsed.next_commands = liveFailureNextCommands(parsed.diagnostic_code, selectedPython);
+    parsed.next_commands = liveFailureNextCommands(parsed.diagnostic_code, selectedPython, payload?.op);
   }
-  if (res.stderr) parsed.stderr = res.stderr.trim().slice(0, 2000);
-  const runtimeFailure = classifyMem0RuntimeFailure(parsed, res);
+  const stderr = filterSafeStderr(res.stderr);
+  if (stderr) parsed.stderr = stderr.slice(0, 2000);
+  const runtimeFailure = classifyMem0RuntimeFailure(parsed, res, payload);
   if (!parsed.ok && runtimeFailure) {
     parsed.diagnostic_code = runtimeFailure.diagnostic_code;
     parsed.next_commands = runtimeFailure.next_commands;
@@ -273,26 +514,31 @@ except Exception as exc:
     diagnostic_code: diagnosticCode,
     python_discovery: discovery,
     selected_python: selectedPython,
-    next_commands: parsed.next_commands || (parsed.ok ? [] : liveFailureNextCommands(diagnosticCode, selectedPython)),
+    next_commands: parsed.next_commands || (parsed.ok ? [] : liveFailureNextCommands(diagnosticCode, selectedPython, payload?.op)),
     version: parsed.version || moduleCheck.version || null
   });
 }
 
 function liveHealthWarnings(raw) {
   if (raw.ok) return [];
-  if (raw.diagnostic_code === 'mem0_package_missing') {
+  if (raw.diagnostic_code === 'mem0_runtime_missing') {
     return ['Python was found, but mem0ai is not installed in that Python environment.'];
   }
-  if (raw.diagnostic_code === 'python_timeout') {
+  if (raw.diagnostic_code === 'mem0_version_mismatch') {
+    const actual = raw.version || 'unknown';
+    const expected = raw.expected_version || expectedMem0Version();
+    return [`Python has mem0ai ${actual}, but .knowledge requires mem0ai ${expected}.`];
+  }
+  if (raw.diagnostic_code === 'live_operation_timeout') {
     return ['Live Mem0 health timed out. First import mem0 on Windows can be slower than warm checks; the default live health timeout is 30000 ms.'];
   }
-  if (raw.diagnostic_code === 'mem0_storage_permission_error') {
+  if (raw.diagnostic_code === 'qdrant_lock_busy' || raw.diagnostic_code === 'qdrant_path_permission_denied') {
     return ['Live Mem0 runtime could import, but its storage backend reported a qdrant lock/permission error. Configure writable persistent storage and rerun the live command.'];
   }
   return ['Live Mem0 runtime was not available or not configured.'];
 }
 
-function liveAdapter(flags) {
+function liveAdapter(flags, context) {
   const providerId = 'mem0-oss';
   const adapterId = 'live';
   function requireConsent(operation) {
@@ -303,18 +549,23 @@ function liveAdapter(flags) {
   }
   return {
     health() {
-      const raw = runLiveMem0(flags, { op: 'health' });
+      const raw = runLiveMem0(flags, { op: 'health' }, context);
       return advisoryEnvelope(providerId, adapterId, 'health', {
         status: raw.ok ? 'available' : 'runtime_not_installed',
         runtime_health: raw.ok ? 'ok' : 'not_available',
         live_runtime_checked: true,
+        network_calls: 'not_run',
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'runtime_not_installed'),
+        version: raw.version || null,
+        expected_version: raw.expected_version || null,
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
         next_commands: raw.next_commands || [],
-        raw: raw.ok ? { ok: true, version: raw.version || null } : {
+        raw: raw.ok ? { ok: true, version: raw.version || null, expected_version: raw.expected_version || null } : {
           ok: false,
           diagnostic_code: raw.diagnostic_code || 'runtime_not_installed',
+          version: raw.version || null,
+          expected_version: raw.expected_version || null,
           error: raw.error || 'Live Mem0 runtime was not available or not configured.'
         },
         warnings: liveHealthWarnings(raw)
@@ -322,10 +573,11 @@ function liveAdapter(flags) {
     },
     remember(input = {}) {
       requireConsent('remember');
-      const raw = runLiveMem0(flags, { op: 'remember', text: input.text, user_id: input.user_id, infer: Boolean(flags.infer) });
+      const raw = runLiveMem0(flags, { op: 'remember', text: input.text, user_id: input.user_id, infer: Boolean(flags.infer) }, context);
       return advisoryEnvelope(providerId, adapterId, 'remember', {
         status: raw.ok ? 'ok' : 'error',
         persisted: Boolean(raw.ok),
+        network_calls: 'may_call_embedding_provider',
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
@@ -336,10 +588,11 @@ function liveAdapter(flags) {
     },
     recall(input = {}) {
       requireConsent('recall');
-      const raw = runLiveMem0(flags, { op: 'recall', query: input.query, user_id: input.user_id });
+      const raw = runLiveMem0(flags, { op: 'recall', query: input.query, user_id: input.user_id }, context);
       return advisoryEnvelope(providerId, adapterId, 'recall', {
         status: raw.ok ? 'ok' : 'error',
         query: input.query || '',
+        network_calls: 'may_call_embedding_provider',
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
@@ -350,9 +603,10 @@ function liveAdapter(flags) {
     },
     list(input = {}) {
       requireConsent('list');
-      const raw = runLiveMem0(flags, { op: 'list', user_id: input.user_id });
+      const raw = runLiveMem0(flags, { op: 'list', user_id: input.user_id }, context);
       return advisoryEnvelope(providerId, adapterId, 'list', {
         status: raw.ok ? 'ok' : 'error',
+        network_calls: 'not_run_local_qdrant',
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
@@ -362,10 +616,11 @@ function liveAdapter(flags) {
     },
     forget(input = {}) {
       requireConsent('forget');
-      const raw = runLiveMem0(flags, { op: 'forget', id: input.id, user_id: input.user_id });
+      const raw = runLiveMem0(flags, { op: 'forget', id: input.id, user_id: input.user_id }, context);
       return advisoryEnvelope(providerId, adapterId, 'forget', {
         status: raw.ok ? 'ok' : 'error',
         deleted: Boolean(raw.deleted),
+        network_calls: 'not_run_local_qdrant',
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
@@ -387,7 +642,7 @@ function liveAdapter(flags) {
 function adapterFor(context, flags) {
   const adapter = selectedAdapter(flags);
   if (adapter === 'test') return jsonlAdapter('mem0-oss', 'test-jsonl', adapterFile(context));
-  if (adapter === 'live') return liveAdapter(flags);
+  if (adapter === 'live') return liveAdapter(flags, context);
   return dryRunAdapter('mem0-oss', 'dry-run', 'runtime_not_installed');
 }
 
@@ -405,6 +660,11 @@ function inputFromFlags(flags, positional) {
 }
 
 function withStatus(result, context) {
+  if (result.adapter_id === 'live') {
+    const filePath = runtimeStatusFile(context);
+    ensureDir(path.dirname(filePath));
+    writeJsonAtomic(filePath, runtimeStatusSnapshot(result, context, readJson(filePath, null)));
+  }
   if (['remember', 'forget'].includes(result.operation) && result.adapter_id === 'test-jsonl') {
     buildExternalMemoryReport(context, { write: true });
   }
@@ -423,14 +683,83 @@ function syncReport(context, adapterId) {
   });
 }
 
+function runtimeStatusSnapshot(result, context, previous = null) {
+  const diagnosticCode = result.diagnostic_code || 'mem0_available';
+  const statusValue = String(result.status || '').toLowerCase();
+  const runtimeVersion = result.version || result.raw?.version || result.raw?.raw?.version || null;
+  const expectedVersion = result.expected_version || result.raw?.expected_version || result.raw?.raw?.expected_version || (runtimeVersion ? expectedMem0Version(context) : null);
+  const checkedAt = new Date().toISOString();
+  const runtimeStillAvailable = [
+    'mem0_available',
+    'embedding_provider_missing_credentials',
+    'embedding_provider_quota_exceeded',
+    'embedding_provider_network_error'
+  ].includes(diagnosticCode);
+  const runtimeAvailable = (['available', 'ok'].includes(statusValue) && diagnosticCode === 'mem0_available') ||
+    (runtimeStillAvailable && Boolean(runtimeVersion || result.selected_python || result.raw?.selected_python));
+  return {
+    schema_version: '3.2.6',
+    provider_id: 'mem0-oss',
+    adapter_id: 'live',
+    checked_at: checkedAt,
+    last_live_health_check: result.operation === 'health'
+      ? checkedAt
+      : previous?.last_live_health_check || (previous?.operation === 'health' ? previous?.checked_at || null : null),
+    operation: result.operation,
+    status: result.status,
+    runtime_health: result.runtime_health || (runtimeAvailable ? 'ok' : 'not_available'),
+    diagnostic_code: diagnosticCode,
+    selected_python: result.selected_python || null,
+    version: runtimeVersion,
+    expected_version: expectedVersion,
+    runtime_available: runtimeAvailable,
+    package_installed: runtimeAvailable,
+    network_calls: result.network_calls || 'not_run',
+    source_of_truth: false,
+    trust_role: 'advisory_only',
+    trust_effect: 'advisory_only',
+    live_operations_require_explicit_consent: true
+  };
+}
+
 function print(result, json) {
   console.log(JSON.stringify(result, null, 2));
+}
+
+function help() {
+  return {
+    schema_version: '3.2.6',
+    tool: 'memory-mem0.js',
+    usage: 'node .knowledge/tools/memory-mem0.js <command> [query] [options] --json',
+    commands: [
+      { name: 'health', usage: 'node .knowledge/tools/memory-mem0.js health --adapter live --json', network_calls: 'not_run' },
+      { name: 'list', usage: 'node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json', network_calls: 'not_run_local_qdrant' },
+      { name: 'add', usage: 'node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text "Release note: Mem0 is advisory-only external memory" --scope repo --json', network_calls: 'may_call_embedding_provider' },
+      { name: 'remember', usage: 'node .knowledge/tools/memory-mem0.js remember --adapter live --yes-live-memory --text "Release note: Mem0 is advisory-only external memory" --scope repo --json', network_calls: 'may_call_embedding_provider' },
+      { name: 'search', usage: 'node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json', network_calls: 'may_call_embedding_provider' },
+      { name: 'recall', usage: 'node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json', network_calls: 'may_call_embedding_provider' },
+      { name: 'delete', usage: 'node .knowledge/tools/memory-mem0.js delete --adapter live --yes-live-memory --id <memory-id> --json', network_calls: 'not_run_local_qdrant' },
+      { name: 'forget', usage: 'node .knowledge/tools/memory-mem0.js forget --adapter live --yes-live-memory --id <memory-id> --json', network_calls: 'not_run_local_qdrant' },
+      { name: 'sync-report', usage: 'node .knowledge/tools/memory-mem0.js sync-report --json', network_calls: 'not_run' },
+      { name: 'export-redacted', usage: 'node .knowledge/tools/memory-mem0.js export-redacted --json', network_calls: 'not_run' },
+      { name: 'help', usage: 'node .knowledge/tools/memory-mem0.js help --json', network_calls: 'not_run' }
+    ],
+    live_requires_explicit_consent: true,
+    source_of_truth: false,
+    trust_role: 'advisory_only',
+    trust_effect: 'advisory_only'
+  };
 }
 
 function main(argv = process.argv.slice(2)) {
   const parsed = parseCliArgs(argv);
   const flags = parsed.flags;
-  const command = parsed.positional[0] || 'health';
+  const command = parsed.positional[0] || (flags.help ? 'help' : 'health');
+  if (flags.help || command === 'help') {
+    const result = help();
+    print(result, Boolean(flags.json));
+    return result;
+  }
   const context = resolveKnowledgeContext(flags);
   const adapter = adapterFor(context, flags);
   const input = inputFromFlags(flags, parsed.positional);
@@ -465,8 +794,12 @@ module.exports.adapterFor = adapterFor;
 module.exports.publicRecord = publicRecord;
 module.exports.__test = {
   classifyMem0RuntimeFailure,
+  filterSafeStderr,
   liveImportOptions,
   liveMem0TimeoutMs,
+  liveProcessEnv,
   normalizeDiagnosticCode,
-  pythonDiscoveryOptions
+  pythonDiscoveryOptions,
+  restoreCanonicalLiveConfig,
+  runtimeStatusSnapshot
 };

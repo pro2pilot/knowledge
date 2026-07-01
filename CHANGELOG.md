@@ -1,5 +1,36 @@
 # Changelog
 
+## 3.2.6 Mem0 guided setup and recipe gate
+
+- Added `memory-provider.js setup mem0-oss --live --json` as the recommended
+  one-command Mem0 onboarding flow.
+- Added deterministic `write-recipe` and `validate-recipe` commands for
+  `docs/cookbook/09-mem0-live-memory.md`.
+- Added machine-readable Mem0 CLI `help --json` metadata so recipe validation
+  checks generated commands against the actual dispatch surface.
+- Added repo-local Mem0 config and runtime status cache under
+  `.knowledge/external_memory/mem0`.
+- Split Mem0 status fields into `receipt_present`, `runtime_available`, and
+  `package_installed` so receipts do not masquerade as package installs.
+- Updated live Mem0 diagnostics, network-call labels, telemetry defaults,
+  Qdrant serialization, and Mem0 2.0.4 filter-based search/list calls.
+- Classified live add/search/recall embedding provider connection failures with
+  explicit diagnostics and filtered safe Qdrant/spaCy shutdown noise from stderr.
+- Preserved cached Mem0 runtime availability and last live health timestamp when
+  later live add/search/recall fails at the embedding-provider boundary.
+- Raised live Mem0 operation defaults to tolerate slow first local Qdrant
+  startup on Windows while keeping discovery probes short.
+- Enforced the pinned Mem0 runtime version during live setup so a mismatched or
+  unreported `mem0ai` version returns one exact pinned install command instead of
+  reporting connected.
+- Exposed cached Mem0 runtime version and pin-match fields in offline status and
+  the Inspector onboarding card.
+- Added Inspector Mem0 onboarding actions and a release gate for Mem0 recipe
+  quality.
+- Added a dedicated Mem0 install page and covered it in the recipe quality
+  self-test so setup, runtime status, repo-local paths, and advisory boundary
+  stay documented.
+
 ## 3.2.5 Inspector first-run, updater, graph shelf, and shutdown
 
 - Added a live Inspector `Turn off` control that closes the local server and

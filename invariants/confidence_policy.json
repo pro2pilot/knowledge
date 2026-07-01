@@ -1,6 +1,5 @@
 {
-  "schema_version": "3.2.4",
-  "distribution_state": "template_seed",
+  "generated_at": null,
   "policy": {
     "fresh": { "conditions": [] },
     "suspect": { "conditions": [] },

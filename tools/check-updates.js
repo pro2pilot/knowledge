@@ -190,7 +190,7 @@ function selectReleaseAsset(latest) {
 
 function makeStatusBase(config) {
   return {
-    schema_version: '3.2.5',
+    schema_version: '3.2.6',
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,

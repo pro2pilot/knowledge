@@ -72,10 +72,17 @@ function validate(zipPath) {
     /(^|\/)node_modules(\/|$)/,
     /^\.knowledge\/dist\//,
     /^\.knowledge\/internal\//,
+    /^\.knowledge\/exports\//,
+    /^\.knowledge\/modules\//,
+    /^\.knowledge\/pro\//,
+    /^\.knowledge\/docs\/(canonical|product|strategy)\//,
+    /^\.knowledge\/docs\/pro-(subscription|inspector)\.md$/i,
     /^\.knowledge\/maintenance\/knowledge-[^/]+-(?:10-10-inventory|final-qa)\.(?:md|json)$/i,
+    /^\.knowledge\/maintenance\/github-release-update-log-[^/]+\.md$/i,
     /^\.knowledge\/memory-providers\/(graphiti|zep)(\/|$)/i,
     /^\.knowledge\/models\/pro-(entitlement|extension-manifest|license-token)\.schema\.json$/i,
     /^\.knowledge\/tools\/self-test-(canonical-e2e|pro-ready-gates)\.js$/i,
+    /^\.knowledge\/tools\/(?:validate-paid-manifest\.js|lib\/paid-inspector-model\.js)$/i,
     /^\.knowledge\/maintenance\/flow-logs\//,
     /^\.knowledge\/external_memory\/(mem0|legacy|claude_mem|claude|claude-auto-memory)(\/|$)/,
     /^\.knowledge\/metrics\/external_memory\.json$/,
@@ -138,7 +145,7 @@ function validate(zipPath) {
     }
   }
   return {
-    schema_version: '3.2.5',
+    schema_version: '3.2.6',
     artifact: path.resolve(zipPath),
     status: violations.length ? 'failed' : 'ok',
     entries: entries.length,
@@ -148,7 +155,7 @@ function validate(zipPath) {
 
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.5.zip [--json]');
+  if (!args.artifact) fail('Usage: node tools/validate-release-artifact.js dist/knowledge-v3.2.6.zip [--json]');
   const result = validate(path.resolve(args.artifact));
   if (args.json) console.log(JSON.stringify(result, null, 2));
   else if (result.status === 'ok') console.log(`release artifact ok: ${result.entries} entries`);
@@ -163,7 +170,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const parsed = parseArgs(process.argv.slice(2));
-    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.5', status: 'failed', error: error.message }, null, 2));
+    if (parsed.json) console.log(JSON.stringify({ schema_version: '3.2.6', status: 'failed', error: error.message }, null, 2));
     else console.error(error.message);
     process.exit(2);
   }

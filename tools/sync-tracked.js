@@ -14,6 +14,7 @@ const {
   withLock
 } = require('./lib/json-store');
 const { resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
@@ -24,6 +25,7 @@ const trigger = process.env.KNOWLEDGE_TRIGGER || (process.argv.includes('--scan'
 const agentId = getAgentId();
 const fullScan = process.argv.includes('--scan') || process.env.KNOWLEDGE_FULL_SCAN === '1';
 const discoverNewFiles = process.argv.includes('--discover') || process.env.KNOWLEDGE_DISCOVER_NEW === '1' || !fullScan;
+const SCHEMA_VERSION = systemVersion();
 
 const paths = {
   freshness: path.join(stateRoot, 'freshness.json'),
@@ -230,7 +232,7 @@ function mainUnlocked() {
   const criticalPaths = safeReadJson(paths.criticalPaths, { generated_at: null, paths: [] });
   const automationStatus = safeReadJson(paths.automationStatus, { mode: 'event-driven' });
   const handoffSummary = safeReadJson(paths.handoffSummary, {
-    schema_version: '3.2.4',
+    schema_version: SCHEMA_VERSION,
     generated_at: null,
     generated_by: null,
     project_operational_summary: 'Generated handoff summary for the current .knowledge state.',

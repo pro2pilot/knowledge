@@ -1,21 +1,4 @@
 {
-  "schema_version": "3.2.4",
-  "distribution_state": "template_seed",
-  "decisions": [
-    {
-      "id": "DEC-320-final-report-contract",
-      "title": "Require a shared final-report contract across installed agent integrations",
-      "status": "active",
-      "decision": "After meaningful work, installed agents should run flow release when relevant and report doctor status, wiki lint status, suspect or low-confidence areas, repair queue state, routing bundle path, PR summary path, metrics path, and estimated token savings when metrics are available.",
-      "why": "A shared final-report contract keeps Codex, Claude Code, OpenCode, and custom agents aligned on the same health and trust signals instead of leaving metrics and routing outcomes implicit.",
-      "sources": [
-        "Quick-Start.md",
-        "tools/install-agent-integrations.js",
-        "agent-integrations/codex/skills/kb-metrics/SKILL.md",
-        "agent-integrations/claude/skills/kb-metrics/SKILL.md",
-        "agent-integrations/opencode/commands/kb-metrics.md"
-      ],
-      "confidence": "high"
-    }
-  ]
+  "generated_at": null,
+  "decisions": []
 }

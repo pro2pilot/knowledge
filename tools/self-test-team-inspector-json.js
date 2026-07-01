@@ -60,6 +60,8 @@ function copyKnowledge(targetRoot) {
         !rel.startsWith('.qa-tmp/') &&
         !rel.startsWith('.self-test-tmp/') &&
         !rel.startsWith('benchmark-runs/') &&
+        !rel.startsWith('maintenance/install-backups/') &&
+        !rel.startsWith('maintenance/update-downloads/') &&
         !rel.startsWith('maintenance/flow-logs/') &&
         !rel.startsWith('.lock') &&
         !rel.includes('/.lock/') &&

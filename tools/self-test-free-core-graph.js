@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.5';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.6';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -52,15 +52,25 @@ function main() {
     'data-graph-shelf="free-core"',
     'data-graph-toggle="free-core"',
     'data-graph-node="true"',
+    'graph-hit-target',
     'data-graph-detail="true"',
-    'Free Core Trust Graph',
+    'data-graph-detail-json',
+    'Trust Graph',
+    'graph-toggle-arrow',
     'Source-of-truth order',
+    'Incoming links',
+    'Why trust is this',
+    'Evidence / tests / code',
+    'advisory only, verify against code/tests/evidence',
+    'class="edge routes bundled"',
     'Graph diagnostics',
     'Trust order:',
     'edge-swatch outranks'
   ]) {
     assert(html.includes(needle), `Inspector graph UI missing ${needle}`);
   }
+  assert(html.includes('.graph-node .label{pointer-events:all;cursor:pointer}'), 'Inspector graph labels should be clickable.');
+  assert(!html.includes('Free Core Trust Graph'), 'Inspector graph title should be Trust Graph.');
   assert(!html.includes('class="graph-link"'), 'Inspector graph nodes must not navigate to raw pages');
 
   console.log(JSON.stringify({

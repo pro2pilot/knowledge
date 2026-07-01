@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
 const { estimateTokens } = require('./lib/token-estimate');
 const { resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
@@ -19,6 +20,7 @@ const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const lockDir = path.join(stateRoot, '.lock');
 const maxBytes = Number(process.env.KNOWLEDGE_SEARCH_MAX_FILE_BYTES || 250000);
+const SCHEMA_VERSION = systemVersion();
 
 const stopwords = new Set('the a an and or of to in for on with without into from by as is are was were be been this that these those it its code tests evidence module modules knowledge json md read write current source truth project file files'.split(' '));
 
@@ -80,6 +82,7 @@ function firstHeading(markdown, fallback) {
 function classify(relative) {
   if (relative.startsWith('wiki/')) return 'wiki';
   if (relative.startsWith('docs/cookbook/')) return 'cookbook';
+  if (['docs/mem0-install.md', 'docs/memory-providers.md', 'docs/external-memory.md'].includes(relative)) return 'external_memory';
   if (relative === 'decisions.json') return 'decision';
   if (relative === 'contradictions.json') return 'contradiction';
   if (relative.startsWith('invariants/')) return 'invariant';
@@ -134,7 +137,16 @@ function collectFiles() {
     'external_memory',
     'templates/official'
   ];
-  const projectFiles = ['decisions.json', 'contradictions.json', 'glossary.json', 'project_index.json', 'maintenance/concurrency_policy.json'];
+  const projectFiles = [
+    'decisions.json',
+    'contradictions.json',
+    'glossary.json',
+    'project_index.json',
+    'maintenance/concurrency_policy.json',
+    'docs/mem0-install.md',
+    'docs/memory-providers.md',
+    'docs/external-memory.md'
+  ];
   const stateFiles = ['maintenance/handoff_summary.json', 'maintenance/trust_report.json', 'maintenance/quality_report.json', 'maintenance/routing_bundle.json'];
   const files = [];
   for (const rootName of includedRoots) walk(path.join(knowledgeRoot, rootName), files);
@@ -242,7 +254,7 @@ function buildUnlocked(options = {}) {
   }
 
   const index = {
-    schema_version: '3.2.4',
+    schema_version: SCHEMA_VERSION,
     generated_at: generatedAt,
     generated_by: getAgentId(),
     mode: context.mode,

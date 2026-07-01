@@ -48,6 +48,13 @@ inspector/
 sessions/active_task.json
 sessions/active_tasks/
 
+# External memory provider runtime state
+external_memory/mem0/
+external_memory/legacy/
+external_memory/claude/
+external_memory/claude_mem/
+external_memory/claude-auto-memory/
+
 # Generated maps ignored by default.
 maps/wiki_graph.json
 maps/file_criticality.json

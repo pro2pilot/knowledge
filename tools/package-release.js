@@ -41,14 +41,21 @@ function shouldExclude(relPath, entry) {
   if (segments[0] === '.self-test-tmp') return { exclude: true, reason: 'self_test_tmp' };
   if (segments[0] === '.qa-tmp') return { exclude: true, reason: 'qa_tmp' };
   if (segments[0] === 'benchmark-runs') return { exclude: true, reason: 'benchmark_output' };
+  if (segments[0] === 'exports') return { exclude: true, reason: 'runtime_exports' };
+  if (segments[0] === 'modules') return { exclude: true, reason: 'project_module_cards' };
+  if (segments[0] === 'pro') return { exclude: true, reason: 'optional_pro_state' };
   if (rel.startsWith('benchmarks/results/')) return { exclude: true, reason: 'benchmark_results_runtime' };
+  if (/^docs\/(canonical|product|strategy)(\/|$)/i.test(rel)) return { exclude: true, reason: 'product_strategy_not_free_core_runtime' };
   if (rel.startsWith('docs/implementation/')) return { exclude: true, reason: 'source_implementation_notes' };
+  if (/^docs\/pro-(subscription|inspector)\.md$/i.test(rel)) return { exclude: true, reason: 'optional_pro_docs_not_free_core_runtime' };
   if (segments[0] === 'internal') return { exclude: true, reason: 'internal_release_governance' };
   if (segments.includes('.lock')) return { exclude: true, reason: 'runtime_lock' };
   if (segments.includes('.runtime')) return { exclude: true, reason: 'runtime_state' };
+  if (rel.startsWith('maintenance/action-runs/')) return { exclude: true, reason: 'action_run_runtime' };
   if (rel.startsWith('maintenance/flow-logs/')) return { exclude: true, reason: 'flow_logs' };
   if (rel.startsWith('maintenance/events/')) return { exclude: true, reason: 'events' };
   if (rel.startsWith('maintenance/dev-notes/')) return { exclude: true, reason: 'source_dev_notes' };
+  if (/^maintenance\/github-release-update-log-[^/]+\.md$/i.test(rel)) return { exclude: true, reason: 'github_release_update_log' };
   if (rel.startsWith('maintenance/install-backups/')) return { exclude: true, reason: 'install_backups' };
   if (rel.startsWith('maintenance/update-downloads/')) return { exclude: true, reason: 'update_downloads' };
   if (/^maintenance\/knowledge-[^/]+-(?:10-10-inventory|final-qa)\.(?:md|json)$/i.test(rel)) {
@@ -72,6 +79,9 @@ function shouldExclude(relPath, entry) {
   }
   if (/^tools\/self-test-(canonical-e2e|pro-ready-gates)\.js$/i.test(rel)) {
     return { exclude: true, reason: 'non_core_test_excluded' };
+  }
+  if (/^tools\/(?:validate-paid-manifest\.js|lib\/paid-inspector-model\.js)$/i.test(rel)) {
+    return { exclude: true, reason: 'optional_paid_tooling_not_free_core_runtime' };
   }
 
   const generatedMaintenance = new Set([

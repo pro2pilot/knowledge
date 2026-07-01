@@ -4,12 +4,14 @@
 const path = require('path');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
 const { resolveKnowledgeContext, jsonContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const lockDir = path.join(stateRoot, '.lock');
+const SCHEMA_VERSION = systemVersion();
 
 function nowIso() { return new Date().toISOString(); }
 function safeRead(filePath, fallback) { return readJson(filePath, fallback); }
@@ -82,7 +84,7 @@ function buildUnlocked(options = {}) {
     .slice(0, 100);
 
   const bundle = {
-    schema_version: '3.2.4',
+    schema_version: SCHEMA_VERSION,
     generated_at: generatedAt,
     generated_by: agentId,
     context: jsonContext(context),

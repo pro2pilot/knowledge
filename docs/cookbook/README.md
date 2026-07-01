@@ -27,6 +27,9 @@ What should be checked before trusting the result?
 
 - `07-team-worktree-pr.md` - coordinate multi-worktree agent PR work.
 - `08-connect-another-agent.md` - add another agent runtime to an existing `.knowledge` repo.
+- `09-mem0-live-memory.md` - set up Mem0 OSS as advisory-only external memory with one guided flow.
+
+For install semantics, receipt/runtime distinction, and repo-local Mem0 paths, see `../mem0-install.md`.
 
 ## Relationship to Quick-Start
 

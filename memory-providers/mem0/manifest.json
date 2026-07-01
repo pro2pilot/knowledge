@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.6",
   "id": "mem0-oss",
   "display_name": "Mem0 OSS",
   "type": "local",
@@ -27,7 +27,10 @@
     ],
     "requires_network": true,
     "requires_user_confirmation": true,
-    "status_report_makes_network_calls": false
+    "status_report_makes_network_calls": false,
+    "recommended_setup_command": "node .knowledge/tools/memory-provider.js setup mem0-oss --live --json",
+    "recipe_command": "node .knowledge/tools/memory-provider.js write-recipe mem0-oss --json",
+    "validator_command": "node .knowledge/tools/memory-provider.js validate-recipe mem0-oss --json"
   },
   "data": {
     "default_path": "<stateRoot>/external_memory/mem0",

@@ -10,6 +10,7 @@ const mem0Main = require('./memory-mem0');
 
 const systemRoot = path.resolve(__dirname, '..');
 const keepTemp = process.argv.includes('--keep-temp');
+const recipeQualityOnly = process.argv.includes('--recipe-quality-only');
 let rootForCleanup = null;
 
 function assert(condition, message) {
@@ -123,16 +124,250 @@ function testPythonDiscovery(root) {
   assert(moduleTimeout.diagnostic_code === 'python_timeout', 'Mem0 import timeout diagnostic mismatch');
 
   assert(mem0Main.__test.normalizeDiagnosticCode('python_invalid') === 'python_not_usable', 'python_invalid should normalize to python_not_usable at Mem0 boundary');
+  assert(mem0Main.__test.normalizeDiagnosticCode('python_not_found') === 'python_missing', 'python_not_found should normalize to python_missing at Mem0 boundary');
+  assert(mem0Main.__test.normalizeDiagnosticCode('mem0_package_missing') === 'mem0_runtime_missing', 'mem0_package_missing should normalize to mem0_runtime_missing at Mem0 boundary');
   assert(mem0Main.__test.liveImportOptions({ pythonTimeoutMs: '30000' }, { op: 'health' }).timeoutMs === 30000, '--python-timeout-ms alias should set Python timeout');
   assert(mem0Main.__test.liveImportOptions({ pythonTimeMs: '30000' }, { op: 'health' }).timeoutMs === 30000, '--pythonTimeMs alias should set Python timeout');
   assert(mem0Main.__test.liveMem0TimeoutMs({ timeoutMs: '45000', pythonTimeMs: '30000' }, { op: 'health' }) === 45000, '--timeout-ms should control total live health wait');
+  assert(mem0Main.__test.liveMem0TimeoutMs({}, { op: 'list' }) === 30000, 'live list should allow slow Mem0/Qdrant startup by default');
 
   const qdrantLock = mem0Main.__test.classifyMem0RuntimeFailure({
     ok: false,
     error: '[Errno 13] Permission denied: /tmp/qdrant/.lock'
   });
-  assert(qdrantLock?.diagnostic_code === 'mem0_storage_permission_error', 'qdrant lock permission error diagnostic mismatch');
-  assert((qdrantLock.next_commands || []).some((command) => /writable persistent storage/i.test(command)), 'qdrant lock diagnostic should include storage next command');
+  assert(qdrantLock?.diagnostic_code === 'qdrant_path_permission_denied', 'qdrant lock permission error diagnostic mismatch');
+  assert((qdrantLock.next_commands || []).some((command) => /setup mem0-oss --live/i.test(command)), 'qdrant lock diagnostic should include setup next command');
+  const embeddingNetwork = mem0Main.__test.classifyMem0RuntimeFailure({ ok: false, error: 'Connection error.' }, {}, { op: 'remember' });
+  assert(embeddingNetwork?.diagnostic_code === 'embedding_provider_network_error', 'embedding provider network error diagnostic mismatch');
+  const runtimeContext = { projectKnowledgeRoot: systemRoot };
+  const embeddingSnapshot = mem0Main.__test.runtimeStatusSnapshot({
+    operation: 'remember',
+    status: 'error',
+    diagnostic_code: 'embedding_provider_network_error',
+    selected_python: fakePython,
+    raw: { version: '2.0.4' },
+    network_calls: 'may_call_embedding_provider'
+  }, runtimeContext, { operation: 'health', checked_at: '2026-01-01T00:00:00.000Z' });
+  assert(embeddingSnapshot.runtime_available === true && embeddingSnapshot.package_installed === true, 'embedding provider errors must not clear Mem0 runtime cache');
+  assert(embeddingSnapshot.runtime_health === 'ok' && embeddingSnapshot.expected_version === '2.0.4', 'embedding provider error cache should preserve runtime health and expected version');
+  assert(embeddingSnapshot.last_live_health_check === '2026-01-01T00:00:00.000Z', 'embedding provider error cache should preserve last live health timestamp');
+  const missingPythonSnapshot = mem0Main.__test.runtimeStatusSnapshot({
+    operation: 'remember',
+    status: 'error',
+    diagnostic_code: 'python_missing',
+    selected_python: null,
+    raw: {},
+    network_calls: 'not_run'
+  }, runtimeContext);
+  assert(missingPythonSnapshot.runtime_available === false && missingPythonSnapshot.package_installed === false, 'missing Python must keep runtime unavailable');
+  const shutdownNoise = [
+    'Exception ignored while calling deallocator <function QdrantClient.__del__ at 0x0000000000000000>:',
+    'Traceback (most recent call last):',
+    '  File "C:\\Python\\Lib\\site-packages\\qdrant_client\\qdrant_client.py", line 169, in __del__',
+    '  File "C:\\Python\\Lib\\site-packages\\qdrant_client\\local\\qdrant_local.py", line 85, in close',
+    'ImportError: sys.meta_path is None, Python is likely shutting down'
+  ].join('\n');
+  assert(mem0Main.__test.filterSafeStderr(shutdownNoise) === '', 'safe Qdrant shutdown noise should be filtered');
+  assert(mem0Main.__test.filterSafeStderr('Failed to load spaCy lemma model: spaCy is not installed. Install it with: pip install mem0ai[nlp]') === '', 'optional spaCy warning should be filtered');
+  assert(/real write failure/.test(mem0Main.__test.filterSafeStderr(`${shutdownNoise}\nreal write failure`)), 'real stderr after shutdown noise should be preserved');
+
+  const mem0AdapterSource = fs.readFileSync(path.join(systemRoot, 'tools', 'memory-mem0.js'), 'utf8');
+  assert(mem0AdapterSource.includes('memory.search(payload.get("query") or "", filters=user_filter(user_id))'), 'Mem0 live search should use Mem0 2.0.4 filters API');
+  assert(mem0AdapterSource.includes('memory.get_all(filters=user_filter(user_id))'), 'Mem0 live list should use Mem0 2.0.4 filters API');
+  assert(!/memory\.search\([^)]*,\s*user_id=user_id/.test(mem0AdapterSource), 'Mem0 live search must not use old user_id argument API');
+  assert(!/memory\.get_all\(user_id=user_id/.test(mem0AdapterSource), 'Mem0 live list must not use old user_id argument API');
+}
+
+function assertMem0DocsSearchCoverage(project, state) {
+  const env = {
+    KNOWLEDGE_SYSTEM_ROOT: systemRoot,
+    KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT: systemRoot,
+    KNOWLEDGE_TARGET_ROOT: project,
+    KNOWLEDGE_STATE_ROOT: state
+  };
+  const build = runNode(path.join(systemRoot, 'tools', 'build-search-index.js'), ['--quiet'], { env, timeout: 30000 });
+  assert(build.status === 0, `build-search-index failed for Mem0 docs coverage\nstdout:\n${build.stdout}\nstderr:\n${build.stderr}`);
+
+  const indexPath = path.join(state, 'search', 'index.json');
+  assert(fs.existsSync(indexPath), 'search index missing after build-search-index');
+  const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+  assert(index.schema_version === '3.2.6', 'search index schema_version should follow release version 3.2.6');
+  assert((index.counts_by_kind?.external_memory || 0) >= 3, 'search index should count Mem0/external docs as external_memory');
+
+  const byPath = new Map((index.documents || []).map((doc) => [doc.path, doc]));
+  const requiredDocs = [
+    '.knowledge/docs/mem0-install.md',
+    '.knowledge/docs/memory-providers.md',
+    '.knowledge/docs/external-memory.md'
+  ];
+  for (const docPath of requiredDocs) {
+    const doc = byPath.get(docPath);
+    assert(doc, `${docPath} missing from search index`);
+    assert(doc.type === 'external_memory', `${docPath} should be indexed as external_memory`);
+  }
+
+  const search = parseJson(runNode(path.join(systemRoot, 'tools', 'search-knowledge.js'), [
+    'Mem0 install receipt runtime package',
+    '--json',
+    '--kind=external_memory'
+  ], { env, timeout: 20000 }), 'search Mem0 install docs');
+  assert((search.results || []).some((doc) => doc.path === '.knowledge/docs/mem0-install.md'), 'local search should find Mem0 install page');
+}
+
+function testRecipeQuality(project, state) {
+  const recipePath = path.join(systemRoot, 'docs', 'cookbook', '09-mem0-live-memory.md');
+  const installDocPath = path.join(systemRoot, 'docs', 'mem0-install.md');
+  const original = fs.existsSync(recipePath) ? fs.readFileSync(recipePath, 'utf8') : null;
+  try {
+    const setup = parseJson(memoryCli(project, state, ['setup', 'mem0-oss', '--live', '--python', path.join(project, 'missing-python.exe'), '--json']), 'setup mem0 recipe flow');
+    assert(setup.provider_id === 'mem0-oss', 'setup returned wrong provider');
+    assert(setup.receipt_present === true, 'setup did not create or reuse receipt');
+    assert(fs.existsSync(path.join(state, 'external_memory', 'mem0', 'install_receipt.json')), 'setup receipt missing from state');
+    assert(fs.existsSync(path.join(state, 'external_memory', 'mem0', 'config.json')), 'setup config missing from state');
+    const setupConfig = JSON.parse(fs.readFileSync(path.join(state, 'external_memory', 'mem0', 'config.json'), 'utf8'));
+    assert(!Object.prototype.hasOwnProperty.call(setupConfig, 'user_id'), 'repo-local Mem0 config must not store runtime user_id state');
+    assert(setup.agent_facing?.text?.includes('Boundary: advisory-only'), 'setup agent-facing output missing advisory boundary');
+    assert(setup.agent_facing?.text?.includes('Live '), 'setup agent-facing output missing live operation guidance');
+
+    const legacyReceiptState = path.join(path.dirname(state), 'state legacy mem0 receipt');
+    const legacyReceiptDir = path.join(legacyReceiptState, 'external_memory', 'mem0');
+    fs.mkdirSync(legacyReceiptDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyReceiptDir, 'install_receipt.json'), JSON.stringify({
+      schema_version: '3.2.4',
+      provider_id: 'mem0-oss',
+      recorded_at: '2026-01-01T00:00:00.000Z',
+      version: 'mem0ai==2.0.4',
+      install_executed: false,
+      source_of_truth: false,
+      trust_effect: 'advisory_only'
+    }, null, 2), 'utf8');
+    const migratedReceiptSetup = parseJson(memoryCli(project, legacyReceiptState, ['setup', 'mem0-oss', '--json']), 'setup mem0 legacy receipt');
+    assert(migratedReceiptSetup.receipt_action === 'migrated', 'setup should migrate old Mem0 receipt schema');
+    const migratedReceipt = JSON.parse(fs.readFileSync(path.join(legacyReceiptDir, 'install_receipt.json'), 'utf8'));
+    assert(migratedReceipt.schema_version === '3.2.6', 'legacy Mem0 receipt schema was not migrated to 3.2.6');
+    assert(migratedReceipt.install_executed === false, 'legacy Mem0 receipt migration must not claim an install ran');
+    assert(migratedReceipt.source_of_truth === false && migratedReceipt.trust_effect === 'advisory_only', 'legacy Mem0 receipt migration changed trust boundary');
+
+    const providerHelp = parseJson(memoryCli(project, state, ['help', '--json']), 'memory-provider help');
+    const providerHelpCommands = new Set((providerHelp.commands || []).map((entry) => entry.name));
+    for (const command of ['setup', 'write-recipe', 'validate-recipe', 'status', 'status-all']) {
+      assert(providerHelpCommands.has(command), `memory-provider help missing ${command}`);
+    }
+    assert(providerHelp.recommended_flow === 'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json', 'memory-provider help missing recommended setup flow');
+
+    const mem0Help = parseJson(mem0Cli(project, state, ['help', '--json']), 'memory-mem0 help');
+    const mem0HelpCommands = new Set((mem0Help.commands || []).map((entry) => entry.name));
+    for (const command of ['health', 'list', 'add', 'search', 'recall']) {
+      assert(mem0HelpCommands.has(command), `memory-mem0 help missing ${command}`);
+    }
+    assert(mem0Help.live_requires_explicit_consent === true, 'memory-mem0 help should disclose live consent boundary');
+
+    const envConfigPath = path.join(state, 'external_memory', 'mem0', 'config.json');
+    const liveEnv = mem0Main.__test.liveProcessEnv({ config: envConfigPath }, { projectKnowledgeRoot: systemRoot });
+    assert(path.basename(liveEnv.MEM0_DIR) === 'runtime', 'default MEM0_DIR should use a runtime subdirectory');
+    assert(path.dirname(liveEnv.MEM0_DIR) === path.dirname(envConfigPath), 'default MEM0_DIR should stay inside repo-local Mem0 state');
+    assert(liveEnv.MEM0_DIR !== path.dirname(envConfigPath), 'default MEM0_DIR must not be the canonical config directory');
+    fs.writeFileSync(envConfigPath, JSON.stringify({ ...setupConfig, user_id: 'runtime-user-id' }, null, 2), 'utf8');
+    assert(mem0Main.__test.restoreCanonicalLiveConfig({ config: envConfigPath }, { projectKnowledgeRoot: systemRoot }) === true, 'canonical Mem0 config restore should report runtime-state cleanup');
+    const restoredConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
+    assert(!Object.prototype.hasOwnProperty.call(restoredConfig, 'user_id'), 'canonical Mem0 config restore should remove runtime user_id');
+    assert(restoredConfig.vector_store?.config?.path, 'canonical Mem0 config restore should preserve vector store config');
+
+    const directInstall = parseJson(memoryCli(project, state, ['install', 'mem0-oss', '--version', 'mem0ai==2.0.4', '--yes-i-reviewed-license', '--json']), 'direct install mem0');
+    assert(directInstall.agent_facing?.text?.includes('Recommended setup: node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'install agent-facing output missing recommended setup');
+    assert(JSON.stringify(directInstall.next_commands || []) === JSON.stringify(['node .knowledge/tools/memory-provider.js setup mem0-oss --live --json']), 'install should expose exactly one recommended next command');
+    assert(directInstall.agent_facing?.text?.includes('Boundary: advisory-only'), 'install agent-facing output missing advisory boundary');
+
+    const missingPackageState = path.join(path.dirname(state), 'state missing mem0 package');
+    fs.mkdirSync(missingPackageState, { recursive: true });
+    const fakeSelectedPython = path.join(project, 'Python Env', 'python.exe');
+    const missingPackageSetup = parseJson(memoryCli(project, missingPackageState, ['setup', 'mem0-oss', '--live', '--python', fakeSelectedPython, '--json'], {
+      env: {
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE: '1',
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_FORCE_MEM0_MISSING: '1'
+      }
+    }), 'setup mem0 missing package');
+    assert(missingPackageSetup.setup_status === 'needs_runtime_install', 'setup without mem0ai should request runtime install');
+    assert(missingPackageSetup.package_installed === false && missingPackageSetup.runtime_available === false, 'setup without mem0ai must not claim runtime/package install');
+    assert(missingPackageSetup.recommended_command === `"${fakeSelectedPython}" -m pip install mem0ai==2.0.4`, 'setup without mem0ai should return exact pinned install command');
+    assert(JSON.stringify(missingPackageSetup.next_commands || []) === JSON.stringify([missingPackageSetup.recommended_command]), 'setup without mem0ai should return exactly one next command');
+    assert(missingPackageSetup.agent_facing?.text?.includes(`Recommended install: ${missingPackageSetup.recommended_command}`), 'setup without mem0ai agent text missing recommended install command');
+
+    const versionMismatchState = path.join(path.dirname(state), 'state wrong mem0 package');
+    fs.mkdirSync(versionMismatchState, { recursive: true });
+    const versionMismatchSetup = parseJson(memoryCli(project, versionMismatchState, ['setup', 'mem0-oss', '--live', '--python', fakeSelectedPython, '--json'], {
+      env: {
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE: '1',
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_FORCE_MEM0_VERSION_MISMATCH: '1',
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_MEM0_VERSION: '1.9.0'
+      }
+    }), 'setup mem0 version mismatch');
+    assert(versionMismatchSetup.setup_status === 'needs_runtime_install', 'setup with wrong mem0ai version should request runtime install');
+    assert(versionMismatchSetup.package_installed === false && versionMismatchSetup.runtime_available === false, 'setup with wrong mem0ai version must not claim runtime/package install');
+    assert(versionMismatchSetup.live_health?.diagnostic_code === 'mem0_version_mismatch', 'setup with wrong mem0ai version diagnostic mismatch');
+    assert(versionMismatchSetup.live_health?.version === '1.9.0' && versionMismatchSetup.live_health?.expected_version === '2.0.4', 'setup with wrong mem0ai version should report actual and expected versions');
+    assert(versionMismatchSetup.status?.runtime_version === '1.9.0', 'status should expose cached Mem0 runtime version after mismatch');
+    assert(versionMismatchSetup.status?.expected_runtime_version === '2.0.4', 'status should expose expected Mem0 runtime version after mismatch');
+    assert(versionMismatchSetup.status?.runtime_version_matches_pin === false, 'status should expose Mem0 runtime pin mismatch');
+    assert(versionMismatchSetup.recommended_command === `"${fakeSelectedPython}" -m pip install mem0ai==2.0.4`, 'setup with wrong mem0ai version should return exact pinned install command');
+    assert(JSON.stringify(versionMismatchSetup.next_commands || []) === JSON.stringify([versionMismatchSetup.recommended_command]), 'setup with wrong mem0ai version should return exactly one next command');
+
+    const missingVersionState = path.join(path.dirname(state), 'state missing mem0 package version');
+    fs.mkdirSync(missingVersionState, { recursive: true });
+    const missingVersionSetup = parseJson(memoryCli(project, missingVersionState, ['setup', 'mem0-oss', '--live', '--python', fakeSelectedPython, '--json'], {
+      env: {
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE: '1',
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_FORCE_MEM0_VERSION_MISMATCH: '1',
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_MEM0_VERSION: '__missing__'
+      }
+    }), 'setup mem0 missing version');
+    assert(missingVersionSetup.setup_status === 'needs_runtime_install', 'setup with missing mem0ai version should request runtime install');
+    assert(missingVersionSetup.package_installed === false && missingVersionSetup.runtime_available === false, 'setup with missing mem0ai version must not claim runtime/package install');
+    assert(missingVersionSetup.live_health?.diagnostic_code === 'mem0_version_mismatch', 'setup with missing mem0ai version diagnostic mismatch');
+    assert(missingVersionSetup.live_health?.version === null && missingVersionSetup.live_health?.expected_version === '2.0.4', 'setup with missing mem0ai version should report missing actual and expected version');
+    assert(missingVersionSetup.recommended_command === `"${fakeSelectedPython}" -m pip install mem0ai==2.0.4`, 'setup with missing mem0ai version should return exact pinned install command');
+    assert(JSON.stringify(missingVersionSetup.next_commands || []) === JSON.stringify([missingVersionSetup.recommended_command]), 'setup with missing mem0ai version should return exactly one next command');
+
+    const written = parseJson(memoryCli(project, state, ['write-recipe', 'mem0-oss', '--json']), 'write Mem0 recipe');
+    assert(written.generated_from_template === true, 'write-recipe should report template generation');
+    const first = fs.readFileSync(recipePath, 'utf8');
+    const writtenAgain = parseJson(memoryCli(project, state, ['write-recipe', 'mem0-oss', '--json']), 'write Mem0 recipe again');
+    assert(writtenAgain.recipe === written.recipe, 'write-recipe path changed');
+    const second = fs.readFileSync(recipePath, 'utf8');
+    assert(first === second, 'write-recipe output should be deterministic');
+    assert(!first.includes('...'), 'recipe must not include ellipsis commands');
+    assert(first.includes('node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'recipe missing one recommended setup flow');
+    assert(first.includes('external-memory write'), 'recipe missing live write warning');
+    assert(first.includes('source_of_truth: false') && first.includes('trust_effect: advisory_only'), 'recipe missing advisory-only policy');
+    assert(first.includes('.knowledge/external_memory/mem0/install_receipt.json'), 'recipe missing canonical receipt path');
+
+    assert(fs.existsSync(installDocPath), 'Mem0 install page is missing');
+    const installDoc = fs.readFileSync(installDocPath, 'utf8');
+    assert(installDoc.includes('node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'Mem0 install page missing recommended setup flow');
+    assert(installDoc.includes('receipt_present') && installDoc.includes('runtime_available') && installDoc.includes('package_installed'), 'Mem0 install page missing receipt/runtime/package distinction');
+    assert(installDoc.includes('.knowledge/external_memory/mem0/qdrant') && installDoc.includes('.knowledge/external_memory/mem0/history.db'), 'Mem0 install page missing repo-local storage paths');
+    assert(installDoc.includes('source_of_truth: false') && installDoc.includes('trust_effect: advisory_only'), 'Mem0 install page missing advisory-only boundary');
+    assertMem0DocsSearchCoverage(project, state);
+
+    const validated = parseJson(memoryCli(project, state, ['validate-recipe', 'mem0-oss', '--json']), 'validate Mem0 recipe');
+    assert(validated.ok === true && validated.failures.length === 0, 'validate-recipe should pass generated recipe');
+    assert(validated.dispatch_checked_via_help === true, 'validate-recipe should verify commands through CLI help/dispatch metadata');
+
+    fs.writeFileSync(recipePath, `${first}\nnode .knowledge/tools/missing-tool.js nope --json\nnode .knowledge/tools/memory-provider.js setup mem0-oss --live --json\nnode .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text --scope repo --json\npython -m pip install mem0ai\n...\n`, 'utf8');
+    const broken = parseJson(memoryCli(project, state, ['validate-recipe', 'mem0-oss', '--json']), 'validate broken Mem0 recipe');
+    assert(broken.ok === false, 'validate-recipe should fail broken recipe');
+    assert(broken.failures.some((failure) => failure.id === 'no_ellipsis'), 'validate-recipe did not catch ellipsis');
+    assert(broken.failures.some((failure) => failure.id === 'command_dispatch'), 'validate-recipe did not catch missing command');
+    assert(broken.failures.some((failure) => failure.id === 'single_setup_flow'), 'validate-recipe did not catch duplicate recommended setup flow');
+    assert(broken.failures.some((failure) => failure.id === 'install_command_allowlist'), 'validate-recipe did not catch unsupported install command');
+    assert(broken.failures.some((failure) => failure.id === 'exact_node_command_set'), 'validate-recipe did not catch node command with missing argument');
+
+    if (original !== null) fs.writeFileSync(recipePath, original, 'utf8');
+    else fs.unlinkSync(recipePath);
+  } catch (error) {
+    if (original !== null) fs.writeFileSync(recipePath, original, 'utf8');
+    throw error;
+  }
 }
 
 function main() {
@@ -143,6 +378,43 @@ function main() {
   const state = path.join(root, 'state root');
   fs.mkdirSync(project, { recursive: true });
   fs.mkdirSync(state, { recursive: true });
+
+  if (recipeQualityOnly) {
+    testRecipeQuality(project, state);
+    const result = {
+      schema_version: '3.2.6',
+      status: 'pass',
+      temp_root: keepTemp ? root : null,
+      temp_root_cleaned: !keepTemp,
+      checks: [
+        'setup mem0-oss creates receipt/config/agent-facing output',
+        'repo-local Mem0 config stays reproducible and runtime state is isolated',
+        'setup mem0-oss migrates old receipt schema without install/network claims',
+        'install mem0-oss returns one recommended setup command',
+        'Mem0 CLIs expose machine-readable help/dispatch metadata',
+        'setup --live without mem0ai returns one exact install command',
+        'setup --live with wrong mem0ai version returns one exact pinned install command',
+        'setup --live with missing mem0ai version returns one exact pinned install command',
+        'write-recipe generates deterministic template output',
+        'validate-recipe passes generated recipe',
+        'validate-recipe catches ellipsis and missing commands',
+        'validate-recipe catches duplicate recommended setup flow',
+        'validate-recipe catches unsupported install commands',
+        'validate-recipe catches malformed node command arguments',
+        'Mem0 install page documents setup, runtime status, repo-local paths, and advisory boundary',
+        'search index includes Mem0 docs as external_memory',
+        'local search finds Mem0 install page',
+        'recipe preserves advisory-only boundary and one recommended setup flow'
+      ]
+    };
+    if (!keepTemp) fs.rmSync(root, { recursive: true, force: true });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const recipeQualityState = path.join(root, 'recipe quality state');
+  fs.mkdirSync(recipeQualityState, { recursive: true });
+  testRecipeQuality(project, recipeQualityState);
 
   const list = parseJson(memoryCli(project, state, ['list', '--json']), 'list');
   assert(list.providers.some((provider) => provider.id === 'mem0-oss'), 'mem0-oss missing from list');
@@ -167,7 +439,37 @@ function main() {
   assert(status.provider_id === 'mem0-oss', 'status provider mismatch');
   assert(status.status === 'runtime_not_installed', 'Mem0 status should not claim live runtime install');
   assert(status.runtime_health === 'not_available', 'Mem0 runtime health should be honest before install');
+  assert(status.receipt_present === true && status.runtime_available === false && status.package_installed === false, 'Mem0 status must separate receipt/runtime/package install');
   assert(status.source_of_truth === false && status.trust_effect === 'advisory_only', 'external memory trust policy changed');
+
+  const embeddingErrorState = path.join(root, 'state embedding provider cache');
+  fs.mkdirSync(path.join(embeddingErrorState, 'external_memory', 'mem0'), { recursive: true });
+  parseJson(memoryCli(project, embeddingErrorState, ['install', 'mem0-oss', '--version', 'mem0ai==2.0.4', '--yes-i-reviewed-license', '--json']), 'install receipt for embedding cache status');
+  fs.writeFileSync(path.join(embeddingErrorState, 'external_memory', 'mem0', 'runtime_status.json'), JSON.stringify({
+    schema_version: '3.2.6',
+    provider_id: 'mem0-oss',
+    adapter_id: 'live',
+    checked_at: '2026-01-01T00:05:00.000Z',
+    last_live_health_check: '2026-01-01T00:00:00.000Z',
+    operation: 'recall',
+    status: 'error',
+    runtime_health: 'ok',
+    diagnostic_code: 'embedding_provider_network_error',
+    selected_python: path.join(project, 'Python Env', 'python.exe'),
+    version: '2.0.4',
+    expected_version: '2.0.4',
+    runtime_available: true,
+    package_installed: true,
+    network_calls: 'may_call_embedding_provider',
+    source_of_truth: false,
+    trust_role: 'advisory_only',
+    trust_effect: 'advisory_only',
+    live_operations_require_explicit_consent: true
+  }, null, 2), 'utf8');
+  const embeddingStatus = parseJson(memoryCli(project, embeddingErrorState, ['status', 'mem0-oss', '--json']), 'status mem0 after embedding provider error cache');
+  assert(embeddingStatus.status === 'available' && embeddingStatus.runtime_health === 'ok', 'embedding provider error cache must keep Mem0 status available');
+  assert(embeddingStatus.runtime_available === true && embeddingStatus.package_installed === true, 'embedding provider error cache must preserve runtime/package flags');
+  assert(embeddingStatus.last_live_health_check === '2026-01-01T00:00:00.000Z', 'embedding provider error cache must preserve last live health check');
 
   const health = parseJson(mem0Cli(project, state, ['health', '--json']), 'mem0 health');
   assert(health.status === 'runtime_not_installed' && health.live_runtime_checked === false, 'Mem0 health should not claim live runtime');
@@ -177,18 +479,42 @@ function main() {
   const missingPython = path.join(root, 'missing-python', 'python.exe');
   const liveMissing = parseJson(mem0Cli(project, state, ['health', '--adapter', 'live', '--python', missingPython, '--json']), 'mem0 live missing python');
   assert(liveMissing.status === 'runtime_not_installed', 'Mem0 live missing Python should stay runtime_not_installed');
-  assert(liveMissing.diagnostic_code === 'python_not_found', 'Mem0 live missing Python diagnostic mismatch');
+  assert(liveMissing.diagnostic_code === 'python_missing', 'Mem0 live missing Python diagnostic mismatch');
   assert(liveMissing.selected_python === null, 'Mem0 live missing Python should not select an interpreter');
   assert((liveMissing.next_commands || []).some((command) => command.includes('--python')), 'Mem0 live missing Python should return --python next command');
   assert(!JSON.stringify(liveMissing).includes('spawnSync python'), 'Mem0 live missing Python leaked raw spawnSync wording');
 
   const liveAuto = parseJson(mem0Cli(project, state, ['health', '--adapter', 'live', '--json']), 'mem0 live auto health');
   assert(liveAuto.live_runtime_checked === true, 'Mem0 live auto health should mark live runtime checked');
-  assert(['python_not_found', 'python_permission_error', 'python_timeout', 'python_not_usable', 'mem0_package_missing', 'mem0_available', 'mem0_runtime_error', 'python_runtime_error', 'mem0_storage_permission_error'].includes(liveAuto.diagnostic_code), 'Mem0 live auto health diagnostic code unexpected');
-  if (liveAuto.diagnostic_code === 'mem0_package_missing') {
+  assert(['python_missing', 'python_permission_error', 'live_operation_timeout', 'python_not_usable', 'mem0_runtime_missing', 'mem0_version_mismatch', 'mem0_available', 'unknown_live_adapter_error', 'python_runtime_error', 'qdrant_path_permission_denied', 'qdrant_lock_busy', 'mem0_import_failed'].includes(liveAuto.diagnostic_code), 'Mem0 live auto health diagnostic code unexpected');
+  if (liveAuto.diagnostic_code === 'mem0_runtime_missing') {
     assert((liveAuto.next_commands || []).some((command) => command.includes('-m pip install mem0ai==2.0.4')), 'Mem0 missing package should include pinned pip command');
+    assert(liveAuto.next_commands.length === 1, 'Mem0 missing package should include one recommended install command');
+  }
+  if (liveAuto.diagnostic_code === 'mem0_available') {
+    assert(liveAuto.version === liveAuto.expected_version, 'Mem0 live health should report matching actual and expected versions');
+    const liveStatus = parseJson(memoryCli(project, state, ['status', 'mem0-oss', '--json']), 'status mem0 after live health');
+    assert(liveStatus.runtime_version === liveAuto.version, 'Mem0 status should expose cached runtime version');
+    assert(liveStatus.expected_runtime_version === liveAuto.expected_version, 'Mem0 status should expose expected runtime version');
+    assert(liveStatus.runtime_version_matches_pin === true, 'Mem0 status should expose runtime version pin match');
   }
   assert(!JSON.stringify(liveAuto).includes('spawnSync python'), 'Mem0 live auto health leaked raw spawnSync wording');
+
+  const liveListMissing = parseJson(mem0Cli(project, state, ['list', '--adapter', 'live', '--yes-live-memory', '--python', missingPython, '--json']), 'mem0 live list missing python');
+  assert(liveListMissing.network_calls === 'not_run_local_qdrant', 'Mem0 live list should be classified as local Qdrant without provider network');
+  assert(liveListMissing.status === 'error' && liveListMissing.diagnostic_code === 'python_missing', 'Mem0 live list missing Python diagnostic mismatch');
+
+  const liveAddMissing = parseJson(mem0Cli(project, state, ['add', '--adapter', 'live', '--yes-live-memory', '--python', missingPython, '--text', 'live classification probe', '--json']), 'mem0 live add missing python');
+  assert(liveAddMissing.network_calls === 'may_call_embedding_provider', 'Mem0 live add should disclose possible embedding provider network');
+  assert(liveAddMissing.persisted === false && liveAddMissing.diagnostic_code === 'python_missing', 'Mem0 live add missing Python should not persist');
+
+  const liveSearchMissing = parseJson(mem0Cli(project, state, ['search', 'classification probe', '--adapter', 'live', '--yes-live-memory', '--python', missingPython, '--json']), 'mem0 live search missing python');
+  assert(liveSearchMissing.network_calls === 'may_call_embedding_provider', 'Mem0 live search should disclose possible embedding provider network');
+  assert(liveSearchMissing.diagnostic_code === 'python_missing', 'Mem0 live search missing Python diagnostic mismatch');
+
+  const liveRecallMissing = parseJson(mem0Cli(project, state, ['recall', 'classification probe', '--adapter', 'live', '--yes-live-memory', '--python', missingPython, '--json']), 'mem0 live recall missing python');
+  assert(liveRecallMissing.network_calls === 'may_call_embedding_provider', 'Mem0 live recall should disclose possible embedding provider network');
+  assert(liveRecallMissing.diagnostic_code === 'python_missing', 'Mem0 live recall missing Python diagnostic mismatch');
 
   testPythonDiscovery(root);
 
@@ -260,6 +586,19 @@ function main() {
   const html = fs.readFileSync(path.join(state, 'inspector', 'index.html'), 'utf8');
   assert(/Memory Providers/.test(html), 'inspector missing Memory Providers label');
   assert(/Mem0 OSS/.test(html), 'inspector missing Mem0 card');
+  for (const label of ['Receipt', 'Runtime', 'Runtime health', 'Runtime version', 'Boundary', 'Data path', 'Last live health']) {
+    assert(html.includes(label), `inspector missing Mem0 onboarding field ${label}`);
+  }
+  for (const label of ['Copy install', 'Copy setup', 'Copy health', 'Copy add example', 'Copy search example', 'Copy recall example']) {
+    assert(html.includes(label), `inspector missing Mem0 onboarding action ${label}`);
+  }
+  assert(html.includes('node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'inspector missing exact Mem0 setup command');
+  assert(html.includes('node .knowledge/tools/memory-mem0.js health --adapter live --json'), 'inspector missing exact Mem0 health command');
+  assert(html.includes('node .knowledge/tools/memory-mem0.js search &quot;advisory memory&quot; --adapter live --yes-live-memory --json'), 'inspector missing exact Mem0 search command');
+  assert(html.includes('node .knowledge/tools/memory-mem0.js recall &quot;advisory memory&quot; --adapter live --yes-live-memory --json'), 'inspector missing exact Mem0 recall command');
+  assert(/Copy setup/.test(html), 'inspector missing Mem0 setup onboarding action');
+  assert(/live add writes external memory/.test(html), 'inspector missing Mem0 live write warning');
+  assert(/advisory_only/.test(html), 'inspector missing advisory-only boundary');
 
   const teamRoot = path.join(root, 'team root');
   const team = parseJson(runNode(path.join(systemRoot, 'tools', 'memory-provider.js'), [
@@ -292,7 +631,7 @@ console.log(JSON.stringify(names.filter((name)=>/graphiti|zep/i.test(name))));
   assert(proNames.length === 0, 'Graphiti/Zep pro provider files leaked into free release artifact');
 
   const result = {
-    schema_version: '3.2.4',
+    schema_version: '3.2.6',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,
@@ -301,8 +640,23 @@ console.log(JSON.stringify(names.filter((name)=>/graphiti|zep/i.test(name))));
       'preview writes no receipt',
       'install refuses without license confirmation',
       'install records receipt without claiming package install',
+      'repo-local Mem0 config stays reproducible and runtime state is isolated',
+      'setup mem0-oss migrates old receipt schema without install/network claims',
+      'receipt/runtime/package install fields stay distinct',
       'Mem0 runtime health reports runtime_not_installed without live checks',
       'Mem0 live health uses bounded Python discovery diagnostics',
+      'Mem0 live list allows slow local Qdrant startup',
+      'Mem0 setup enforces pinned mem0ai version',
+      'Mem0 setup rejects missing mem0ai runtime version',
+      'Mem0 status and Inspector expose cached runtime version and pin match',
+      'Mem0 status preserves runtime cache after embedding provider errors',
+      'Mem0 2.0.4 live search/list use filter-based API',
+      'Mem0 live operation network classifications are explicit without live writes',
+      'Mem0 CLIs expose machine-readable help/dispatch metadata',
+      'Mem0 recipe quality gate passes',
+      'Mem0 install page is covered by recipe quality gate',
+      'search index includes Mem0 docs as external_memory',
+      'local search finds Mem0 install page',
       'Mem0 dry-run add does not persist',
       'Mem0 test adapter add/search/list/delete works without production claim',
       'Mem0 export-redacted omits memory content',
@@ -314,6 +668,7 @@ console.log(JSON.stringify(names.filter((name)=>/graphiti|zep/i.test(name))));
       'external memory cannot raise trust',
       'free release excludes Graphiti/Zep pro providers',
       'Inspector renders Memory Providers cards',
+      'Inspector renders Mem0 onboarding card',
       'repo-local and team stateRoot modes work',
       'paths with spaces and Cyrillic work',
       'status/list/inspector made no network calls'

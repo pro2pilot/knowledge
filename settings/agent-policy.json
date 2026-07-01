@@ -1,7 +1,16 @@
 {
-  "schema_version": "3.2.5",
-  "concurrent_work_policy": "Safe Queue",
-  "merge_policy": "Manual Only",
+  "schema_version": "3.2.6",
+  "concurrent_work_policy": "Parallel Worktrees",
+  "merge_policy": "Auto PR",
   "auto_merge": false,
-  "safe_queue_default": true
+  "safe_queue_default": false,
+  "agent_overrides": {
+    "R2D2-71920": {
+      "concurrent_work_policy": "Parallel Worktrees",
+      "merge_policy": "Auto PR",
+      "auto_merge": false,
+      "safe_queue_default": false,
+      "updated_at": "2026-07-01T22:03:52.215Z"
+    }
+  }
 }

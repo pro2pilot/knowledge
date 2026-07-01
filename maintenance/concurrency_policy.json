@@ -1,6 +1,5 @@
 {
-  "schema_version": "3.2.4",
-  "distribution_state": "policy_seed",
+  "generated_at": null,
   "mode": "concurrent_safe",
   "write_policy": {
     "shared_knowledge": "All writes to .knowledge JSON must go through .knowledge/tools/lib/json-store.js or equivalent lock + atomic write logic.",

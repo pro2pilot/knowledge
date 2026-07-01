@@ -35,35 +35,41 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
-  detected_agent_runtime: null
+  detected_agent_runtime: null,
+  selected_agent_id: null,
+  connected_agents: [],
+  agent_overrides: {}
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
-  controlled_autonomy: 'planned'
+  controlled_autonomy: 'planned',
+  agent_overrides: {}
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
-  safe_queue_default: true
+  safe_queue_default: true,
+  agent_overrides: {}
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
   show_open_inspector_action: true,
-  only_when_trust_incomplete: false
+  only_when_trust_incomplete: false,
+  agent_overrides: {}
 };
 
 function loadSettings() {
@@ -89,7 +95,7 @@ function onboardingState(settings) {
     reason: completed ? 'completed' : (hasCompletionMarker ? 'not_completed' : 'upgrade_missing_completion_marker'),
     completed_at: profile.onboarding_completed_at || null,
     steps: [
-      'Connected agent detected',
+      'Connected agent dropdown',
       'User mode: Simple / Advanced',
       'What can agents do without asking?',
       'Concurrent work policy',
@@ -97,6 +103,32 @@ function onboardingState(settings) {
       'Agent report footer'
     ]
   };
+}
+
+function cleanAgentId(value) {
+  return String(value || '').trim().slice(0, 160);
+}
+
+function normalizeConnectedAgent(body = {}, fallbackRuntime = null) {
+  const runtime = cleanAgentId(body.agent_runtime || body.detected_agent_runtime || fallbackRuntime || body.agent_id || 'local-agent');
+  const id = cleanAgentId(body.agent_id || body.connected_agent_id || runtime || 'local-agent');
+  return {
+    id,
+    label: String(body.agent_display_name || body.agent_label || id).trim().slice(0, 160) || id,
+    runtime,
+    status: 'configured',
+    configured_at: new Date().toISOString()
+  };
+}
+
+function mergeConnectedAgents(existing = [], agent) {
+  const byId = new Map();
+  for (const item of Array.isArray(existing) ? existing : []) {
+    const normalized = normalizeConnectedAgent({ ...item, agent_id: item.id || item.agent_instance_id, agent_runtime: item.runtime || item.agent_runtime_id });
+    if (normalized.id) byId.set(normalized.id, { ...item, ...normalized });
+  }
+  if (agent?.id) byId.set(agent.id, { ...(byId.get(agent.id) || {}), ...agent });
+  return [...byId.values()].slice(-50);
 }
 
 function saveOnboarding(body = {}) {
@@ -129,12 +161,23 @@ function saveOnboarding(body = {}) {
     'only_when_trust_incomplete'
   ], 'compact');
   const now = new Date().toISOString();
+  const selectedAgent = normalizeConnectedAgent(body, current.operator_profile.detected_agent_runtime);
+  const agentId = selectedAgent.id;
   const operator = {
     ...DEFAULT_OPERATOR_PROFILE,
     ...current.operator_profile,
     user_mode: userMode,
     first_run_onboarding_completed: true,
-    detected_agent_runtime: body.detected_agent_runtime || current.operator_profile.detected_agent_runtime || null,
+    detected_agent_runtime: selectedAgent.runtime || current.operator_profile.detected_agent_runtime || null,
+    selected_agent_id: agentId,
+    connected_agents: mergeConnectedAgents(current.operator_profile.connected_agents, selectedAgent),
+    agent_overrides: {
+      ...(current.operator_profile.agent_overrides || {}),
+      [agentId]: {
+        user_mode: userMode,
+        updated_at: now
+      }
+    },
     onboarding_completed_at: now
   };
   const autonomy = {
@@ -142,7 +185,16 @@ function saveOnboarding(body = {}) {
     ...current.autonomy_policy,
     agents_can_do_without_asking: permission,
     network_actions_require_confirmation: true,
-    destructive_actions_require_confirmation: true
+    destructive_actions_require_confirmation: true,
+    agent_overrides: {
+      ...(current.autonomy_policy.agent_overrides || {}),
+      [agentId]: {
+        agents_can_do_without_asking: permission,
+        network_actions_require_confirmation: true,
+        destructive_actions_require_confirmation: true,
+        updated_at: now
+      }
+    }
   };
   const agent = {
     ...DEFAULT_AGENT_POLICY,
@@ -150,19 +202,37 @@ function saveOnboarding(body = {}) {
     concurrent_work_policy: concurrentPolicy,
     merge_policy: mergePolicy,
     auto_merge: mergePolicy === 'Auto Merge Experimental',
-    safe_queue_default: concurrentPolicy === 'Safe Queue'
+    safe_queue_default: concurrentPolicy === 'Safe Queue',
+    agent_overrides: {
+      ...(current.agent_policy.agent_overrides || {}),
+      [agentId]: {
+        concurrent_work_policy: concurrentPolicy,
+        merge_policy: mergePolicy,
+        auto_merge: mergePolicy === 'Auto Merge Experimental',
+        safe_queue_default: concurrentPolicy === 'Safe Queue',
+        updated_at: now
+      }
+    }
   };
   const footer = {
     ...DEFAULT_REPORT_FOOTER,
     ...current.report_footer,
     mode: footerMode,
-    only_when_trust_incomplete: footerMode === 'only_when_trust_incomplete'
+    only_when_trust_incomplete: footerMode === 'only_when_trust_incomplete',
+    agent_overrides: {
+      ...(current.report_footer.agent_overrides || {}),
+      [agentId]: {
+        mode: footerMode,
+        only_when_trust_incomplete: footerMode === 'only_when_trust_incomplete',
+        updated_at: now
+      }
+    }
   };
   writeJsonAtomic(path.join(settingsDir, 'operator-profile.json'), operator);
   writeJsonAtomic(path.join(settingsDir, 'autonomy-policy.json'), autonomy);
   writeJsonAtomic(path.join(settingsDir, 'agent-policy.json'), agent);
   writeJsonAtomic(path.join(settingsDir, 'report-footer.json'), footer);
-  return { operator_profile: operator, autonomy_policy: autonomy, agent_policy: agent, report_footer: footer };
+  return { selected_agent: selectedAgent, operator_profile: operator, autonomy_policy: autonomy, agent_policy: agent, report_footer: footer };
 }
 
 function currentContext() {
@@ -490,7 +560,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.5',
+      version: safeJson('package.json', {}).version || '3.2.6',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,

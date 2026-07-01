@@ -66,6 +66,8 @@ function copyKnowledge(targetRoot) {
         !rel.startsWith('node_modules/') &&
         !rel.startsWith('.qa-tmp/') &&
         !rel.startsWith('.self-test-tmp/') &&
+        !rel.startsWith('maintenance/install-backups/') &&
+        !rel.startsWith('maintenance/update-downloads/') &&
         !rel.startsWith('.lock') &&
         !rel.includes('/.lock/') &&
         !rel.includes('.tmp-');

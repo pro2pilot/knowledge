@@ -11,6 +11,13 @@ const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const repoRoot = context.targetRoot;
 const lockDir = path.join(stateRoot, '.lock');
+const systemVersion = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.6';
+  } catch {
+    return '3.2.6';
+  }
+})();
 
 function isRuntimeRel(rel) {
   return /^(maintenance|metrics|search|inspector|sessions)\//.test(rel) ||
@@ -103,35 +110,41 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
-  detected_agent_runtime: null
+  detected_agent_runtime: null,
+  selected_agent_id: null,
+  connected_agents: [],
+  agent_overrides: {}
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
-  controlled_autonomy: 'planned'
+  controlled_autonomy: 'planned',
+  agent_overrides: {}
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
-  safe_queue_default: true
+  safe_queue_default: true,
+  agent_overrides: {}
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.5',
+  schema_version: '3.2.6',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
   show_open_inspector_action: true,
-  only_when_trust_incomplete: false
+  only_when_trust_incomplete: false,
+  agent_overrides: {}
 };
 
 function loadSettings() {
@@ -195,6 +208,7 @@ function collect() {
   const wikiLint = safeJson('maintenance/wiki_lint_report.json', {});
   const prImpact = safeJson('maintenance/pr_impact.json', { status: 'not_generated', changed_files: [], affected_modules: [], policy_warnings: [] });
   const updateStatus = safeJson('maintenance/update_status.json', { status: 'never_checked' });
+  const agentRegistry = safeJson('sessions/agent-registry.json', { schema_version: 'knowledge-agent-registry.v1', sessions: [] });
   const settings = loadSettings();
   settings.user_mode = settings.operator_profile.user_mode || 'simple';
   settings.onboarding = onboardingState(settings);
@@ -224,6 +238,7 @@ function collect() {
     wikiLint,
     prImpact,
     updateStatus,
+    agentRegistry,
     settings,
     team,
     lockOwner
@@ -362,7 +377,254 @@ function relationClass(value) {
   return String(value || 'related').replace(/[^a-z0-9_-]/gi, '_');
 }
 
-function graphNodeAttrs(node) {
+function uniqueGraphValues(values, max = 18) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    const text = String(value || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function graphNodeModuleId(node) {
+  const id = String(node.id || '');
+  if (node.module_id) return String(node.module_id);
+  return id.startsWith('module:') ? id.slice('module:'.length) : '';
+}
+
+function graphNodeDisplayName(node) {
+  const group = graphGroup(node);
+  const title = String(node.title || node.page || node.id || '').replace(/^Module:\s*/i, '').trim();
+  if (group === 'module') {
+    const moduleId = graphNodeModuleId(node);
+    const base = title || moduleId;
+    const withoutProduct = base.replace(/^knowledge[-_]kit[-_]?/i, '').replace(/^knowledge_kit_/i, '');
+    return (withoutProduct || base || moduleId).replace(/[_-]+/g, ' ').replace(/\bFINAL\b/g, 'final').trim();
+  }
+  if (group === 'source_truth') return title.replace(/^Current\s+/i, '');
+  return title;
+}
+
+function compactGraphLabel(node, max = 24) {
+  const text = graphNodeDisplayName(node);
+  return text.length <= max ? text : `${text.slice(0, Math.max(8, max - 1))}...`;
+}
+
+function graphTextLines(value, maxLine = 16, maxLines = 2) {
+  const words = String(value || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (candidate.length <= maxLine || !line) {
+      line = candidate;
+      continue;
+    }
+    lines.push(line);
+    line = word;
+    if (lines.length >= maxLines - 1) break;
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  const text = lines.join(' ');
+  const original = String(value || '');
+  if (text.length < original.length && lines.length) lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, Math.max(5, maxLine - 3))}...`;
+  return lines.length ? lines : [''];
+}
+
+function graphLabelMarkup(node, x, y, label, group) {
+  const lines = group === 'module' ? graphTextLines(label, 15, 2) : graphTextLines(label, group === 'source_truth' ? 18 : 20, 2);
+  const firstDy = lines.length === 1 ? 0 : -6;
+  const tspans = lines.map((line, index) => `<tspan x="${x.toFixed(1)}" dy="${index === 0 ? firstDy : 13}">${esc(line)}${index < lines.length - 1 ? ' ' : ''}</tspan>`).join('');
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" class="label ${esc(group)}">${tspans}</text>`;
+}
+
+function graphHitTargetMarkup(node, labelY) {
+  const r = Math.max(node.r + 10, 23);
+  const labelTop = Math.min(node.y, labelY) - 18;
+  const labelHeight = Math.abs(labelY - node.y) + 32;
+  return `<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${r.toFixed(1)}" class="graph-hit-target"></circle><rect x="${(node.x - 68).toFixed(1)}" y="${labelTop.toFixed(1)}" width="136" height="${labelHeight.toFixed(1)}" rx="8" class="graph-hit-target label-hit-target"></rect>`;
+}
+
+function routingModuleFor(data, moduleId) {
+  return (data.routing?.modules || []).find((module) => module.module_id === moduleId) || {};
+}
+
+function registryModuleFor(data, moduleId) {
+  return (data.modules?.modules || []).find((module) => (module.module_id || module.id || module.name) === moduleId) || {};
+}
+
+function taskRouteFor(data, moduleId) {
+  return (data.routing?.task_routing || []).find((route) => (route.target_modules || []).includes(moduleId)) || {};
+}
+
+function effectiveGraphTrust(node, data) {
+  const moduleId = graphNodeModuleId(node);
+  if (moduleId) {
+    const routingModule = routingModuleFor(data, moduleId);
+    return routingModule.trust_status || node.trust || node.status || 'routing_trusted';
+  }
+  return node.trust || node.status || 'advisory_only';
+}
+
+function graphEdgeSummary(edge) {
+  return {
+    relation: edge.type || edge.relation || 'related',
+    from: edge.from || '',
+    to: edge.to || '',
+    source: edge.source || '',
+    reason: edge.reason || ''
+  };
+}
+
+function graphStatusForNode(node, graph, data) {
+  const id = String(node.id || '');
+  const pathValue = normalizePath(node.path || node.page || '');
+  const orphanPages = graph.summary?.orphan_pages || [];
+  const brokenEdges = graph.broken_edges || [];
+  const staleItems = getStaleItems(data).filter((item) => {
+    const artifact = normalizePath(item.artifact || '');
+    if (!artifact) return false;
+    const pathMatch = pathValue ? (artifact === pathValue || artifact.endsWith(pathValue)) : false;
+    const idMatch = id ? artifact.includes(id) : false;
+    return pathMatch || idMatch;
+  });
+  return {
+    node_status: node.status || 'unknown',
+    broken: brokenEdges.some((edge) => edge.from === id || edge.to === id),
+    orphan: orphanPages.includes(id),
+    stale: staleItems.length > 0 || String(node.status || '').toLowerCase().includes('stale'),
+    stale_items: staleItems.map((item) => `${item.artifact}${item.reason ? `: ${item.reason}` : ''}`)
+  };
+}
+
+function graphVerificationForNode(node, data, routingModule = {}) {
+  const id = String(node.id || '');
+  const moduleId = graphNodeModuleId(node);
+  const registryModule = moduleId ? registryModuleFor(data, moduleId) : {};
+  const evidenceFiles = uniqueGraphValues([
+    ...toArray(node.evidence_files),
+    ...toArray(registryModule.evidence_files),
+    ...toArray(routingModule.evidence_files)
+  ]);
+  const relatedFiles = uniqueGraphValues([
+    ...toArray(node.key_files),
+    ...toArray(registryModule.key_files),
+    ...toArray(routingModule.start_with),
+    node.path || ''
+  ]);
+  const tests = relatedFiles.filter((file) => /(^|[\/_-])(test|tests|spec|self-test|qa)([\/_.-]|$)|AGENT_TEST/i.test(file));
+  const code = relatedFiles.filter((file) => !tests.includes(file) && !/\.knowledge\/evidence\//i.test(file));
+  const evidence = evidenceFiles.concat(relatedFiles.filter((file) => /\.knowledge\/evidence\//i.test(file)));
+  if (id === 'truth:code') code.push('Current repository code');
+  if (id === 'truth:tests') tests.push('Current tests and self-tests');
+  if (id === 'truth:evidence') evidence.push('.knowledge/evidence/*.json');
+  if (id === 'truth:modules') code.push('.knowledge/modules/*.json');
+  if (id === 'truth:wiki') evidence.push('advisory only, verify against code/tests/evidence');
+  return {
+    evidence: uniqueGraphValues(evidence),
+    tests: uniqueGraphValues(tests),
+    code: uniqueGraphValues(code),
+    gaps: [
+      evidence.length ? '' : 'No explicit evidence JSON listed for this node.',
+      tests.length ? '' : 'No explicit tests listed for this node.',
+      code.length ? '' : 'No related code/module files listed for this node.'
+    ].filter(Boolean)
+  };
+}
+
+function isWikiGraphNode(node) {
+  const id = String(node.id || '');
+  const pathValue = normalizePath(node.path || node.page || '');
+  return graphGroup(node) === 'wiki' || id === 'truth:wiki' || pathValue.startsWith('.knowledge/wiki');
+}
+
+function graphTrustReason(node, data, routingModule = {}, route = {}) {
+  const group = graphGroup(node);
+  const trust = effectiveGraphTrust(node, data);
+  if (group === 'source_truth') {
+    return `${node.title || node.id} has canonical rank ${node.rank || '?'} in the source-of-truth order; code and tests outrank generated knowledge and advisory memory.`;
+  }
+  if (group === 'wiki') {
+    return 'Wiki nodes are advisory-only context. Verify every behavior claim against current code, tests, or evidence JSON.';
+  }
+  if (group === 'module') {
+    const parts = [
+      `Routing bundle reports trust=${routingModule.trust_status || trust}.`,
+      `confidence=${routingModule.confidence || node.confidence || 'unknown'}.`,
+      `freshness=${routingModule.freshness_status || node.status || 'unknown'}.`
+    ];
+    const reasons = routingModule.reasons || {};
+    const reasonBits = [
+      ...(reasons.changed_or_missing_important_files || []).map((item) => `changed/missing: ${item}`),
+      ...(reasons.open_contradictions || []).map((item) => `contradiction: ${item}`),
+      ...(reasons.uncovered_important_files || []).map((item) => `uncovered: ${item}`)
+    ];
+    if (route.route_id) parts.push(`Route ${route.route_id} starts with ${toArray(route.start_with).join(', ') || 'module card'}.`);
+    if (reasonBits.length) parts.push(reasonBits.join(' / '));
+    return parts.join(' ');
+  }
+  return `Trust is inherited from graph node metadata: ${trust}. Re-check current code/tests before behavior edits.`;
+}
+
+function graphWhyRoute(node, data, routingModule = {}, route = {}) {
+  const moduleId = graphNodeModuleId(node);
+  if (!moduleId) return '';
+  const keywords = toArray(route.keywords).join(', ') || moduleId;
+  const startWith = uniqueGraphValues([...toArray(route.start_with), ...toArray(routingModule.start_with)]).join(', ') || node.path || `.knowledge/modules/${moduleId}.json`;
+  return `why this route: keywords (${keywords}) target module ${moduleId}; start with ${startWith}.`;
+}
+
+function graphNextActions(node, data, verification) {
+  const group = graphGroup(node);
+  const moduleId = graphNodeModuleId(node);
+  const query = moduleId || node.title || node.page || node.id || '';
+  const actions = [];
+  if (group === 'module' && node.path) actions.push({ label: 'Open module card', href: hrefForPath(node.path) });
+  const related = uniqueGraphValues([...(verification.code || []), ...(verification.tests || []), ...(verification.evidence || [])], 8)
+    .filter((file) => {
+      const text = normalizePath(file);
+      return text && !/^Current\s/i.test(text) && (text.includes('/') || text.startsWith('.knowledge') || /\.[a-z0-9]{1,8}$/i.test(text));
+    })
+    .slice(0, 5);
+  for (const file of related) actions.push({ label: `Open ${shortPath(file, 32)}`, href: hrefForPath(file) });
+  actions.push({ label: 'Search node', command: `node .knowledge/tools/search-knowledge.js "${String(query).replace(/"/g, '\\"')}"` });
+  actions.push({ label: 'Rebuild graph', command: 'node .knowledge/tools/build-wiki-graph.js' });
+  if (group === 'wiki') actions.push({ label: 'Add typed link', href: hrefForPath(node.path || `.knowledge/wiki/${node.id}`) });
+  else actions.push({ label: 'Add typed link', command: 'node .knowledge/tools/lint-wiki.js' });
+  return actions.slice(0, 9);
+}
+
+function graphDetailForNode(node, graph, data) {
+  const moduleId = graphNodeModuleId(node);
+  const routingModule = moduleId ? routingModuleFor(data, moduleId) : {};
+  const route = moduleId ? taskRouteFor(data, moduleId) : {};
+  const verification = graphVerificationForNode(node, data, routingModule);
+  const id = String(node.id || '');
+  const incoming = (graph.edges || []).filter((edge) => edge.to === id).map(graphEdgeSummary);
+  const outgoing = (graph.edges || []).filter((edge) => edge.from === id).map(graphEdgeSummary);
+  return {
+    title: graphNodeDisplayName(node) || node.title || id,
+    raw_title: node.title || id,
+    id,
+    type: graphGroup(node),
+    trust: effectiveGraphTrust(node, data),
+    path: normalizePath(node.path || node.page || ''),
+    incoming,
+    outgoing,
+    trust_reason: graphTrustReason(node, data, routingModule, route),
+    verification,
+    why_route: graphWhyRoute(node, data, routingModule, route),
+    status: graphStatusForNode(node, graph, data),
+    advisory_note: isWikiGraphNode(node) ? 'advisory only, verify against code/tests/evidence' : '',
+    next_actions: graphNextActions(node, data, verification)
+  };
+}
+
+function graphNodeAttrs(node, detail = null, effectiveTrust = null) {
   const group = graphGroup(node);
   const pathValue = normalizePath(node.path || node.page || '');
   const id = String(node.id || '');
@@ -376,21 +638,17 @@ function graphNodeAttrs(node) {
   const attrs = {
     'data-graph-node': 'true',
     'data-graph-id': id,
-    'data-graph-title': node.title || node.page || id,
+    'data-graph-title': graphNodeDisplayName(node) || node.title || node.page || id,
     'data-graph-group': group,
     'data-graph-path': pathValue,
-    'data-graph-trust': node.trust || node.status || 'advisory_only',
+    'data-graph-trust': effectiveTrust || node.trust || node.status || 'advisory_only',
     'data-graph-module': moduleId,
     'data-graph-query': query,
     'data-graph-command': command,
     'data-graph-description': node.description || ''
   };
+  if (detail) attrs['data-graph-detail-json'] = JSON.stringify(detail);
   return Object.entries(attrs).map(([key, value]) => `${key}="${esc(value)}"`).join(' ');
-}
-
-function compactGraphLabel(value, max = 24) {
-  const text = String(value || '').replace(/^Module:\s*/i, '').replace(/^Current\s+/i, '').trim();
-  return text.length <= max ? text : `${text.slice(0, Math.max(8, max - 1))}...`;
 }
 
 function placeGraphRow(items, y, width, startX = 84, endPad = 120) {
@@ -405,10 +663,72 @@ function placeGraphRow(items, y, width, startX = 84, endPad = 120) {
   }));
 }
 
+function graphBusNode(nodes, id, yFallback) {
+  const row = nodes || [];
+  if (!row.length) return { id, x: 660, y: yFallback, row_index: 0, group: 'bus', r: 1 };
+  const minX = Math.min(...row.map((node) => node.x));
+  const maxX = Math.max(...row.map((node) => node.x));
+  return {
+    id,
+    x: (minX + maxX) / 2,
+    y: row[0].y,
+    row_index: 0,
+    group: 'bus',
+    r: 1
+  };
+}
+
+function selectVisibleGraphEdges(edgeList, byId, groups) {
+  const direct = [];
+  const bundles = new Map();
+  const moduleBus = graphBusNode(groups.module, 'bus:modules', 282);
+  function addBundle(key, edge, a, b) {
+    const relation = edge.type || edge.relation || 'related';
+    const existing = bundles.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.edge_ids.push(`${edge.from} -> ${edge.to}`);
+      if (edge.reason && !existing.reasons.includes(edge.reason)) existing.reasons.push(edge.reason);
+      return;
+    }
+    bundles.set(key, {
+      ...edge,
+      from: a.id,
+      to: b.id,
+      a,
+      b,
+      type: relation,
+      relation,
+      bundled: true,
+      count: 1,
+      edge_ids: [`${edge.from} -> ${edge.to}`],
+      reasons: edge.reason ? [edge.reason] : []
+    });
+  }
+  for (const edge of edgeList) {
+    const a = byId.get(edge.from);
+    const b = byId.get(edge.to);
+    if (!a || !b) continue;
+    const relation = edge.type || edge.relation || 'related';
+    const fromGroup = graphGroup(a);
+    const toGroup = graphGroup(b);
+    if (fromGroup === 'source_truth' && toGroup === 'module' && ['routes', 'checks', 'evidence'].includes(relation)) {
+      addBundle(`${edge.from}:${relation}:module-bus`, edge, a, moduleBus);
+      continue;
+    }
+    if (fromGroup === 'module' && (toGroup === 'wiki' || edge.to === 'truth:wiki')) {
+      addBundle(`module-bus:${relation}:${edge.to}`, edge, moduleBus, b);
+      continue;
+    }
+    direct.push({ ...edge, a, b, relation, bundled: false, count: 1 });
+  }
+  return [...direct, ...bundles.values()];
+}
+
 function layoutGraph(nodes, edges) {
   const nodeList = (nodes || []).slice(0, 120);
   const edgeList = (edges || []).slice(0, 260);
-  if (!nodeList.length) return { nodes: [], edges: [], width: 980, height: 520 };
+  if (!nodeList.length) return { nodes: [], edges: [], width: 1280, height: 600 };
   const degrees = new Map(nodeList.map((node) => [node.id, 0]));
   for (const edge of edgeList) {
     if (degrees.has(edge.from)) degrees.set(edge.from, degrees.get(edge.from) + 1);
@@ -423,13 +743,13 @@ function layoutGraph(nodes, edges) {
     if (b.id === 'index.md') return 1;
     return String(a.title || a.id).localeCompare(String(b.title || b.id));
   });
-  const width = 980;
-  const height = 520;
+  const width = 1280;
+  const height = 600;
   const positioned = [
-    ...placeGraphRow(groups.source_truth, 82, width, 74, 94),
-    ...placeGraphRow(groups.module, 238, width, 170, 170),
-    ...placeGraphRow(groups.wiki, 385, width, 106, 116),
-    ...placeGraphRow(groups.other, 470, width, 120, 120)
+    ...placeGraphRow(groups.source_truth, 104, width, 86, 106),
+    ...placeGraphRow(groups.module, 292, width, 188, 188),
+    ...placeGraphRow(groups.wiki, 468, width, 126, 126),
+    ...placeGraphRow(groups.other, 548, width, 140, 140)
   ].map((node) => ({
     ...node,
     group: graphGroup(node),
@@ -437,17 +757,20 @@ function layoutGraph(nodes, edges) {
     r: Math.min(17, Math.max(9, 8 + Math.sqrt(degrees.get(node.id) || 1) * 2))
   }));
   const byId = new Map(positioned.map((node) => [node.id, node]));
-  const visibleEdges = edgeList.map((edge) => {
-    const a = byId.get(edge.from);
-    const b = byId.get(edge.to);
-    if (!a || !b) return null;
-    return { ...edge, a, b };
-  }).filter(Boolean);
+  const positionedGroups = { source_truth: [], module: [], wiki: [], other: [] };
+  for (const node of positioned) positionedGroups[node.group || 'other'].push(node);
+  const visibleEdges = selectVisibleGraphEdges(edgeList, byId, positionedGroups);
   return { nodes: positioned, edges: visibleEdges, width, height };
 }
 
 function edgePath(edge) {
   const { a, b } = edge;
+  if (edge.bundled) {
+    const relation = edge.type || edge.relation || 'related';
+    const offset = relation === 'checks' ? -56 : relation === 'routes' ? -22 : relation === 'documents' ? 30 : 52;
+    const midY = ((a.y + b.y) / 2) + offset;
+    return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} C ${a.x.toFixed(1)} ${midY.toFixed(1)} ${b.x.toFixed(1)} ${midY.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+  }
   const vertical = Math.abs(b.y - a.y);
   const sameRow = vertical < 40;
   const mx = (a.x + b.x) / 2;
@@ -485,37 +808,51 @@ function graphShelfSummary(graph, nodes, edges) {
   ].join(' / ');
 }
 
+function graphToggleButton(expanded = true) {
+  const arrow = expanded ? '▾' : '▸';
+  const label = expanded ? 'Collapse' : 'Expand';
+  return `<button class="copy-btn graph-toggle-btn" type="button" data-graph-toggle="free-core" aria-expanded="${expanded ? 'true' : 'false'}"><span class="graph-toggle-arrow" aria-hidden="true">${arrow}</span> ${label}</button>`;
+}
+
 function freeCoreGraphSvg(data) {
   const graph = data.wikiGraph || {};
   const graphNodes = graph.nodes || [];
   const graphEdges = graph.edges || [];
   if (!graphNodes.length) {
-    return `<div class="card graph-shelf" data-graph-shelf="free-core"><div class="graph-shelf-header"><div><h2>Free Core Trust Graph</h2><p class="sub">No graph generated yet.</p></div><button class="copy-btn" type="button" data-graph-toggle="free-core" aria-expanded="true">Collapse</button></div><div class="graph-shelf-body">${emptyState('No free-core graph yet', 'Run graph build after install/import to generate source-of-truth, module, and wiki relations.', 'node .knowledge/tools/build-wiki-graph.js')}</div></div>`;
+    return `<div class="card graph-shelf" data-graph-shelf="free-core"><div class="graph-shelf-header"><div class="graph-title-block"><div class="graph-title-row"><h2>Trust Graph</h2><div class="graph-shelf-actions">${graphToggleButton(true)}</div></div><p class="sub">No graph generated yet.</p></div></div><div class="graph-shelf-body">${emptyState('No free-core graph yet', 'Run graph build after install/import to generate source-of-truth, module, and wiki relations.', 'node .knowledge/tools/build-wiki-graph.js')}</div></div>`;
   }
   const layout = layoutGraph(graphNodes, graphEdges);
   const defs = `<defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>`;
   const lanes = [
-    ['Source-of-truth order', 82],
-    ['Module routing', 238],
-    ['Wiki and advisory context', 385]
-  ].map(([label, y]) => `<g class="lane"><line x1="34" y1="${y}" x2="${layout.width - 34}" y2="${y}"></line><text x="38" y="${y - 26}">${esc(label)}</text></g>`).join('');
+    ['Source-of-truth order', 104, 56],
+    ['Module routing', 292, 258],
+    ['Wiki and advisory context', 468, 434]
+  ].map(([label, y, labelY]) => `<g class="lane"><line x1="44" y1="${y}" x2="${layout.width - 44}" y2="${y}"></line><text x="48" y="${labelY}">${esc(label)}</text></g>`).join('');
   const edgeMarkup = layout.edges.map((edge) => {
     const relation = edge.relation || edge.type || 'related';
     const valid = edge.valid === false ? ' invalid' : '';
-    return `<path d="${edgePath(edge)}" class="edge ${relationClass(relation)}${valid}" marker-end="url(#graph-arrow)"><title>${esc(relation)}\n${esc(edge.from)} -> ${esc(edge.to)}${edge.reason ? `\n${esc(edge.reason)}` : ''}</title></path>`;
+    const bundled = edge.bundled ? ' bundled' : '';
+    const countText = edge.bundled ? `\n${edge.count} bundled links\n${esc((edge.edge_ids || []).slice(0, 8).join('\n'))}${edge.count > 8 ? '\n...' : ''}` : '';
+    const reasonText = edge.reason || (edge.reasons || []).join(' / ');
+    return `<path d="${edgePath(edge)}" class="edge ${relationClass(relation)}${valid}${bundled}" marker-end="url(#graph-arrow)"><title>${esc(relation)}\n${esc(edge.from)} -> ${esc(edge.to)}${countText}${reasonText ? `\n${esc(reasonText)}` : ''}</title></path>`;
   }).join('');
   const nodeMarkup = layout.nodes.map((node) => {
-    const trust = trustClass(node.trust || node.status || 'advisory_only');
+    const detail = graphDetailForNode(node, graph, data);
+    const trust = trustClass(detail.trust || node.trust || node.status || 'advisory_only');
     const group = graphGroup(node);
-    const label = compactGraphLabel(node.title || node.page || node.id || '', group === 'source_truth' ? 21 : 26);
-    const yLabel = group === 'source_truth' ? node.y - 25 : node.y + 31;
-    return `<g class="graph-node ${esc(group)}" role="button" tabindex="0" ${graphNodeAttrs(node)}><circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.r}" class="node ${esc(trust)} ${esc(group)}"><title>${esc(node.title || '')}\n${esc(node.id || '')}\ntrust: ${esc(node.trust || 'advisory_only')}\n${esc(node.description || '')}</title></circle><text x="${node.x.toFixed(1)}" y="${yLabel.toFixed(1)}" class="label ${esc(group)}">${esc(label)}</text></g>`;
+    const label = compactGraphLabel(node, group === 'module' ? 24 : group === 'source_truth' ? 21 : 26);
+    const yLabel = group === 'source_truth'
+      ? node.y - 25
+      : group === 'module'
+        ? node.y + ((node.row_index || 0) % 2 === 0 ? 42 : -42)
+        : node.y + 38;
+    return `<g class="graph-node ${esc(group)}" role="button" tabindex="0" ${graphNodeAttrs(node, detail, detail.trust)}>${graphHitTargetMarkup(node, yLabel)}<circle cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.r}" class="node ${esc(trust)} ${esc(group)}"><title>${esc(node.title || '')}\n${esc(node.id || '')}\ntrust: ${esc(detail.trust || 'advisory_only')}\n${esc(node.description || '')}</title></circle>${graphLabelMarkup(node, node.x, yLabel, label, group)}</g>`;
   }).join('');
   const legendTypes = ['outranks', 'routes', 'documents', 'checks', 'references', 'advisory', 'supports', 'depends_on', 'contradicts'];
   const legend = legendTypes.map((type) => `<span><i class="edge-swatch ${type}"></i>${esc(type)}</span>`).join('');
   const sourceOrder = graph.summary?.source_truth_order || [];
   const summary = graphShelfSummary(graph, graphNodes, graphEdges);
-  return `<div class="card graph-shelf" data-graph-shelf="free-core" data-free-core-graph="true"><div class="graph-shelf-header"><div><h2>Free Core Trust Graph</h2><p class="sub">Source-of-truth order, module routing, wiki relations, and advisory boundaries.</p><small class="graph-shelf-summary">${esc(summary)}</small></div><div class="graph-shelf-actions">${copyButton('node .knowledge/tools/build-wiki-graph.js', 'Copy rebuild command')}<button class="copy-btn" type="button" data-graph-toggle="free-core" aria-expanded="true">Collapse</button></div></div><div class="graph-shelf-body"><div class="free-core-graph"><div class="graph-metrics">${graphMetric('nodes', graph.node_count ?? graphNodes.length)}${graphMetric('edges', graph.edge_count ?? graphEdges.length)}${graphMetric('broken', graph.broken_edge_count || 0)}${graphMetric('orphans', graph.orphan_page_count || 0)}${graphMetric('readiness', graph.readiness || 'unknown')}</div><div class="legend">${legend}</div><div class="graph-scroll"><svg class="wiki-svg trust-graph-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="Free core trust graph">${defs}${lanes}${edgeMarkup}${nodeMarkup}</svg></div><div class="graph-node-detail" data-graph-detail="true">Select a graph node to inspect why it exists and what action it supports.</div>${sourceOrder.length ? `<div class="source-order-strip"><strong>Trust order:</strong> ${esc(sourceOrder.join(' > '))}</div>` : ''}${graphEdges.length ? graphInsights(graph) : emptyState('Graph has nodes but no relations', 'Add typed links or rerun the 3.2.5 graph builder to restore relation edges.', 'node .knowledge/tools/build-wiki-graph.js')}</div></div></div>`;
+  return `<div class="card graph-shelf" data-graph-shelf="free-core" data-free-core-graph="true"><div class="graph-shelf-header"><div class="graph-title-block"><div class="graph-title-row"><h2>Trust Graph</h2><div class="graph-shelf-actions">${copyButton('node .knowledge/tools/build-wiki-graph.js', 'Copy rebuild command')}${graphToggleButton(true)}</div></div><p class="sub">Source-of-truth order, module routing, wiki relations, and advisory boundaries.</p><small class="graph-shelf-summary">${esc(summary)}</small></div></div><div class="graph-shelf-body"><div class="free-core-graph"><div class="graph-metrics">${graphMetric('nodes', graph.node_count ?? graphNodes.length)}${graphMetric('edges', graph.edge_count ?? graphEdges.length, `${layout.edges.length} visible`)}${graphMetric('broken', graph.broken_edge_count || 0)}${graphMetric('orphans', graph.orphan_page_count || 0)}${graphMetric('readiness', graph.readiness || 'unknown')}</div><div class="legend" aria-label="Graph relation legend">${legend}</div><div class="graph-scroll"><svg class="wiki-svg trust-graph-svg" viewBox="0 0 ${layout.width} ${layout.height}" role="img" aria-label="Trust graph">${defs}${lanes}${edgeMarkup}${nodeMarkup}</svg></div><div class="graph-node-detail" data-graph-detail="true">Select a graph node to inspect incoming/outgoing links, trust reason, evidence, route status, and next actions.</div>${sourceOrder.length ? `<div class="source-order-strip"><strong>Trust order:</strong> ${esc(sourceOrder.join(' > '))}</div>` : ''}${graphEdges.length ? graphInsights(graph) : emptyState('Graph has nodes but no relations', 'Add typed links or rerun the graph builder to restore relation edges.', 'node .knowledge/tools/build-wiki-graph.js')}</div></div></div>`;
 }
 
 function legacyGraphSvg(data) {
@@ -628,11 +965,24 @@ function renderMemoryProviders(data) {
     const warnings = toArray(provider.warnings).join('; ');
     return `<div class="signal-card"><strong>${esc(title)}</strong><span>${esc(provider.status || 'available')}</span><p>${body}</p><table class="kv"><tr><th>Version</th><td>${esc(provider.version || provider.version_pin || 'n/a')}</td></tr><tr><th>License</th><td>${esc(provider.license_spdx || 'n/a')}</td></tr><tr><th>Data/source</th><td>${esc(provider.data_path || provider.path || provider.source_url || 'n/a')}</td></tr><tr><th>Trust</th><td>${esc(provider.trust_effect || provider.trust_role || 'advisory_only')}</td></tr><tr><th>Warnings</th><td>${esc(warnings || 'none')}</td></tr></table><div class="mini-actions">${actions}</div></div>`;
   };
+  const mem0Actions = [
+    copyButton('node .knowledge/tools/memory-provider.js install mem0-oss --version mem0ai==2.0.4 --yes-i-reviewed-license --json', 'Copy install'),
+    copyButton('node .knowledge/tools/memory-provider.js setup mem0-oss --live --json', 'Copy setup'),
+    copyButton('node .knowledge/tools/memory-mem0.js health --adapter live --json', 'Copy health'),
+    copyButton('node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text "Release note: Mem0 is advisory-only external memory" --scope repo --json', 'Copy add example'),
+    copyButton('node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json', 'Copy search example'),
+    copyButton('node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json', 'Copy recall example')
+  ].join('');
+  const mem0Warnings = toArray(mem0.warnings).join('; ');
+  const mem0RuntimeVersion = mem0.runtime_version
+    ? `${mem0.runtime_version} / expected ${mem0.expected_runtime_version || mem0.version_pin || 'n/a'}`
+    : `not checked / expected ${mem0.expected_runtime_version || mem0.version_pin || 'n/a'}`;
+  const mem0Card = `<div class="signal-card"><strong>Mem0 OSS - guided onboarding</strong><span>${esc(mem0.status || 'runtime_not_installed')}</span><p>Recommended optional universal backend. Setup is one guided command; status is offline-safe; live operations remain explicit external-memory actions.</p><table class="kv"><tr><th>Receipt</th><td>${esc(mem0.receipt_present ? 'exists' : 'missing')}</td></tr><tr><th>Runtime</th><td>${esc(mem0.runtime_available ? 'available' : 'missing')}</td></tr><tr><th>Runtime health</th><td>${esc(mem0.runtime_health || 'not_available')}</td></tr><tr><th>Runtime version</th><td>${esc(mem0RuntimeVersion)}</td></tr><tr><th>Boundary</th><td>${esc(mem0.trust_effect || mem0.trust_role || 'advisory_only')}</td></tr><tr><th>Data path</th><td>${esc(mem0.data_path || mem0.path || 'n/a')}</td></tr><tr><th>Last live health</th><td>${esc(mem0.last_live_health_check || mem0.runtime_status_checked_at || 'not checked')}</td></tr><tr><th>Warning</th><td>live add writes external memory</td></tr><tr><th>Warnings</th><td>${esc(mem0Warnings || 'none')}</td></tr></table><div class="mini-actions">${mem0Actions}</div></div>`;
   const policy = data.external.source_of_truth_policy || {};
   const legacyCard = legacy.length
     ? card('Legacy Claude MEM - advisory legacy only', legacy[0], 'Legacy artifacts are shown only for migration/archive awareness and cannot raise trust.', copyButton('node .knowledge/tools/memory-provider.js migrate-legacy --json', 'Write deprecation note'))
     : '';
-  return `<div class="empty-state"><h3>External memory is advisory</h3><p>Code, tests and evidence outrank memory. Memory cannot raise trust automatically.</p></div><div class="signal-grid" style="margin-top:12px">${card('.knowledge Source of Truth', { status: 'authoritative', license_spdx: 'Apache-2.0', trust_effect: 'source_of_truth', data_path: data.context?.projectKnowledgeRoot }, `Curated repo-local knowledge stays in modules, evidence, wiki and decisions. External memory policy: source_of_truth=${esc(policy.external_memory_source_of_truth ?? false)}, can_raise_trust=${esc(policy.external_memory_can_raise_trust ?? false)}.`)}${card('Mem0 OSS - recommended optional universal backend', mem0, 'Universal optional backend for local/core use. Live health auto-detects Python in standard locations, keeps discovery probes short, uses a 30000 ms health timeout for slow first Windows import mem0, never installs packages, and reports runtime_not_installed unless mem0ai is importable.', `${copyButton('node .knowledge/tools/memory-provider.js preview mem0-oss --json', 'Preview Mem0')}${copyButton('node .knowledge/tools/memory-provider.js status mem0-oss --json', 'Mem0 Status')}${copyButton('node .knowledge/tools/memory-mem0.js health --adapter live --json', 'Live Mem0 Health')}${copyButton('node .knowledge/tools/memory-mem0.js add --text "..." --scope repo --json', 'Mem0 Add')}${copyButton('node .knowledge/tools/memory-mem0.js search "query" --json', 'Mem0 Search')}`)}${card('Pinecone - optional vector/cloud retrieval', pinecone, 'Optional vector/cloud retrieval provider for teams already using Pinecone. Status stays offline and never needs an API key just to render.', `${copyButton('node .knowledge/tools/memory-provider.js status pinecone --json', 'Pinecone Status')}${copyButton('node .knowledge/tools/external/pinecone-search.js "query" --dry-run', 'Dry-run Search')}${copyButton('node .knowledge/tools/memory-provider.js preview pinecone --json', 'Pinecone Preview')}`)}<div class="signal-card"><strong>Graphiti - future optional temporal graph</strong><span>not included in free core</span><p>Temporal graph provider contracts are not part of this install asset. Free core keeps external memory advisory.</p></div><div class="signal-card"><strong>Zep - future optional managed/BYOC memory</strong><span>not included in free core</span><p>Managed memory provider contracts are not part of this install asset. Free core keeps the advisory policy boundary.</p></div>${legacyCard}</div><div class="mini-actions">${copyButton('node .knowledge/tools/memory-provider.js status-all --json', 'Memory Status')}${copyButton('node .knowledge/tools/memory-provider.js list --json', 'List Providers')}${fileLink('maintenance/external_memory_status.json', { short: 54 })}</div>`;
+  return `<div class="empty-state"><h3>External memory is advisory</h3><p>Code, tests and evidence outrank memory. Memory cannot raise trust automatically.</p></div><div class="signal-grid" style="margin-top:12px">${card('.knowledge Source of Truth', { status: 'authoritative', license_spdx: 'Apache-2.0', trust_effect: 'source_of_truth', data_path: data.context?.projectKnowledgeRoot }, `Curated repo-local knowledge stays in modules, evidence, wiki and decisions. External memory policy: source_of_truth=${esc(policy.external_memory_source_of_truth ?? false)}, can_raise_trust=${esc(policy.external_memory_can_raise_trust ?? false)}.`)}${mem0Card}${card('Pinecone - optional vector/cloud retrieval', pinecone, 'Optional vector/cloud retrieval provider for teams already using Pinecone. Status stays offline and never needs an API key just to render.', `${copyButton('node .knowledge/tools/memory-provider.js status pinecone --json', 'Pinecone Status')}${copyButton('node .knowledge/tools/external/pinecone-search.js "query" --dry-run', 'Dry-run Search')}${copyButton('node .knowledge/tools/memory-provider.js preview pinecone --json', 'Pinecone Preview')}`)}<div class="signal-card"><strong>Graphiti - future optional temporal graph</strong><span>not included in free core</span><p>Temporal graph provider contracts are not part of this install asset. Free core keeps external memory advisory.</p></div><div class="signal-card"><strong>Zep - future optional managed/BYOC memory</strong><span>not included in free core</span><p>Managed memory provider contracts are not part of this install asset. Free core keeps the advisory policy boundary.</p></div>${legacyCard}</div><div class="mini-actions">${copyButton('node .knowledge/tools/memory-provider.js status-all --json', 'Memory Status')}${copyButton('node .knowledge/tools/memory-provider.js list --json', 'List Providers')}${fileLink('maintenance/external_memory_status.json', { short: 54 })}</div>`;
 }
 
 function renderQuickActions(options = {}) {
@@ -647,7 +997,7 @@ function renderQuickActions(options = {}) {
     ['Review PR Impact', 'node .knowledge/tools/pr-impact.js --json'],
     ['Team Status', 'node .knowledge/tools/team-status.js --team-root <teamRoot> --json'],
     ['Memory Status', 'node .knowledge/tools/memory-provider.js status-all --json'],
-    ['Preview Mem0', 'node .knowledge/tools/memory-provider.js preview mem0-oss --json']
+    ['Setup Mem0', 'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json']
   ];
   const staticButtons = actions.map(([label, command]) => `<button type="button" class="action-card" data-copy="${esc(command)}"><span>${esc(label)}</span><code>${esc(command)}</code></button>`);
   const liveButtons = liveActions.map((action) => {
@@ -755,19 +1105,110 @@ function selectControl(id, value, options) {
   return `<select id="${esc(id)}">${options.map(([optionValue, label]) => `<option value="${esc(optionValue)}"${selected(value, optionValue)}>${esc(label)}</option>`).join('')}</select>`;
 }
 
-function renderOnboarding(data, options = {}) {
-  const settings = data.settings || {};
+function agentOptionKey(agent) {
+  return String(agent?.agent_instance_id || agent?.id || agent?.agent_runtime_id || agent?.session_id || '').trim();
+}
+
+function agentOptionLabel(agent) {
+  return String(agent?.agent_display_name || agent?.label || agent?.agent_runtime_label || agent?.agent_instance_id || agent?.agent_runtime_id || 'Connected agent').trim();
+}
+
+function normalizeConnectedAgent(agent = {}) {
+  const id = agentOptionKey(agent);
+  if (!id) return null;
+  return {
+    id,
+    label: agentOptionLabel(agent),
+    runtime: agent.agent_runtime_id || agent.runtime || agent.detected_agent_runtime || '',
+    runtime_label: agent.agent_runtime_label || agent.runtime_label || agent.agent_runtime_id || '',
+    status: agent.status || 'available',
+    session_id: agent.session_id || '',
+    branch: agent.branch || '',
+    workspace_id: agent.workspace_id || ''
+  };
+}
+
+function connectedAgents(data, settings) {
+  const profile = settings.operator_profile || DEFAULT_OPERATOR_PROFILE;
+  const registrySessions = [
+    ...(data.agentRegistry?.sessions || []),
+    ...(data.agent_activity?.registry?.sessions || [])
+  ];
+  const preferred = registrySessions
+    .filter((session) => ['running', 'waiting'].includes(session.status))
+    .concat(registrySessions.slice(-25).reverse())
+    .concat(toArray(profile.connected_agents));
+  const fallbackRuntime = profile.detected_agent_runtime || data.context?.agentId || data.generated_by || 'local-agent';
+  preferred.push({
+    agent_instance_id: profile.selected_agent_id || fallbackRuntime,
+    agent_runtime_id: fallbackRuntime,
+    agent_display_name: fallbackRuntime,
+    status: registrySessions.length ? 'saved' : 'current'
+  });
+  const byId = new Map();
+  for (const candidate of preferred) {
+    const normalized = normalizeConnectedAgent(candidate);
+    if (normalized && !byId.has(normalized.id)) byId.set(normalized.id, normalized);
+  }
+  return [...byId.values()];
+}
+
+function selectedAgentId(settings, agents) {
+  const profile = settings.operator_profile || DEFAULT_OPERATOR_PROFILE;
+  const preferred = profile.selected_agent_id || profile.detected_agent_runtime || '';
+  if (preferred && agents.some((agent) => agent.id === preferred || agent.runtime === preferred)) {
+    return agents.find((agent) => agent.id === preferred || agent.runtime === preferred).id;
+  }
+  return agents[0]?.id || 'local-agent';
+}
+
+function onboardingSettingsForAgent(settings, agentId) {
   const profile = settings.operator_profile || DEFAULT_OPERATOR_PROFILE;
   const autonomy = settings.autonomy_policy || DEFAULT_AUTONOMY_POLICY;
   const agent = settings.agent_policy || DEFAULT_AGENT_POLICY;
   const footer = settings.report_footer || DEFAULT_REPORT_FOOTER;
+  const profileOverride = profile.agent_overrides?.[agentId] || {};
+  const autonomyOverride = autonomy.agent_overrides?.[agentId] || {};
+  const agentOverride = agent.agent_overrides?.[agentId] || {};
+  const footerOverride = footer.agent_overrides?.[agentId] || {};
+  return {
+    user_mode: profileOverride.user_mode || profile.user_mode || 'simple',
+    agents_can_do_without_asking: autonomyOverride.agents_can_do_without_asking || autonomy.agents_can_do_without_asking || DEFAULT_AUTONOMY_POLICY.agents_can_do_without_asking,
+    concurrent_work_policy: agentOverride.concurrent_work_policy || agent.concurrent_work_policy || 'Safe Queue',
+    merge_policy: agentOverride.merge_policy || agent.merge_policy || 'Manual Only',
+    report_footer_mode: footerOverride.mode || footer.mode || 'compact'
+  };
+}
+
+function onboardingAgentSettingsMap(settings, agents) {
+  return Object.fromEntries(agents.map((agent) => [agent.id, onboardingSettingsForAgent(settings, agent.id)]));
+}
+
+function connectedAgentSummary(agent) {
+  const bits = [
+    agent.runtime ? `runtime ${agent.runtime}` : '',
+    agent.status ? `status ${agent.status}` : '',
+    agent.branch ? `branch ${agent.branch}` : '',
+    agent.workspace_id ? `workspace ${agent.workspace_id}` : ''
+  ].filter(Boolean);
+  return bits.join(' / ') || 'No active session metadata yet.';
+}
+
+function renderOnboarding(data, options = {}) {
+  const settings = data.settings || {};
   const onboarding = settings.onboarding || onboardingState(settings);
+  const agents = connectedAgents(data, settings);
+  const selectedId = selectedAgentId(settings, agents);
+  const selectedAgent = agents.find((agent) => agent.id === selectedId) || agents[0] || normalizeConnectedAgent({ agent_instance_id: 'local-agent' });
+  const selectedSettings = onboardingSettingsForAgent(settings, selectedId);
+  const agentSettings = onboardingAgentSettingsMap(settings, agents);
+  const agentOptions = agents.map((agent) => `<option value="${esc(agent.id)}"${agent.id === selectedId ? ' selected' : ''}>${esc(agent.label)}${agent.status ? ` (${esc(agent.status)})` : ''}</option>`).join('');
   const expanded = onboarding.required === true;
   const saveControl = options.live
     ? '<button class="copy-btn" type="button" data-onboarding-save="true">Save setup</button>'
     : copyButton('node .knowledge/inspector.js', 'Open live setup');
   const status = onboarding.completed ? `Completed${onboarding.completed_at ? ` at ${onboarding.completed_at}` : ''}` : `Required: ${onboarding.reason || 'not_completed'}`;
-  return `<div class="card onboarding-card${expanded ? ' requires-setup' : ''}" id="onboarding-wizard" data-onboarding-wizard="true" data-onboarding-expanded="${expanded ? 'true' : 'false'}"><button class="onboarding-toggle" type="button" data-onboarding-toggle="true"><span>First-run setup</span><small>${esc(status)}</small></button><div class="onboarding-body"${expanded ? '' : ' hidden'}><p class="sub">Use safe defaults or tune agent behavior before local agents write reports.</p><div class="setting-list"><label class="setting-row"><span><strong>Connected agent</strong><small>Detected runtime for reports and sessions.</small></span><input id="onboarding-runtime" value="${esc(profile.detected_agent_runtime || '')}" placeholder="none yet"></label><label class="setting-row"><span><strong>User mode</strong><small>Simple keeps summaries plain; Advanced shows raw evidence.</small></span>${selectControl('onboarding-user-mode', profile.user_mode || 'simple', [['simple', 'Simple'], ['advanced', 'Advanced']])}</label><label class="setting-row"><span><strong>What can agents do without asking?</strong><small>Default is safe local checks and reports.</small></span>${selectControl('onboarding-permission', autonomy.agents_can_do_without_asking || DEFAULT_AUTONOMY_POLICY.agents_can_do_without_asking, [['run checks and reports', 'Run checks and reports'], ['ask before every action', 'Ask before every action'], ['run safe local actions', 'Run safe local actions']])}</label><label class="setting-row"><span><strong>Concurrent work policy</strong><small>Safe Queue avoids overlapping writes by default.</small></span>${selectControl('onboarding-concurrency', agent.concurrent_work_policy || 'Safe Queue', [['Safe Queue', 'Safe Queue'], ['Observe', 'Observe'], ['Guided', 'Guided'], ['Active Sessions', 'Active Sessions'], ['Parallel Worktrees', 'Parallel Worktrees']])}</label><label class="setting-row"><span><strong>Merge policy</strong><small>Manual Only keeps releases under your control.</small></span>${selectControl('onboarding-merge', agent.merge_policy || 'Manual Only', [['Manual Only', 'Never merge automatically'], ['Assisted Merge', 'Assisted Merge'], ['Auto PR', 'Auto PR']])}</label><label class="setting-row"><span><strong>Agent report footer</strong><small>Controls trust footer and restore action in reports.</small></span>${selectControl('onboarding-footer', footer.mode || 'compact', [['compact', 'Compact + restore action'], ['full', 'Full'], ['only_when_trust_incomplete', 'Only when trust incomplete'], ['off', 'Off']])}</label></div><div class="mini-actions">${saveControl}</div></div></div>`;
+  return `<div class="card onboarding-card${expanded ? ' requires-setup' : ''}" id="onboarding-wizard" data-onboarding-wizard="true" data-onboarding-expanded="${expanded ? 'true' : 'false'}" data-onboarding-agents="${esc(JSON.stringify(agents))}" data-onboarding-agent-settings="${esc(JSON.stringify(agentSettings))}"><button class="onboarding-toggle" type="button" data-onboarding-toggle="true"><span>First-run setup</span><small>${esc(status)}</small></button><div class="onboarding-body"${expanded ? '' : ' hidden'}><p class="sub">Use safe defaults or tune each connected agent before local agents write reports.</p><div class="setting-list"><label class="setting-row"><span><strong>Connected agent</strong><small>Select an active or recently connected agent. Settings below apply to that agent.</small></span><div class="agent-picker"><select id="onboarding-agent" data-onboarding-agent-select="true">${agentOptions}</select><small data-onboarding-agent-summary="true">${esc(connectedAgentSummary(selectedAgent))}</small></div></label><label class="setting-row"><span><strong>User mode</strong><small>Simple keeps summaries plain; Advanced shows raw evidence.</small></span>${selectControl('onboarding-user-mode', selectedSettings.user_mode, [['simple', 'Simple'], ['advanced', 'Advanced']])}</label><label class="setting-row"><span><strong>What can agents do without asking?</strong><small>Default is safe local checks and reports.</small></span>${selectControl('onboarding-permission', selectedSettings.agents_can_do_without_asking, [['run checks and reports', 'Run checks and reports'], ['ask before every action', 'Ask before every action'], ['run safe local actions', 'Run safe local actions']])}</label><label class="setting-row"><span><strong>Concurrent work policy</strong><small>Safe Queue avoids overlapping writes by default.</small></span>${selectControl('onboarding-concurrency', selectedSettings.concurrent_work_policy, [['Safe Queue', 'Safe Queue'], ['Observe', 'Observe'], ['Guided', 'Guided'], ['Active Sessions', 'Active Sessions'], ['Parallel Worktrees', 'Parallel Worktrees']])}</label><label class="setting-row"><span><strong>Merge policy</strong><small>Manual Only keeps releases under your control.</small></span>${selectControl('onboarding-merge', selectedSettings.merge_policy, [['Manual Only', 'Never merge automatically'], ['Assisted Merge', 'Assisted Merge'], ['Auto PR', 'Auto PR']])}</label><label class="setting-row"><span><strong>Agent report footer</strong><small>Controls trust footer and restore action in reports.</small></span>${selectControl('onboarding-footer', selectedSettings.report_footer_mode, [['compact', 'Compact + restore action'], ['full', 'Full'], ['only_when_trust_incomplete', 'Only when trust incomplete'], ['off', 'Off']])}</label></div><div class="mini-actions">${saveControl}</div></div></div>`;
 }
 
 function metricSeverity(label, value) {
@@ -847,9 +1288,15 @@ function showToast(text){ toast.textContent = text || 'Copied'; toast.classList.
 function copyText(text){ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(()=>showToast('Copied command')).catch(()=>fallbackCopy(text)); } else fallbackCopy(text); }
 function fallbackCopy(text){ const el=document.createElement('textarea'); el.value=text; document.body.appendChild(el); el.select(); document.execCommand('copy'); el.remove(); showToast('Copied command'); }
 function escapeHtmlClient(value){return String(value||'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
-function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.textContent=collapsed?'Expand':'Collapse';button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
+function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'▸':'▾')+'</span> '+(collapsed?'Expand':'Collapse')}
+function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.innerHTML=graphToggleHtml(collapsed);button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
 function initGraphShelves(){document.querySelectorAll('[data-graph-shelf]').forEach((shelf)=>{const id=shelf.getAttribute('data-graph-shelf');let collapsed=false;try{collapsed=localStorage.getItem('knowledge.graph.'+id+'.collapsed')==='1'}catch{}setGraphShelf(id,collapsed)})}
-function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;const group=node.getAttribute('data-graph-group')||'other';const title=node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<span>Static Inspector can inspect nodes locally; live Inspector can also run update/action APIs.</span><code>'+escapeHtmlClient(command)+'</code>'}
+function graphList(items,empty,formatter){const values=Array.isArray(items)?items:[];if(!values.length)return '<p class="muted">'+escapeHtmlClient(empty)+'</p>';return '<ul>'+values.map((item)=>'<li>'+formatter(item)+'</li>').join('')+'</ul>'}
+function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' → '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
+function graphArtifacts(values,empty){return graphList(values,empty,(item)=>escapeHtmlClient(item))}
+function graphAction(action){if(action.href)return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(action.href)+'">'+escapeHtmlClient(action.label||'Open')+'</a>';if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
+function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' · ')}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+(pathValue?' · Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
 document.addEventListener('click', (event)=>{ const graphToggle=event.target.closest('[data-graph-toggle]'); if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle'); const shelf=document.querySelector('[data-graph-shelf="'+id+'"]'); setGraphShelf(id,!shelf?.classList.contains('is-collapsed')); return;} const graphNode=event.target.closest('[data-graph-node]'); if(graphNode){showGraphNodeDetail(graphNode); return;} const btn=event.target.closest('[data-copy]'); if(btn) copyText(btn.getAttribute('data-copy')); });
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
 function applyFilters(tableName){ const searchInput=document.querySelector('[data-table-search="'+tableName+'"]'); const select=document.querySelector('[data-table-filter="'+tableName+'"]'); const global=document.getElementById('globalFilter'); const q=((searchInput&&searchInput.value)||'').toLowerCase(); const g=(global.value||'').toLowerCase(); const f=((select&&select.value)||'').toLowerCase(); document.querySelectorAll('table[data-table="'+tableName+'"] tbody tr').forEach(row=>{ const text=(row.getAttribute('data-search')||row.textContent||'').toLowerCase(); const rowFilter=(row.getAttribute('data-filter')||'').toLowerCase(); const okText=(!q||text.includes(q)) && (!g||text.includes(g)); const okFilter=!f||rowFilter===f||rowFilter.includes(f); row.style.display=(okText&&okFilter)?'':'none'; }); }
@@ -896,7 +1343,7 @@ function renderTabbed(data, options = {}) {
   ].map(([label, value, body]) => renderMetricCard(label, value, body)).join('');
   const countCards = counts.map((count) => `<div class="stat ${trustClass(count.key)}"><div class="num">${count.count}</div><div class="cap">${esc(count.key)}</div></div>`).join('');
   const searchBody = `<div class="empty-state"><h3>Local search</h3><p>${esc(searchDocs)} indexed documents. Search runs locally from generated index data.</p>${commandBox('node .knowledge/tools/search-knowledge.js "<query>"', 'Copy search command')}</div>`;
-  const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/validate-release-artifact.js dist/knowledge-v3.2.5.zip --json"><span>Validate Release Artifact</span><code>node .knowledge/tools/validate-release-artifact.js dist/knowledge-v3.2.5.zip --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Release artifact hygiene</h3><p>Use the uploaded release asset for install checks; source snapshots are not install packages.</p></div>`;
+  const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/validate-release-artifact.js dist/knowledge-v${esc(systemVersion)}.zip --json"><span>Validate Release Artifact</span><code>node .knowledge/tools/validate-release-artifact.js dist/knowledge-v${esc(systemVersion)}.zip --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Release artifact hygiene</h3><p>Use the uploaded release asset for install checks; source snapshots are not install packages.</p></div>`;
   const onboarding = renderOnboarding(data, options);
   const updatesPanel = renderUpdates(data);
   const updateState = data.updateStatus?.status || 'never_checked';
@@ -923,19 +1370,20 @@ function renderTabbed(data, options = {}) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>.knowledge Inspector 3.2.5</title>
+<title>.knowledge Inspector ${esc(systemVersion)}</title>
 <style>
 :root{--bg:#091017;--panel:#101a23;--panel2:#13212b;--line:#2c3c45;--text:#f4f7f4;--muted:#aebbb3;--green:#39b980;--yellow:#e6b84c;--red:#e05252;--blue:#62a8e5;--violet:#a48be0;--shadow:0 18px 60px #0007}*{box-sizing:border-box}body{margin:0;background:#091017;color:var(--text);font:14px/1.48 ui-sans-serif,system-ui,-apple-system,Segoe UI,Arial}.app{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}.sidebar{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);background:#0b141b;padding:18px}.brand{font-weight:900;font-size:18px;margin-bottom:14px}.tab-btn{width:100%;display:block;text-align:left;border:1px solid transparent;background:transparent;color:var(--muted);padding:9px 10px;border-radius:8px;cursor:pointer}.tab-btn:hover,.tab-btn.active{background:#14232d;color:var(--text);border-color:#324752}.content{min-width:0}.topbar{position:sticky;top:0;z-index:5;background:#0e1820e8;backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 22px}.topbar h1{font-size:22px;margin:0 0 8px}.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{border:1px solid #344852;background:#121f28;border-radius:999px;padding:5px 9px;color:#dce8df;font-size:12px}main{padding:22px}.tab-panel{display:none}.tab-panel.active{display:block}.panel,.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:8px;padding:16px;box-shadow:var(--shadow)}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}h2{font-size:19px;margin:0}h3{font-size:15px;margin:16px 0 8px}.sub{color:var(--muted)}.grid{display:grid;gap:12px}.stats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.metric-grid{margin-top:10px}.compact-top-metrics{grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px}.compact-top-metrics .stat{padding:10px 12px;min-height:0}.compact-top-metrics .num{font-size:14px;line-height:1.15}.compact-top-metrics .cap{font-size:10px;margin-top:4px}.compact-top-metrics .sub{font-size:10px;line-height:1.35;margin-top:6px}.compact-top-metrics .severity-dot{top:8px;right:8px;width:6px;height:6px}.branch-diagnostics{margin:12px 0}.branch-diagnostics-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}.branch-diagnostics-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:16px;align-items:start}.branch-picker{display:grid;gap:5px;color:var(--muted);font-size:12px}.branch-picker select{background:#0b141b;border:1px solid #344852;color:var(--text);border-radius:8px;padding:9px;min-width:220px}.quick-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.action-card{cursor:pointer;text-align:left;border:1px solid #344852;background:#0d1820;border-radius:8px;padding:12px;color:var(--text)}.action-card.locked{border-style:dashed;opacity:.72}.action-card:hover{border-color:#63a0c9}.action-card span{display:block;font-weight:800;margin-bottom:5px}.action-card code{display:block;color:#9bd0f4;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stat{background:#0d1820;border:1px solid #263841;border-radius:8px;padding:12px;min-height:78px}.metric-card{position:relative;margin-top:6px;padding-top:18px;border-left:4px solid #3b5360}.metric-card.ok{border-left-color:var(--green)}.metric-card.warning{border-left-color:var(--yellow);background:#1d1a10}.metric-card.critical{border-left-color:var(--red);background:#211316}.severity-dot{position:absolute;top:8px;right:10px;width:8px;height:8px;border-radius:999px;background:#3b5360}.metric-card.ok .severity-dot{background:var(--green)}.metric-card.warning .severity-dot{background:var(--yellow)}.metric-card.critical .severity-dot{background:var(--red)}.num{font-size:24px;font-weight:900;word-break:break-word}.cap{color:var(--muted);font-size:11px;text-transform:uppercase}.pill{display:inline-flex;padding:3px 8px;border-radius:999px;background:#23323b}.trusted{background:#133629}.routing_trusted{background:#14324a}.near_trusted,.important,.medium{background:#3b2d15}.suspect,.low_confidence,.critical,.high{background:#4a1d22}.advisory_only{background:#292542}.table-controls{display:flex;gap:8px;margin-bottom:10px}.table-controls input,.table-controls select{background:#0b141b;border:1px solid #344852;color:var(--text);border-radius:8px;padding:9px}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #263841;text-align:left;vertical-align:top}th{color:var(--muted);font-size:11px;text-transform:uppercase}.kv th{width:170px}.mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.copy-btn{border:1px solid #3b5360;background:#11212c;color:#eaf3ee;border-radius:8px;padding:7px 9px;cursor:pointer}.danger-btn{border-color:#87535a;background:#321920}.onboarding-card{margin-bottom:14px}.onboarding-card.requires-setup{border-color:var(--yellow)}.onboarding-toggle{display:flex;justify-content:space-between;gap:12px;width:100%;border:0;background:transparent;color:var(--text);padding:0;text-align:left;cursor:pointer}.onboarding-toggle span{font-weight:900}.onboarding-toggle small{color:var(--muted)}.onboarding-body{margin-top:14px}.onboarding-body[hidden]{display:none}.setting-list{display:grid;gap:10px}.setting-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,320px);gap:14px;align-items:center;border:1px solid #263841;background:#0d1820;border-radius:8px;padding:10px}.setting-row span,.setting-row small{display:block}.setting-row small{color:var(--muted);margin-top:3px}.setting-row select,.setting-row input{width:100%;background:#0b141b;border:1px solid #344852;color:var(--text);border-radius:8px;padding:9px}.simple-trust-actions,.trust-repair-actions{margin:12px 0}.simple-trust-actions.compact{margin:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;padding:16px;border:1px solid #263841;border-radius:8px;background:#0d1820}.simple-trust-actions.compact h2{font-size:16px}.update-banner{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;border:1px solid #3b5360;background:#0d1820;border-radius:8px;padding:14px;margin-bottom:12px}.update-banner.available{border-color:#e6b84c}.update-banner.failed{border-color:#e05252}.empty-state{border:1px dashed #3b5360;background:#0c171f;border-radius:8px;padding:18px;text-align:center;color:var(--muted)}.cmd{display:flex;gap:8px;align-items:center;background:#081017;border:1px solid #263841;border-radius:8px;padding:9px;margin-top:10px}.cmd code{flex:1;color:#9bd0f4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pro-preview-intro{display:flex;justify-content:space-between;gap:16px;align-items:center;border:1px solid #30434d;background:#0d1820;border-radius:8px;padding:14px;margin:14px 0}.pro-preview-intro strong,.pro-preview-intro span{display:block}.pro-preview-intro span{color:var(--muted);margin-top:3px}.pro-waitlist-button{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 22px;border:1px solid #3c3f4b;border-radius:8px;background:linear-gradient(180deg,#34343d,#161720);box-shadow:inset 0 1px 0 #ffffff18,0 8px 18px #0008;color:#f4f0f2;text-transform:uppercase;letter-spacing:2px;font-weight:900;text-decoration:none;white-space:nowrap}.pro-waitlist-button:hover{border-color:#6d7180;background:linear-gradient(180deg,#3d3e48,#1c1d27)}.signal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.signal-card{border:1px solid #314752;background:#0d1820;border-radius:8px;padding:12px}.signal-card strong,.signal-card span{display:block}.signal-card span{color:var(--muted);font-size:12px}.result-panel{margin-top:12px}.result-toggle{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;border:0;background:transparent;color:var(--text);padding:0;text-align:left;cursor:pointer}.result-toggle span{font-weight:900}.result-toggle small{color:var(--muted)}.result-panel pre{margin-top:12px}.result-panel.is-collapsed pre{display:none}.wiki-svg{width:100%;height:440px;background:#081017;border:1px solid #263841;border-radius:8px}.edge{fill:none;stroke:#6d7d88}.edge.contradicts{stroke:var(--red)}.edge.supports{stroke:var(--green)}.edge.depends_on{stroke:var(--yellow)}.node{fill:var(--violet);stroke:#fff}.node.trusted{fill:var(--green)}.node.routing_trusted{fill:var(--blue)}.node.suspect,.node.low_confidence{fill:var(--red)}.label{font-size:10px;fill:#eef7f2;paint-order:stroke;stroke:#081017;stroke-width:3px}.toast{position:fixed;right:18px;bottom:18px;background:#123629;color:#c8f3dc;border:1px solid #2a8b62;padding:10px 12px;border-radius:8px;opacity:0;transform:translateY(8px);transition:.18s}.toast.show{opacity:1;transform:translateY(0)}@media(max-width:850px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.tab-btn{display:inline-block;width:auto;margin:0 4px 6px 0}.topbar{position:relative}main{padding:14px}.table-controls,.setting-row{display:block}.table-controls input,.table-controls select,.setting-row select,.setting-row input{width:100%;margin-top:8px;margin-bottom:8px}.update-banner{display:block}.branch-diagnostics-body{grid-template-columns:1fr}.pro-preview-intro{align-items:flex-start;flex-direction:column}.pro-waitlist-button{width:100%}}
 </style>
 <style>
-.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.topbar-main{min-width:0}.topbar-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}.turn-off-btn{white-space:nowrap}.turn-off-btn:disabled{opacity:.55;cursor:not-allowed}.graph-shelf{margin:12px 0}.graph-shelf-header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.graph-shelf-header h2{margin:0 0 4px}.graph-shelf-summary{display:block;color:var(--muted);margin-top:4px}.graph-shelf-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.graph-shelf.is-collapsed .graph-shelf-body{display:none}.graph-shelf.is-collapsed{padding-bottom:12px}.free-core-graph{display:grid;gap:12px}.graph-scroll{overflow:auto;border-radius:8px}.graph-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}.graph-metric{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:9px 10px}.graph-metric strong,.graph-metric span,.graph-metric small{display:block}.graph-metric strong{font-size:18px}.graph-metric span{color:var(--muted);font-size:11px;text-transform:uppercase}.graph-metric small{color:var(--muted);font-size:11px;margin-top:3px}.trust-graph-svg{height:520px;min-width:760px;background:linear-gradient(180deg,#081017,#0c1820);overflow:visible}.lane line{stroke:#263841;stroke-width:1}.lane text{fill:#aebbb3;font-size:12px;text-transform:uppercase}.edge{fill:none;stroke:#6d7d88;stroke-width:2;opacity:.86}.edge.outranks{stroke:#eaf3ee}.edge.routes{stroke:var(--blue)}.edge.documents{stroke:var(--green)}.edge.checks{stroke:#67e8f9}.edge.references,.edge.related{stroke:var(--violet)}.edge.advisory{stroke:var(--yellow);stroke-dasharray:6 4}.edge.supports{stroke:var(--green)}.edge.depends_on{stroke:var(--yellow)}.edge.contradicts{stroke:var(--red)}#graph-arrow path{fill:#91a2ad}.graph-node{cursor:pointer}.graph-node:focus .node,.graph-node:hover .node{stroke:#fff;stroke-width:3}.node{stroke:#081017;stroke-width:2}.node.source_truth{fill:#eaf3ee}.node.module{fill:var(--blue)}.node.wiki{fill:var(--violet)}.node.trusted{fill:var(--green)}.node.routing_trusted{fill:var(--blue)}.node.advisory_only{fill:var(--violet)}.node.suspect,.node.low_confidence{fill:var(--red)}.label{text-anchor:middle;font-size:11px;fill:#eef7f2;paint-order:stroke;stroke:#081017;stroke-width:4px;pointer-events:none}.label.source_truth{font-weight:800}.graph-node-detail{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:10px;color:#dce8df}.graph-node-detail strong,.graph-node-detail span,.graph-node-detail code{display:block}.graph-node-detail span{color:var(--muted);margin-top:3px}.graph-node-detail code{color:#9bd0f4;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.source-order-strip{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:10px;color:#dce8df}.graph-insights{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:12px}.graph-insights h3{margin-top:0}.graph-insights .reason-list{margin-top:10px}.edge-swatch.outranks{background:#eaf3ee}.edge-swatch.routes{background:var(--blue)}.edge-swatch.documents,.edge-swatch.supports{background:var(--green)}.edge-swatch.checks{background:#67e8f9}.edge-swatch.references{background:var(--violet)}.edge-swatch.advisory{background:var(--yellow)}.edge-swatch.contradicts{background:var(--red)}@media(max-width:850px){.topbar{display:block}.topbar-actions{margin-top:10px}.trust-graph-svg{height:420px;min-width:680px}.graph-tools,.graph-shelf-header{display:block}.graph-tools .copy-btn,.graph-shelf-actions{margin-top:8px}}
+body,.app,.content,main{overflow-x:hidden}.agent-picker{display:grid;gap:5px;min-width:0}.agent-picker small{color:var(--muted);line-height:1.35}.graph-hit-target{fill:#fff;fill-opacity:0;stroke:none;pointer-events:all}.graph-node .label{pointer-events:all;cursor:pointer}.graph-node:hover .graph-hit-target,.graph-node:focus .graph-hit-target{stroke:#fff;stroke-opacity:.18;stroke-width:1}
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.topbar-main{min-width:0}.topbar-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}.turn-off-btn{white-space:nowrap;font-size:16px;font-weight:900;line-height:1.1;min-height:50px;padding:17px 23px}.turn-off-btn:disabled{opacity:.55;cursor:not-allowed}.graph-shelf{margin:12px 0}.graph-shelf-header{display:block}.graph-title-block{min-width:0}.graph-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.graph-title-row h2,.graph-shelf-header h2{margin:0}.graph-shelf-summary{display:block;color:var(--muted);margin-top:4px}.graph-shelf-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;align-items:center}.graph-toggle-btn{display:inline-flex;align-items:center;gap:5px}.graph-toggle-arrow{font-weight:900}.graph-shelf.is-collapsed .graph-shelf-body{display:none}.graph-shelf.is-collapsed{padding-bottom:12px}.free-core-graph{display:grid;gap:12px}.free-core-graph>.legend{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;line-height:1.7;color:var(--muted)}.free-core-graph>.legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.graph-scroll{overflow:auto;border-radius:8px;max-width:100%;contain:layout paint}.graph-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}.graph-metric{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:9px 10px}.graph-metric strong,.graph-metric span,.graph-metric small{display:block}.graph-metric strong{font-size:18px}.graph-metric span{color:var(--muted);font-size:11px;text-transform:uppercase}.graph-metric small{color:var(--muted);font-size:11px;margin-top:3px}.trust-graph-svg{height:580px;min-width:1120px;background:linear-gradient(180deg,#081017,#0c1820);overflow:visible}.lane line{stroke:#263841;stroke-width:1}.lane text{fill:#aebbb3;font-size:12px;text-transform:uppercase}.edge{fill:none;stroke:#6d7d88;stroke-width:2;opacity:.62;stroke-linecap:round}.edge.bundled{stroke-width:3.2;opacity:.78}.edge.invalid{stroke-dasharray:5 5;opacity:.5}.edge.outranks{stroke:#eaf3ee}.edge.routes{stroke:var(--blue)}.edge.documents{stroke:var(--green)}.edge.checks{stroke:#67e8f9}.edge.evidence{stroke:#9bd0f4}.edge.references,.edge.related{stroke:var(--violet)}.edge.advisory{stroke:var(--yellow);stroke-dasharray:6 4}.edge.supports{stroke:var(--green)}.edge.depends_on{stroke:var(--yellow)}.edge.contradicts{stroke:var(--red)}#graph-arrow path{fill:#91a2ad}.graph-node{cursor:pointer}.graph-node:focus .node,.graph-node:hover .node{stroke:#fff;stroke-width:3}.node{stroke:#081017;stroke-width:2}.node.source_truth{fill:#eaf3ee}.node.module{fill:var(--blue)}.node.wiki{fill:var(--violet)}.node.trusted{fill:var(--green)}.node.routing_trusted{fill:var(--blue)}.node.advisory_only{fill:var(--violet)}.node.suspect,.node.low_confidence{fill:var(--red)}.label{text-anchor:middle;font-size:10.5px;fill:#eef7f2;paint-order:stroke;stroke:#081017;stroke-width:4px;pointer-events:none}.label.source_truth{font-weight:800}.graph-node-detail{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:12px;color:#dce8df;max-height:430px;overflow:auto}.graph-node-detail strong,.graph-node-detail span,.graph-node-detail code{display:block}.graph-node-detail span{color:var(--muted);margin-top:3px}.graph-node-detail code{color:#9bd0f4;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.graph-detail-head{border-bottom:1px solid #263841;margin-bottom:10px;padding-bottom:8px}.graph-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.graph-detail-grid section{border:1px solid #263841;background:#09161d;border-radius:8px;padding:10px;margin:0}.graph-detail-grid h4{margin:0 0 7px;font-size:12px;text-transform:uppercase;color:#aebbb3}.graph-detail-grid ul{margin:0;padding-left:18px}.graph-detail-grid li{margin-bottom:5px}.graph-detail-grid em,.graph-detail-grid small{display:block;color:var(--muted);font-style:normal}.graph-detail-grid b{display:block;margin-top:7px}.graph-detail-actions{display:flex;flex-wrap:wrap;gap:7px}.graph-action-link{text-decoration:none}.graph-advisory{color:#ffe7ad!important}.source-order-strip{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:10px;color:#dce8df}.graph-insights{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:12px}.graph-insights h3{margin-top:0}.graph-insights .reason-list{margin-top:10px}.edge-swatch.outranks{background:#eaf3ee}.edge-swatch.routes{background:var(--blue)}.edge-swatch.documents,.edge-swatch.supports{background:var(--green)}.edge-swatch.checks{background:#67e8f9}.edge-swatch.evidence{background:#9bd0f4}.edge-swatch.references{background:var(--violet)}.edge-swatch.advisory{background:var(--yellow)}.edge-swatch.contradicts{background:var(--red)}@media(max-width:850px){.topbar{display:block}.topbar-actions{margin-top:10px}.trust-graph-svg{height:500px;min-width:900px}.graph-tools,.graph-shelf-header{display:block}.graph-title-row{align-items:flex-start}.graph-tools .copy-btn,.graph-shelf-actions{margin-top:8px}}
 </style>
 </head>
 <body>
 <div class="app">
-<aside class="sidebar"><div class="brand">.knowledge Inspector 3.2.5</div><nav>${nav}</nav></aside>
+<aside class="sidebar"><div class="brand">.knowledge Inspector ${esc(systemVersion)}</div><nav>${nav}</nav></aside>
 <div class="content">
-<header class="topbar"><div class="topbar-main"><h1>.knowledge Inspector 3.2.5</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip">Update: ${esc(updateState)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></div><div class="topbar-actions">${turnOffButton}</div></header>
+<header class="topbar"><div class="topbar-main"><h1>.knowledge Inspector ${esc(systemVersion)}</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip">Update: ${esc(updateState)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></div><div class="topbar-actions">${turnOffButton}</div></header>
 <main>${sections}</main>
 </div></div>
 <div id="toast" class="toast">Copied</div>
@@ -952,20 +1400,33 @@ function setResultPanel(open,summary){const panel=document.querySelector('[data-
 function authHeaders(headers){return sessionToken?{...(headers||{}),authorization:'Bearer '+sessionToken}:(headers||{})}
 async function updateApi(path,options){const output=document.getElementById('updateOutput');try{const opts=options||{};opts.headers=authHeaders(opts.headers);const res=await fetch(path,opts);const json=await res.json();if(output)output.textContent=JSON.stringify(json,null,2);const status=json.status||json.release||json.dry_run?.json||json.apply?.json||{};const state=document.getElementById('updateState');if(state&&status.status)state.textContent=status.status;const banner=document.getElementById('updateBanner');if(banner){banner.classList.toggle('available',status.status==='update_available');banner.classList.toggle('failed',json.ok===false||status.status==='check_failed')}return json}catch(error){if(output)output.textContent='Update API unavailable in static mode: '+error.message;return null}}
 function escapeHtmlClient(value){return String(value||'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
-function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.textContent=collapsed?'Expand':'Collapse';button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
+function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'▸':'▾')+'</span> '+(collapsed?'Expand':'Collapse')}
+function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.innerHTML=graphToggleHtml(collapsed);button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
 function initGraphShelves(){document.querySelectorAll('[data-graph-shelf]').forEach((shelf)=>{const id=shelf.getAttribute('data-graph-shelf');let collapsed=false;try{collapsed=localStorage.getItem('knowledge.graph.'+id+'.collapsed')==='1'}catch{}setGraphShelf(id,collapsed)})}
-function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;const group=node.getAttribute('data-graph-group')||'other';const title=node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';const description=node.getAttribute('data-graph-description')||'';let action='Shows why this node participates in routing, trust, or advisory context.';if(group==='module'){action='Module node: filtering Trust Overview to this module.';const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}else if(group==='wiki'){action='Wiki/advisory node: use local search before treating it as evidence.'}else if(group==='source_truth'){action='Source-of-truth node: this explains canonical trust order; code and tests outrank generated knowledge.'}detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+(description?'<span>'+escapeHtmlClient(description)+'</span>':'')+'<span>'+escapeHtmlClient(action)+'</span><code>'+escapeHtmlClient(command)+'</code>'}
+function graphList(items,empty,formatter){const values=Array.isArray(items)?items:[];if(!values.length)return '<p class="muted">'+escapeHtmlClient(empty)+'</p>';return '<ul>'+values.map((item)=>'<li>'+formatter(item)+'</li>').join('')+'</ul>'}
+function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' → '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
+function graphArtifacts(values,empty){return graphList(values,empty,(item)=>escapeHtmlClient(item))}
+function graphAction(action){if(action.href)return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(action.href)+'">'+escapeHtmlClient(action.label||'Open')+'</a>';if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
+function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' · ')}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+(pathValue?' · Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
 async function shutdownInspector(){if(!liveMode||!sessionToken){showToast('No live Inspector process');return}if(!confirm('Turn off the live Inspector and release this port?'))return;const out=document.getElementById('result');setResultPanel(true,'Inspector shutdown');if(out)out.textContent='Closing Inspector server...';try{const res=await fetch('/api/shutdown',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast('Inspector is shutting down');setTimeout(()=>{try{window.close()}catch{}},450)}catch(error){if(out)out.textContent='Shutdown request failed: '+error.message}}
 function branchByName(name){return (gitBranchState.branches||[]).find((branch)=>branch.name===name)||null}
 function setBranchField(name,value){document.querySelectorAll('[data-branch-field="'+name+'"]').forEach((el)=>{el.textContent=value||'none'})}
 function dirtyLabel(diagnostics){if(diagnostics.current_worktree_dirty===true){const s=diagnostics.dirty_summary||{};return 'dirty ('+(s.changed||0)+' changed, '+(s.staged||0)+' staged)'}if(diagnostics.current_worktree_dirty===false)return 'clean';return 'not checked in current worktree'}
 function applyBranchDiagnostics(name){const branch=branchByName(name)||{};const active=gitBranchState.active||'unknown';const current=(branch.name||name)===active;const diagnostics={branch:branch.name||name||active,active_branch:active,head_sha:branch.head_sha||'',upstream:branch.upstream||null,worktree_path:branch.worktree_path||null,current_worktree_dirty:current?gitDirtyState.dirty:null,dirty_summary:current?gitDirtyState.dirty_summary:null,note:current?'Diagnostics are using the active worktree.':(branch.worktree_path?'Branch is checked out in another worktree; run diagnostics there for file-level status.':'Branch is not checked out in this worktree; select or create a worktree before file-level diagnostics.')};setBranchField('branch',diagnostics.branch);setBranchField('active',diagnostics.active_branch);setBranchField('head',(diagnostics.head_sha||'').slice(0,12)||'unknown');setBranchField('upstream',diagnostics.upstream||'none');setBranchField('worktree',diagnostics.worktree_path||'not checked out');setBranchField('dirty',dirtyLabel(diagnostics));setBranchField('note',diagnostics.note)}
 async function refreshBranchDiagnostics(name){applyBranchDiagnostics(name);if(!liveMode||!sessionToken)return;try{const res=await fetch('/api/git/diagnostics?branch='+encodeURIComponent(name),{headers:authHeaders()});const json=await res.json();if(json.ok&&json.diagnostics){setBranchField('branch',json.diagnostics.branch||'unknown');setBranchField('active',json.diagnostics.active_branch||gitBranchState.active||'unknown');setBranchField('head',((json.diagnostics.head_sha||'').slice(0,12)||'unknown'));setBranchField('upstream',json.diagnostics.upstream||'none');setBranchField('worktree',json.diagnostics.worktree_path||'not checked out');setBranchField('dirty',dirtyLabel(json.diagnostics));setBranchField('note',json.diagnostics.note||'')}}catch{}}
-async function saveOnboarding(){if(!liveMode||!sessionToken){copyText('node .knowledge/inspector.js');return}const out=document.getElementById('result');setResultPanel(true,'Setup response');if(out)out.textContent='Saving first-run setup...';const body={user_mode:document.getElementById('onboarding-user-mode')?.value||'simple',agents_can_do_without_asking:document.getElementById('onboarding-permission')?.value||'run checks and reports',concurrent_work_policy:document.getElementById('onboarding-concurrency')?.value||'Safe Queue',merge_policy:document.getElementById('onboarding-merge')?.value||'Manual Only',report_footer_mode:document.getElementById('onboarding-footer')?.value||'compact',detected_agent_runtime:document.getElementById('onboarding-runtime')?.value||null};const res=await fetch('/api/settings/onboarding',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){const card=document.getElementById('onboarding-wizard');const bodyEl=card?.querySelector('.onboarding-body');if(bodyEl)bodyEl.hidden=true;if(card)card.setAttribute('data-onboarding-expanded','false');showToast('Setup saved')}}
+function onboardingAttrJson(name,fallback){const card=document.getElementById('onboarding-wizard');try{return JSON.parse(card?.getAttribute(name)||'')||fallback}catch{return fallback}}
+function onboardingAgents(){return onboardingAttrJson('data-onboarding-agents',[])}
+function onboardingSettings(){return onboardingAttrJson('data-onboarding-agent-settings',{})}
+function onboardingSelectedAgent(){const select=document.getElementById('onboarding-agent');const id=select?.value||'';return onboardingAgents().find((agent)=>agent.id===id)||{id:id||'local-agent',label:id||'local-agent',runtime:id||''}}
+function setControlValue(id,value){const el=document.getElementById(id);if(el&&value!=null)el.value=value}
+function onboardingAgentSummary(agent){const bits=[agent.runtime?'runtime '+agent.runtime:'',agent.status?'status '+agent.status:'',agent.branch?'branch '+agent.branch:'',agent.workspace_id?'workspace '+agent.workspace_id:''].filter(Boolean);return bits.join(' / ')||'No active session metadata yet.'}
+function applyOnboardingAgentSettings(agentId){const settings=onboardingSettings()[agentId]||{};setControlValue('onboarding-user-mode',settings.user_mode||'simple');setControlValue('onboarding-permission',settings.agents_can_do_without_asking||'run checks and reports');setControlValue('onboarding-concurrency',settings.concurrent_work_policy||'Safe Queue');setControlValue('onboarding-merge',settings.merge_policy||'Manual Only');setControlValue('onboarding-footer',settings.report_footer_mode||'compact');const agent=onboardingAgents().find((item)=>item.id===agentId)||{};document.querySelectorAll('[data-onboarding-agent-summary]').forEach((el)=>{el.textContent=onboardingAgentSummary(agent)})}
+async function saveOnboarding(){if(!liveMode||!sessionToken){copyText('node .knowledge/inspector.js');return}const out=document.getElementById('result');setResultPanel(true,'Setup response');if(out)out.textContent='Saving first-run setup...';const selectedAgent=onboardingSelectedAgent();const body={agent_id:selectedAgent.id,agent_runtime:selectedAgent.runtime||selectedAgent.id,agent_display_name:selectedAgent.label||selectedAgent.id,user_mode:document.getElementById('onboarding-user-mode')?.value||'simple',agents_can_do_without_asking:document.getElementById('onboarding-permission')?.value||'run checks and reports',concurrent_work_policy:document.getElementById('onboarding-concurrency')?.value||'Safe Queue',merge_policy:document.getElementById('onboarding-merge')?.value||'Manual Only',report_footer_mode:document.getElementById('onboarding-footer')?.value||'compact',detected_agent_runtime:selectedAgent.runtime||selectedAgent.id};const res=await fetch('/api/settings/onboarding',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){const card=document.getElementById('onboarding-wizard');const bodyEl=card?.querySelector('.onboarding-body');if(bodyEl)bodyEl.hidden=true;if(card)card.setAttribute('data-onboarding-expanded','false');showToast('Setup saved')}}
 async function runLocalAction(id){if(!liveMode||!sessionToken)return;const out=document.getElementById('result');setResultPanel(true,'Latest local action output');if(out)out.textContent='Running '+id+'...';const res=await fetch('/api/actions/'+encodeURIComponent(id)+'/run',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify({confirmed:true})});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast(json.ok?'Action finished':'Action needs review')}
 document.addEventListener('click',(event)=>{const copy=event.target.closest('[data-copy]');if(copy){copyText(copy.getAttribute('data-copy'));return}const shutdown=event.target.closest('[data-shutdown]');if(shutdown){shutdownInspector();return}const graphToggle=event.target.closest('[data-graph-toggle]');if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle');const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');setGraphShelf(id,!shelf?.classList.contains('is-collapsed'));return}const graphNode=event.target.closest('[data-graph-node]');if(graphNode){showGraphNodeDetail(graphNode);return}const resultToggle=event.target.closest('[data-result-toggle]');if(resultToggle){const panel=document.querySelector('[data-result-panel="true"]');const open=panel?.classList.contains('is-collapsed');setResultPanel(open,open?'Latest local action output':'Collapsed until an action runs');return}const toggle=event.target.closest('[data-onboarding-toggle]');if(toggle){const card=document.getElementById('onboarding-wizard');const body=card?.querySelector('.onboarding-body');if(body){body.hidden=!body.hidden;if(card)card.setAttribute('data-onboarding-expanded',body.hidden?'false':'true')}return}const save=event.target.closest('[data-onboarding-save]');if(save){saveOnboarding();return}const localAction=event.target.closest('[data-action]');if(localAction){runLocalAction(localAction.getAttribute('data-action'));return}const update=event.target.closest('[data-update-action]');if(update){const action=update.getAttribute('data-update-action');setResultPanel(true,'Update action output');if(action==='status')updateApi('/api/update/status?refresh=1');if(action==='dry-run')updateApi('/api/update/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(action==='apply'&&confirm('Apply .knowledge system update now? Project knowledge will be preserved and a backup will be created.')){const latest=document.getElementById('updateBanner')?.getAttribute('data-latest-version')||'';updateApi('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,expectedVersion:latest&&latest!=='-'?latest:null})})}return}const tab=event.target.closest('[data-tab]');if(tab){document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach((p)=>p.classList.remove('active'));tab.classList.add('active');const panel=document.querySelector('[data-panel="'+tab.getAttribute('data-tab')+'"]');if(panel)panel.classList.add('active')}});
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
-document.addEventListener('change',(event)=>{const select=event.target.closest('[data-branch-select]');if(select)refreshBranchDiagnostics(select.value)});
+document.addEventListener('change',(event)=>{const agentSelect=event.target.closest('[data-onboarding-agent-select]');if(agentSelect){applyOnboardingAgentSettings(agentSelect.value);return}const select=event.target.closest('[data-branch-select]');if(select)refreshBranchDiagnostics(select.value)});
 if(location.protocol==='http:'||location.protocol==='https:')updateApi('/api/update/status');
 initGraphShelves();
 function applyFilters(tableName){const searchInput=document.querySelector('[data-table-search="'+tableName+'"]');const select=document.querySelector('[data-table-filter="'+tableName+'"]');const q=((searchInput&&searchInput.value)||'').toLowerCase();const f=((select&&select.value)||'').toLowerCase();document.querySelectorAll('table[data-table="'+tableName+'"] tbody tr').forEach((row)=>{const text=(row.getAttribute('data-search')||row.textContent||'').toLowerCase();const rowFilter=(row.getAttribute('data-filter')||'').toLowerCase();row.style.display=((!q||text.includes(q))&&(!f||rowFilter===f||rowFilter.includes(f)))?'':'none'})}
@@ -1061,6 +1522,7 @@ function build(options = {}) {
       ,'inspector_shutdown'
       ,'collapsible_trust_graph'
       ,'graph_node_drilldown'
+      ,'onboarding_agent_picker'
     ]
   };
   writeJsonAtomic(path.join(outDir, 'status.json'), status);

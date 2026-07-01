@@ -10,7 +10,7 @@ const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { parseCliArgs } = require('./lib/path-context');
 
 const root = path.resolve(__dirname, '..');
-const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.5';
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.6';
 const artifactRel = `dist/knowledge-v${version}.zip`;
 
 function sanitizeText(value) {
@@ -145,6 +145,7 @@ function main(argv = process.argv.slice(2)) {
     ['self-test Update Checks', [process.execPath, ['tools/self-test-update-checks.js'], 120000]],
     ['self-test Inspector Update E2E', [process.execPath, ['tools/self-test-inspector-update-e2e.js'], 420000]],
     ['self-test install policy', [process.execPath, ['tools/self-test-install-policy.js'], 420000]],
+    ['mem0 recipe quality', [process.execPath, ['tools/self-test-memory-providers.js', '--recipe-quality-only'], 180000]],
     ['self-test memory providers', [process.execPath, ['tools/self-test-memory-providers.js'], 180000]],
     ['self-test external memory', [process.execPath, ['tools/self-test-external-memory.js'], 180000]],
     ['self-test Free Core Graph', [process.execPath, ['tools/self-test-free-core-graph.js'], 120000]],

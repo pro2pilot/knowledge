@@ -74,16 +74,16 @@ function main(argv = process.argv.slice(2)) {
   const issues = [];
   if (release.status !== 'ok') issues.push('release artifact is missing or invalid');
   const result = {
-    schema_version: '3.2.5',
+    schema_version: '3.2.6',
     generated_at: new Date().toISOString(),
     status: issues.length ? 'failed' : 'ok',
     distinction: {
       source_checkout: 'dev/source deliverable with tests, docs, temp-output exclusions and package tooling',
-      install_artifact: 'dist/knowledge-v3.2.5.zip'
+      install_artifact: `dist/knowledge-v${pkg.version}.zip`
     },
     source,
     release_artifact: {
-      path: 'dist/knowledge-v3.2.5.zip',
+      path: `dist/knowledge-v${pkg.version}.zip`,
       status: release.status,
       entries: release.entries || 0,
       violations: release.violations || []
@@ -103,7 +103,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const { flags } = parseCliArgs(process.argv.slice(2));
-    const result = { schema_version: '3.2.5', status: 'failed', error: error.message };
+    const result = { schema_version: '3.2.6', status: 'failed', error: error.message };
     if (flags.json) console.log(JSON.stringify(result, null, 2));
     else console.error(error.message);
     process.exit(2);

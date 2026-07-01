@@ -8,12 +8,14 @@ const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { appendTeamEvent } = require('./lib/team-store');
 const { loadProviderManifests } = require('./lib/memory-providers');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const lockDir = path.join(stateRoot, '.lock');
+const SCHEMA_VERSION = systemVersion();
 
 function nowIso() { return new Date().toISOString(); }
 function rel(abs, base = knowledgeRoot) {
@@ -271,7 +273,7 @@ function doctorUnlocked(options = {}) {
   const criticalCount = issues.filter((i) => i.severity === 'critical').length;
   const score = scoreFromIssues(issues);
   const report = {
-    schema_version: '3.2.4',
+    schema_version: SCHEMA_VERSION,
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,

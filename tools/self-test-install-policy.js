@@ -192,6 +192,7 @@ function generatedOrRuntime(file) {
     file === '.knowledge/maps/dependency_map.json' ||
     file === '.knowledge/maps/directory_map.json' ||
     file === '.knowledge/maps/entrypoints.json' ||
+    /^\.knowledge\/external_memory\/(mem0|legacy|claude|claude_mem|claude-auto-memory)(\/|$)/i.test(file) ||
     file.startsWith('.knowledge/evaluation/results/') ||
     file.includes('.tmp-') ||
     file.includes('.bak-') ||
@@ -280,7 +281,7 @@ function assertInstalledSystemComplete(repo) {
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.5.md',
+    '.release-notes/v3.2.6.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',
@@ -320,6 +321,11 @@ function main(argv = process.argv.slice(2)) {
       assert(entries.includes('.knowledge/.gitignore'), 'Artifact does not contain installed .knowledge/.gitignore.', {});
       assert(entries.includes('.knowledge/install-manifest.json'), 'Artifact does not contain install-manifest.json.', {});
       assert(entries.includes('.knowledge/memory-providers/mem0/manifest.json'), 'Artifact does not contain Mem0 provider manifest.', {});
+      assert(entries.includes('.knowledge/docs/mem0-install.md'), 'Artifact does not contain Mem0 install docs.', {});
+      assert(entries.includes('.knowledge/docs/memory-providers.md'), 'Artifact does not contain memory provider docs.', {});
+      assert(entries.includes('.knowledge/tools/memory-mem0.js'), 'Artifact does not contain Mem0 provider code.', {});
+      assert(entries.includes('.knowledge/tools/memory-provider.js'), 'Artifact does not contain memory provider CLI.', {});
+      assert(!entries.some((entry) => /^\.knowledge\/external_memory\/mem0(\/|$)/.test(entry)), 'Artifact contains Mem0 user runtime state.', {});
       assert(entries.includes('.knowledge/memory-providers/pinecone/manifest.json'), 'Artifact does not contain Pinecone provider manifest.', {});
       assert(entries.includes('.knowledge/benchmarks/run-benchmarks.js'), 'Artifact does not contain benchmark runner.', {});
       assert(!entries.some((entry) => /(^|\/)\.git(\/|$)/.test(entry)), 'Artifact contains Git metadata.', {});
@@ -795,6 +801,11 @@ function main(argv = process.argv.slice(2)) {
         'inspector/',
         'metrics/baseline.json',
         'metrics/external_memory.json',
+        'external_memory/mem0/',
+        'external_memory/legacy/',
+        'external_memory/claude/',
+        'external_memory/claude_mem/',
+        'external_memory/claude-auto-memory/',
         'maps/wiki_graph.json',
         '*.tmp-*',
         '*.bak-*'

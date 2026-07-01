@@ -1,5 +1,33 @@
 # Release Notes
 
+## v3.2.6 - Mem0 guided setup and recipe gate
+
+v3.2.6 turns Mem0 OSS onboarding into a product flow instead of an agent-written
+recipe. A weak agent can run one setup command, get a receipt/config/recipe,
+see live runtime status, and keep Mem0 clearly advisory-only.
+
+### Added
+
+- `node .knowledge/tools/memory-provider.js setup mem0-oss --live --json`.
+- Deterministic `write-recipe` and `validate-recipe` commands for the Mem0
+  cookbook page.
+- Repo-local Mem0 config, runtime status cache, and Inspector onboarding card.
+- Release gate coverage for Mem0 recipe quality.
+
+### Fixed
+
+- Offline status now reads cached live health without importing Python or making
+  network calls.
+- Mem0 receipts, runtime availability, and package install state are reported as
+  separate fields.
+- Live Mem0 search/list use filter-based Mem0 2.0.4 API calls.
+- Live setup now rejects mismatched or unreported Mem0 runtime versions and
+  returns one exact pinned install command.
+- Offline status and Inspector now show cached Mem0 runtime version and whether
+  it matches the pin.
+- Live operation output now distinguishes health/list from add/search/recall
+  embedding-provider behavior.
+
 ## v3.2.5 - Inspector first-run, updater, graph shelf, and shutdown
 
 v3.2.5 makes the local Inspector the obvious post-install control surface. After

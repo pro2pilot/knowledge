@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SCHEMA_VERSION = '3.2.4';
+const SCHEMA_VERSION = '3.2.6';
 const TRUST_POLICY = Object.freeze({
   source_of_truth: false,
   trust_effect: 'advisory_only',

@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.2.5",
+  "version": "3.2.6",
   "description": "Open repo-local trust layer for AI coding agents: routing, evidence, freshness, repair, PR review, and a local Visual Inspector.",
   "type": "commonjs",
   "engines": {
@@ -19,6 +19,7 @@
     "kb:external:status": "node tools/external-memory-status.js",
     "kb:memory:list": "node tools/memory-provider.js list --json",
     "kb:memory:status": "node tools/memory-provider.js status-all --json",
+    "kb:memory:setup": "node tools/memory-provider.js setup mem0-oss --live --json",
     "kb:memory:mem0": "node tools/memory-mem0.js health --json",
     "kb:metrics": "node tools/collect-metrics.js",
     "kb:evaluate": "node tools/evaluation-harness.js",

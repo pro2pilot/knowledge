@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.5",
+  "schema_version": "3.2.6",
   "install_artifact": "github_release_asset",
   "asset_name_pattern": "^knowledge-v\\d+\\.\\d+\\.\\d+\\.zip$",
   "canonical_release_url": "https://github.com/pro2pilot/knowledge/releases/latest",

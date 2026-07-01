@@ -124,13 +124,14 @@ Memory providers are advisory only. They never outrank current code, tests, evid
 ```bash
 node .knowledge/tools/memory-provider.js list --json
 node .knowledge/tools/memory-provider.js preview mem0-oss --json
+node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
 node .knowledge/tools/memory-provider.js status-all --json
 node .knowledge/tools/memory-mem0.js health --json
 node .knowledge/tools/memory-mem0.js health --adapter live --json
 node .knowledge/tools/memory-pinecone.js health --json
 ```
 
-Mem0 OSS is the recommended optional free/core backend. Live Mem0 health auto-detects Python from explicit `--python`, Mem0/Python env vars, active virtual environments, PATH, Windows `py`/`pymanager`, and standard install directories. It does not scan the whole computer and never installs packages automatically; use `--python "<path>"` when the right interpreter is known. Only `health --adapter live` uses a 30000 ms default timeout for the live Mem0 import/health path, because the first `import mem0` on Windows can be noticeably slower than warm checks; discovery/probe checks remain short. If it times out, JSON reports `diagnostic_code: python_timeout`, and `--timeout-ms <ms>` can override the wait. Pinecone remains an optional vector/cloud retrieval bridge. Claude MEM is legacy migration data only.
+Mem0 OSS is the recommended optional free/core backend. Start with `setup mem0-oss --live --json`; it creates or reuses the receipt, writes repo-local config, regenerates the Mem0 cookbook recipe, checks live runtime explicitly, and updates the runtime status cache. Status commands stay offline-safe and distinguish `receipt_present`, `runtime_available`, and `package_installed`. Live add/search/recall require explicit `--adapter live --yes-live-memory`; add is an external-memory write and search/recall return advisory context only. If live import times out, JSON reports `diagnostic_code: live_operation_timeout`, and `--timeout-ms <ms>` can override the wait. Pinecone remains an optional vector/cloud retrieval bridge. Claude MEM is legacy migration data only.
 
 ## Updating an existing `.knowledge` installation
 
@@ -351,11 +352,11 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.5.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
+Use `dist/knowledge-v3.2.6.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
 
 ```bash
 node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.5.zip --json
+node tools/validate-release-artifact.js dist/knowledge-v3.2.6.zip --json
 ```
 
 ## Free Inspector vs Inspector Pro

@@ -9,7 +9,7 @@ const zlib = require('zlib');
 const { spawn, spawnSync } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const targetVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.5';
+const targetVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.6';
 const previousVersion = '3.2.4';
 
 function assert(condition, message, details = null) {

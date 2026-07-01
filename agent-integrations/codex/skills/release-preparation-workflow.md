@@ -78,7 +78,7 @@ Ask or infer these before doing release work:
 
 ```txt
 REPO_FULL_NAME          Example: pro2pilot/knowledge
-LOCAL_REPO_PATH         Example: C:\path\to\knowledge
+LOCAL_REPO_PATH         Example: <local repo path>
 BASE_BRANCH             Usually: main
 WORK_BRANCH             Example: fix/install-git-policy
 TARGET_VERSION          Example: 3.2.4
@@ -543,10 +543,19 @@ contains .knowledge/install-policy.json
 contains .knowledge/tools/flow.js
 contains .knowledge/tools/install-check.js
 contains .knowledge/.gitignore
+contains .knowledge/memory-providers/mem0/manifest.json
 does not contain .knowledge/.git/
 does not contain .knowledge/.github/
 does not contain dist/
 does not contain runtime logs/events/locks/temp/backups
+does not contain .knowledge/external_memory/mem0/
+does not contain .knowledge/external_memory/mem0/config.json
+does not contain .knowledge/external_memory/mem0/runtime_status.json
+does not contain .knowledge/external_memory/mem0/install_receipt.json
+does not contain .knowledge/external_memory/mem0/qdrant/
+does not contain .knowledge/external_memory/mem0/history.db
+does not contain .knowledge/external_memory/mem0/runtime/
+does not contain developer-local absolute paths from Windows/macOS home dirs, local project roots, or temp knowledge work dirs
 text files are LF-normalized if package-release claims that behavior
 install policy forbids GitHub source archives and target-root `knowledge-src/`
 ```
@@ -627,9 +636,45 @@ Forbidden staged patterns:
 .knowledge/maps/wiki_graph.json
 .knowledge/maps/file_criticality.json
 .knowledge/metrics/baseline.json
+.knowledge/external_memory/mem0/
+.knowledge/external_memory/mem0/config.json
+.knowledge/external_memory/mem0/runtime_status.json
+.knowledge/external_memory/mem0/install_receipt.json
+.knowledge/external_memory/mem0/qdrant/
+.knowledge/external_memory/mem0/history.db
+.knowledge/external_memory/mem0/runtime/
 ```
 
 Return to source repo.
+
+---
+
+## 14a. Phase 11a - Minimal macOS smoke
+
+Run this on a real macOS machine before final release readiness when release assets, install/update behavior, Inspector, packaging, Mem0, or agent integrations changed.
+
+Use a fresh temp repo, unpack the candidate `dist/knowledge-v<TARGET_VERSION>.zip`, and run:
+
+```bash
+node .knowledge/tools/install-check.js --json
+node .knowledge/tools/doctor.js --json
+node .knowledge/tools/build-routing-bundle.js --json
+node .knowledge/tools/build-wiki-graph.js --json
+node .knowledge/tools/build-visual-inspector.js --json
+node .knowledge/tools/self-test-free-core-graph.js
+node .knowledge/tools/self-test-inspector-ui.js
+node .knowledge/tools/memory-provider.js status-all --json
+node .knowledge/inspector.js --open
+```
+
+If Mem0 is claimed as working in release notes, also run:
+
+```bash
+node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
+node .knowledge/tools/memory-mem0.js health --adapter live --json
+```
+
+Verify the artifact ships Mem0 provider code/docs/manifests only, not user runtime state under `.knowledge/external_memory/mem0/`.
 
 ---
 
