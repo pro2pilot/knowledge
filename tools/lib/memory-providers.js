@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const {
   ensureDir,
@@ -11,6 +12,12 @@ const {
   writeFileAtomic,
   getAgentId
 } = require('./json-store');
+const {
+  collectPythonCandidates,
+  discoverPython,
+  packageInstallCommand,
+  validatePythonCandidate
+} = require('./python-discovery');
 
 const LEGACY_DEPRECATION_TEXT = `# Deprecated Claude MEM state
 
@@ -18,6 +25,47 @@ Claude MEM first-class bridge has been removed.
 Use Mem0 OSS as the recommended universal optional memory provider.
 Existing Claude MEM artifacts are treated as legacy advisory context only and are never used to raise trust.
 `;
+const FASTEMBED_VERSION_PIN = 'fastembed==0.5.1';
+const DEFAULT_OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
+const DEFAULT_OPENAI_EMBEDDING_DIMS = 1536;
+const DEFAULT_OPENAI_LLM_MODEL = 'gpt-5-mini';
+const OPENAI_EMBEDDING_MODELS = {
+  'text-embedding-3-small': { dimensions: 1536 },
+  'text-embedding-3-large': { dimensions: 3072 },
+  'text-embedding-ada-002': { dimensions: 1536 }
+};
+const FASTEMBED_MODEL_CHOICES = {
+  'small-en-fast': {
+    model: 'BAAI/bge-small-en-v1.5',
+    dimensions: 384,
+    size_gb: 0.067,
+    when_to_choose: 'Fast default for English/code.'
+  },
+  'mini-en-fast': {
+    model: 'sentence-transformers/all-MiniLM-L6-v2',
+    dimensions: 384,
+    size_gb: 0.09,
+    when_to_choose: 'Very light model for simple tasks.'
+  },
+  'base-en-balanced': {
+    model: 'BAAI/bge-base-en-v1.5',
+    dimensions: 768,
+    size_gb: 0.21,
+    when_to_choose: 'Better English/code quality, heavier than small.'
+  },
+  'multilingual-small': {
+    model: 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+    dimensions: 384,
+    size_gb: 0.22,
+    when_to_choose: 'Light RU/EN and multilingual notes.'
+  },
+  'multilingual-large': {
+    model: 'intfloat/multilingual-e5-large',
+    dimensions: 1024,
+    size_gb: 2.24,
+    when_to_choose: 'Better multilingual quality, much heavier.'
+  }
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -101,6 +149,97 @@ function providerStateDir(context, manifest) {
   return path.join(context.stateRoot, 'external_memory', dirName);
 }
 
+function defaultUserDataRoot() {
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    return process.env.LOCALAPPDATA || process.env.APPDATA || path.join(home, 'AppData', 'Local');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(home, 'Library', 'Application Support');
+  }
+  return process.env.XDG_DATA_HOME || path.join(home, '.local', 'share');
+}
+
+function defaultSharedMem0Root(flags = {}) {
+  const explicit = flags.sharedProviderRoot ||
+    flags.providerRoot ||
+    process.env.KNOWLEDGE_MEM0_SHARED_ROOT ||
+    process.env.KNOWLEDGE_MEM0_PROVIDER_ROOT;
+  if (explicit) return path.resolve(String(explicit));
+  return path.join(defaultUserDataRoot(), 'pro2pilot', 'knowledge', 'memory-providers', 'mem0');
+}
+
+function projectStorageKey(context) {
+  const name = slugPart(path.basename(context.targetRoot || 'repo')).slice(0, 40) || 'repo';
+  const hash = crypto.createHash('sha256').update(String(context.repoId || context.targetRoot || name)).digest('hex').slice(0, 12);
+  return `${name}-${hash}`;
+}
+
+function inferMem0ProviderScope(context, qdrantPath, sharedRoot) {
+  if (!qdrantPath) return null;
+  const normalized = path.resolve(qdrantPath);
+  const projectDir = providerStateDir(context, findManifest(context, 'mem0-oss'));
+  if (under(normalized, projectDir) || normalized === projectDir) return 'project';
+  if (under(normalized, sharedRoot) || normalized === sharedRoot) return 'shared';
+  return 'custom';
+}
+
+function requestedProviderScope(flags = {}) {
+  const raw = String(flags.providerScope || flags.mem0ProviderScope || '').trim().toLowerCase();
+  if (!raw && !flags.projectLocal && !flags.localProvider) return null;
+  if (flags.projectLocal || flags.localProvider || ['project', 'project-local', 'repo', 'repo-local', 'local'].includes(raw)) return 'project';
+  if (['shared', 'user', 'global', 'default'].includes(raw)) return 'shared';
+  throw new Error('--provider-scope must be shared or project');
+}
+
+function mem0StoragePlan(context, manifest, flags = {}, existingConfig = null) {
+  const projectDir = providerStateDir(context, manifest);
+  const sharedRoot = defaultSharedMem0Root(flags);
+  const existingMeta = safeReadJson(mem0ConfigMetaPath(context, manifest), null);
+  const existingSharedRoot = existingMeta?.shared_provider_root || sharedRoot;
+  const requested = requestedProviderScope(flags);
+  const existingVectorConfig = existingConfig?.vector_store?.config || {};
+  const existingQdrant = existingVectorConfig.path || null;
+  const existingHistory = existingConfig?.history_db_path || null;
+
+  if (!requested && existingQdrant) {
+    const inferred = existingMeta?.provider_scope || inferMem0ProviderScope(context, existingQdrant, existingSharedRoot);
+    const existingDir = path.dirname(path.resolve(existingQdrant));
+    return {
+      provider_scope: inferred || 'custom',
+      shared_provider_root: inferred === 'shared' ? existingSharedRoot : null,
+      project_storage_key: inferred === 'shared' ? projectStorageKey(context) : null,
+      data_dir: existingDir,
+      qdrant_path: path.resolve(existingQdrant),
+      history_db_path: existingHistory ? path.resolve(existingHistory) : path.join(existingDir, 'history.db'),
+      preserved_existing_paths: true
+    };
+  }
+
+  if (requested === 'project') {
+    return {
+      provider_scope: 'project',
+      shared_provider_root: null,
+      project_storage_key: null,
+      data_dir: projectDir,
+      qdrant_path: path.join(projectDir, 'qdrant'),
+      history_db_path: path.join(projectDir, 'history.db'),
+      preserved_existing_paths: false
+    };
+  }
+
+  const dataDir = path.join(sharedRoot, 'projects', projectStorageKey(context));
+  return {
+    provider_scope: 'shared',
+    shared_provider_root: sharedRoot,
+    project_storage_key: projectStorageKey(context),
+    data_dir: dataDir,
+    qdrant_path: path.join(dataDir, 'qdrant'),
+    history_db_path: path.join(dataDir, 'history.db'),
+    preserved_existing_paths: false
+  };
+}
+
 function receiptPath(context, manifest) {
   return path.join(providerStateDir(context, manifest), 'install_receipt.json');
 }
@@ -128,6 +267,14 @@ function mem0RecipePath(context) {
 function canonicalMem0Path(suffix = '') {
   const clean = String(suffix || '').replace(/^[/\\]+/, '').replace(/\\/g, '/');
   return `.knowledge/external_memory/mem0${clean ? `/${clean}` : ''}`;
+}
+
+function sharedMem0DocPath() {
+  return [
+    'Windows: %LOCALAPPDATA%\\pro2pilot\\knowledge\\memory-providers\\mem0',
+    'macOS: ~/Library/Application Support/pro2pilot/knowledge/memory-providers/mem0',
+    'Linux: ${XDG_DATA_HOME:-~/.local/share}/pro2pilot/knowledge/memory-providers/mem0'
+  ].join('\n');
 }
 
 function pinnedRuntimeVersion(manifest) {
@@ -239,6 +386,8 @@ function genericProviderStatus(context, manifest) {
   if (manifest.id === 'mem0-oss') warnings.push('Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.');
   if (manifest.install?.requires_network) warnings.push('Install/update requires explicit user action and may use network outside status/report mode.');
   if (manifest.type === 'optional') warnings.push('Provider implementation is optional and is not bundled into free core.');
+  const mem0Config = manifest.id === 'mem0-oss' ? readMem0ConfigSummary(context, manifest) : null;
+  const mem0Configured = Boolean(manifest.id === 'mem0-oss' && fs.existsSync(mem0ConfigPath(context, manifest)));
   return {
     provider_id: manifest.id,
     provider: manifest.id,
@@ -252,10 +401,13 @@ function genericProviderStatus(context, manifest) {
     receipt_present: receiptPresent,
     runtime_available: liveRuntimeOk,
     package_installed: packageInstalled,
-    configured: receiptPresent,
+    configured: manifest.id === 'mem0-oss' ? mem0Configured : receiptPresent,
     detected: fs.existsSync(dir),
     mode: manifest.install?.mode || 'manual',
-    scope: manifest.data?.scope || 'repo',
+    scope: mem0Config?.provider_scope || manifest.data?.scope || 'repo',
+    provider_scope: mem0Config?.provider_scope || null,
+    shared_provider_root: mem0Config?.shared_provider_root || null,
+    project_storage_key: mem0Config?.project_storage_key || null,
     data_path: dir,
     path: dir,
     license_spdx: manifest.license?.spdx || 'unknown',
@@ -270,6 +422,16 @@ function genericProviderStatus(context, manifest) {
     live_search_command: manifest.id === 'mem0-oss' ? 'node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json' : null,
     live_recall_command: manifest.id === 'mem0-oss' ? 'node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json' : null,
     live_list_command: manifest.id === 'mem0-oss' ? 'node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json' : null,
+    llm_provider: mem0Config?.llm_provider || null,
+    llm_model: mem0Config?.llm_model || null,
+    embedding_provider: mem0Config?.embedding_provider || null,
+    embedding_model: mem0Config?.embedding_model || null,
+    embedding_dimensions: mem0Config?.embedding_dimensions || null,
+    vector_store_provider: mem0Config?.vector_store_provider || null,
+    vector_collection_name: mem0Config?.vector_collection_name || null,
+    qdrant_path: mem0Config?.qdrant_path || null,
+    history_store_provider: mem0Config?.history_store_provider || null,
+    history_db_path: mem0Config?.history_db_path || null,
     install_receipt_path: manifest.id === 'mem0-oss' ? displayPath(context, receiptPath(context, manifest)) : null,
     runtime_status_path: manifest.id === 'mem0-oss' ? displayPath(context, runtimeStatusPath(context, manifest)) : null,
     config_path: manifest.id === 'mem0-oss' && fs.existsSync(mem0ConfigPath(context, manifest)) ? displayPath(context, mem0ConfigPath(context, manifest)) : null,
@@ -279,7 +441,8 @@ function genericProviderStatus(context, manifest) {
     runtime_version: runtimeVersion,
     expected_runtime_version: expectedRuntimeVersion,
     runtime_version_matches_pin: runtimeVersionMatchesPin,
-    selected_python: runtimeStatus?.selected_python || null,
+    selected_python: mem0Config?.selected_python || runtimeStatus?.selected_python || null,
+    python_runtime: mem0Config?.python_runtime || null,
     live_operations_require_explicit_consent: manifest.id === 'mem0-oss',
     records_count: mem0Adapter?.records_count || 0,
     last_retrieval_count: mem0Adapter?.last_retrieval_count || 0,
@@ -394,7 +557,7 @@ function buildExternalMemoryReport(context, options = {}) {
   ]));
   const providerStatuses = Object.fromEntries(providers.map((provider) => [provider.provider_id.replace(/-/g, '_'), provider]));
   const metrics = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -408,7 +571,7 @@ function buildExternalMemoryReport(context, options = {}) {
     unknown_license_count: providers.filter((provider) => !provider.license_spdx || provider.license_spdx === 'unknown').length
   };
   const report = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -503,7 +666,7 @@ function recordInstall(context, providerId, flags = {}, options = {}) {
   }
   const dir = providerStateDir(context, manifest);
   const receipt = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     installed_at: null,
@@ -573,7 +736,7 @@ function recordUpdate(context, providerId, flags = {}, options = {}) {
   requireConfirmation(flags, 'update');
   const toVersion = requireVersion(flags.to || flags.version, 'update');
   const receipt = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     updated_at: null,
@@ -606,38 +769,686 @@ function providerVersionPin(manifest) {
   return manifest.source?.version_pin || (manifest.source?.version ? `mem0ai==${manifest.source.version}` : 'mem0ai==2.0.4');
 }
 
+function stripSecretFields(value) {
+  if (Array.isArray(value)) return value.map((item) => stripSecretFields(item));
+  if (!value || typeof value !== 'object') return value;
+  const next = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (/api[_-]?key|secret|token|password/i.test(key)) continue;
+    next[key] = stripSecretFields(item);
+  }
+  return next;
+}
+
+function parsePositiveInt(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function inferMem0Collection(collectionName) {
+  const name = String(collectionName || '');
+  const inferred = {
+    embedding_provider: null,
+    embedding_model: null,
+    embedding_dimensions: null
+  };
+  const dimMatch = name.match(/_(\d{2,5})$/);
+  if (dimMatch) inferred.embedding_dimensions = Number(dimMatch[1]);
+  if (/^knowledge_mem0_openai_/i.test(name)) {
+    inferred.embedding_provider = 'openai';
+    if (/text_embedding_3_small/i.test(name)) inferred.embedding_model = 'text-embedding-3-small';
+    else if (/text_embedding_3_large/i.test(name)) inferred.embedding_model = 'text-embedding-3-large';
+    else if (/text_embedding_ada_002/i.test(name)) inferred.embedding_model = 'text-embedding-ada-002';
+  } else if (/^knowledge_mem0_fastembed_/i.test(name)) {
+    inferred.embedding_provider = 'fastembed';
+  }
+  return inferred;
+}
+
+function readMem0ConfigSummary(context, manifest) {
+  const configPath = mem0ConfigPath(context, manifest);
+  const metaPath = mem0ConfigMetaPath(context, manifest);
+  const config = safeReadJson(configPath, null);
+  const meta = safeReadJson(metaPath, null);
+  const vectorConfig = config?.vector_store?.config || {};
+  const embedderConfig = config?.embedder?.config || {};
+  const llmConfig = config?.llm?.config || {};
+  const inferred = inferMem0Collection(vectorConfig.collection_name);
+  const sharedRoot = defaultSharedMem0Root();
+  const providerScope = meta?.provider_scope || inferMem0ProviderScope(context, vectorConfig.path, sharedRoot);
+  return {
+    config_exists: Boolean(config),
+    config_path: fs.existsSync(configPath) ? displayPath(context, configPath) : null,
+    config_meta_path: fs.existsSync(metaPath) ? displayPath(context, metaPath) : null,
+    provider_scope: providerScope,
+    shared_provider_root: meta?.shared_provider_root || (providerScope === 'shared' ? sharedRoot : null),
+    project_storage_key: meta?.project_storage_key || (providerScope === 'shared' ? projectStorageKey(context) : null),
+    llm_provider: config?.llm?.provider || null,
+    llm_model: llmConfig.model || null,
+    embedding_provider: config?.embedder?.provider || inferred.embedding_provider,
+    embedding_model: embedderConfig.model || inferred.embedding_model,
+    embedding_dimensions: parsePositiveInt(embedderConfig.embedding_dims)
+      || parsePositiveInt(embedderConfig.dims)
+      || parsePositiveInt(vectorConfig.embedding_model_dims)
+      || inferred.embedding_dimensions,
+    vector_store_provider: config?.vector_store?.provider || (config?.vector_store ? 'qdrant' : null),
+    vector_collection_name: vectorConfig.collection_name || null,
+    vector_embedding_dimensions: parsePositiveInt(vectorConfig.embedding_model_dims) || inferred.embedding_dimensions,
+    qdrant_path: vectorConfig.path || null,
+    history_store_provider: config?.history_db_path ? 'sqlite' : null,
+    history_db_path: config?.history_db_path || null,
+    selected_python: meta?.selected_python || meta?.python_runtime?.selected_python || null,
+    python_runtime: meta?.python_runtime || null,
+    contains_runtime_user_id: Boolean(config && Object.prototype.hasOwnProperty.call(config, 'user_id')),
+    contains_inline_secret: /api[_-]?key|secret|token|password/i.test(JSON.stringify(config || {}))
+  };
+}
+
+function slugPart(value) {
+  const clean = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+  return clean || 'model';
+}
+
+function validateCollectionName(value) {
+  const name = String(value || '').trim();
+  if (!/^[A-Za-z0-9_.-]{1,128}$/.test(name)) {
+    throw new Error('Qdrant collection name must use only letters, numbers, underscore, dot, or dash and be at most 128 chars');
+  }
+  return name;
+}
+
+function collectionNameFor(embedder, model, dimensions) {
+  const slug = slugPart(model);
+  const base = `knowledge_mem0_${slugPart(embedder)}_${slug}_${dimensions}`;
+  if (base.length <= 96) return base;
+  const hash = crypto.createHash('sha256').update(`${embedder}:${model}:${dimensions}`).digest('hex').slice(0, 10);
+  return `knowledge_mem0_${slugPart(embedder)}_${slug.slice(0, 48)}_${hash}_${dimensions}`;
+}
+
+function normalizeEmbedder(value) {
+  const embedder = String(value || '').trim().toLowerCase();
+  if (['openai', 'fastembed'].includes(embedder)) return embedder;
+  throw new Error('configure-embeddings requires --embedder openai or --embedder fastembed');
+}
+
+function resolveFastEmbedModel(modelOrAlias) {
+  const raw = String(modelOrAlias || '').trim();
+  if (!raw) throw new Error('configure-embeddings --embedder fastembed requires --model');
+  const choice = FASTEMBED_MODEL_CHOICES[raw];
+  return {
+    alias: choice ? raw : null,
+    ...(choice || { model: raw })
+  };
+}
+
+function resolveOpenAiEmbeddingModel(model) {
+  const selected = String(model || DEFAULT_OPENAI_EMBEDDING_MODEL).trim();
+  const known = OPENAI_EMBEDDING_MODELS[selected];
+  return {
+    model: selected,
+    dimensions: known?.dimensions || DEFAULT_OPENAI_EMBEDDING_DIMS,
+    known: Boolean(known)
+  };
+}
+
+function resolveLlmConfig(existing, flags = {}) {
+  const existingLlm = existing?.llm || {};
+  const provider = String(flags.llmProvider || existingLlm.provider || 'openai').trim();
+  const config = stripSecretFields(existingLlm.config || {});
+  const model = flags.llmModel || config.model || (provider === 'openai' ? DEFAULT_OPENAI_LLM_MODEL : null);
+  return {
+    provider,
+    config: model ? { ...config, model } : config
+  };
+}
+
+function fastEmbedInstallCommands(pythonCommand = 'python') {
+  return [
+    packageInstallCommand(pythonCommand, 'mem0ai==2.0.4'),
+    packageInstallCommand(pythonCommand, FASTEMBED_VERSION_PIN)
+  ];
+}
+
+function pinnedFastEmbedVersion() {
+  const match = FASTEMBED_VERSION_PIN.match(/==(.+)$/);
+  return match ? match[1] : FASTEMBED_VERSION_PIN;
+}
+
+function pythonVersionParts(value) {
+  const match = String(value || '').trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3] || 0),
+    raw: match[0]
+  };
+}
+
+function fastEmbedSupportedRuntimeNextCommands() {
+  return [
+    'Use a Python 3.12 runtime or virtualenv for Local FastEmbed.',
+    'After activating that runtime, run the pinned installs: python -m pip install mem0ai==2.0.4 && python -m pip install fastembed==0.5.1',
+    'Re-run configure-embeddings with --python "<path-to-python-3.12>" before live add/search/recall smoke tests.'
+  ];
+}
+
+function fastEmbedRuntimeGuard(selected = {}) {
+  const version = process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_FASTEMBED_RUNTIME_VERSION || selected.version || '';
+  const parsed = pythonVersionParts(version);
+  if (!parsed) {
+    return {
+      ok: false,
+      diagnostic_code: 'fastembed_runtime_unknown',
+      python_version: version || null,
+      recommended_python: '3.12',
+      error: `${FASTEMBED_VERSION_PIN} requires a Python runtime with known compatible wheels. Use Python 3.12 for Local FastEmbed.`,
+      next_commands: fastEmbedSupportedRuntimeNextCommands()
+    };
+  }
+  if (parsed.major > 3 || (parsed.major === 3 && parsed.minor >= 14)) {
+    return {
+      ok: false,
+      diagnostic_code: 'fastembed_runtime_unsupported',
+      python_version: parsed.raw,
+      recommended_python: '3.12',
+      error: `${FASTEMBED_VERSION_PIN} is not supported by this guided recipe on Python ${parsed.raw}. Use Python 3.12 so pinned FastEmbed dependencies install from wheels instead of failing source builds.`,
+      next_commands: fastEmbedSupportedRuntimeNextCommands()
+    };
+  }
+  return { ok: true, python_version: parsed.raw, recommended_python: '3.12' };
+}
+
+function fastEmbedVersionGuard(version) {
+  const expected = pinnedFastEmbedVersion();
+  const actual = String(version || '').trim();
+  if (actual === expected) return { ok: true, fastembed_version: actual, expected_version: expected };
+  return {
+    ok: false,
+    diagnostic_code: actual ? 'fastembed_version_mismatch' : 'fastembed_version_missing',
+    fastembed_version: actual || null,
+    expected_version: expected,
+    error: `FastEmbed runtime version ${actual || 'unknown'} does not match required ${expected}. Install ${FASTEMBED_VERSION_PIN} in a supported Python runtime before configuring Local FastEmbed.`
+  };
+}
+
+function lookupFastEmbedModelFromCatalog(catalog, model) {
+  const list = Array.isArray(catalog) ? catalog : (Array.isArray(catalog?.models) ? catalog.models : []);
+  const found = list.find((item) => String(item.model || item.model_name || item.name || '') === model);
+  if (!found) return null;
+  return {
+    model,
+    dimensions: parsePositiveInt(found.dim) || parsePositiveInt(found.dimensions) || parsePositiveInt(found.embedding_size),
+    size_gb: Number(found.size_in_GB ?? found.size_gb ?? found.sizeGB ?? 0) || null,
+    source: 'fastembed_catalog'
+  };
+}
+
+function testFastEmbedCatalog(model) {
+  const raw = process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_FASTEMBED_MODELS_JSON;
+  if (!raw) return null;
+  try {
+    return lookupFastEmbedModelFromCatalog(JSON.parse(raw), model);
+  } catch {
+    return null;
+  }
+}
+
+function chooseFastEmbedPythonRuntime(flags = {}) {
+  const timeoutMs = Number(flags.pythonTimeoutMs || flags.timeoutMs || 5000);
+  const baseOptions = { flags, timeoutMs, env: process.env };
+  const candidates = collectPythonCandidates(baseOptions);
+  const results = [];
+  for (const candidate of candidates) {
+    const checked = validatePythonCandidate(candidate, baseOptions);
+    const guard = checked.status === 'ok' ? fastEmbedRuntimeGuard(checked) : null;
+    const result = guard && !guard.ok
+      ? {
+        ...checked,
+        status: 'unsupported',
+        diagnostic_code: guard.diagnostic_code,
+        error: guard.error,
+        recommended_python: guard.recommended_python
+      }
+      : checked;
+    results.push(result);
+    if (checked.status === 'ok' && guard?.ok) {
+      return {
+        ok: true,
+        selected_python: checked.executable || checked.command,
+        selected: checked,
+        discovery: {
+          status: 'found',
+          diagnostic_code: 'python_available',
+          selected: checked,
+          candidates_checked: results.length,
+          candidates: results
+        },
+        runtime_guard: guard
+      };
+    }
+    if (candidate.explicit) {
+      return {
+        ok: false,
+        diagnostic_code: result.diagnostic_code || 'python_not_found',
+        error: result.error || 'Explicit Python runtime is not usable for Local FastEmbed.',
+        selected_python: checked.executable || checked.command || candidate.command || null,
+        python_version: checked.version || null,
+        recommended_python: result.recommended_python || '3.12',
+        discovery: {
+          status: 'not_found',
+          diagnostic_code: result.diagnostic_code || 'python_not_found',
+          selected: null,
+          candidates_checked: results.length,
+          candidates: results,
+          next_commands: fastEmbedSupportedRuntimeNextCommands()
+        },
+        next_commands: result.diagnostic_code === 'fastembed_runtime_unsupported'
+          ? fastEmbedSupportedRuntimeNextCommands()
+          : [
+            'Install Python or pass --python "<path-to-python-3.12>"',
+            ...fastEmbedInstallCommands('python')
+          ]
+      };
+    }
+  }
+
+  const unsupported = results.find((item) => item.diagnostic_code === 'fastembed_runtime_unsupported');
+  if (unsupported) {
+    return {
+      ok: false,
+      diagnostic_code: 'fastembed_runtime_unsupported',
+      error: unsupported.error,
+      selected_python: unsupported.executable || unsupported.command || null,
+      python_version: unsupported.version || null,
+      recommended_python: unsupported.recommended_python || '3.12',
+      discovery: {
+        status: 'not_found',
+        diagnostic_code: 'fastembed_runtime_unsupported',
+        selected: null,
+        candidates_checked: results.length,
+        candidates: results,
+        next_commands: fastEmbedSupportedRuntimeNextCommands()
+      },
+      next_commands: fastEmbedSupportedRuntimeNextCommands()
+    };
+  }
+
+  const discovery = discoverPython(baseOptions);
+  return {
+    ok: false,
+    diagnostic_code: discovery.diagnostic_code || 'python_missing',
+    error: 'Python is required to inspect FastEmbed model dimensions.',
+    selected_python: null,
+    discovery,
+    next_commands: [
+      ...(discovery.next_commands || []),
+      ...fastEmbedInstallCommands('python')
+    ]
+  };
+}
+
+function readFastEmbedModelInfo(flags = {}, model) {
+  const testRuntimeGuard = process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_FASTEMBED_RUNTIME_VERSION
+    ? fastEmbedRuntimeGuard({ version: process.env.KNOWLEDGE_MEMORY_PROVIDER_TEST_FASTEMBED_RUNTIME_VERSION })
+    : null;
+  if (testRuntimeGuard && !testRuntimeGuard.ok) {
+    return {
+      ok: false,
+      diagnostic_code: testRuntimeGuard.diagnostic_code,
+      error: testRuntimeGuard.error,
+      model,
+      discovery: { status: 'test_runtime_guard', selected: { version: testRuntimeGuard.python_version } },
+      selected_python: null,
+      python_version: testRuntimeGuard.python_version,
+      recommended_python: testRuntimeGuard.recommended_python,
+      next_commands: testRuntimeGuard.next_commands
+    };
+  }
+  const testModel = testFastEmbedCatalog(model);
+  if (testModel) return { ok: true, ...testModel, selected_python: null, fastembed_version: 'test-catalog' };
+
+  const runtime = chooseFastEmbedPythonRuntime(flags);
+  if (!runtime.ok) {
+    return {
+      ok: false,
+      diagnostic_code: runtime.diagnostic_code,
+      error: runtime.error,
+      model,
+      discovery: runtime.discovery,
+      selected_python: runtime.selected_python || null,
+      python_version: runtime.python_version || null,
+      recommended_python: runtime.recommended_python || '3.12',
+      next_commands: runtime.next_commands || fastEmbedInstallCommands(runtime.selected_python || 'python')
+    };
+  }
+
+  const discovery = runtime.discovery;
+  const pythonCommand = runtime.selected_python;
+  const runtimeGuard = runtime.runtime_guard || fastEmbedRuntimeGuard(discovery.selected || {});
+  const script = [
+    'import importlib.metadata as metadata, json, sys',
+    'target = sys.argv[1]',
+    'try:',
+    '    from fastembed import TextEmbedding',
+    '    models = TextEmbedding.list_supported_models()',
+    '    version = metadata.version("fastembed")',
+    'except Exception as exc:',
+    '    print(json.dumps({"ok": False, "error": str(exc), "type": exc.__class__.__name__}))',
+    '    sys.exit(0)',
+    'for item in models:',
+    '    if item.get("model") == target:',
+    '        print(json.dumps({"ok": True, "model": target, "dimensions": item.get("dim"), "size_gb": item.get("size_in_GB"), "fastembed_version": version}, default=str))',
+    '        sys.exit(0)',
+    'print(json.dumps({"ok": False, "error": "FastEmbed model is not in TextEmbedding.list_supported_models()", "model": target, "supported_count": len(models)}))'
+  ].join('\n');
+  const res = spawnSync(pythonCommand, ['-c', script, model], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: Number(flags.pythonTimeoutMs || flags.timeoutMs || 20000)
+  });
+  if (res.error) {
+    return {
+      ok: false,
+      diagnostic_code: res.error.code === 'ETIMEDOUT' ? 'python_timeout' : 'python_not_usable',
+      error: res.error.message,
+      discovery,
+      selected_python: pythonCommand,
+      next_commands: fastEmbedInstallCommands(pythonCommand)
+    };
+  }
+  let parsed = null;
+  try { parsed = JSON.parse(String(res.stdout || '').trim() || '{}'); } catch {}
+  if (res.status !== 0 || !parsed) {
+    return {
+      ok: false,
+      diagnostic_code: 'fastembed_catalog_error',
+      error: `${res.stderr || ''}\n${res.stdout || ''}`.trim().slice(0, 1000) || 'FastEmbed catalog check did not return JSON.',
+      discovery,
+      selected_python: pythonCommand,
+      next_commands: fastEmbedInstallCommands(pythonCommand)
+    };
+  }
+  if (!parsed.ok) {
+    const missingPackage = /No module named|ModuleNotFoundError/i.test(String(parsed.error || ''));
+    return {
+      ok: false,
+      diagnostic_code: missingPackage ? 'fastembed_runtime_missing' : 'fastembed_model_not_supported',
+      error: parsed.error || 'FastEmbed model metadata unavailable.',
+      model,
+      discovery,
+      selected_python: pythonCommand,
+      next_commands: fastEmbedInstallCommands(pythonCommand)
+    };
+  }
+  const versionGuard = fastEmbedVersionGuard(parsed.fastembed_version);
+  if (!versionGuard.ok) {
+    return {
+      ok: false,
+      diagnostic_code: versionGuard.diagnostic_code,
+      error: versionGuard.error,
+      model,
+      discovery,
+      selected_python: pythonCommand,
+      fastembed_version: versionGuard.fastembed_version,
+      expected_version: versionGuard.expected_version,
+      next_commands: fastEmbedInstallCommands(pythonCommand)
+    };
+  }
+  const dimensions = parsePositiveInt(parsed.dimensions);
+  if (!dimensions) {
+    return {
+      ok: false,
+      diagnostic_code: 'fastembed_dimensions_missing',
+      error: `FastEmbed did not report dimensions for ${model}.`,
+      model,
+      discovery,
+      selected_python: pythonCommand,
+      next_commands: fastEmbedInstallCommands(pythonCommand)
+    };
+  }
+  return {
+    ok: true,
+    model,
+    dimensions,
+    size_gb: Number(parsed.size_gb || 0) || null,
+    fastembed_version: parsed.fastembed_version || null,
+    selected_python: pythonCommand,
+    python_version: runtimeGuard.python_version || discovery.selected?.version || null,
+    recommended_python: runtimeGuard.recommended_python || '3.12',
+    source: 'fastembed_catalog',
+    discovery
+  };
+}
+
+function collectionReuseConflict(previous, collectionName, nextSpec) {
+  if (!previous?.vector_collection_name || previous.vector_collection_name !== collectionName) return null;
+  const previousDims = previous.embedding_dimensions || previous.vector_embedding_dimensions;
+  const previousProvider = previous.embedding_provider;
+  const previousModel = previous.embedding_model;
+  const metadataMissing = !previousDims || !previousProvider || !previousModel;
+  const dimsDiffer = previousDims && Number(previousDims) !== Number(nextSpec.dimensions);
+  const providerDiffers = previousProvider && previousProvider !== nextSpec.embedder;
+  const modelDiffers = previousModel && previousModel !== nextSpec.model;
+  if (!metadataMissing && !dimsDiffer && !providerDiffers && !modelDiffers) return null;
+  return {
+    previous_collection_name: collectionName,
+    previous_embedding_provider: previousProvider,
+    previous_embedding_model: previousModel,
+    previous_embedding_dimensions: previousDims || null,
+    requested_embedding_provider: nextSpec.embedder,
+    requested_embedding_model: nextSpec.model,
+    requested_embedding_dimensions: nextSpec.dimensions,
+    reason: metadataMissing
+      ? 'Existing collection is missing embedding provider, model, or dimensions metadata.'
+      : 'Existing collection appears to belong to a different embedding provider, model, or dimensions.'
+  };
+}
+
+function mem0SmokeCommands() {
+  return {
+    health: 'node .knowledge/tools/memory-mem0.js health --adapter live --json',
+    add: 'node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text "Release note: Mem0 embedding backend smoke test" --scope repo --json',
+    search: 'node .knowledge/tools/memory-mem0.js search "embedding backend smoke test" --adapter live --yes-live-memory --json',
+    recall: 'node .knowledge/tools/memory-mem0.js recall "embedding backend smoke test" --adapter live --yes-live-memory --json'
+  };
+}
+
+function writeMem0EmbeddingConfig(context, manifest, spec, flags = {}) {
+  const dir = providerStateDir(context, manifest);
+  const configPath = mem0ConfigPath(context, manifest);
+  const metaPath = mem0ConfigMetaPath(context, manifest);
+  ensureDir(dir);
+
+  const existing = safeReadJson(configPath, null);
+  const storage = mem0StoragePlan(context, manifest, flags, existing);
+  ensureDir(storage.data_dir);
+  ensureDir(storage.qdrant_path);
+  const previous = readMem0ConfigSummary(context, manifest);
+  const collectionName = flags.collectionName
+    ? validateCollectionName(flags.collectionName)
+    : collectionNameFor(spec.embedder, spec.model, spec.dimensions);
+  const conflict = collectionReuseConflict(previous, collectionName, spec);
+  if (conflict) {
+    return {
+      ok: false,
+      action: 'configure_embeddings',
+      provider_id: manifest.id,
+      diagnostic_code: 'collection_reuse_blocked',
+      configuration_written: false,
+      collection_reuse_blocked: true,
+      conflict,
+      next_collection_name: collectionNameFor(spec.embedder, spec.model, spec.dimensions),
+      message: 'Refusing to reuse a Qdrant collection with mismatched embedding dimensions or provider.',
+      source_of_truth: false,
+      trust_role: 'advisory_only',
+      trust_effect: 'advisory_only'
+    };
+  }
+
+  const existingVectorConfig = existing?.vector_store?.config || {};
+  const llm = resolveLlmConfig(existing, flags);
+  const nextConfig = {
+    llm,
+    embedder: {
+      provider: spec.embedder,
+      config: {
+        model: spec.model,
+        embedding_dims: spec.dimensions
+      }
+    },
+    vector_store: {
+      provider: 'qdrant',
+      config: {
+        path: storage.qdrant_path,
+        collection_name: collectionName,
+        embedding_model_dims: spec.dimensions,
+        on_disk: existingVectorConfig.on_disk === true
+      }
+    },
+    history_db_path: storage.history_db_path,
+    version: existing?.version || 'v1.1'
+  };
+  for (const key of ['custom_fact_extraction_prompt', 'custom_update_memory_prompt', 'custom_instructions', 'reranker']) {
+    if (existing && Object.prototype.hasOwnProperty.call(existing, key)) nextConfig[key] = stripSecretFields(existing[key]);
+  }
+
+  writeJsonAtomic(configPath, nextConfig);
+  const meta = {
+    schema_version: '3.2.9',
+    provider_id: manifest.id,
+    generated_at: nowIso(),
+    generated_by: getAgentId(),
+    config_path: configPath,
+    provider_scope: storage.provider_scope,
+    shared_provider_root: storage.shared_provider_root,
+    project_storage_key: storage.project_storage_key,
+    provider_data_path: storage.data_dir,
+    preserved_existing_paths: storage.preserved_existing_paths,
+    llm_provider: llm.provider,
+    llm_model: llm.config?.model || null,
+    embedding_provider: spec.embedder,
+    embedding_model: spec.model,
+    embedding_dimensions: spec.dimensions,
+    vector_store: 'qdrant',
+    history_store: 'sqlite',
+    qdrant_path: nextConfig.vector_store.config.path,
+    history_db_path: nextConfig.history_db_path,
+    collection_name: collectionName,
+    collection_policy: 'Embedding provider, model, or dimensions changes must use a new Qdrant collection name.',
+    selected_python: spec.selected_python || null,
+    python_runtime: spec.selected_python ? {
+      selected_python: spec.selected_python,
+      python_version: spec.python_version || null,
+      fastembed_version: spec.fastembed_version || null,
+      expected_fastembed_version: spec.embedder === 'fastembed' ? pinnedFastEmbedVersion() : null,
+      recommended_python: spec.embedder === 'fastembed' ? '3.12' : null,
+      source: 'configure-embeddings'
+    } : null,
+    previous_config: previous,
+    source_of_truth: false,
+    trust_role: 'advisory_only',
+    trust_effect: 'advisory_only'
+  };
+  writeJsonAtomic(metaPath, meta);
+
+  return {
+    ok: true,
+    action: 'configure_embeddings',
+    provider_id: manifest.id,
+    configuration_written: true,
+    config: displayPath(context, configPath),
+    config_meta: displayPath(context, metaPath),
+    provider_scope: storage.provider_scope,
+    shared_provider_root: storage.shared_provider_root,
+    project_storage_key: storage.project_storage_key,
+    llm_provider: { provider: llm.provider, model: llm.config?.model || null },
+    embedding_provider: { provider: spec.embedder, model: spec.model, dimensions: spec.dimensions },
+    vector_store: {
+      provider: 'qdrant',
+      collection_name: collectionName,
+      embedding_model_dims: spec.dimensions,
+      path: displayPath(context, nextConfig.vector_store.config.path)
+    },
+    history_store: { provider: 'sqlite', path: displayPath(context, nextConfig.history_db_path) },
+    selected_python: spec.selected_python || null,
+    python_runtime: spec.selected_python ? meta.python_runtime : null,
+    previous_config: previous,
+    source_of_truth: false,
+    trust_role: 'advisory_only',
+    trust_effect: 'advisory_only'
+  };
+}
+
 function ensureMem0RepoConfig(context, manifest) {
   const dir = providerStateDir(context, manifest);
   const configPath = mem0ConfigPath(context, manifest);
   const metaPath = mem0ConfigMetaPath(context, manifest);
-  const qdrantPath = path.join(dir, 'qdrant');
-  const historyDbPath = path.join(dir, 'history.db');
   ensureDir(dir);
-  ensureDir(qdrantPath);
 
   const existing = safeReadJson(configPath, null);
+  const storage = mem0StoragePlan(context, manifest, {}, existing);
+  ensureDir(storage.data_dir);
+  ensureDir(storage.qdrant_path);
   const existingVectorConfig = existing?.vector_store?.config || {};
-  const collectionName = existingVectorConfig.collection_name || 'knowledge_mem0_openai_text_embedding_3_small_1536';
+  const existingSummary = readMem0ConfigSummary(context, manifest);
+  const embeddingProvider = existingSummary.embedding_provider || 'openai';
+  const embeddingModel = existingSummary.embedding_model || DEFAULT_OPENAI_EMBEDDING_MODEL;
+  const embeddingDimensions = existingSummary.embedding_dimensions || DEFAULT_OPENAI_EMBEDDING_DIMS;
+  const collectionName = existingVectorConfig.collection_name || collectionNameFor(embeddingProvider, embeddingModel, embeddingDimensions);
+  const llm = resolveLlmConfig(existing, {});
   const nextConfig = {
+    llm,
+    embedder: {
+      provider: embeddingProvider,
+      config: {
+        model: embeddingModel,
+        embedding_dims: embeddingDimensions
+      }
+    },
     vector_store: {
       provider: 'qdrant',
       config: {
-        path: existingVectorConfig.path || qdrantPath,
-        collection_name: collectionName
+        path: storage.qdrant_path,
+        collection_name: collectionName,
+        embedding_model_dims: embeddingDimensions,
+        on_disk: existingVectorConfig.on_disk === true
       }
     },
-    history_db_path: existing?.history_db_path || historyDbPath
+    history_db_path: storage.history_db_path,
+    version: existing?.version || 'v1.1'
   };
+  for (const key of ['custom_fact_extraction_prompt', 'custom_update_memory_prompt', 'custom_instructions', 'reranker']) {
+    if (existing && Object.prototype.hasOwnProperty.call(existing, key)) nextConfig[key] = stripSecretFields(existing[key]);
+  }
   writeJsonAtomic(configPath, nextConfig);
   writeJsonAtomic(metaPath, {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     provider_id: manifest.id,
     generated_at: nowIso(),
     config_path: configPath,
+    provider_scope: storage.provider_scope,
+    shared_provider_root: storage.shared_provider_root,
+    project_storage_key: storage.project_storage_key,
+    provider_data_path: storage.data_dir,
+    preserved_existing_paths: storage.preserved_existing_paths,
+    llm_provider: llm.provider,
+    llm_model: llm.config?.model || null,
+    embedding_provider: embeddingProvider,
+    embedding_model: embeddingModel,
+    embedding_dimensions: embeddingDimensions,
+    vector_store: 'qdrant',
+    history_store: 'sqlite',
     qdrant_path: nextConfig.vector_store.config.path,
     history_db_path: nextConfig.history_db_path,
     collection_name: collectionName,
-    collection_policy: 'If embedding dimensions change, create a new collection name instead of reusing an existing Qdrant collection.',
+    collection_policy: 'Embedding provider, model, or dimensions changes must use a new Qdrant collection name.',
     source_of_truth: false,
     trust_role: 'advisory_only',
     trust_effect: 'advisory_only'
@@ -646,16 +1457,124 @@ function ensureMem0RepoConfig(context, manifest) {
     path: configPath,
     display_path: displayPath(context, configPath),
     meta_path: displayPath(context, metaPath),
+    provider_scope: storage.provider_scope,
+    shared_provider_root: storage.shared_provider_root,
+    project_storage_key: storage.project_storage_key,
     qdrant_path: nextConfig.vector_store.config.path,
     history_db_path: nextConfig.history_db_path,
-    collection_name: collectionName
+    collection_name: collectionName,
+    embedding_provider: embeddingProvider,
+    embedding_model: embeddingModel,
+    embedding_dimensions: embeddingDimensions,
+    llm_provider: llm.provider,
+    llm_model: llm.config?.model || null
+  };
+}
+
+function configureMem0Embeddings(context, providerId, flags = {}, options = {}) {
+  const manifest = findManifest(context, providerId, options);
+  if (manifest.id !== 'mem0-oss') throw new Error(`configure-embeddings is only implemented for mem0-oss, got ${manifest.id}`);
+  const embedder = normalizeEmbedder(flags.embedder);
+  const smoke = mem0SmokeCommands();
+  let spec;
+  let modelInfo = null;
+  const warnings = [
+    'This command writes repo-local Mem0 config only; it does not install packages, call OpenAI, or warm/download FastEmbed models.',
+    'Mem0 remains advisory-only external memory and cannot raise trust.'
+  ];
+
+  if (embedder === 'openai') {
+    modelInfo = resolveOpenAiEmbeddingModel(flags.model);
+    spec = {
+      embedder,
+      model: modelInfo.model,
+      dimensions: parsePositiveInt(flags.dimensions) || modelInfo.dimensions
+    };
+    if (!modelInfo.known && !flags.dimensions) {
+      throw new Error(`Unknown OpenAI embedding model ${modelInfo.model}; pass --dimensions explicitly if this model is intentional`);
+    }
+  } else {
+    const selected = resolveFastEmbedModel(flags.model);
+    modelInfo = readFastEmbedModelInfo(flags, selected.model);
+    if (!modelInfo.ok) {
+      return {
+        ok: false,
+        action: 'configure_embeddings',
+        provider_id: manifest.id,
+        diagnostic_code: modelInfo.diagnostic_code || 'fastembed_model_metadata_unavailable',
+        configuration_written: false,
+        embedder,
+        model: selected.model,
+        model_alias: selected.alias,
+        model_choices: FASTEMBED_MODEL_CHOICES,
+        error: modelInfo.error,
+        selected_python: modelInfo.selected_python || null,
+        next_commands: modelInfo.next_commands || fastEmbedInstallCommands(modelInfo.selected_python || 'python'),
+        source_of_truth: false,
+        trust_role: 'advisory_only',
+        trust_effect: 'advisory_only'
+      };
+    }
+    spec = {
+      embedder,
+      model: selected.model,
+      dimensions: modelInfo.dimensions,
+      selected_python: modelInfo.selected_python || null,
+      python_version: modelInfo.python_version || null,
+      fastembed_version: modelInfo.fastembed_version || null
+    };
+  }
+
+  const written = writeMem0EmbeddingConfig(context, manifest, spec, flags);
+  if (!written.ok) return written;
+  const installCommands = embedder === 'fastembed' ? fastEmbedInstallCommands(modelInfo.selected_python || 'python') : [];
+  return {
+    ...written,
+    embedder,
+    model: spec.model,
+    dimensions: spec.dimensions,
+    model_alias: embedder === 'fastembed' ? resolveFastEmbedModel(flags.model).alias : null,
+    model_info: modelInfo,
+    llm_provider: written.llm_provider,
+    embedding_provider: written.embedding_provider,
+    vector_store: written.vector_store,
+    history_store: written.history_store,
+    collection_policy: 'Embedding provider, model, or dimensions changes must use a new Qdrant collection name; do not reuse an OpenAI 1536-dimension collection for FastEmbed.',
+    install_commands: installCommands,
+    setup_command: 'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json',
+    health_command: smoke.health,
+    smoke_commands: smoke,
+    environment_guidance: embedder === 'openai' ? {
+      secret_policy: 'Do not paste OPENAI_API_KEY into repo files or commits.',
+      macos_linux: 'export OPENAI_API_KEY="sk-..."',
+      windows_powershell: '$env:OPENAI_API_KEY="sk-..."'
+    } : null,
+    agent_facing: {
+      text: embedder === 'openai'
+        ? [
+          'Embedding provider configured: OpenAI API.',
+          'Do not write OPENAI_API_KEY into repository files.',
+          'Ask the user to set OPENAI_API_KEY in their local terminal, then run setup and live health.'
+        ].join('\n')
+        : [
+          'Embedding provider configured: Local FastEmbed.',
+          `Model: ${spec.model} (${spec.dimensions} dimensions).`,
+          `Collection: ${written.vector_store.collection_name}.`,
+          'Run the pinned install commands first if the runtime is missing, then run health/add/search/recall smoke commands.'
+        ].join('\n'),
+      install_commands: installCommands,
+      setup_command: 'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json',
+      health_command: smoke.health,
+      smoke_commands: smoke,
+      boundary: 'advisory-only'
+    },
+    warnings
   };
 }
 
 function renderMem0RecipeTemplate(context, manifest) {
   const templatePath = mem0RecipeTemplatePath(context);
   if (!fs.existsSync(templatePath)) throw new Error(`Mem0 recipe template missing: ${templatePath}`);
-  ensureMem0RepoConfig(context, manifest);
   return fs.readFileSync(templatePath, 'utf8')
     .replace(/\{\{VERSION_PIN\}\}/g, providerVersionPin(manifest))
     .replace(/\{\{RECEIPT_PATH\}\}/g, canonicalMem0Path('install_receipt.json'))
@@ -663,7 +1582,8 @@ function renderMem0RecipeTemplate(context, manifest) {
     .replace(/\{\{RUNTIME_STATUS_PATH\}\}/g, canonicalMem0Path('runtime_status.json'))
     .replace(/\{\{DATA_PATH\}\}/g, canonicalMem0Path())
     .replace(/\{\{QDRANT_PATH\}\}/g, canonicalMem0Path('qdrant'))
-    .replace(/\{\{HISTORY_DB_PATH\}\}/g, canonicalMem0Path('history.db'));
+    .replace(/\{\{HISTORY_DB_PATH\}\}/g, canonicalMem0Path('history.db'))
+    .replace(/\{\{SHARED_PROVIDER_ROOT\}\}/g, sharedMem0DocPath());
 }
 
 function writeMem0Recipe(context, providerId, options = {}) {
@@ -707,6 +1627,13 @@ function extractRecipePipInstallCommands(text) {
     .filter((line) => /^(?:python\s+-m\s+)?pip\s+install\s+\S+/i.test(line));
 }
 
+function hasEllipsisCommand(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line === '...' || /^(?:node|python|pip|npm|pnpm|yarn|bun|npx)\b.*\.\.\./i.test(line));
+}
+
 function recipeCommandExists(context, command) {
   const scriptPath = path.join(context.projectKnowledgeRoot, 'tools', command.script.replace(/\//g, path.sep));
   if (!fs.existsSync(scriptPath)) return false;
@@ -728,6 +1655,9 @@ function recipeCommandExists(context, command) {
 function expectedMem0RecipeCommands() {
   return [
     'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json',
+    'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json',
+    'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json',
+    'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json',
     'node .knowledge/tools/memory-provider.js status mem0-oss --json',
     'node .knowledge/tools/memory-provider.js status-all --json',
     'node .knowledge/tools/memory-mem0.js health --adapter live --json',
@@ -764,12 +1694,23 @@ function validateMem0Recipe(context, providerId, options = {}) {
   const setupFlowMatches = recipe.match(/node \.knowledge\/tools\/memory-provider\.js setup mem0-oss --live --json/g) || [];
 
   check('recipe_exists', Boolean(recipe), `${displayPath(context, recipePath)} is missing`);
-  check('no_ellipsis', !/\.\.\./.test(recipe), 'Recipe must not contain ellipsis commands.');
+  check('no_ellipsis', !hasEllipsisCommand(recipe), 'Recipe must not contain ellipsis commands.');
   check('receipt_path', recipe.includes(canonicalMem0Path('install_receipt.json')), 'Recipe must include install receipt path.');
   check('status_mem0', /memory-provider\.js status mem0-oss --json/.test(recipe), 'Recipe must include status mem0-oss.');
   check('status_all', /memory-provider\.js status-all --json/.test(recipe), 'Recipe must include status-all.');
   check('setup_flow', /memory-provider\.js setup mem0-oss --live --json/.test(recipe), 'Recipe must include one recommended setup flow.');
   check('single_setup_flow', setupFlowMatches.length === 1, `Recipe must contain exactly one recommended setup flow, found ${setupFlowMatches.length}.`);
+  check('embedding_provider_choice_required', /needs_embedding_provider_choice/.test(recipe) && /must not silently choose OpenAI API or Local FastEmbed/i.test(recipe), 'Recipe must require the agent to ask for an embedding provider before live setup.');
+  check('configure_openai_embeddings', /memory-provider\.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json/.test(recipe), 'Recipe must include OpenAI embedding configure command.');
+  check('configure_fastembed_embeddings', /memory-provider\.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers\/paraphrase-multilingual-MiniLM-L12-v2 --json/.test(recipe), 'Recipe must include FastEmbed configure command.');
+  check('project_local_scope_explicit', /--provider-scope project/.test(recipe), 'Recipe must show project-local provider storage only as an explicit command.');
+  check('provider_layers', /LLM provider/i.test(recipe) && /Embedding provider/i.test(recipe) && /Vector store/i.test(recipe) && /History store/i.test(recipe), 'Recipe must distinguish LLM, embedding, vector, and history layers.');
+  check('fastembed_regular_choice', /regular choice, not an emergency fallback/i.test(recipe), 'Recipe must present Local FastEmbed as a normal guided choice.');
+  check('shared_provider_default', /default provider storage is shared per OS user/i.test(recipe), 'Recipe must document shared provider storage as the default.');
+  check('shared_storage_not_python_runtime', /shared provider root is data storage, not a Python virtualenv/i.test(recipe), 'Recipe must distinguish shared provider storage from Python runtime.');
+  check('operational_diagnostic_layers', /status[\s\S]+health --adapter live[\s\S]+list[\s\S]+add[\s\S]+search[\s\S]+recall/i.test(recipe), 'Recipe must distinguish offline status, live health, and operational live smoke layers.');
+  check('fastembed_onnx_diagnostic', /fastembed_onnx_external_data_path_error/.test(recipe), 'Recipe must document FastEmbed ONNX model-cache diagnostics.');
+  check('collection_dimension_guard', /Never reuse an OpenAI `1536`-dimension collection/i.test(recipe), 'Recipe must warn against OpenAI 1536 collection reuse for FastEmbed.');
   check('live_health', /memory-mem0\.js health --adapter live --json/.test(recipe), 'Recipe must include live health command.');
   check('live_add', /memory-mem0\.js add --adapter live --yes-live-memory/.test(recipe), 'Recipe must include explicit live add command.');
   check('live_search', /memory-mem0\.js search "advisory memory" --adapter live --yes-live-memory --json/.test(recipe), 'Recipe must include explicit live search command.');
@@ -864,6 +1805,50 @@ function firstRecommendedInstallCommand(liveHealth) {
   return commands[0] || null;
 }
 
+function mem0EmbeddingProviderChoices() {
+  return [
+    {
+      id: 'openai',
+      label: 'OpenAI API',
+      command: 'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json',
+      notes: [
+        'simpler',
+        'good quality',
+        'requires OPENAI_API_KEY',
+        'paid by API usage',
+        'can fail with 429 insufficient_quota'
+      ]
+    },
+    {
+      id: 'fastembed',
+      label: 'Local FastEmbed',
+      command: 'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json',
+      notes: [
+        'free by API usage',
+        'runs locally on CPU',
+        'does not require GPU',
+        'downloads a local model',
+        'requires selecting a model and creating a separate Qdrant collection'
+      ]
+    }
+  ];
+}
+
+function mem0EmbeddingProviderQuestion() {
+  return {
+    id: 'mem0_embedding_provider',
+    required: true,
+    question: 'Which backend should Mem0 use for embeddings?',
+    choices: mem0EmbeddingProviderChoices(),
+    layer_boundary: {
+      llm_provider: 'separate Mem0 reasoning/extraction model',
+      embedding_provider: 'OpenAI API or Local FastEmbed',
+      vector_store: 'Qdrant; shared by default, project-local only by explicit request',
+      history_store: 'SQLite; shared provider storage by default'
+    }
+  };
+}
+
 function setupMem0Provider(context, providerId, flags = {}, options = {}) {
   const manifest = findManifest(context, providerId, options);
   if (manifest.id !== 'mem0-oss') throw new Error(`setup is only implemented for mem0-oss, got ${manifest.id}`);
@@ -875,18 +1860,61 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     recordInstall(context, manifest.id, { ...flags, version, yesIReviewedLicense: true }, options);
     receipt = safeReadJson(receiptFile, null);
     receiptAction = 'created';
-  } else if (receipt.schema_version !== '3.2.6') {
+  } else if (receipt.schema_version !== '3.2.9') {
     receipt = {
       ...receipt,
-      schema_version: '3.2.6',
+      schema_version: '3.2.9',
       migrated_at: nowIso(),
       migration_note: 'Mem0 install receipt schema migrated by setup; no install or network action was executed.'
     };
     writeJsonAtomic(receiptFile, receipt);
     receiptAction = 'migrated';
   }
-  const config = ensureMem0RepoConfig(context, manifest);
   const recipe = writeMem0Recipe(context, manifest.id, options);
+  const configExists = fs.existsSync(mem0ConfigPath(context, manifest));
+  if (!configExists) {
+    const question = mem0EmbeddingProviderQuestion();
+    const status = statusProvider(context, manifest.id, { ...options, write: true });
+    return {
+      ok: true,
+      action: 'setup',
+      provider_id: manifest.id,
+      setup_status: 'needs_embedding_provider_choice',
+      receipt_action: receiptAction,
+      receipt_present: Boolean(receipt),
+      receipt: displayPath(context, receiptFile),
+      config: null,
+      config_required: true,
+      provider_choice_required: true,
+      embedding_provider_question: question,
+      next_questions: [question],
+      next_commands: question.choices.map((choice) => choice.command),
+      recipe: recipe.recipe,
+      runtime_status_cache: displayPath(context, runtimeStatusPath(context, manifest)),
+      live_checked: false,
+      live_health: null,
+      status,
+      runtime_available: false,
+      package_installed: false,
+      agent_message: 'Mem0 setup requires an explicit embedding provider choice before live setup.',
+      agent_facing: {
+        text: [
+          'Ask the user which Mem0 embedding backend to use before running live setup.',
+          'Do not silently choose OpenAI API or Local FastEmbed.',
+          `Question: ${question.question}`,
+          `OpenAI command: ${question.choices[0].command}`,
+          `Local FastEmbed command: ${question.choices[1].command}`,
+          'After configure-embeddings, rerun: node .knowledge/tools/memory-provider.js setup mem0-oss --live --json',
+          'Boundary: advisory-only.'
+        ].join('\n'),
+        boundary: 'advisory-only'
+      },
+      source_of_truth: false,
+      trust_role: 'advisory_only',
+      trust_effect: 'advisory_only'
+    };
+  }
+  const config = ensureMem0RepoConfig(context, manifest);
   const liveHealth = flags.live ? runMem0LiveHealth(context, flags, config) : null;
   const status = statusProvider(context, manifest.id, { ...options, write: true });
   const runtimeAvailable = Boolean(liveHealth?.status === 'available' || status.runtime_available);
@@ -902,12 +1930,12 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
   const searchCommand = 'node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json';
   const recallCommand = 'node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json';
   const agentLines = [
-    'Mem0 подключен к .knowledge как advisory-only external memory.',
+    'Mem0 Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦ Р В РЎвЂќ .knowledge Р В РЎвЂќР В Р’В°Р В РЎвЂќ advisory-only external memory.',
     `Receipt: ${displayPath(context, receiptFile)}`,
-    'Live операции не запускаются автоматически.',
-    `Для записи используй: ${addCommand}`,
-    `Для поиска используй: ${searchCommand}`,
-    `Для recall используй: ${recallCommand}`,
+    'Live Р В РЎвЂўР В РЎвЂ”Р В Р’ВµР РЋР вЂљР В Р’В°Р РЋРІР‚В Р В РЎвЂР В РЎвЂ Р В Р вЂ¦Р В Р’Вµ Р В Р’В·Р В Р’В°Р В РЎвЂ”Р РЋРЎвЂњР РЋР С“Р В РЎвЂќР В Р’В°Р РЋР вЂ№Р РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂўР В РЎВР В Р’В°Р РЋРІР‚С™Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р В РЎвЂќР В РЎвЂ.',
+    `Р В РІР‚СњР В Р’В»Р РЋР РЏ Р В Р’В·Р В Р’В°Р В РЎвЂ”Р В РЎвЂР РЋР С“Р В РЎвЂ Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В РІвЂћвЂ“: ${addCommand}`,
+    `Р В РІР‚СњР В Р’В»Р РЋР РЏ Р В РЎвЂ”Р В РЎвЂўР В РЎвЂР РЋР С“Р В РЎвЂќР В Р’В° Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В РІвЂћвЂ“: ${searchCommand}`,
+    `Р В РІР‚СњР В Р’В»Р РЋР РЏ recall Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В РІвЂћвЂ“: ${recallCommand}`,
     'Boundary: advisory-only.'
   ];
   if (recommendedInstall && !runtimeAvailable) agentLines.splice(3, 0, `Recommended install: ${recommendedInstall}`);
@@ -921,6 +1949,9 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     receipt: displayPath(context, receiptFile),
     config: config.display_path,
     config_meta: config.meta_path,
+    provider_scope: config.provider_scope,
+    shared_provider_root: config.shared_provider_root,
+    project_storage_key: config.project_storage_key,
     recipe: recipe.recipe,
     runtime_status_cache: displayPath(context, runtimeStatusPath(context, manifest)),
     live_checked: Boolean(flags.live),
@@ -930,7 +1961,7 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     package_installed: runtimeAvailable,
     recommended_command: recommendedInstall,
     next_commands: recommendedInstall && !runtimeAvailable ? [recommendedInstall] : [],
-    agent_message: 'Mem0 подключен к .knowledge как advisory-only external memory',
+    agent_message: 'Mem0 Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦ Р В РЎвЂќ .knowledge Р В РЎвЂќР В Р’В°Р В РЎвЂќ advisory-only external memory',
     agent_facing: {
       text: agentLines.join('\n'),
       add_command: addCommand,
@@ -950,7 +1981,7 @@ function uninstallProvider(context, providerId, flags = {}, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), {});
   const uninstall = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     provider_id: manifest.id,
     uninstalled_at: nowIso(),
     uninstall_mode: 'manual_receipt',
@@ -1025,7 +2056,7 @@ function listProviders(context, options = {}) {
   const manifests = loadProviderManifests(context, options);
   return {
     ok: true,
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     generated_at: nowIso(),
     mode: context.mode,
     providers: manifests.map((manifest) => ({
@@ -1052,6 +2083,7 @@ module.exports = {
   recordInstall,
   recordUpdate,
   setupMem0Provider,
+  configureMem0Embeddings,
   writeMem0Recipe,
   validateMem0Recipe,
   uninstallProvider,

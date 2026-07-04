@@ -13,9 +13,9 @@ const repoRoot = context.targetRoot;
 const lockDir = path.join(stateRoot, '.lock');
 const systemVersion = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.6';
+    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.9';
   } catch {
-    return '3.2.6';
+    return '3.2.9';
   }
 })();
 
@@ -71,14 +71,14 @@ function hrefForPath(value) {
 
 function fileLink(value, options = {}) {
   const raw = normalizePath(value);
-  if (!raw) return '<span class="muted">—</span>';
+  if (!raw) return '<span class="muted">Р Р†Р вЂљРІР‚Сњ</span>';
   const label = options.short ? shortPath(raw, options.short) : raw;
   const href = hrefForPath(raw);
   const cls = options.className || 'file-link';
   return `<a class="${cls}" href="${esc(href)}" title="${esc(raw)}">${esc(label)}</a>`;
 }
 
-function listLinks(values, empty = '—') {
+function listLinks(values, empty = 'Р Р†Р вЂљРІР‚Сњ') {
   const arr = toArray(values).filter(Boolean);
   if (!arr.length) return `<span class="muted">${esc(empty)}</span>`;
   return `<div class="link-list">${arr.map((item) => fileLink(item, { short: 72 })).join('')}</div>`;
@@ -88,12 +88,12 @@ function shortPath(value, max = 64) {
   const text = normalizePath(value);
   if (text.length <= max) return text;
   const parts = text.split('/');
-  if (parts.length <= 2) return `…${text.slice(-(max - 1))}`;
+  if (parts.length <= 2) return `Р Р†Р вЂљР’В¦${text.slice(-(max - 1))}`;
   const last = parts.pop();
   const first = parts.shift();
-  const candidate = `${first}/…/${last}`;
+  const candidate = `${first}/Р Р†Р вЂљР’В¦/${last}`;
   if (candidate.length <= max) return candidate;
-  return `…/${last.slice(-(max - 3))}`;
+  return `Р Р†Р вЂљР’В¦/${last.slice(-(max - 3))}`;
 }
 
 function copyButton(command, label = 'Copy') {
@@ -110,7 +110,7 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -120,7 +120,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -129,7 +129,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -138,7 +138,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -583,17 +583,20 @@ function graphNextActions(node, data, verification) {
   const moduleId = graphNodeModuleId(node);
   const query = moduleId || node.title || node.page || node.id || '';
   const actions = [];
-  if (group === 'module' && node.path) actions.push({ label: 'Open module card', href: hrefForPath(node.path) });
+  if (group === 'module' && node.path) actions.push({ label: 'Open module card', href: hrefForPath(node.path), path: normalizePath(node.path) });
   const related = uniqueGraphValues([...(verification.code || []), ...(verification.tests || []), ...(verification.evidence || [])], 8)
     .filter((file) => {
       const text = normalizePath(file);
       return text && !/^Current\s/i.test(text) && (text.includes('/') || text.startsWith('.knowledge') || /\.[a-z0-9]{1,8}$/i.test(text));
     })
     .slice(0, 5);
-  for (const file of related) actions.push({ label: `Open ${shortPath(file, 32)}`, href: hrefForPath(file) });
+  for (const file of related) actions.push({ label: `Open ${shortPath(file, 32)}`, href: hrefForPath(file), path: normalizePath(file) });
   actions.push({ label: 'Search node', command: `node .knowledge/tools/search-knowledge.js "${String(query).replace(/"/g, '\\"')}"` });
   actions.push({ label: 'Rebuild graph', command: 'node .knowledge/tools/build-wiki-graph.js' });
-  if (group === 'wiki') actions.push({ label: 'Add typed link', href: hrefForPath(node.path || `.knowledge/wiki/${node.id}`) });
+  if (group === 'wiki') {
+    const wikiPath = normalizePath(node.path || `.knowledge/wiki/${node.id}`);
+    actions.push({ label: 'Add typed link', href: hrefForPath(wikiPath), path: wikiPath });
+  }
   else actions.push({ label: 'Add typed link', command: 'node .knowledge/tools/lint-wiki.js' });
   return actions.slice(0, 9);
 }
@@ -809,7 +812,7 @@ function graphShelfSummary(graph, nodes, edges) {
 }
 
 function graphToggleButton(expanded = true) {
-  const arrow = expanded ? '▾' : '▸';
+  const arrow = expanded ? 'Р Р†РІР‚вЂњРЎвЂў' : 'Р Р†РІР‚вЂњРЎвЂ';
   const label = expanded ? 'Collapse' : 'Expand';
   return `<button class="copy-btn graph-toggle-btn" type="button" data-graph-toggle="free-core" aria-expanded="${expanded ? 'true' : 'false'}"><span class="graph-toggle-arrow" aria-hidden="true">${arrow}</span> ${label}</button>`;
 }
@@ -872,7 +875,7 @@ function legacyGraphSvg(data) {
   const edgeMarkup = layout.edges.map((edge) => {
     const relation = edge.relation || edge.type || 'related';
     const valid = edge.valid === false ? ' invalid' : '';
-    return `<path d="${edgePath(edge)}" class="edge ${esc(relation)}${valid}"><title>${esc(relation)}\n${esc(edge.from)} → ${esc(edge.to)}</title></path>`;
+    return `<path d="${edgePath(edge)}" class="edge ${esc(relation)}${valid}"><title>${esc(relation)}\n${esc(edge.from)} Р Р†РІР‚В РІР‚в„ў ${esc(edge.to)}</title></path>`;
   }).join('');
   const nodes = layout.nodes.map((node) => {
     const trust = trustClass(node.trust || node.status || 'advisory_only');
@@ -885,7 +888,7 @@ function legacyGraphSvg(data) {
 }
 
 function emptyState(title, text, command) {
-  return `<div class="empty-state"><div class="empty-icon">◇</div><h3>${esc(title)}</h3><p>${esc(text)}</p>${command ? commandBox(command, 'Copy fix command') : ''}</div>`;
+  return `<div class="empty-state"><div class="empty-icon">Р Р†РІР‚вЂќРІР‚РЋ</div><h3>${esc(title)}</h3><p>${esc(text)}</p>${command ? commandBox(command, 'Copy fix command') : ''}</div>`;
 }
 
 function rowAttr(search, filter = '') {
@@ -901,7 +904,7 @@ function renderModules(data) {
     const trust = module.trust_status || 'unknown';
     const reasons = module.reasons || [];
     const search = [module.module_id, trust, module.confidence, module.path, module.card, reasons.join(' ')].join(' ');
-    return `<tr${rowAttr(search, trust)}><td><strong>${esc(module.module_id)}</strong></td><td><span class="pill ${trustClass(trust)}">${esc(trust)}</span></td><td>${esc(module.confidence || '—')}</td><td><ul class="reason-list">${reasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul></td><td>${module.path ? fileLink(module.path, { short: 46 }) : '<span class="muted">—</span>'}</td><td>${fileLink(module.card || `.knowledge/modules/${module.module_id}.json`, { short: 46 })}</td></tr>`;
+    return `<tr${rowAttr(search, trust)}><td><strong>${esc(module.module_id)}</strong></td><td><span class="pill ${trustClass(trust)}">${esc(trust)}</span></td><td>${esc(module.confidence || 'Р Р†Р вЂљРІР‚Сњ')}</td><td><ul class="reason-list">${reasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul></td><td>${module.path ? fileLink(module.path, { short: 46 }) : '<span class="muted">Р Р†Р вЂљРІР‚Сњ</span>'}</td><td>${fileLink(module.card || `.knowledge/modules/${module.module_id}.json`, { short: 46 })}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -911,7 +914,7 @@ function renderRepair(data) {
   return `<div class="table-controls"><input data-table-search="repair" placeholder="Filter repair queue..."><select data-table-filter="repair"><option value="">All priorities</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></div><table class="filterable" data-table="repair"><thead><tr><th>Priority</th><th>Status</th><th>Subject</th><th>Artifacts</th><th>Reason</th></tr></thead><tbody>${rows.map((item) => {
     const priority = item.priority || 'medium';
     const search = [priority, item.status, item.subject, item.reason, toArray(item.affected_artifacts).join(' ')].join(' ');
-    return `<tr${rowAttr(search, priority)}><td><span class="pill ${trustClass(priority)}">${esc(priority)}</span></td><td>${esc(item.status || 'open')}</td><td>${esc(item.subject)}</td><td>${listLinks(item.affected_artifacts)}</td><td>${esc(item.reason || '—')}</td></tr>`;
+    return `<tr${rowAttr(search, priority)}><td><span class="pill ${trustClass(priority)}">${esc(priority)}</span></td><td>${esc(item.status || 'open')}</td><td>${esc(item.subject)}</td><td>${listLinks(item.affected_artifacts)}</td><td>${esc(item.reason || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -921,7 +924,7 @@ function renderStale(data) {
   return `<div class="table-controls"><input data-table-search="stale" placeholder="Filter stale items..."><select data-table-filter="stale"><option value="">All statuses</option><option value="stale">stale</option><option value="missing">missing</option><option value="changed">changed</option><option value="needs_recheck">needs_recheck</option></select></div><table class="filterable" data-table="stale"><thead><tr><th>Status</th><th>Artifact</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows.map((item) => {
     const status = item.status || 'stale';
     const search = [status, item.artifact, item.reason, item.action].join(' ');
-    return `<tr${rowAttr(search, status)}><td><span class="pill ${trustClass(status)}">${esc(status)}</span></td><td>${fileLink(item.artifact, { short: 70 })}</td><td>${esc(item.reason || '—')}</td><td>${esc(item.action || '—')}</td></tr>`;
+    return `<tr${rowAttr(search, status)}><td><span class="pill ${trustClass(status)}">${esc(status)}</span></td><td>${fileLink(item.artifact, { short: 70 })}</td><td>${esc(item.reason || 'Р Р†Р вЂљРІР‚Сњ')}</td><td>${esc(item.action || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -931,7 +934,7 @@ function renderCriticalFiles(data) {
   return `<div class="table-controls"><input data-table-search="critical" placeholder="Filter files..."><select data-table-filter="critical"><option value="">All classes</option><option value="critical">critical</option><option value="important">important</option></select></div><table class="filterable" data-table="critical"><thead><tr><th>Class</th><th>Path</th><th>Modules</th><th>Reason</th></tr></thead><tbody>${rows.map((file) => {
     const cls = file.classification || 'important';
     const search = [cls, file.path, toArray(file.modules).join(' '), file.reason].join(' ');
-    return `<tr${rowAttr(search, cls)}><td><span class="pill ${trustClass(cls)}">${esc(cls)}</span></td><td>${fileLink(file.path, { short: 82 })}</td><td>${esc(toArray(file.modules).join(', ') || '—')}</td><td>${esc(file.reason || '—')}</td></tr>`;
+    return `<tr${rowAttr(search, cls)}><td><span class="pill ${trustClass(cls)}">${esc(cls)}</span></td><td>${fileLink(file.path, { short: 82 })}</td><td>${esc(toArray(file.modules).join(', ') || 'Р Р†Р вЂљРІР‚Сњ')}</td><td>${esc(file.reason || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -949,7 +952,7 @@ function renderExternal(data) {
   return `<table class="filterable" data-table="external"><thead><tr><th>Provider</th><th>Enabled</th><th>Mode</th><th>Trust role</th><th>Path/source</th><th>Warnings</th></tr></thead><tbody>${providers.map((provider) => {
     const warnings = toArray(provider.warnings).join('; ');
     const search = [provider.provider, provider.mode, provider.path, provider.source, warnings].join(' ');
-    return `<tr${rowAttr(search, provider.mode || '')}><td><strong>${esc(provider.provider || 'unknown')}</strong></td><td>${esc(provider.enabled ?? false)}</td><td>${esc(provider.mode || provider.status || 'unknown')}</td><td>${esc(provider.trust_role || 'advisory_only')}</td><td>${esc(provider.path || provider.source || '—')}</td><td>${esc(warnings || '—')}</td></tr>`;
+    return `<tr${rowAttr(search, provider.mode || '')}><td><strong>${esc(provider.provider || 'unknown')}</strong></td><td>${esc(provider.enabled ?? false)}</td><td>${esc(provider.mode || provider.status || 'unknown')}</td><td>${esc(provider.trust_role || 'advisory_only')}</td><td>${esc(provider.path || provider.source || 'Р Р†Р вЂљРІР‚Сњ')}</td><td>${esc(warnings || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
   }).join('')}</tbody></table><div class="mini-actions">${copyButton('node .knowledge/tools/external-memory-status.js --json', 'Copy status command')}${copyButton('node .knowledge/tools/external/pinecone-search.js "query" --dry-run', 'Copy dry-run search')}</div>`;
 }
 
@@ -1027,14 +1030,26 @@ function renderUpdates(data) {
     ['Apply Update', 'node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --target-knowledge-root .knowledge --apply --yes --json'],
     ['Verify Upgrade', 'node .knowledge/tools/update-system-files.js --verify-upgrade --json']
   ];
-  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current ${esc(current)} · Latest ${esc(latest)} · Asset ${esc(asset)}. Served Inspector checks the official release feed on launch; static Inspector stays local and command-only.</p></div><div class="mini-actions"><button class="copy-btn" type="button" data-update-action="status">Check Now</button><button class="copy-btn" type="button" data-update-action="dry-run">View Plan</button><button class="copy-btn danger-btn" type="button" data-update-action="apply">Apply Update</button></div></div><pre class="markdown-preview" id="updateOutput">No live update action has run in this Inspector tab yet.</pre><div class="quick-actions">${manual.map(([label, command]) => `<button class="action-card" type="button" data-copy="${esc(command)}"><span>${esc(label)}</span><code>${esc(command)}</code></button>`).join('')}</div>`;
+  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current ${esc(current)} Р вЂ™Р’В· Latest ${esc(latest)} Р вЂ™Р’В· Asset ${esc(asset)}. Served Inspector checks the official release feed on launch; static Inspector stays local and command-only.</p></div><div class="mini-actions"><button class="copy-btn" type="button" data-update-action="status">Check Now</button><button class="copy-btn" type="button" data-update-action="dry-run">View Plan</button><button class="copy-btn danger-btn" type="button" data-update-action="apply">Apply Update</button></div></div><pre class="markdown-preview" id="updateOutput">No live update action has run in this Inspector tab yet.</pre><div class="quick-actions">${manual.map(([label, command]) => `<button class="action-card" type="button" data-copy="${esc(command)}"><span>${esc(label)}</span><code>${esc(command)}</code></button>`).join('')}</div>`;
+}
+
+function renderUpdatesV2(data) {
+  const status = data.updateStatus || {};
+  const latest = status.latest_version || '-';
+  const current = status.current_version || '-';
+  const state = status.status || 'never_checked';
+  const asset = status.asset_name || 'knowledge-v<version>.zip';
+  const stateClass = state === 'update_available' ? ' available' : state === 'check_failed' ? ' failed' : '';
+  const canUpdate = state === 'update_available';
+  const buttonLabel = canUpdate ? 'Update' : (state === 'check_failed' ? 'Check failed' : 'Up to date');
+  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}" data-asset-name="${esc(asset)}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current <span data-update-current>${esc(current)}</span> / Latest <span data-update-latest>${esc(latest)}</span> / Asset <span data-update-asset>${esc(asset)}</span></p></div><div class="mini-actions"><button class="copy-btn danger-btn" type="button" id="updateApplyButton" data-update-action="apply"${canUpdate ? '' : ' disabled'}>${esc(buttonLabel)}</button></div></div><pre class="markdown-preview" id="updateOutput" hidden></pre>`;
 }
 
 function renderRouting(data) {
   const routing = data.routing || {};
   const first = routing.first_read_strategy?.read_first || '.knowledge/maintenance/routing_bundle.json';
   const modules = routing.modules || [];
-  return `<table class="kv"><tr><th>First read</th><td>${esc(first)}</td></tr><tr><th>Mode</th><td>${esc(data.context.mode)}</td></tr><tr><th>Modules</th><td>${esc(modules.length)}</td></tr><tr><th>High risk</th><td>${esc((routing.high_risk_modules || []).join(', ') || '—')}</td></tr><tr><th>Source of truth</th><td>${esc((routing.source_of_truth_order || []).join(' > '))}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/build-routing-bundle.js --json', 'Copy rebuild command')}</div>`;
+  return `<table class="kv"><tr><th>First read</th><td>${esc(first)}</td></tr><tr><th>Mode</th><td>${esc(data.context.mode)}</td></tr><tr><th>Modules</th><td>${esc(modules.length)}</td></tr><tr><th>High risk</th><td>${esc((routing.high_risk_modules || []).join(', ') || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Source of truth</th><td>${esc((routing.source_of_truth_order || []).join(' > '))}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/build-routing-bundle.js --json', 'Copy rebuild command')}</div>`;
 }
 
 function renderPrPreview(data) {
@@ -1069,7 +1084,7 @@ function renderTeamMode(data) {
   const ctx = data.context || {};
   const active = data.team?.workspaces_total ?? 0;
   const warnings = Array.from(new Set([...(ctx.warnings || []), ...(data.team?.warnings || [])]));
-  return `<table class="kv"><tr><th>Mode</th><td>${esc(ctx.mode || 'repo')}</td></tr><tr><th>Repo ID</th><td>${esc(ctx.repoId || '—')}</td></tr><tr><th>Workspace</th><td>${esc(ctx.workspaceId || '—')}</td></tr><tr><th>Agent</th><td>${esc(ctx.agentId || '—')}</td></tr><tr><th>Target root</th><td>${esc(ctx.targetRoot || '—')}</td></tr><tr><th>State root</th><td>${esc(ctx.stateRoot || '—')}</td></tr><tr><th>Branch/head</th><td>${esc(`${ctx.branch || 'unknown'} / ${(ctx.headSha || '').slice(0, 12) || 'unknown'}`)}</td></tr><tr><th>Active workspaces</th><td>${esc(active)}</td></tr><tr><th>Flow lock owner</th><td>${esc(data.lockOwner ? `${data.lockOwner.agentId || data.lockOwner.pid} on ${data.lockOwner.branch || 'unknown'}` : 'none')}</td></tr><tr><th>Warnings</th><td>${esc(warnings.join('; ') || '—')}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/worktree-status.js --json', 'Copy worktree check')}${copyButton('node .knowledge/tools/flow.js release --exclusive --json', 'Copy exclusive release')}${copyButton('node .knowledge/tools/team-status.js --team-root <teamRoot> --json', 'Copy team status')}</div>`;
+  return `<table class="kv"><tr><th>Mode</th><td>${esc(ctx.mode || 'repo')}</td></tr><tr><th>Repo ID</th><td>${esc(ctx.repoId || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Workspace</th><td>${esc(ctx.workspaceId || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Agent</th><td>${esc(ctx.agentId || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Target root</th><td>${esc(ctx.targetRoot || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>State root</th><td>${esc(ctx.stateRoot || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Branch/head</th><td>${esc(`${ctx.branch || 'unknown'} / ${(ctx.headSha || '').slice(0, 12) || 'unknown'}`)}</td></tr><tr><th>Active workspaces</th><td>${esc(active)}</td></tr><tr><th>Flow lock owner</th><td>${esc(data.lockOwner ? `${data.lockOwner.agentId || data.lockOwner.pid} on ${data.lockOwner.branch || 'unknown'}` : 'none')}</td></tr><tr><th>Warnings</th><td>${esc(warnings.join('; ') || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/worktree-status.js --json', 'Copy worktree check')}${copyButton('node .knowledge/tools/flow.js release --exclusive --json', 'Copy exclusive release')}${copyButton('node .knowledge/tools/team-status.js --team-root <teamRoot> --json', 'Copy team status')}</div>`;
 }
 
 function renderTeamModePanel(data) {
@@ -1246,6 +1261,91 @@ function renderActionResultPanel(options = {}) {
   return `<div class="card result-panel is-collapsed" data-result-panel="true"><button type="button" class="result-toggle" data-result-toggle="true"><span>Action Result</span><small data-result-summary="true">Collapsed until an action runs</small></button><pre id="result" hidden>Session is local. Buttons use allowlisted actions only.</pre></div>`;
 }
 
+function renderOutcomePanel({ title, verdict, body, tone = 'ok', actions = '' } = {}) {
+  return `<section class="outcome-panel ${esc(tone)}" data-outcome-panel="true"><div><span class="eyebrow">Plain answer</span><h3>${esc(title || 'Status')}</h3><strong>${esc(verdict || 'Ready')}</strong><p>${esc(body || 'Open the advanced details below when you need exact evidence, commands, or JSON.')}</p></div>${actions ? `<div class="outcome-actions">${actions}</div>` : ''}</section>`;
+}
+
+function renderPageHeader({ title, summary, chips = [] } = {}) {
+  const chipHtml = chips.filter(Boolean).map((chip) => `<span class="chip">${esc(chip)}</span>`).join('');
+  return `<div class="page-header" data-page-header="true"><div><span class="eyebrow">.knowledge Inspector</span><h2>${esc(title || 'Inspector')}</h2>${summary ? `<p class="sub">${esc(summary)}</p>` : ''}</div>${chipHtml ? `<div class="chips page-chips">${chipHtml}</div>` : ''}</div>`;
+}
+
+function renderAdvancedShelf(id, title, body, summary = 'Advanced details for agents and maintainers.') {
+  return `<details class="advanced-shelf" data-advanced-shelf="${esc(id)}"><summary><span>${esc(title)}</span><small>${esc(summary)}</small></summary><div class="advanced-shelf-body">${body}</div></details>`;
+}
+
+function renderMetricStrip(items = []) {
+  return `<div class="grid stats metric-grid compact-top-metrics metric-strip" data-metric-strip="true">${items.map(([label, value, body]) => renderMetricCard(label, value, body)).join('')}</div>`;
+}
+
+function renderNextActionPanel({ title = 'Next action', body = 'Use the recommended action first.', primary = '', secondary = '' } = {}) {
+  return `<aside class="next-action-panel" data-next-action-panel="true"><span class="eyebrow">${esc(title)}</span><p>${esc(body)}</p><div class="mini-actions">${primary || ''}${secondary || ''}</div></aside>`;
+}
+
+function renderFilePreviewDrawer() {
+  return `<aside class="file-preview-drawer" data-file-preview-drawer="true" aria-live="polite" hidden><div class="file-preview-head"><div><span class="eyebrow">File preview</span><strong data-file-preview-title="true">No file selected</strong><small data-file-preview-meta="true">Next action links open here in live mode.</small></div><button type="button" class="copy-btn" data-file-preview-close="true">Close</button></div><div class="mini-actions file-preview-actions"><button type="button" class="copy-btn" data-file-preview-copy-path="true" disabled>Copy path</button><button type="button" class="copy-btn" data-file-preview-copy-code="true" disabled>Copy code -g</button><a class="copy-btn graph-action-link" href="#" data-file-preview-fallback="true">Open raw</a></div><pre class="file-preview-body" data-file-preview-body="true">Select a module card, .knowledge file, or spec file from Next action.</pre></aside>`;
+}
+
+function inspectorDesignCss() {
+  return `
+:root{--bg-0:#0a0a0c;--bg-1:#0f0f12;--bg-2:#14141a;--bg-3:#1a1a22;--line-soft:rgba(255,255,255,.06);--line-strong:rgba(255,255,255,.12);--fg-main:#ededf0;--fg-dim:#a4a4ad;--fg-mute:#6b6b75;--amber:oklch(.78 .13 75);--trusted:oklch(.78 .11 165);--info:oklch(.76 .1 230);--advisory:oklch(.76 .09 290);--blocker:oklch(.72 .15 35)}
+body{background:linear-gradient(180deg,var(--bg-0),#090d10 58%,var(--bg-0));color:var(--fg-main);letter-spacing:0}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(var(--line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);background-size:44px 44px;mask-image:linear-gradient(180deg,#000b,transparent 78%);opacity:.28}
+.app{grid-template-columns:244px minmax(0,1fr);background:transparent}
+.sidebar{background:linear-gradient(180deg,#0b1014,#090c0f);border-right:1px solid var(--line-strong);padding:16px;z-index:6}
+.brand{font-size:16px;letter-spacing:0;margin-bottom:14px}
+.tab-btn{min-height:40px;border-radius:8px;color:var(--fg-dim);font-weight:700}
+.tab-btn.active{background:#12191d;color:var(--fg-main);border-color:var(--line-strong);box-shadow:inset 3px 0 0 var(--amber)}
+.tab-btn:hover{background:#11171b;border-color:var(--line-strong)}
+.topbar{background:rgba(10,13,16,.88);border-bottom:1px solid var(--line-strong);backdrop-filter:blur(14px)}
+.topbar h1{font-size:20px;letter-spacing:0}
+.chip{border-color:var(--line-strong);background:#10161a;color:var(--fg-dim);border-radius:999px}
+main{max-width:1500px;margin:0 auto;padding:18px}
+.page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}
+.page-header h2{font-size:24px;letter-spacing:0;margin:0}
+.page-chips{justify-content:flex-end}
+.eyebrow{display:block;color:var(--fg-mute);font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.outcome-panel{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;border:1px solid var(--line-strong);background:linear-gradient(180deg,#101519,#0b0f12);border-radius:8px;padding:16px;margin:0 0 14px;box-shadow:0 20px 60px #0006}
+.outcome-panel h3{margin:0 0 8px;font-size:14px;color:var(--fg-dim)}
+.outcome-panel strong{display:block;font-size:20px;letter-spacing:0}
+.outcome-panel p{margin:6px 0 0;color:var(--fg-dim);max-width:760px}
+.outcome-panel.ok{border-left:4px solid var(--trusted)}.outcome-panel.warn{border-left:4px solid var(--amber)}.outcome-panel.info{border-left:4px solid var(--info)}.outcome-panel.blocked{border-left:4px solid var(--blocker)}
+.outcome-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;min-width:210px}
+.card,.panel,.stat,.signal-card,.empty-state,.graph-node-detail,.source-order-strip,.graph-insights,.update-banner,.setting-row,.simple-trust-actions.compact,.advanced-shelf,.next-action-panel,.file-preview-drawer{border-radius:8px;background:#0d1317;border:1px solid var(--line-soft);box-shadow:none}
+.card,.panel{padding:14px}
+.two{grid-template-columns:minmax(0,1.14fr) minmax(320px,.86fr)}
+.metric-strip{margin:0 0 14px}
+.metric-card{background:#0d1317;border-left:4px solid var(--line-strong)}
+.metric-card.ok{border-left-color:var(--trusted)}.metric-card.warning{border-left-color:var(--amber)}.metric-card.critical{border-left-color:var(--blocker)}
+.copy-btn,.pro-waitlist-button{border-radius:8px;background:#11191e;border-color:var(--line-strong);color:var(--fg-main);min-height:34px}
+.copy-btn:hover,.pro-waitlist-button:hover{border-color:var(--amber);text-decoration:none}
+.quick-actions{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.action-card{background:#0d1317;border-color:var(--line-soft);border-radius:8px}
+.action-card span{font-size:13px}.action-card code,.cmd code,.file-link{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.advanced-shelf{margin:10px 0;overflow:hidden}
+.advanced-shelf summary{display:flex;justify-content:space-between;gap:12px;align-items:center;cursor:pointer;padding:11px 12px;color:var(--fg-main)}
+.advanced-shelf summary span{font-weight:800}.advanced-shelf summary small{color:var(--fg-mute);font-size:12px}
+.advanced-shelf-body{border-top:1px solid var(--line-soft);padding:12px}
+.next-action-panel{padding:14px;align-self:start;position:sticky;top:94px}
+.next-action-panel p{color:var(--fg-dim);margin:0 0 10px}
+.file-preview-drawer{position:fixed;right:16px;bottom:16px;width:min(720px,calc(100vw - 32px));max-height:min(72vh,760px);z-index:30;padding:0;background:#0b1014;box-shadow:0 24px 80px #000b}
+.file-preview-head{display:flex;justify-content:space-between;gap:12px;padding:14px;border-bottom:1px solid var(--line-soft)}
+.file-preview-head strong,.file-preview-head small{display:block}.file-preview-head small{color:var(--fg-mute);margin-top:3px}
+.file-preview-actions{padding:10px 14px;margin:0;border-bottom:1px solid var(--line-soft)}
+.file-preview-actions a{text-decoration:none}
+.file-preview-body{margin:0;max-height:48vh;overflow:auto;background:#070b0e;color:#dce8df;border:0;border-radius:0;padding:14px;white-space:pre-wrap;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+.graph-detail-grid{grid-template-columns:1fr}
+.graph-detail-summary{border:1px solid var(--line-soft);background:#0b1115;border-radius:8px;padding:10px;margin-bottom:10px}
+.graph-detail-summary p{margin:6px 0;color:var(--fg-dim)}
+.graph-detail-actions{gap:8px}
+.trust-graph-svg{background:#080d10}
+.graph-scroll{border:1px solid var(--line-soft);background:#080d10}
+.tab-panel{scroll-margin-top:90px}
+@media(max-width:980px){.app{display:block}.sidebar{position:sticky;top:0;height:auto;display:flex;align-items:center;gap:8px;overflow:auto;padding:10px}.brand{white-space:nowrap;margin:0 10px 0 0}.tab-btn{width:auto;white-space:nowrap}.topbar{position:relative}.page-header,.outcome-panel{display:block}.outcome-actions{justify-content:flex-start;margin-top:12px}.two{grid-template-columns:1fr}.next-action-panel{position:relative;top:auto}.trust-graph-svg{min-width:900px}.file-preview-drawer{left:10px;right:10px;bottom:10px;width:auto}}
+@media(max-width:640px){main{padding:12px}.chips{gap:6px}.page-header h2{font-size:20px}.outcome-panel strong{font-size:17px}.setting-row{grid-template-columns:1fr}.cmd{display:block}.cmd .copy-btn{margin-top:8px;width:100%}}
+`;
+}
+
 function render(data) {
   const counts = trustCounts(data.trust);
   const countsHtml = counts.map((count) => `<div class="stat ${trustClass(count.key)}"><div class="num">${count.count}</div><div class="cap">${esc(count.key)}</div></div>`).join('');
@@ -1254,9 +1354,9 @@ function render(data) {
   const staleCount = (data.stale.items || data.stale.stale_items || []).length;
   const wikiEdges = (data.wikiGraph.edges || []).length;
   const searchDocs = (data.searchIndex.documents || []).length;
-  const qualityScore = data.quality.quality_score ?? data.quality.score ?? '—';
+  const qualityScore = data.quality.quality_score ?? data.quality.score ?? 'Р Р†Р вЂљРІР‚Сњ';
   const secretStatus = data.secretScan.status || 'not_run';
-  const wikiLintScore = data.wikiLint.quality_score ?? '—';
+  const wikiLintScore = data.wikiLint.quality_score ?? 'Р Р†Р вЂљРІР‚Сњ';
   const generated = esc(data.generated_at);
   return `<!doctype html>
 <html lang="en">
@@ -1270,13 +1370,13 @@ function render(data) {
 </style>
 </head>
 <body>
-<header><div class="topbar"><div><h1>.knowledge Visual Inspector</h1><div class="sub">Generated ${generated} · source of truth remains current code and tests.</div></div><div class="mini-stat-row"><div class="mini-stat"><strong>${esc(qualityScore)}</strong>quality</div><div class="mini-stat"><strong>${esc(moduleCount)}</strong>modules</div><div class="mini-stat"><strong>${esc(searchDocs)}</strong>search docs</div><div class="mini-stat"><strong>${esc(secretStatus)}</strong>secret scan</div></div></div><input class="global-filter" id="globalFilter" placeholder="Filter all tables by module, path, trust, command, reason..."></header>
+<header><div class="topbar"><div><h1>.knowledge Visual Inspector</h1><div class="sub">Generated ${generated} Р вЂ™Р’В· source of truth remains current code and tests.</div></div><div class="mini-stat-row"><div class="mini-stat"><strong>${esc(qualityScore)}</strong>quality</div><div class="mini-stat"><strong>${esc(moduleCount)}</strong>modules</div><div class="mini-stat"><strong>${esc(searchDocs)}</strong>search docs</div><div class="mini-stat"><strong>${esc(secretStatus)}</strong>secret scan</div></div></div><input class="global-filter" id="globalFilter" placeholder="Filter all tables by module, path, trust, command, reason..."></header>
 <main>
 <section>${renderQuickActions()}</section>
 <section class="grid stats">${countsHtml}<div class="stat"><div class="num">${esc(qualityScore)}</div><div class="cap">quality</div></div><div class="stat"><div class="num">${esc(wikiLintScore)}</div><div class="cap">wiki lint</div></div><div class="stat"><div class="num">${esc(repairCount)}</div><div class="cap">repair queue</div></div><div class="stat"><div class="num">${esc(staleCount)}</div><div class="cap">stale items</div></div><div class="stat"><div class="num">${esc(wikiEdges)}</div><div class="cap">wiki edges</div></div></section>
 <section class="grid two"><div class="card"><h2>Routing Bundle View</h2>${renderRouting(data)}</div><div class="card"><h2>Team Mode</h2>${renderTeamMode(data)}</div></section>
 <section>${freeCoreGraphSvg(data)}</section>
-<section class="grid two"><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div><div class="card"><h2>Modules <span class="sub">· with low-confidence explanations</span></h2>${renderModules(data)}</div></section>
+<section class="grid two"><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div><div class="card"><h2>Modules <span class="sub">Р вЂ™Р’В· with low-confidence explanations</span></h2>${renderModules(data)}</div></section>
 <section class="grid two"><div class="card"><h2>Repair Queue</h2>${renderRepair(data)}</div><div class="card"><h2>Stale Items</h2>${renderStale(data)}</div></section>
 <section class="card"><h2>Critical / Important Files</h2>${renderCriticalFiles(data)}</section>
 <section class="grid two"><div class="card"><h2>PR Summary Preview</h2>${renderPrPreview(data)}</div><div class="card"><h2>Inspector Pro waitlist</h2>${renderProWaitlist(data)}</div></section>
@@ -1288,15 +1388,16 @@ function showToast(text){ toast.textContent = text || 'Copied'; toast.classList.
 function copyText(text){ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(()=>showToast('Copied command')).catch(()=>fallbackCopy(text)); } else fallbackCopy(text); }
 function fallbackCopy(text){ const el=document.createElement('textarea'); el.value=text; document.body.appendChild(el); el.select(); document.execCommand('copy'); el.remove(); showToast('Copied command'); }
 function escapeHtmlClient(value){return String(value||'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
-function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'▸':'▾')+'</span> '+(collapsed?'Expand':'Collapse')}
+function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'Р Р†РІР‚вЂњРЎвЂ':'Р Р†РІР‚вЂњРЎвЂў')+'</span> '+(collapsed?'Expand':'Collapse')}
 function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.innerHTML=graphToggleHtml(collapsed);button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
 function initGraphShelves(){document.querySelectorAll('[data-graph-shelf]').forEach((shelf)=>{const id=shelf.getAttribute('data-graph-shelf');let collapsed=false;try{collapsed=localStorage.getItem('knowledge.graph.'+id+'.collapsed')==='1'}catch{}setGraphShelf(id,collapsed)})}
 function graphList(items,empty,formatter){const values=Array.isArray(items)?items:[];if(!values.length)return '<p class="muted">'+escapeHtmlClient(empty)+'</p>';return '<ul>'+values.map((item)=>'<li>'+formatter(item)+'</li>').join('')+'</ul>'}
-function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' → '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
+function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' Р Р†РІР‚В РІР‚в„ў '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
 function graphArtifacts(values,empty){return graphList(values,empty,(item)=>escapeHtmlClient(item))}
-function graphAction(action){if(action.href)return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(action.href)+'">'+escapeHtmlClient(action.label||'Open')+'</a>';if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
-function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' · ')}
-function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+(pathValue?' · Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
+function inspectorFileHref(action){if(liveMode&&sessionToken&&action.path)return '/api/files/open?path='+encodeURIComponent(action.path)+'&token='+encodeURIComponent(sessionToken);return action.href||'#'}
+function graphAction(action){if(action.href){const rawPath=action.path||'';return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(inspectorFileHref(action))+'" data-open-path="'+escapeHtmlClient(rawPath)+'" data-open-label="'+escapeHtmlClient(action.label||'Open')+'">'+escapeHtmlClient(action.label||'Open')+'</a>'}if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
+function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' Р вЂ™Р’В· ')}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+(pathValue?' Р вЂ™Р’В· Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
 document.addEventListener('click', (event)=>{ const graphToggle=event.target.closest('[data-graph-toggle]'); if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle'); const shelf=document.querySelector('[data-graph-shelf="'+id+'"]'); setGraphShelf(id,!shelf?.classList.contains('is-collapsed')); return;} const graphNode=event.target.closest('[data-graph-node]'); if(graphNode){showGraphNodeDetail(graphNode); return;} const btn=event.target.closest('[data-copy]'); if(btn) copyText(btn.getAttribute('data-copy')); });
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
 function applyFilters(tableName){ const searchInput=document.querySelector('[data-table-search="'+tableName+'"]'); const select=document.querySelector('[data-table-filter="'+tableName+'"]'); const global=document.getElementById('globalFilter'); const q=((searchInput&&searchInput.value)||'').toLowerCase(); const g=(global.value||'').toLowerCase(); const f=((select&&select.value)||'').toLowerCase(); document.querySelectorAll('table[data-table="'+tableName+'"] tbody tr').forEach(row=>{ const text=(row.getAttribute('data-search')||row.textContent||'').toLowerCase(); const rowFilter=(row.getAttribute('data-filter')||'').toLowerCase(); const okText=(!q||text.includes(q)) && (!g||text.includes(g)); const okFilter=!f||rowFilter===f||rowFilter.includes(f); row.style.display=(okText&&okFilter)?'':'none'; }); }
@@ -1329,7 +1430,7 @@ function renderTabbed(data, options = {}) {
   const prStatus = fs.existsSync(path.join(stateRoot, 'maintenance', 'pr_summary.md')) ? 'available' : 'not generated';
   const prImpactStatus = data.prImpact?.status || 'not_generated';
   const nextAction = repairCount ? 'Review Repair Queue' : staleCount ? 'Refresh stale items' : 'Run Doctor';
-  const homeCards = [
+  const homeMetricItems = [
     ['Repo Readiness', qualityScore, 'Can agents safely work in this repo right now?'],
     ['Knowledge Trust', counts.map((count) => `${count.key}:${count.count}`).join(' / '), 'Can agents trust the knowledge they are using?'],
     ['Evidence Coverage', (data.searchIndex.documents || []).length, 'How much knowledge is backed by local evidence/search data?'],
@@ -1340,12 +1441,13 @@ function renderTabbed(data, options = {}) {
     ['Memory Providers', memoryStatus, 'External memory is advisory and cannot override evidence.'],
     ['Next Recommended Action', nextAction, 'Use the local server action drawer or copy fallback.'],
     ['Recent Reports', prStatus, 'Latest local reports remain in .knowledge/maintenance.']
-  ].map(([label, value, body]) => renderMetricCard(label, value, body)).join('');
+  ];
+  const homeCards = homeMetricItems.map(([label, value, body]) => renderMetricCard(label, value, body)).join('');
   const countCards = counts.map((count) => `<div class="stat ${trustClass(count.key)}"><div class="num">${count.count}</div><div class="cap">${esc(count.key)}</div></div>`).join('');
   const searchBody = `<div class="empty-state"><h3>Local search</h3><p>${esc(searchDocs)} indexed documents. Search runs locally from generated index data.</p>${commandBox('node .knowledge/tools/search-knowledge.js "<query>"', 'Copy search command')}</div>`;
-  const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/validate-release-artifact.js dist/knowledge-v${esc(systemVersion)}.zip --json"><span>Validate Release Artifact</span><code>node .knowledge/tools/validate-release-artifact.js dist/knowledge-v${esc(systemVersion)}.zip --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Release artifact hygiene</h3><p>Use the uploaded release asset for install checks; source snapshots are not install packages.</p></div>`;
+  const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/install-check.js --json"><span>Run Install Check</span><code>node .knowledge/tools/install-check.js --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Release artifact hygiene</h3><p>Use the uploaded release asset for install checks; source snapshots are not install packages.</p></div>`;
   const onboarding = renderOnboarding(data, options);
-  const updatesPanel = renderUpdates(data);
+  const updatesPanel = renderUpdatesV2(data);
   const updateState = data.updateStatus?.status || 'never_checked';
   const turnOffButton = options.live
     ? '<button class="copy-btn danger-btn turn-off-btn" type="button" data-shutdown="true">Turn off</button>'
@@ -1354,17 +1456,46 @@ function renderTabbed(data, options = {}) {
   const actionResult = renderActionResultPanel(options);
   const settingsBody = `<div class="grid two"><div class="card"><h2>User Mode: Simple / Advanced</h2><p class="sub">Simple Mode uses plain-language summaries and safe defaults. Advanced Mode shows raw JSON, locks, routing, evidence and branch policy.</p>${commandBox('node .knowledge/tools/agent-session.js report --json', 'Agent sessions')}</div><div class="card"><h2>Agent Report Footer</h2><p class="sub">Supported modes: off, compact, full, only when trust incomplete. Token metrics must be labelled as estimates.</p>${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div><div class="card"><h2>Concurrent Work Policy</h2><p class="sub">Default multi-agent mode is Safe Queue. Merge policy defaults to Manual Only.</p>${renderTeamModePanel(data)}</div><div class="card"><h2>Local Server</h2><p class="sub">Browser and VS Code shell use the same local API.</p>${commandBox('node .knowledge/inspector.js', 'Open Inspector')}</div></div>`;
   const agentsBody = `<div class="grid two"><div class="card"><h2>Agent Registry / Active Sessions</h2><p class="sub">No manual active-agent switch. Connected agents register sessions, heartbeats, reports and locks.</p>${commandBox('node .knowledge/tools/agent-session.js start --runtime claude-code --json', 'Start session')}${commandBox('node .knowledge/tools/agent-session.js report --json', 'Session report')}</div><div class="card"><h2>Safe Queue / Locks / Parallel Worktrees / Merge Queue</h2>${renderTeamModePanel(data)}</div></div>`;
+  const trustPrimary = options.live ? '<button type="button" class="copy-btn" data-action="trust.restore.safe">Restore Trust</button>' : copyButton('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust');
   const tabs = [
-    ['Home', `${onboarding}${updatesPanel}<div class="grid stats metric-grid compact-top-metrics">${homeCards}</div>${renderBranchDiagnostics(data, { ...options, showSimpleTrust: data.settings.user_mode === 'simple' })}${actionDrawer}${actionResult}<div class="card"><h2>Memory Providers</h2><p class="sub">External memory is advisory and cannot override evidence.</p>${renderMemoryProviders(data)}</div>`],
-    ['Review', `<div class="grid two"><div class="card"><h2>PR Impact</h2>${renderPrImpactPreview(data)}</div><div class="card"><h2>Reviewer Notes</h2>${renderPrPreview(data)}</div></div><div class="card"><h2>Critical Paths / Policy Warnings</h2>${renderCriticalFiles(data)}</div>`],
-    ['Knowledge Trust', `<div class="grid stats">${countCards}</div>${freeCoreGraphSvg(data)}<div class="mini-actions trust-repair-actions">${options.live ? '<button type="button" class="copy-btn" data-action="trust.restore.safe">Restore Trust</button>' : copyButton('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}${renderTrustRepairPrompt(data)}</div><div class="grid two"><div class="card"><h2>Trust Overview</h2>${renderModules(data)}</div><div class="card"><h2>Evidence and Routing</h2>${renderRouting(data)}<h3>Search</h3>${searchBody}</div></div><div class="grid two"><div class="card"><h2>Freshness</h2>${renderStale(data)}</div><div class="card"><h2>Repair Queue / Restore Trust</h2>${renderRepair(data)}${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div></div>`],
-    ['Agents Activity', agentsBody],
-    ['Reports', `<div class="grid two"><div class="card"><h2>Release Checks</h2>${exportBody}</div><div class="card"><h2>Benchmark Smoke</h2>${commandBox('node .knowledge/benchmarks/run-benchmarks.js --suite smoke --json', 'Benchmark smoke')}</div></div>`],
-    ['Settings', `${settingsBody}<div class="card"><h2>Memory Providers</h2>${renderMemoryProviders(data)}</div>`],
-    ['Pro Preview', `<div class="card"><h2>Coming Soon</h2><p class="sub">Inspector Pro is planned for teams that need deeper collaboration and governance. Free .knowledge remains local-first and fully usable.</p>${renderProWaitlist(data)}</div>`]
+    {
+      id: 'home',
+      label: 'Home',
+      body: `${renderPageHeader({ title: 'Home', summary: 'Repo-local status, update state, and the safest next step.', chips: [`Doctor ${qualityScore}`, `Update ${updateState}`, `Branch ${branch}`] })}${renderOutcomePanel({ title: 'Repo readiness', verdict: repairCount ? 'Repair queue needs attention' : staleCount ? 'Refresh stale knowledge before relying on it' : 'Ready to work', body: 'Inspector keeps commands explicit and shows raw details only when you open the shelves.', tone: repairCount ? 'warn' : 'ok', actions: copyButton('node .knowledge/tools/doctor.js --json', 'Copy doctor') })}${onboarding}${updatesPanel}${renderMetricStrip(homeMetricItems)}<div class="grid two"><div>${renderBranchDiagnostics(data, { ...options, showSimpleTrust: data.settings.user_mode === 'simple' })}</div>${renderNextActionPanel({ body: `Recommended now: ${nextAction}. Use live buttons when available; static mode copies commands.`, primary: copyButton('node .knowledge/tools/doctor.js --json', 'Run Doctor'), secondary: copyButton('node .knowledge/inspector.js', 'Open live') })}</div>${renderAdvancedShelf('home-actions', 'Commands and action output', `${actionDrawer}${actionResult}`, 'Copyable commands and live action results.')}${renderAdvancedShelf('home-memory', 'Memory provider details', `<div class="card"><h2>Memory Providers</h2><p class="sub">External memory is advisory and cannot override evidence.</p>${renderMemoryProviders(data)}</div>`, 'Optional advisory context and provider diagnostics.')}`
+    },
+    {
+      id: 'review',
+      label: 'Review',
+      body: `${renderPageHeader({ title: 'Review', summary: 'Change impact, reviewer notes, and policy warnings in one consistent shell.', chips: [`PR impact ${prImpactStatus}`, `Critical ${criticalCount}`] })}${renderOutcomePanel({ title: 'Review outcome', verdict: prImpactStatus === 'not_generated' ? 'PR impact has not been generated yet' : 'Review data is available', body: 'Start with the summary. Open advanced shelves only when you need exact JSON, files, or command output.', tone: prImpactStatus === 'not_generated' ? 'warn' : 'ok', actions: copyButton('node .knowledge/tools/pr-impact.js --json', 'Copy PR impact') })}<div class="grid two"><div class="card"><h2>PR Impact</h2>${renderPrImpactPreview(data)}</div><div>${renderNextActionPanel({ title: 'Reviewer next step', body: 'Verify touched trust boundaries first, then inspect critical files only when listed.', primary: copyButton('node .knowledge/tools/generate-pr-summary.js', 'PR summary'), secondary: copyButton('node .knowledge/tools/pr-impact.js --json', 'Impact JSON') })}</div></div>${renderAdvancedShelf('review-notes', 'Reviewer notes and raw summary', `<div class="card"><h2>Reviewer Notes</h2>${renderPrPreview(data)}</div>`, 'Detailed reviewer text stays available without crowding the default view.')}${renderAdvancedShelf('review-critical', 'Critical paths and policy warnings', `<div class="card"><h2>Critical Paths / Policy Warnings</h2>${renderCriticalFiles(data)}</div>`, 'Open when review outcome points to important files.')}`
+    },
+    {
+      id: 'trust',
+      label: 'Knowledge Trust',
+      body: `${renderPageHeader({ title: 'Knowledge Trust', summary: 'Trust graph, routing, evidence, freshness, and repair status.', chips: [`Modules ${moduleCount}`, `Repair ${repairCount}`, `Stale ${staleCount}`] })}${renderOutcomePanel({ title: 'Trust answer', verdict: repairCount ? 'Repair generated trust artifacts before relying on summaries' : 'No blocking trust repairs found', body: 'Click a graph node to get a plain explanation. Incoming links, outgoing links, evidence, tests, and code stay in collapsible shelves.', tone: repairCount ? 'warn' : 'ok', actions: `${trustPrimary}${renderTrustRepairPrompt(data)}` })}<div class="grid stats">${countCards}</div>${freeCoreGraphSvg(data)}${renderAdvancedShelf('trust-routing', 'Modules, evidence, routing, and search', `<div class="grid two"><div class="card"><h2>Trust Overview</h2>${renderModules(data)}</div><div class="card"><h2>Evidence and Routing</h2>${renderRouting(data)}<h3>Search</h3>${searchBody}</div></div>`, 'Raw routing and module tables for advanced users.')}${renderAdvancedShelf('trust-freshness', 'Freshness and repair queue', `<div class="grid two"><div class="card"><h2>Freshness</h2>${renderStale(data)}</div><div class="card"><h2>Repair Queue / Restore Trust</h2>${renderRepair(data)}${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div></div>`, 'Exact stale items and repair commands.')}`
+    },
+    {
+      id: 'agents',
+      label: 'Agents',
+      body: `${renderPageHeader({ title: 'Agents', summary: 'Sessions, locks, Safe Queue, and handoff readiness.', chips: [`Mode ${data.context?.mode || 'repo'}`, `Head ${head}`] })}${renderOutcomePanel({ title: 'Agent activity', verdict: 'Use the queue and session report before overlapping work', body: 'The free Inspector shows local/team state; it does not merge or publish without explicit action.', tone: 'info', actions: copyButton('node .knowledge/tools/agent-session.js report --json', 'Session report') })}${agentsBody}${renderAdvancedShelf('agents-team', 'Raw team and worktree diagnostics', `${renderTeamModePanel(data)}${commandBox('node .knowledge/tools/worktree-status.js --json', 'Worktree Check')}`, 'Detailed locks, worktree state, and team status.')}`
+    },
+    {
+      id: 'reports',
+      label: 'Reports',
+      body: `${renderPageHeader({ title: 'Reports', summary: 'Verification results, skipped checks, and generated reports.', chips: [`PR ${prStatus}`, `Impact ${prImpactStatus}`] })}${renderOutcomePanel({ title: 'Verification summary', verdict: 'Only selected local checks are represented here', body: 'This page must say what ran and what did not. Full release gate remains separate unless explicitly requested.', tone: 'info', actions: copyButton('node .knowledge/tools/install-check.js --json', 'Install check') })}<div class="grid two"><div class="card"><h2>Release Checks</h2>${exportBody}</div><div class="card"><h2>Benchmark Smoke</h2>${commandBox('node .knowledge/benchmarks/run-benchmarks.js --suite smoke --json', 'Benchmark smoke')}</div></div>${renderAdvancedShelf('reports-output', 'Command output and skipped checks', `${commandBox('node .knowledge/tools/doctor.js --json', 'Doctor JSON')}${commandBox('node .knowledge/tools/build-visual-inspector.js --json', 'Inspector JSON')}`, 'Exact command output belongs here after checks run.')}`
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      body: `${renderPageHeader({ title: 'Settings', summary: 'Simple/Advanced mode, local server behavior, and memory provider defaults.', chips: [`User mode ${data.settings.user_mode}`, options.live ? 'Live API' : 'Static mode'] })}${renderOutcomePanel({ title: 'Settings model', verdict: 'Simple mode stays readable; advanced details stay one click away', body: 'Browser and VS Code use the same local API and the same generated UI.', tone: 'info', actions: copyButton('node .knowledge/inspector.js', 'Open Inspector') })}${settingsBody}${renderAdvancedShelf('settings-memory', 'Memory provider configuration details', `<div class="card"><h2>Memory Providers</h2>${renderMemoryProviders(data)}</div>`, 'Provider status, boundaries, and setup commands.')}`
+    },
+    {
+      id: 'pro',
+      label: 'Pro Preview',
+      body: `${renderPageHeader({ title: 'Pro Preview', summary: 'Optional team workflow layer on top of the free local trust layer.', chips: ['Free core remains local', 'Optional'] })}${renderOutcomePanel({ title: 'Boundary', verdict: 'Free .knowledge remains local-first and fully usable', body: 'Pro Preview is an in-app capability preview, not a replacement for the open local Inspector.', tone: 'info', actions: renderProWaitlist(data) })}${renderAdvancedShelf('pro-details', 'Capability notes', '<div class="card"><h2>Coming Soon</h2><p class="sub">Inspector Pro is planned for teams that need deeper collaboration and governance. Free .knowledge remains local-first and fully usable.</p></div>', 'Free vs team capability boundary.')}`
+    }
   ];
-  const nav = tabs.map(([label], index) => `<button type="button" class="tab-btn${index === 0 ? ' active' : ''}" data-tab="${index}">${esc(label)}</button>`).join('');
-  const sections = tabs.map(([label, body], index) => `<section class="tab-panel${index === 0 ? ' active' : ''}" data-panel="${index}" aria-label="${esc(label)}"><div class="panel-head"><h2>${esc(label)}</h2></div>${body}</section>`).join('');
+  const nav = tabs.map((tab, index) => `<button type="button" class="tab-btn${index === 0 ? ' active' : ''}" data-tab="${index}" data-route="${esc(tab.id)}">${esc(tab.label)}</button>`).join('');
+  const sections = tabs.map((tab, index) => `<section class="tab-panel${index === 0 ? ' active' : ''}" data-panel="${index}" data-route="${esc(tab.id)}" aria-label="${esc(tab.label)}">${tab.body}</section>`).join('');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1378,14 +1509,18 @@ function renderTabbed(data, options = {}) {
 body,.app,.content,main{overflow-x:hidden}.agent-picker{display:grid;gap:5px;min-width:0}.agent-picker small{color:var(--muted);line-height:1.35}.graph-hit-target{fill:#fff;fill-opacity:0;stroke:none;pointer-events:all}.graph-node .label{pointer-events:all;cursor:pointer}.graph-node:hover .graph-hit-target,.graph-node:focus .graph-hit-target{stroke:#fff;stroke-opacity:.18;stroke-width:1}
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.topbar-main{min-width:0}.topbar-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}.turn-off-btn{white-space:nowrap;font-size:16px;font-weight:900;line-height:1.1;min-height:50px;padding:17px 23px}.turn-off-btn:disabled{opacity:.55;cursor:not-allowed}.graph-shelf{margin:12px 0}.graph-shelf-header{display:block}.graph-title-block{min-width:0}.graph-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.graph-title-row h2,.graph-shelf-header h2{margin:0}.graph-shelf-summary{display:block;color:var(--muted);margin-top:4px}.graph-shelf-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;align-items:center}.graph-toggle-btn{display:inline-flex;align-items:center;gap:5px}.graph-toggle-arrow{font-weight:900}.graph-shelf.is-collapsed .graph-shelf-body{display:none}.graph-shelf.is-collapsed{padding-bottom:12px}.free-core-graph{display:grid;gap:12px}.free-core-graph>.legend{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;line-height:1.7;color:var(--muted)}.free-core-graph>.legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.graph-scroll{overflow:auto;border-radius:8px;max-width:100%;contain:layout paint}.graph-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px}.graph-metric{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:9px 10px}.graph-metric strong,.graph-metric span,.graph-metric small{display:block}.graph-metric strong{font-size:18px}.graph-metric span{color:var(--muted);font-size:11px;text-transform:uppercase}.graph-metric small{color:var(--muted);font-size:11px;margin-top:3px}.trust-graph-svg{height:580px;min-width:1120px;background:linear-gradient(180deg,#081017,#0c1820);overflow:visible}.lane line{stroke:#263841;stroke-width:1}.lane text{fill:#aebbb3;font-size:12px;text-transform:uppercase}.edge{fill:none;stroke:#6d7d88;stroke-width:2;opacity:.62;stroke-linecap:round}.edge.bundled{stroke-width:3.2;opacity:.78}.edge.invalid{stroke-dasharray:5 5;opacity:.5}.edge.outranks{stroke:#eaf3ee}.edge.routes{stroke:var(--blue)}.edge.documents{stroke:var(--green)}.edge.checks{stroke:#67e8f9}.edge.evidence{stroke:#9bd0f4}.edge.references,.edge.related{stroke:var(--violet)}.edge.advisory{stroke:var(--yellow);stroke-dasharray:6 4}.edge.supports{stroke:var(--green)}.edge.depends_on{stroke:var(--yellow)}.edge.contradicts{stroke:var(--red)}#graph-arrow path{fill:#91a2ad}.graph-node{cursor:pointer}.graph-node:focus .node,.graph-node:hover .node{stroke:#fff;stroke-width:3}.node{stroke:#081017;stroke-width:2}.node.source_truth{fill:#eaf3ee}.node.module{fill:var(--blue)}.node.wiki{fill:var(--violet)}.node.trusted{fill:var(--green)}.node.routing_trusted{fill:var(--blue)}.node.advisory_only{fill:var(--violet)}.node.suspect,.node.low_confidence{fill:var(--red)}.label{text-anchor:middle;font-size:10.5px;fill:#eef7f2;paint-order:stroke;stroke:#081017;stroke-width:4px;pointer-events:none}.label.source_truth{font-weight:800}.graph-node-detail{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:12px;color:#dce8df;max-height:430px;overflow:auto}.graph-node-detail strong,.graph-node-detail span,.graph-node-detail code{display:block}.graph-node-detail span{color:var(--muted);margin-top:3px}.graph-node-detail code{color:#9bd0f4;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.graph-detail-head{border-bottom:1px solid #263841;margin-bottom:10px;padding-bottom:8px}.graph-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.graph-detail-grid section{border:1px solid #263841;background:#09161d;border-radius:8px;padding:10px;margin:0}.graph-detail-grid h4{margin:0 0 7px;font-size:12px;text-transform:uppercase;color:#aebbb3}.graph-detail-grid ul{margin:0;padding-left:18px}.graph-detail-grid li{margin-bottom:5px}.graph-detail-grid em,.graph-detail-grid small{display:block;color:var(--muted);font-style:normal}.graph-detail-grid b{display:block;margin-top:7px}.graph-detail-actions{display:flex;flex-wrap:wrap;gap:7px}.graph-action-link{text-decoration:none}.graph-advisory{color:#ffe7ad!important}.source-order-strip{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:10px;color:#dce8df}.graph-insights{border:1px solid #263841;background:#0b141b;border-radius:8px;padding:12px}.graph-insights h3{margin-top:0}.graph-insights .reason-list{margin-top:10px}.edge-swatch.outranks{background:#eaf3ee}.edge-swatch.routes{background:var(--blue)}.edge-swatch.documents,.edge-swatch.supports{background:var(--green)}.edge-swatch.checks{background:#67e8f9}.edge-swatch.evidence{background:#9bd0f4}.edge-swatch.references{background:var(--violet)}.edge-swatch.advisory{background:var(--yellow)}.edge-swatch.contradicts{background:var(--red)}@media(max-width:850px){.topbar{display:block}.topbar-actions{margin-top:10px}.trust-graph-svg{height:500px;min-width:900px}.graph-tools,.graph-shelf-header{display:block}.graph-title-row{align-items:flex-start}.graph-tools .copy-btn,.graph-shelf-actions{margin-top:8px}}
 </style>
+<style>
+${inspectorDesignCss()}
+</style>
 </head>
 <body>
 <div class="app">
 <aside class="sidebar"><div class="brand">.knowledge Inspector ${esc(systemVersion)}</div><nav>${nav}</nav></aside>
 <div class="content">
-<header class="topbar"><div class="topbar-main"><h1>.knowledge Inspector ${esc(systemVersion)}</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip">Update: ${esc(updateState)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></div><div class="topbar-actions">${turnOffButton}</div></header>
+<header class="topbar"><div class="topbar-main"><h1>.knowledge Inspector ${esc(systemVersion)}</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip" data-update-chip>Update: ${esc(updateState)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></div><div class="topbar-actions">${turnOffButton}</div></header>
 <main>${sections}</main>
 </div></div>
+${renderFilePreviewDrawer()}
 <div id="toast" class="toast">Copied</div>
 <script>
 const toast=document.getElementById('toast');
@@ -1398,17 +1533,29 @@ function fallbackCopy(text){const el=document.createElement('textarea');el.value
 function copyText(text){if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(()=>showToast('Copied command')).catch(()=>fallbackCopy(text));else fallbackCopy(text)}
 function setResultPanel(open,summary){const panel=document.querySelector('[data-result-panel="true"]');const pre=document.getElementById('result');const meta=document.querySelector('[data-result-summary="true"]');if(!panel||!pre)return;panel.classList.toggle('is-collapsed',!open);pre.hidden=!open;if(meta&&summary)meta.textContent=summary}
 function authHeaders(headers){return sessionToken?{...(headers||{}),authorization:'Bearer '+sessionToken}:(headers||{})}
-async function updateApi(path,options){const output=document.getElementById('updateOutput');try{const opts=options||{};opts.headers=authHeaders(opts.headers);const res=await fetch(path,opts);const json=await res.json();if(output)output.textContent=JSON.stringify(json,null,2);const status=json.status||json.release||json.dry_run?.json||json.apply?.json||{};const state=document.getElementById('updateState');if(state&&status.status)state.textContent=status.status;const banner=document.getElementById('updateBanner');if(banner){banner.classList.toggle('available',status.status==='update_available');banner.classList.toggle('failed',json.ok===false||status.status==='check_failed')}return json}catch(error){if(output)output.textContent='Update API unavailable in static mode: '+error.message;return null}}
+let currentPreviewPath='';
+let currentPreviewHref='#';
+function codeCommandForPath(pathValue){return 'code -g '+String(pathValue||'')}
+function setFilePreview(pathValue,metaText,bodyText,fallbackHref){currentPreviewPath=pathValue||'';currentPreviewHref=fallbackHref||'#';const drawer=document.querySelector('[data-file-preview-drawer="true"]');if(!drawer)return;const title=drawer.querySelector('[data-file-preview-title="true"]');const meta=drawer.querySelector('[data-file-preview-meta="true"]');const body=drawer.querySelector('[data-file-preview-body="true"]');const copyPath=drawer.querySelector('[data-file-preview-copy-path="true"]');const copyCode=drawer.querySelector('[data-file-preview-copy-code="true"]');const raw=drawer.querySelector('[data-file-preview-fallback="true"]');if(title)title.textContent=pathValue||'File preview';if(meta)meta.textContent=metaText||'';if(body)body.textContent=bodyText||'';if(copyPath)copyPath.disabled=!currentPreviewPath;if(copyCode)copyCode.disabled=!currentPreviewPath;if(raw)raw.setAttribute('href',currentPreviewHref||'#');drawer.hidden=false}
+async function openInspectorFile(pathValue,fallbackHref){if(!pathValue)return false;const href=fallbackHref||('/api/files/open?path='+encodeURIComponent(pathValue));if(!liveMode||!sessionToken){setFilePreview(pathValue,'Static mode: copy the path or open the fallback link.','Live preview is available after running node .knowledge/inspector.js.',href);return false}setFilePreview(pathValue,'Loading through /api/files/open ...','Loading...',href);try{const res=await fetch('/api/files/open?path='+encodeURIComponent(pathValue),{headers:authHeaders()});const text=await res.text();const type=res.headers.get('content-type')||'text/plain';if(!res.ok){setFilePreview(pathValue,'Open failed: HTTP '+res.status,text||'The file could not be opened.',href);return false}setFilePreview(pathValue,type,text,href);showToast('File preview opened');return true}catch(error){setFilePreview(pathValue,'Open failed',String(error&&error.message||error),href);return false}}
+function closeFilePreview(){const drawer=document.querySelector('[data-file-preview-drawer="true"]');if(drawer)drawer.hidden=true}
+function extractUpdateStatus(json){return json?.refreshed_status||json?.apply?.refreshed_status||json?.status||json?.release||json?.dry_run?.status||json?.dry_run?.json||{}}
+function setUpdateText(selector,value){document.querySelectorAll(selector).forEach((el)=>{el.textContent=value||'-'})}
+function paintUpdateStatus(status,json){const s=status||{};const current=s.current_version||'-';const latest=s.latest_version||'-';const asset=s.asset_name||'knowledge-v<version>.zip';const stateText=s.status||'never_checked';const state=document.getElementById('updateState');if(state)state.textContent=stateText;setUpdateText('[data-update-current]',current);setUpdateText('[data-update-latest]',latest);setUpdateText('[data-update-asset]',asset);document.querySelectorAll('[data-update-chip]').forEach((el)=>{el.textContent='Update: '+stateText});const banner=document.getElementById('updateBanner');if(banner){banner.setAttribute('data-current-version',current);banner.setAttribute('data-latest-version',latest);banner.setAttribute('data-asset-name',asset);banner.classList.toggle('available',stateText==='update_available');banner.classList.toggle('failed',json?.ok===false||stateText==='check_failed')}const button=document.getElementById('updateApplyButton');if(button){const canUpdate=stateText==='update_available';button.disabled=!canUpdate;button.textContent=canUpdate?'Update':(stateText==='check_failed'?'Check failed':'Up to date')}return s}
+async function updateApi(path,options){const output=document.getElementById('updateOutput');const isApply=String(path||'').includes('/api/update/apply');try{const opts=options||{};opts.headers=authHeaders(opts.headers);const button=document.getElementById('updateApplyButton');if(isApply&&button){button.disabled=true;button.textContent='Updating...'}const res=await fetch(path,opts);const json=await res.json();paintUpdateStatus(extractUpdateStatus(json),json);if(output){output.hidden=!isApply&&!json?.error;output.textContent=JSON.stringify(json,null,2)}if(isApply)showToast(json.ok?'Update applied':'Update needs review');return json}catch(error){if(output){output.hidden=false;output.textContent='Update API unavailable in static mode: '+error.message}paintUpdateStatus({status:'check_failed',error:error.message},{ok:false});return null}}
 function escapeHtmlClient(value){return String(value||'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
-function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'▸':'▾')+'</span> '+(collapsed?'Expand':'Collapse')}
+function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'Р Р†РІР‚вЂњРЎвЂ':'Р Р†РІР‚вЂњРЎвЂў')+'</span> '+(collapsed?'Expand':'Collapse')}
 function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.innerHTML=graphToggleHtml(collapsed);button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
 function initGraphShelves(){document.querySelectorAll('[data-graph-shelf]').forEach((shelf)=>{const id=shelf.getAttribute('data-graph-shelf');let collapsed=false;try{collapsed=localStorage.getItem('knowledge.graph.'+id+'.collapsed')==='1'}catch{}setGraphShelf(id,collapsed)})}
 function graphList(items,empty,formatter){const values=Array.isArray(items)?items:[];if(!values.length)return '<p class="muted">'+escapeHtmlClient(empty)+'</p>';return '<ul>'+values.map((item)=>'<li>'+formatter(item)+'</li>').join('')+'</ul>'}
-function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' → '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
+function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' Р Р†РІР‚В РІР‚в„ў '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
 function graphArtifacts(values,empty){return graphList(values,empty,(item)=>escapeHtmlClient(item))}
-function graphAction(action){if(action.href)return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(action.href)+'">'+escapeHtmlClient(action.label||'Open')+'</a>';if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
-function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' · ')}
-function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' · Trust: '+escapeHtmlClient(trust)+(pathValue?' · Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
+function inspectorFileHref(action){if(liveMode&&sessionToken&&action.path)return '/api/files/open?path='+encodeURIComponent(action.path)+'&token='+encodeURIComponent(sessionToken);return action.href||'#'}
+function graphAction(action){if(action.href){const rawPath=action.path||'';return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(inspectorFileHref(action))+'" data-open-path="'+escapeHtmlClient(rawPath)+'" data-open-label="'+escapeHtmlClient(action.label||'Open')+'">'+escapeHtmlClient(action.label||'Open')+'</a>'}if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
+function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' Р вЂ™Р’В· ')}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+(pathValue?' Р вЂ™Р’В· Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
+function graphDetailShelf(id,title,body,summary){return '<details class="advanced-shelf" data-advanced-shelf="'+escapeHtmlClient(id)+'"><summary><span>'+escapeHtmlClient(title)+'</span><small>'+escapeHtmlClient(summary||'Advanced detail')+'</small></summary><div class="advanced-shelf-body">'+body+'</div></details>'}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<div class="graph-detail-summary"><strong>'+escapeHtmlClient(title)+'</strong><p>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+'</p>'+(pathValue?'<p>Path: '+escapeHtmlClient(pathValue)+'</p>':'')+'</div>'+graphDetailShelf('graph-command','Command','<code>'+escapeHtmlClient(command)+'</code>','Exact fallback command.');return}const v=payload.verification||{};const summary='<div class="graph-detail-summary"><strong>'+escapeHtmlClient(title)+'</strong><p>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+(pathValue?' / Path: '+escapeHtmlClient(pathValue):'')+'</p>'+(payload.advisory_note?'<p class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</p>':'')+'<p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</div>';const actions='<section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section>';detail.innerHTML='<div class="graph-detail-head">'+summary+actions+'</div><div class="graph-detail-grid">'+graphDetailShelf('graph-incoming','Incoming links',graphList(payload.incoming,'No incoming links for this node.',graphEdgeText),'Links pointing to this node.')+graphDetailShelf('graph-outgoing','Outgoing links',graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText),'Links leaving this node.')+graphDetailShelf('graph-evidence','Evidence / tests / code','<b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':''),'Raw verification sources.')+graphDetailShelf('graph-status','Status','<p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.'),'Broken/orphan/stale details.')+'</div>'}
 async function shutdownInspector(){if(!liveMode||!sessionToken){showToast('No live Inspector process');return}if(!confirm('Turn off the live Inspector and release this port?'))return;const out=document.getElementById('result');setResultPanel(true,'Inspector shutdown');if(out)out.textContent='Closing Inspector server...';try{const res=await fetch('/api/shutdown',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast('Inspector is shutting down');setTimeout(()=>{try{window.close()}catch{}},450)}catch(error){if(out)out.textContent='Shutdown request failed: '+error.message}}
 function branchByName(name){return (gitBranchState.branches||[]).find((branch)=>branch.name===name)||null}
 function setBranchField(name,value){document.querySelectorAll('[data-branch-field="'+name+'"]').forEach((el)=>{el.textContent=value||'none'})}
@@ -1424,7 +1571,7 @@ function onboardingAgentSummary(agent){const bits=[agent.runtime?'runtime '+agen
 function applyOnboardingAgentSettings(agentId){const settings=onboardingSettings()[agentId]||{};setControlValue('onboarding-user-mode',settings.user_mode||'simple');setControlValue('onboarding-permission',settings.agents_can_do_without_asking||'run checks and reports');setControlValue('onboarding-concurrency',settings.concurrent_work_policy||'Safe Queue');setControlValue('onboarding-merge',settings.merge_policy||'Manual Only');setControlValue('onboarding-footer',settings.report_footer_mode||'compact');const agent=onboardingAgents().find((item)=>item.id===agentId)||{};document.querySelectorAll('[data-onboarding-agent-summary]').forEach((el)=>{el.textContent=onboardingAgentSummary(agent)})}
 async function saveOnboarding(){if(!liveMode||!sessionToken){copyText('node .knowledge/inspector.js');return}const out=document.getElementById('result');setResultPanel(true,'Setup response');if(out)out.textContent='Saving first-run setup...';const selectedAgent=onboardingSelectedAgent();const body={agent_id:selectedAgent.id,agent_runtime:selectedAgent.runtime||selectedAgent.id,agent_display_name:selectedAgent.label||selectedAgent.id,user_mode:document.getElementById('onboarding-user-mode')?.value||'simple',agents_can_do_without_asking:document.getElementById('onboarding-permission')?.value||'run checks and reports',concurrent_work_policy:document.getElementById('onboarding-concurrency')?.value||'Safe Queue',merge_policy:document.getElementById('onboarding-merge')?.value||'Manual Only',report_footer_mode:document.getElementById('onboarding-footer')?.value||'compact',detected_agent_runtime:selectedAgent.runtime||selectedAgent.id};const res=await fetch('/api/settings/onboarding',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){const card=document.getElementById('onboarding-wizard');const bodyEl=card?.querySelector('.onboarding-body');if(bodyEl)bodyEl.hidden=true;if(card)card.setAttribute('data-onboarding-expanded','false');showToast('Setup saved')}}
 async function runLocalAction(id){if(!liveMode||!sessionToken)return;const out=document.getElementById('result');setResultPanel(true,'Latest local action output');if(out)out.textContent='Running '+id+'...';const res=await fetch('/api/actions/'+encodeURIComponent(id)+'/run',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify({confirmed:true})});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast(json.ok?'Action finished':'Action needs review')}
-document.addEventListener('click',(event)=>{const copy=event.target.closest('[data-copy]');if(copy){copyText(copy.getAttribute('data-copy'));return}const shutdown=event.target.closest('[data-shutdown]');if(shutdown){shutdownInspector();return}const graphToggle=event.target.closest('[data-graph-toggle]');if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle');const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');setGraphShelf(id,!shelf?.classList.contains('is-collapsed'));return}const graphNode=event.target.closest('[data-graph-node]');if(graphNode){showGraphNodeDetail(graphNode);return}const resultToggle=event.target.closest('[data-result-toggle]');if(resultToggle){const panel=document.querySelector('[data-result-panel="true"]');const open=panel?.classList.contains('is-collapsed');setResultPanel(open,open?'Latest local action output':'Collapsed until an action runs');return}const toggle=event.target.closest('[data-onboarding-toggle]');if(toggle){const card=document.getElementById('onboarding-wizard');const body=card?.querySelector('.onboarding-body');if(body){body.hidden=!body.hidden;if(card)card.setAttribute('data-onboarding-expanded',body.hidden?'false':'true')}return}const save=event.target.closest('[data-onboarding-save]');if(save){saveOnboarding();return}const localAction=event.target.closest('[data-action]');if(localAction){runLocalAction(localAction.getAttribute('data-action'));return}const update=event.target.closest('[data-update-action]');if(update){const action=update.getAttribute('data-update-action');setResultPanel(true,'Update action output');if(action==='status')updateApi('/api/update/status?refresh=1');if(action==='dry-run')updateApi('/api/update/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(action==='apply'&&confirm('Apply .knowledge system update now? Project knowledge will be preserved and a backup will be created.')){const latest=document.getElementById('updateBanner')?.getAttribute('data-latest-version')||'';updateApi('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,expectedVersion:latest&&latest!=='-'?latest:null})})}return}const tab=event.target.closest('[data-tab]');if(tab){document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach((p)=>p.classList.remove('active'));tab.classList.add('active');const panel=document.querySelector('[data-panel="'+tab.getAttribute('data-tab')+'"]');if(panel)panel.classList.add('active')}});
+document.addEventListener('click',(event)=>{const openLink=event.target.closest('[data-open-path]');if(openLink){const pathValue=openLink.getAttribute('data-open-path')||'';if(pathValue){event.preventDefault();openInspectorFile(pathValue,openLink.getAttribute('href')||'#');return}}const closePreview=event.target.closest('[data-file-preview-close]');if(closePreview){closeFilePreview();return}const copyPreviewPath=event.target.closest('[data-file-preview-copy-path]');if(copyPreviewPath){copyText(currentPreviewPath);return}const copyPreviewCode=event.target.closest('[data-file-preview-copy-code]');if(copyPreviewCode){copyText(codeCommandForPath(currentPreviewPath));return}const copy=event.target.closest('[data-copy]');if(copy){copyText(copy.getAttribute('data-copy'));return}const shutdown=event.target.closest('[data-shutdown]');if(shutdown){shutdownInspector();return}const graphToggle=event.target.closest('[data-graph-toggle]');if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle');const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');setGraphShelf(id,!shelf?.classList.contains('is-collapsed'));return}const graphNode=event.target.closest('[data-graph-node]');if(graphNode){showGraphNodeDetail(graphNode);return}const resultToggle=event.target.closest('[data-result-toggle]');if(resultToggle){const panel=document.querySelector('[data-result-panel="true"]');const open=panel?.classList.contains('is-collapsed');setResultPanel(open,open?'Latest local action output':'Collapsed until an action runs');return}const toggle=event.target.closest('[data-onboarding-toggle]');if(toggle){const card=document.getElementById('onboarding-wizard');const body=card?.querySelector('.onboarding-body');if(body){body.hidden=!body.hidden;if(card)card.setAttribute('data-onboarding-expanded',body.hidden?'false':'true')}return}const save=event.target.closest('[data-onboarding-save]');if(save){saveOnboarding();return}const localAction=event.target.closest('[data-action]');if(localAction){runLocalAction(localAction.getAttribute('data-action'));return}const update=event.target.closest('[data-update-action]');if(update){const action=update.getAttribute('data-update-action');setResultPanel(true,'Update action output');if(action==='status')updateApi('/api/update/status?refresh=1');if(action==='dry-run')updateApi('/api/update/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(action==='apply'&&confirm('Apply .knowledge system update now? Project knowledge will be preserved and a backup will be created.')){const latest=document.getElementById('updateBanner')?.getAttribute('data-latest-version')||'';updateApi('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,expectedVersion:latest&&latest!=='-'?latest:null})})}return}const tab=event.target.closest('[data-tab]');if(tab){document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach((p)=>p.classList.remove('active'));tab.classList.add('active');const panel=document.querySelector('[data-panel="'+tab.getAttribute('data-tab')+'"]');if(panel)panel.classList.add('active')}});
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
 document.addEventListener('change',(event)=>{const agentSelect=event.target.closest('[data-onboarding-agent-select]');if(agentSelect){applyOnboardingAgentSettings(agentSelect.value);return}const select=event.target.closest('[data-branch-select]');if(select)refreshBranchDiagnostics(select.value)});
 if(location.protocol==='http:'||location.protocol==='https:')updateApi('/api/update/status');
@@ -1523,6 +1670,10 @@ function build(options = {}) {
       ,'collapsible_trust_graph'
       ,'graph_node_drilldown'
       ,'onboarding_agent_picker'
+      ,'plain_language_outcome_panels'
+      ,'advanced_detail_shelves'
+      ,'inline_file_preview_drawer'
+      ,'vscode_simple_browser_layout'
     ]
   };
   writeJsonAtomic(path.join(outDir, 'status.json'), status);

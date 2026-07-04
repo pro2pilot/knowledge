@@ -159,9 +159,10 @@ Technical proof:
 ```txt
 docs/release-artifact.md
 install-manifest.json
-tools/package-release.js
-tools/validate-release-artifact.js
 ```
+
+Maintainer packaging and release QA tools live only in the source checkout; they
+are intentionally excluded from installed user `.knowledge` artifacts.
 
 ## Trust Model
 
@@ -260,17 +261,17 @@ node .knowledge/tools/build-visual-inspector.js
 node .knowledge/inspector.js
 ```
 
-## Release Maintainers
+## Release Boundary
 
-Build and validate the install artifact from this source checkout:
+Installed user artifacts contain runtime/user-facing tools only: install,
+doctor, sync, routing, search, Inspector, memory providers, templates, and user
+docs. Maintainer packaging, artifact validators, CI/release gates, post-release
+asset tools, and source release policies are source-checkout-only and are
+intentionally excluded from the installed `.knowledge` archive.
 
-```bash
-node tools/package-release.js --json
-node tools/validate-release-artifact.js dist/knowledge-v3.2.6.zip --json
-node tools/release-gate.js --json
-```
-
-The output archive uses `.knowledge/` as the archive root and excludes source checkout state, runtime logs, temp folders, `node_modules`, `.git`, and generated heavy outputs.
+The output archive uses `.knowledge/` as the archive root and excludes source
+checkout state, runtime logs, temp folders, `node_modules`, `.git`, generated
+heavy outputs, and maintainer-only release tooling.
 
 ## Website And Proof
 

@@ -35,7 +35,7 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -45,7 +45,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -54,7 +54,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -63,7 +63,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -465,6 +465,60 @@ function runTool(script, args, label) {
   };
 }
 
+function validatePreparedRelease(sourceRoot, zipPath, expectedVersion) {
+  const checks = [];
+  const requireFile = (relPath) => {
+    const ok = fs.existsSync(path.join(sourceRoot, relPath));
+    checks.push({ check: relPath, status: ok ? 'pass' : 'fail' });
+    return ok;
+  };
+  let pkg = {};
+  try { pkg = readJson(path.join(sourceRoot, 'package.json'), {}); } catch {}
+  const versionOk = safeVersion(pkg.version) === safeVersion(expectedVersion);
+  checks.push({ check: 'package_version', status: versionOk ? 'pass' : 'fail', expected: expectedVersion, actual: pkg.version || null });
+  const requiredOk = [
+    'install-manifest.json',
+    'tools/flow.js',
+    'tools/update-system-files.js',
+    'tools/install-check.js',
+    'inspector.js',
+    'docs/release-artifact.md'
+  ].every(requireFile);
+  const forbidden = [
+    'release-policy.json',
+    'tools/release-gate.js',
+    'tools/package-release.js',
+    'tools/validate-release-artifact.js',
+    'tools/post-release-live-asset.js',
+    'tools/conformance-install-smoke.js',
+    'tools/classify-release-impact.js',
+    'tools/generate-conformance-report.js',
+    'tools/validate-sbom.js',
+    'tools/validate-third-party-notices.js',
+    'tools/validate-source-deliverable.js',
+    'internal/release-gates.md',
+    'docs/release-gates.md'
+  ].filter((relPath) => fs.existsSync(path.join(sourceRoot, relPath)));
+  checks.push({ check: 'maintainer_only_absent', status: forbidden.length ? 'fail' : 'pass', forbidden });
+  const ok = Boolean(zipPath && fs.existsSync(zipPath)) && versionOk && requiredOk && forbidden.length === 0;
+  return {
+    label: 'public_runtime_embedded_validation',
+    command: 'embedded public runtime update validation',
+    exit: ok ? 0 : 2,
+    ok,
+    json: {
+      schema_version: 'public-runtime-update-validation.v1',
+      status: ok ? 'ok' : 'failed',
+      artifact: zipPath,
+      source_root: sourceRoot,
+      checks,
+      forbidden
+    },
+    stdout: '',
+    stderr: ok ? '' : 'Extracted release failed public runtime update validation.'
+  };
+}
+
 async function prepareUpdate(status, expectedVersion = null) {
   const latest = safeVersion(status?.latest_version);
   if (expectedVersion && safeVersion(expectedVersion) !== latest) {
@@ -479,7 +533,10 @@ async function prepareUpdate(status, expectedVersion = null) {
   if (safeVersion(pkg.version) !== latest) {
     throw new Error(`Release asset version mismatch: expected ${latest}, got ${pkg.version || 'unknown'}.`);
   }
-  const validation = runTool('validate-release-artifact.js', [zipPath, '--json'], 'validate_release_artifact');
+  const fullValidator = path.join(context.projectKnowledgeRoot, 'tools', 'validate-release-artifact.js');
+  const validation = fs.existsSync(fullValidator)
+    ? runTool('validate-release-artifact.js', [zipPath, '--json'], 'validate_release_artifact')
+    : validatePreparedRelease(sourceRoot, zipPath, latest);
   if (!validation.ok || validation.json?.status === 'failed') {
     throw new Error(`Release artifact validation failed: ${validation.stderr || validation.stdout || 'invalid artifact'}`);
   }
@@ -560,7 +617,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.6',
+      version: safeJson('package.json', {}).version || '3.2.9',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,
@@ -638,6 +695,67 @@ function sendJson(res, status, body) {
   send(res, status, JSON.stringify(body, null, 2), 'application/json; charset=utf-8');
 }
 
+function isUnder(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel === '' || (rel && !rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function resolveInspectorFile(rawPath) {
+  const raw = String(rawPath || '').trim();
+  if (!raw || raw.includes('\0')) throw new Error('missing_file_path');
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^file:/i.test(raw)) throw new Error('unsupported_file_url');
+  let clean = raw;
+  if (/^file:/i.test(clean)) {
+    try { clean = decodeURIComponent(new URL(clean).pathname.replace(/^\/([A-Za-z]:)/, '$1')); }
+    catch { throw new Error('invalid_file_url'); }
+  }
+  clean = clean.replace(/\\/g, '/').replace(/^\.\//, '');
+
+  let candidate;
+  if (/^[A-Za-z]:\//.test(clean) || clean.startsWith('//') || clean.startsWith('/')) {
+    candidate = path.resolve(clean);
+  } else if (clean.startsWith('.knowledge/')) {
+    candidate = path.resolve(context.projectKnowledgeRoot, clean.slice('.knowledge/'.length));
+  } else if (clean.startsWith('knowledge/')) {
+    candidate = path.resolve(context.projectKnowledgeRoot, clean.slice('knowledge/'.length));
+  } else if (/^(modules|maps|maintenance|wiki|docs|evidence|templates|external_memory|metrics|search|inspector|invariants|sessions|flows|commands|skills|agent-integrations)\//.test(clean)) {
+    candidate = path.resolve(context.projectKnowledgeRoot, clean);
+  } else {
+    candidate = path.resolve(context.targetRoot, clean);
+  }
+
+  const allowedRoots = [context.targetRoot, context.projectKnowledgeRoot, context.stateRoot]
+    .filter(Boolean)
+    .map((item) => path.resolve(item));
+  if (!allowedRoots.some((root) => isUnder(candidate, root))) throw new Error('file_outside_workspace');
+  if (!fs.existsSync(candidate)) throw new Error('file_not_found');
+  const stats = fs.statSync(candidate);
+  if (!stats.isFile()) throw new Error('not_a_file');
+  if (stats.size > Number(process.env.KNOWLEDGE_INSPECTOR_MAX_OPEN_FILE_BYTES || 2_000_000)) throw new Error('file_too_large');
+  return candidate;
+}
+
+function fileContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.json') return 'application/json; charset=utf-8';
+  if (ext === '.md' || ext === '.markdown') return 'text/markdown; charset=utf-8';
+  if (['.txt', '.log', '.ndjson', '.yaml', '.yml', '.toml', '.js', '.ts', '.tsx', '.jsx', '.css', '.html', '.mjs', '.cjs'].includes(ext)) {
+    return 'text/plain; charset=utf-8';
+  }
+  return 'application/octet-stream';
+}
+
+function sendInspectorFile(res, rawPath) {
+  const filePath = resolveInspectorFile(rawPath);
+  const body = fs.readFileSync(filePath);
+  res.writeHead(200, {
+    'content-type': fileContentType(filePath),
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff'
+  });
+  res.end(body);
+}
+
 function authOk(req) {
   const url = new URL(req.url, `http://${host}:${port}`);
   if (url.pathname === '/api/session') return true;
@@ -666,6 +784,10 @@ async function handle(req, res) {
     return sendJson(res, 200, { ok: true, token, host, port, scope: 'local-inspector' });
   }
   if (req.method === 'GET' && url.pathname === '/api/state') return sendJson(res, 200, { ok: true, state: state() });
+  if (req.method === 'GET' && url.pathname === '/api/files/open') {
+    try { return sendInspectorFile(res, url.searchParams.get('path')); }
+    catch (error) { return sendJson(res, 404, { ok: false, error: error.message }); }
+  }
   if (req.method === 'GET' && url.pathname === '/api/actions') {
     return sendJson(res, 200, { ok: true, actions: listActions(), entitlements: loadEntitlements(context.projectKnowledgeRoot) });
   }
@@ -715,7 +837,8 @@ async function handle(req, res) {
       if (!prepared.dry_run.ok) return sendJson(res, 422, { ok: false, status, prepared, error: 'dry_run_failed' });
       const apply = await applyPreparedUpdate(prepared);
       const ok = apply.apply.ok && apply.verify.ok;
-      return sendJson(res, ok ? 200 : 500, { ok, status, prepared, apply });
+      const refreshedStatus = apply.refreshed_status || status;
+      return sendJson(res, ok ? 200 : 500, { ok, status: refreshedStatus, previous_status: status, refreshed_status: refreshedStatus, prepared, apply });
     } catch (error) {
       return sendJson(res, 500, { ok: false, status, error: error.message });
     }

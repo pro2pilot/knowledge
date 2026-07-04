@@ -8,7 +8,7 @@ const path = require('path');
 const { spawnSync, spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.6';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.9';
 const keepTemp = process.argv.includes('--keep-temp');
 const teamModeFixtureRequested = process.argv.includes('--team-mode-fixture');
 let rootForCleanup = null;
@@ -155,6 +155,9 @@ async function main() {
   assert((build.features || []).includes('canonical_navigation'), 'status missing canonical_navigation feature');
   assert((build.features || []).includes('git_branch_diagnostics'), 'status missing git_branch_diagnostics feature');
   assert((build.features || []).includes('onboarding_agent_picker'), 'status missing onboarding_agent_picker feature');
+  assert((build.features || []).includes('plain_language_outcome_panels'), 'status missing plain_language_outcome_panels feature');
+  assert((build.features || []).includes('inline_file_preview_drawer'), 'status missing inline_file_preview_drawer feature');
+  assert((build.features || []).includes('vscode_simple_browser_layout'), 'status missing vscode_simple_browser_layout feature');
   const htmlPath = path.join(state, 'inspector', 'index.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
 
@@ -162,13 +165,22 @@ async function main() {
     'Home',
     'Review',
     'Knowledge Trust',
-    'Agents Activity',
+    'Agents',
     'Reports',
     'Settings',
     'Pro Preview'
   ];
   const missingTabs = tabs.filter((tab) => !html.includes(`>${tab}</button>`) && !html.includes(`>${tab}</h2>`));
   assert(missingTabs.length === 0, `Inspector missing tab(s): ${missingTabs.join(', ')}`);
+  for (const route of ['home', 'review', 'trust', 'agents', 'reports', 'settings', 'pro']) {
+    assert(html.includes(`data-route="${route}"`), `Inspector missing canonical route: ${route}`);
+  }
+  assert(html.includes('data-outcome-panel="true"'), 'Inspector pages must render plain-language outcome panels.');
+  assert(html.includes('data-advanced-shelf='), 'Inspector pages must render collapsible advanced shelves.');
+  assert(html.includes('data-file-preview-drawer="true"'), 'Inspector missing inline file preview drawer.');
+  assert(html.includes('openInspectorFile(pathValue'), 'Inspector client must open Next action links through inline preview.');
+  assert(!/data-open-path="[^"]+"[^>]*target="_blank"/.test(html), 'Next action file links must not leave the Inspector by default.');
+  assert(html.includes('code -g '), 'File preview should expose a VS Code copy command.');
   assert(!html.includes('>Command Center</button>'), 'Command Center must not be a top-level tab');
   assert(!html.includes('>Metrics</button>'), 'Metrics must not be a top-level tab');
   assert(!html.includes('>Work</button>'), 'Work must not be a top-level tab');
@@ -192,7 +204,7 @@ async function main() {
     'Search',
     'Generate PR Summary',
     'Review PR Impact',
-    'Validate Release Artifact',
+    'Run Install Check',
     'Team Status',
     'Memory Status',
     'Setup Mem0',
@@ -390,7 +402,7 @@ async function main() {
   assert(teamData.context.workspaceId === 'ui-workspace', 'team inspector data workspaceId mismatch');
   assert(teamData.context.agentId === 'ui-agent', 'team inspector data agentId mismatch');
   const teamHtml = fs.readFileSync(path.join(path.dirname(dataFiles[0]), 'index.html'), 'utf8');
-  assert(teamHtml.includes('Agents Activity'), 'team inspector DOM missing Agents Activity tab');
+  assert(teamHtml.includes('>Agents</button>') || teamHtml.includes('aria-label="Agents"'), 'team inspector DOM missing Agents tab');
   assert(teamHtml.includes('ui-workspace'), 'team inspector DOM missing workspace id');
   assert(!localLeak.test(teamHtml), 'team inspector leaked local developer path');
 
@@ -407,6 +419,11 @@ async function main() {
       'no external scripts/css/images',
       'no known local path leaks',
       'copy command attributes exist',
+      'canonical route ids render',
+      'plain-language outcome panels render',
+      'advanced shelves render',
+      'inline file preview drawer renders',
+      'Next action links stay inside Inspector',
       'token-protected Inspector API works',
       'first-run onboarding wizard renders',
       'upgrade-missing onboarding marker reopens setup',

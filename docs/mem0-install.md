@@ -13,11 +13,11 @@ node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
 The setup command:
 
 - creates or reuses `.knowledge/external_memory/mem0/install_receipt.json`;
-- writes repo-local config at `.knowledge/external_memory/mem0/config.json`;
 - regenerates `.knowledge/docs/cookbook/09-mem0-live-memory.md` from the bundled template;
-- checks explicit live health through `memory-mem0.js`;
+- requires an explicit embedding backend choice if `.knowledge/external_memory/mem0/config.json` does not exist yet;
+- after `configure-embeddings`, checks explicit live health through `memory-mem0.js`;
 - updates `.knowledge/external_memory/mem0/runtime_status.json`;
-- returns agent-facing text with exact add, search, and recall commands.
+- returns agent-facing text with exact next commands.
 
 ## Runtime Install
 
@@ -47,6 +47,25 @@ Status separates:
 - `package_installed`: runtime availability was proven by live health or an executed install record;
 - `runtime_health`: cached runtime health from the explicit adapter check.
 
+Read diagnostics in three layers:
+
+- `status` and `status-all`: offline detection and cached status only.
+- `health --adapter live`: selected Python can import the pinned Mem0 runtime.
+- `list`, `add`, `search`, and `recall` with `--adapter live`: configured storage plus embedding path can actually operate.
+
+`diagnostic_code: mem0_available` from health means the Mem0 runtime imported.
+It does not prove that a Local FastEmbed ONNX model can load. If a later live
+command reports `diagnostic_code: fastembed_onnx_external_data_path_error`,
+keep the shared provider root as-is and repair the Python/FastEmbed/model cache
+layer instead.
+
+If a Local FastEmbed command reports
+`diagnostic_code: fastembed_model_download_timeout`, the runtime imported Mem0
+and started model warmup, but the HuggingFace/FastEmbed model download did not
+finish before the live command timeout. This is not an OpenAI quota diagnostic.
+Keep the same collection/storage and rerun the explicit live command with a
+longer timeout, for example `--timeout-ms 300000`.
+
 ## Live Commands
 
 Live health checks runtime availability:
@@ -68,24 +87,55 @@ node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --y
 node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json
 ```
 
-Live list reads local Qdrant state:
+Live list reads local Qdrant state. With Local FastEmbed, first use can also
+download or warm the local model, so JSON may report
+`network_calls: not_run_local_qdrant_may_download_local_fastembed_model`:
 
 ```bash
 node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json
 ```
 
-## Local Data
+## Provider Storage
 
-Default Mem0 state is repo-local:
+Repo-local `.knowledge/external_memory/mem0` stores receipt, config, and runtime status:
 
 ```txt
 .knowledge/external_memory/mem0
-.knowledge/external_memory/mem0/qdrant
-.knowledge/external_memory/mem0/history.db
-.knowledge/external_memory/mem0/runtime
+.knowledge/external_memory/mem0/config.json
+.knowledge/external_memory/mem0/config.meta.json
+.knowledge/external_memory/mem0/runtime_status.json
 ```
 
-Do not use `/tmp/qdrant` or the user's home directory as the default path on Windows. Adapter subprocesses set `MEM0_DIR` to `.knowledge/external_memory/mem0/runtime` when it is not already set, so Mem0 runtime files stay repo-local without mutating the canonical `config.json`.
+Default provider storage is shared per OS user:
+
+```txt
+Windows: %LOCALAPPDATA%\pro2pilot\knowledge\memory-providers\mem0
+macOS: ~/Library/Application Support/pro2pilot/knowledge/memory-providers/mem0
+Linux: ${XDG_DATA_HOME:-~/.local/share}/pro2pilot/knowledge/memory-providers/mem0
+```
+
+Each project gets a project-keyed subdirectory under that shared root for Qdrant, history, and Mem0 runtime files. This lets agents detect an existing default provider location across repositories without mixing project collections.
+
+The shared provider root is data storage, not a Python virtualenv. It should not
+contain `python.exe`, and agents should not expect Python packages to be inside
+that directory. Python comes from the current shell, an active venv, bounded
+runtime discovery, or an explicit `--python` flag.
+
+When Local FastEmbed has been configured successfully, `.knowledge` records the
+selected Python runtime in `config.meta.json`. Later live Mem0 commands prefer
+that cached runtime unless the user passes `--python`, `KNOWLEDGE_MEM0_PYTHON`,
+or `MEM0_PYTHON`.
+
+Project-local provider storage is not the default. Use it only when the user explicitly asks for a repository-owned provider:
+
+```bash
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json
+```
+
+For existing projects that need to return to the shared per-user default, use
+[`cookbook/12-mem0-shared-provider-storage.md`](cookbook/12-mem0-shared-provider-storage.md).
+
+Do not use `/tmp/qdrant`.
 
 Adapter subprocesses set:
 
@@ -96,15 +146,50 @@ MEM0_TELEMETRY_SAMPLE_RATE=0
 
 They do not change the user's global environment.
 
-## Optional Local Embeddings
+## Embedding Backend Choice
 
-The main onboarding flow stays the single setup command. If the configured embedding provider blocks add/search because of credentials, quota, or network, a user may choose a separate local embedder path:
+The main onboarding flow must ask the user which embedding backend to use. Embedding backend configuration is separate and agent-friendly through flags plus JSON. `setup mem0-oss --live --json` must not silently choose an embedding backend.
+
+The guided recipe lives at [`cookbook/10-mem0-embedding-backends.md`](cookbook/10-mem0-embedding-backends.md). The agent asks which embedding backend to use, then runs deterministic commands.
+
+Keep these layers distinct:
+
+- LLM provider: separate from embeddings; default config uses OpenAI unless changed.
+- Embedding provider: OpenAI API or Local FastEmbed.
+- Vector store: Qdrant under shared provider storage by default.
+- History store: SQLite under shared provider storage by default.
+
+OpenAI API embeddings:
 
 ```bash
-python -m pip install fastembed==0.5.1
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json
 ```
 
-Changing embedding dimensions requires a new Qdrant collection name. Do not present local embeddings as an equal alternative to the recommended setup flow.
+Do not ask the user to paste `OPENAI_API_KEY` into repository files or commits. Ask them to set it in their local terminal:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+$env:OPENAI_API_KEY="sk-..."
+```
+
+Local FastEmbed is a normal install-time choice, not an emergency fallback:
+
+```bash
+python -m pip install mem0ai==2.0.4
+python -m pip install fastembed==0.5.1
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json
+```
+
+Use a Python version with prebuilt wheels for the pinned packages. On Windows,
+this flow has been battle-tested with Python 3.12. If the default `python` is
+Python 3.14 and `fastembed==0.5.1` tries to build `mmh3` or `Pillow` from
+source, create a Python 3.12 venv and run the same pinned commands there.
+The FastEmbed metadata step scans available Python candidates and prefers a
+supported runtime instead of stopping at an unsupported default `python`.
+On Windows, discovery checks active venv/conda first, then `py -3.12`/`py -3.11`
+launcher candidates, then PATH commands.
+
+`configure-embeddings` reads FastEmbed dimensions programmatically and writes a collection name that includes provider, model, and dimensions. Changing embedding provider, model, or dimensions requires a new Qdrant collection name. Never reuse an OpenAI `1536`-dimension collection for FastEmbed.
 
 ## Trust Boundary
 

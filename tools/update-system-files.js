@@ -13,7 +13,7 @@ let activeKnowledgeRoot = defaultKnowledgeRoot;
 let activeRepoRoot = defaultRepoRoot;
 
 const DEFAULT_MANIFEST = {
-  schema_version: '3.2.6',
+  schema_version: '3.2.9',
   system_paths: [
     '.gitattributes',
     '.gitignore',
@@ -791,7 +791,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const report = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     status: errors.length ? 'failed' : 'ok',
     phase: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),
     mode: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),

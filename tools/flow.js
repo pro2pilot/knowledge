@@ -255,6 +255,7 @@ function runFlow(options) {
     duration_total_ms: totalMs,
     steps_total: total,
     steps_ok: ok,
+    status: overall,
     overall_status: overall,
     warnings: context.warnings,
     flow_log: logRel,

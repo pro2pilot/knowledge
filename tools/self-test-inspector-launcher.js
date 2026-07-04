@@ -8,7 +8,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.6';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.9';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -82,7 +82,7 @@ async function main() {
     const stateRes = await request(port, 'GET', '/api/state', session.token);
     assert(stateRes.status === 200 && stateRes.json?.state?.product?.version === systemVersion, `api state did not return product ${systemVersion}`);
     const html = await request(port, 'GET', '/');
-    for (const label of ['Home', 'Review', 'Knowledge Trust', 'Agents Activity', 'Reports', 'Settings', 'Pro Preview']) {
+    for (const label of ['Home', 'Review', 'Knowledge Trust', 'Agents', 'Reports', 'Settings', 'Pro Preview']) {
       assert(html.body.includes(`>${label}</button>`), `missing nav label ${label}`);
     }
     assert(!html.body.includes('>Command Center</button>'), 'Command Center must not be a top-level tab');

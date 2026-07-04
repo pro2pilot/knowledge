@@ -17,6 +17,13 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function hasEllipsisCommand(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line === '...' || /^(?:node|python|pip|npm|pnpm|yarn|bun|npx)\b.*\.\.\./i.test(line));
+}
+
 function runNode(script, args = [], options = {}) {
   const res = spawnSync(process.execPath, [script, ...args], {
     cwd: options.cwd || systemRoot,
@@ -123,6 +130,19 @@ function testPythonDiscovery(root) {
   });
   assert(moduleTimeout.diagnostic_code === 'python_timeout', 'Mem0 import timeout diagnostic mismatch');
 
+  const launcherDiscovery = discoverPython({
+    platform: 'win32',
+    candidates: [{ command: 'py', args: ['-3.12'], source: 'windows_py_3.12_launcher', from_launcher: true }],
+    validateCandidate: (candidate) => ({
+      ...candidate,
+      status: 'ok',
+      diagnostic_code: 'python_available',
+      executable: fakePython,
+      version: '3.12.10'
+    })
+  });
+  assert(launcherDiscovery.status === 'found' && launcherDiscovery.selected.executable === fakePython, 'Windows py -3.12 launcher candidate should resolve to sys.executable');
+
   assert(mem0Main.__test.normalizeDiagnosticCode('python_invalid') === 'python_not_usable', 'python_invalid should normalize to python_not_usable at Mem0 boundary');
   assert(mem0Main.__test.normalizeDiagnosticCode('python_not_found') === 'python_missing', 'python_not_found should normalize to python_missing at Mem0 boundary');
   assert(mem0Main.__test.normalizeDiagnosticCode('mem0_package_missing') === 'mem0_runtime_missing', 'mem0_package_missing should normalize to mem0_runtime_missing at Mem0 boundary');
@@ -130,6 +150,14 @@ function testPythonDiscovery(root) {
   assert(mem0Main.__test.liveImportOptions({ pythonTimeMs: '30000' }, { op: 'health' }).timeoutMs === 30000, '--pythonTimeMs alias should set Python timeout');
   assert(mem0Main.__test.liveMem0TimeoutMs({ timeoutMs: '45000', pythonTimeMs: '30000' }, { op: 'health' }) === 45000, '--timeout-ms should control total live health wait');
   assert(mem0Main.__test.liveMem0TimeoutMs({}, { op: 'list' }) === 30000, 'live list should allow slow Mem0/Qdrant startup by default');
+  const liveConfigContext = { projectKnowledgeRoot: systemRoot, stateRoot: path.join(root, 'no-config-state') };
+  assert(mem0Main.__test.hasExplicitLiveConfig({}, liveConfigContext) === false, 'live Mem0 operations should not treat missing config as usable');
+  assert(mem0Main.__test.hasExplicitLiveConfig({ configJson: '{}' }, liveConfigContext) === false, 'empty live Mem0 config JSON should not be usable');
+  assert(mem0Main.__test.hasExplicitLiveConfig({ configJson: '{"embedder":{"provider":"openai"}}' }, liveConfigContext) === true, 'non-empty live Mem0 config JSON should be usable');
+  const explicitMem0Config = path.join(root, 'mem0-config.json');
+  fs.writeFileSync(explicitMem0Config, JSON.stringify({ embedder: { provider: 'fastembed' }, vector_store: { provider: 'qdrant' } }), 'utf8');
+  assert(mem0Main.__test.hasExplicitLiveConfig({ config: explicitMem0Config }, liveConfigContext) === true, 'explicit live Mem0 config file should be usable');
+  assert(mem0Main.__test.hasExplicitLiveConfig({ config: path.join(root, 'missing-mem0-config.json') }, liveConfigContext) === false, 'missing explicit live Mem0 config file should not be usable');
 
   const qdrantLock = mem0Main.__test.classifyMem0RuntimeFailure({
     ok: false,
@@ -139,6 +167,25 @@ function testPythonDiscovery(root) {
   assert((qdrantLock.next_commands || []).some((command) => /setup mem0-oss --live/i.test(command)), 'qdrant lock diagnostic should include setup next command');
   const embeddingNetwork = mem0Main.__test.classifyMem0RuntimeFailure({ ok: false, error: 'Connection error.' }, {}, { op: 'remember' });
   assert(embeddingNetwork?.diagnostic_code === 'embedding_provider_network_error', 'embedding provider network error diagnostic mismatch');
+  const fastEmbedOnnx = mem0Main.__test.classifyMem0RuntimeFailure({
+    ok: false,
+    error: 'ONNXRuntimeError: external data path validation failed for model.onnx_data; allowed directory is blobs'
+  }, {}, { op: 'list' }, fakePython);
+  assert(fastEmbedOnnx?.diagnostic_code === 'fastembed_onnx_external_data_path_error', 'FastEmbed ONNX external data diagnostic mismatch');
+  assert((fastEmbedOnnx.next_commands || []).some((command) => /fastembed==0\.5\.1/.test(command)), 'FastEmbed ONNX diagnostic should return pinned FastEmbed install command');
+  assert(/model-cache issue/i.test(fastEmbedOnnx.diagnostic_message || ''), 'FastEmbed ONNX diagnostic should explain runtime/cache boundary');
+  const fastEmbedDownloadTimeout = mem0Main.__test.classifyMem0RuntimeFailure({
+    ok: false,
+    error: 'Live Mem0 Python command timed out.'
+  }, {
+    stderr: [
+      'Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]',
+      'Authentication token is not provided. Higher rate limits are available if you authenticate with Hugging Face.'
+    ].join('\n')
+  }, { op: 'list' }, fakePython);
+  assert(fastEmbedDownloadTimeout?.diagnostic_code === 'fastembed_model_download_timeout', 'FastEmbed model download timeout should not be classified as quota');
+  assert(!/quota/i.test(fastEmbedDownloadTimeout.diagnostic_code), 'FastEmbed model download timeout leaked quota diagnostic');
+  assert((fastEmbedDownloadTimeout.next_commands || []).some((command) => /--timeout-ms 300000/.test(command)), 'FastEmbed download timeout should suggest a longer explicit live timeout');
   const runtimeContext = { projectKnowledgeRoot: systemRoot };
   const embeddingSnapshot = mem0Main.__test.runtimeStatusSnapshot({
     operation: 'remember',
@@ -151,6 +198,25 @@ function testPythonDiscovery(root) {
   assert(embeddingSnapshot.runtime_available === true && embeddingSnapshot.package_installed === true, 'embedding provider errors must not clear Mem0 runtime cache');
   assert(embeddingSnapshot.runtime_health === 'ok' && embeddingSnapshot.expected_version === '2.0.4', 'embedding provider error cache should preserve runtime health and expected version');
   assert(embeddingSnapshot.last_live_health_check === '2026-01-01T00:00:00.000Z', 'embedding provider error cache should preserve last live health timestamp');
+  const fastEmbedOnnxSnapshot = mem0Main.__test.runtimeStatusSnapshot({
+    operation: 'list',
+    status: 'error',
+    diagnostic_code: 'fastembed_onnx_external_data_path_error',
+    selected_python: fakePython,
+    raw: { version: '2.0.4' },
+    network_calls: 'not_run_local_qdrant'
+  }, runtimeContext, { operation: 'health', checked_at: '2026-01-01T00:00:00.000Z' });
+  assert(fastEmbedOnnxSnapshot.runtime_available === true && fastEmbedOnnxSnapshot.package_installed === true, 'FastEmbed ONNX model-cache errors must not clear Mem0 runtime cache');
+  assert(fastEmbedOnnxSnapshot.runtime_health === 'ok', 'FastEmbed ONNX model-cache errors should preserve runtime health');
+  const fastEmbedDownloadSnapshot = mem0Main.__test.runtimeStatusSnapshot({
+    operation: 'list',
+    status: 'error',
+    diagnostic_code: 'fastembed_model_download_timeout',
+    selected_python: fakePython,
+    raw: { version: '2.0.4' },
+    network_calls: 'not_run_local_qdrant_may_download_local_fastembed_model'
+  }, runtimeContext, { operation: 'health', checked_at: '2026-01-01T00:00:00.000Z' });
+  assert(fastEmbedDownloadSnapshot.runtime_available === true && fastEmbedDownloadSnapshot.package_installed === true, 'FastEmbed model download timeout must not clear Mem0 runtime cache');
   const missingPythonSnapshot = mem0Main.__test.runtimeStatusSnapshot({
     operation: 'remember',
     status: 'error',
@@ -161,15 +227,33 @@ function testPythonDiscovery(root) {
   }, runtimeContext);
   assert(missingPythonSnapshot.runtime_available === false && missingPythonSnapshot.package_installed === false, 'missing Python must keep runtime unavailable');
   const shutdownNoise = [
-    'Exception ignored while calling deallocator <function QdrantClient.__del__ at 0x0000000000000000>:',
+    'Exception ignored in: <function QdrantClient.__del__ at 0x0000000000000000>',
     'Traceback (most recent call last):',
     '  File "C:\\Python\\Lib\\site-packages\\qdrant_client\\qdrant_client.py", line 169, in __del__',
     '  File "C:\\Python\\Lib\\site-packages\\qdrant_client\\local\\qdrant_local.py", line 85, in close',
     'ImportError: sys.meta_path is None, Python is likely shutting down'
   ].join('\n');
   assert(mem0Main.__test.filterSafeStderr(shutdownNoise) === '', 'safe Qdrant shutdown noise should be filtered');
+  assert(mem0Main.__test.filterSafeStderr("Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download.") === '', 'safe HuggingFace hf_xet fallback warning should be filtered');
   assert(mem0Main.__test.filterSafeStderr('Failed to load spaCy lemma model: spaCy is not installed. Install it with: pip install mem0ai[nlp]') === '', 'optional spaCy warning should be filtered');
   assert(/real write failure/.test(mem0Main.__test.filterSafeStderr(`${shutdownNoise}\nreal write failure`)), 'real stderr after shutdown noise should be preserved');
+
+  const candidateState = path.join(root, 'state selected python');
+  const candidateContext = {
+    projectKnowledgeRoot: systemRoot,
+    stateRoot: candidateState,
+    targetRoot: root,
+    mode: 'repo'
+  };
+  const candidateDir = path.join(candidateState, 'external_memory', 'mem0');
+  fs.mkdirSync(candidateDir, { recursive: true });
+  fs.writeFileSync(path.join(candidateDir, 'runtime_status.json'), JSON.stringify({ selected_python: fakePython }, null, 2), 'utf8');
+  const persistedCandidates = mem0Main.__test.configuredPythonCandidates({}, candidateContext);
+  assert(persistedCandidates[0]?.command === fakePython, 'Mem0 live discovery should prefer cached selected_python before PATH discovery');
+  const configuredPython = path.join(root, 'configured-python', 'python.exe');
+  fs.writeFileSync(path.join(candidateDir, 'config.meta.json'), JSON.stringify({ python_runtime: { selected_python: configuredPython } }, null, 2), 'utf8');
+  const configuredCandidates = mem0Main.__test.configuredPythonCandidates({}, candidateContext);
+  assert(configuredCandidates[0]?.command === configuredPython, 'Mem0 live discovery should prefer config_meta selected_python over stale runtime_status cache');
 
   const mem0AdapterSource = fs.readFileSync(path.join(systemRoot, 'tools', 'memory-mem0.js'), 'utf8');
   assert(mem0AdapterSource.includes('memory.search(payload.get("query") or "", filters=user_filter(user_id))'), 'Mem0 live search should use Mem0 2.0.4 filters API');
@@ -191,14 +275,17 @@ function assertMem0DocsSearchCoverage(project, state) {
   const indexPath = path.join(state, 'search', 'index.json');
   assert(fs.existsSync(indexPath), 'search index missing after build-search-index');
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-  assert(index.schema_version === '3.2.6', 'search index schema_version should follow release version 3.2.6');
-  assert((index.counts_by_kind?.external_memory || 0) >= 3, 'search index should count Mem0/external docs as external_memory');
+  assert(index.schema_version === '3.2.9', 'search index schema_version should follow release version 3.2.9');
+  assert((index.counts_by_kind?.external_memory || 0) >= 4, 'search index should count Mem0/external docs as external_memory');
 
   const byPath = new Map((index.documents || []).map((doc) => [doc.path, doc]));
   const requiredDocs = [
     '.knowledge/docs/mem0-install.md',
     '.knowledge/docs/memory-providers.md',
-    '.knowledge/docs/external-memory.md'
+    '.knowledge/docs/external-memory.md',
+    '.knowledge/docs/cookbook/10-mem0-embedding-backends.md',
+    '.knowledge/docs/cookbook/11-mem0-project-local-provider.md',
+    '.knowledge/docs/cookbook/12-mem0-shared-provider-storage.md'
   ];
   for (const docPath of requiredDocs) {
     const doc = byPath.get(docPath);
@@ -219,15 +306,20 @@ function testRecipeQuality(project, state) {
   const installDocPath = path.join(systemRoot, 'docs', 'mem0-install.md');
   const original = fs.existsSync(recipePath) ? fs.readFileSync(recipePath, 'utf8') : null;
   try {
+    const envConfigPath = path.join(state, 'external_memory', 'mem0', 'config.json');
+    const sharedProviderRoot = path.join(path.dirname(state), 'shared mem0 provider');
     const setup = parseJson(memoryCli(project, state, ['setup', 'mem0-oss', '--live', '--python', path.join(project, 'missing-python.exe'), '--json']), 'setup mem0 recipe flow');
     assert(setup.provider_id === 'mem0-oss', 'setup returned wrong provider');
     assert(setup.receipt_present === true, 'setup did not create or reuse receipt');
+    assert(setup.setup_status === 'needs_embedding_provider_choice', 'setup without configured embeddings must require provider choice');
+    assert(setup.provider_choice_required === true, 'setup should mark embedding provider choice required');
+    assert(setup.embedding_provider_question?.required === true, 'setup should return required embedding provider question');
+    assert((setup.next_commands || []).some((command) => command.includes('--embedder openai')), 'setup should expose OpenAI configure command');
+    assert((setup.next_commands || []).some((command) => command.includes('--embedder fastembed')), 'setup should expose FastEmbed configure command');
     assert(fs.existsSync(path.join(state, 'external_memory', 'mem0', 'install_receipt.json')), 'setup receipt missing from state');
-    assert(fs.existsSync(path.join(state, 'external_memory', 'mem0', 'config.json')), 'setup config missing from state');
-    const setupConfig = JSON.parse(fs.readFileSync(path.join(state, 'external_memory', 'mem0', 'config.json'), 'utf8'));
-    assert(!Object.prototype.hasOwnProperty.call(setupConfig, 'user_id'), 'repo-local Mem0 config must not store runtime user_id state');
+    assert(!fs.existsSync(envConfigPath), 'setup must not silently create an embedding config before user choice');
     assert(setup.agent_facing?.text?.includes('Boundary: advisory-only'), 'setup agent-facing output missing advisory boundary');
-    assert(setup.agent_facing?.text?.includes('Live '), 'setup agent-facing output missing live operation guidance');
+    assert(setup.agent_facing?.text?.includes('Do not silently choose'), 'setup agent-facing output missing provider-choice guard');
 
     const legacyReceiptState = path.join(path.dirname(state), 'state legacy mem0 receipt');
     const legacyReceiptDir = path.join(legacyReceiptState, 'external_memory', 'mem0');
@@ -244,13 +336,13 @@ function testRecipeQuality(project, state) {
     const migratedReceiptSetup = parseJson(memoryCli(project, legacyReceiptState, ['setup', 'mem0-oss', '--json']), 'setup mem0 legacy receipt');
     assert(migratedReceiptSetup.receipt_action === 'migrated', 'setup should migrate old Mem0 receipt schema');
     const migratedReceipt = JSON.parse(fs.readFileSync(path.join(legacyReceiptDir, 'install_receipt.json'), 'utf8'));
-    assert(migratedReceipt.schema_version === '3.2.6', 'legacy Mem0 receipt schema was not migrated to 3.2.6');
+    assert(migratedReceipt.schema_version === '3.2.9', 'legacy Mem0 receipt schema was not migrated to 3.2.9');
     assert(migratedReceipt.install_executed === false, 'legacy Mem0 receipt migration must not claim an install ran');
     assert(migratedReceipt.source_of_truth === false && migratedReceipt.trust_effect === 'advisory_only', 'legacy Mem0 receipt migration changed trust boundary');
 
     const providerHelp = parseJson(memoryCli(project, state, ['help', '--json']), 'memory-provider help');
     const providerHelpCommands = new Set((providerHelp.commands || []).map((entry) => entry.name));
-    for (const command of ['setup', 'write-recipe', 'validate-recipe', 'status', 'status-all']) {
+    for (const command of ['setup', 'configure-embeddings', 'write-recipe', 'validate-recipe', 'status', 'status-all']) {
       assert(providerHelpCommands.has(command), `memory-provider help missing ${command}`);
     }
     assert(providerHelp.recommended_flow === 'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json', 'memory-provider help missing recommended setup flow');
@@ -262,16 +354,119 @@ function testRecipeQuality(project, state) {
     }
     assert(mem0Help.live_requires_explicit_consent === true, 'memory-mem0 help should disclose live consent boundary');
 
-    const envConfigPath = path.join(state, 'external_memory', 'mem0', 'config.json');
+    const configuredOpenAi = parseJson(memoryCli(project, state, [
+      'configure-embeddings', 'mem0-oss',
+      '--embedder', 'openai',
+      '--model', 'text-embedding-3-small',
+      '--shared-provider-root', sharedProviderRoot,
+      '--json'
+    ]), 'configure OpenAI embeddings');
+    assert(configuredOpenAi.ok === true && configuredOpenAi.configuration_written === true, 'OpenAI embedding configure should write config');
+    assert(configuredOpenAi.provider_scope === 'shared', 'OpenAI configure should use shared provider storage by default');
+    assert(configuredOpenAi.shared_provider_root === sharedProviderRoot, 'OpenAI configure should report shared provider root');
+    assert(configuredOpenAi.llm_provider?.provider === 'openai', 'configure output must distinguish LLM provider');
+    assert(configuredOpenAi.embedding_provider?.provider === 'openai', 'configure output must distinguish OpenAI embedding provider');
+    assert(configuredOpenAi.vector_store?.provider === 'qdrant', 'configure output must distinguish vector store');
+    assert(configuredOpenAi.history_store?.provider === 'sqlite', 'configure output must distinguish history store');
+    assert(configuredOpenAi.embedding_provider?.dimensions === 1536, 'OpenAI text-embedding-3-small dimensions should be 1536');
+    assert(configuredOpenAi.environment_guidance?.windows_powershell?.includes('OPENAI_API_KEY'), 'OpenAI configure should return local terminal env guidance');
+    let configuredConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
+    assert(configuredConfig.embedder?.provider === 'openai', 'OpenAI config should set embedder provider');
+    assert(configuredConfig.vector_store?.config?.embedding_model_dims === 1536, 'OpenAI config should set Qdrant dimensions');
+    assert(configuredConfig.vector_store?.config?.path.startsWith(sharedProviderRoot), 'OpenAI config should use shared provider storage path');
+    assert(!Object.prototype.hasOwnProperty.call(configuredConfig, 'user_id'), 'OpenAI config must not store runtime user_id');
+    assert(!/api[_-]?key/i.test(JSON.stringify(configuredConfig)), 'OpenAI config must not store API keys');
+    const statusAfterConfigure = parseJson(memoryCli(project, state, ['status', 'mem0-oss', '--json']), 'status mem0 after configure');
+    assert(statusAfterConfigure.configured === true, 'Mem0 status should mark provider configured when config.json exists');
+    assert(statusAfterConfigure.config_path === '.knowledge/external_memory/mem0/config.json', 'Mem0 status should expose configured config path');
+    const openAiCollection = configuredOpenAi.vector_store.collection_name;
     const liveEnv = mem0Main.__test.liveProcessEnv({ config: envConfigPath }, { projectKnowledgeRoot: systemRoot });
     assert(path.basename(liveEnv.MEM0_DIR) === 'runtime', 'default MEM0_DIR should use a runtime subdirectory');
-    assert(path.dirname(liveEnv.MEM0_DIR) === path.dirname(envConfigPath), 'default MEM0_DIR should stay inside repo-local Mem0 state');
+    assert(path.dirname(liveEnv.MEM0_DIR) === path.dirname(configuredConfig.vector_store.config.path), 'default MEM0_DIR should follow selected provider storage');
     assert(liveEnv.MEM0_DIR !== path.dirname(envConfigPath), 'default MEM0_DIR must not be the canonical config directory');
-    fs.writeFileSync(envConfigPath, JSON.stringify({ ...setupConfig, user_id: 'runtime-user-id' }, null, 2), 'utf8');
+    fs.writeFileSync(envConfigPath, JSON.stringify({ ...configuredConfig, user_id: 'runtime-user-id' }, null, 2), 'utf8');
     assert(mem0Main.__test.restoreCanonicalLiveConfig({ config: envConfigPath }, { projectKnowledgeRoot: systemRoot }) === true, 'canonical Mem0 config restore should report runtime-state cleanup');
     const restoredConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
     assert(!Object.prototype.hasOwnProperty.call(restoredConfig, 'user_id'), 'canonical Mem0 config restore should remove runtime user_id');
     assert(restoredConfig.vector_store?.config?.path, 'canonical Mem0 config restore should preserve vector store config');
+
+    const setupAfterChoice = parseJson(memoryCli(project, state, ['setup', 'mem0-oss', '--live', '--python', path.join(project, 'missing-python.exe'), '--json']), 'setup mem0 after provider choice');
+    assert(setupAfterChoice.setup_status === 'needs_runtime_attention', 'setup after provider choice should proceed to live health and report runtime attention');
+    assert(setupAfterChoice.live_checked === true, 'setup after provider choice should run live health when --live is passed');
+    assert(setupAfterChoice.live_health?.diagnostic_code === 'python_missing', 'setup after provider choice should report selected Python failure');
+    assert(setupAfterChoice.provider_scope === 'shared', 'setup after provider choice should report shared provider scope');
+
+    const fastEmbedEnv = {
+      KNOWLEDGE_MEMORY_PROVIDER_TEST_FASTEMBED_MODELS_JSON: JSON.stringify([
+        {
+          model: 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+          dim: 384,
+          size_in_GB: 0.22
+        }
+      ])
+    };
+    const blockedFastEmbed = parseJson(memoryCli(project, state, [
+      'configure-embeddings',
+      'mem0-oss',
+      '--embedder', 'fastembed',
+      '--model', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+      '--collection-name', openAiCollection,
+      '--json'
+    ], { env: fastEmbedEnv }), 'block FastEmbed reuse of OpenAI collection');
+    assert(blockedFastEmbed.ok === false && blockedFastEmbed.diagnostic_code === 'collection_reuse_blocked', 'FastEmbed configure should block OpenAI collection reuse');
+    configuredConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
+    assert(configuredConfig.embedder?.provider === 'openai', 'blocked FastEmbed configure must not overwrite existing config');
+
+    const unsupportedFastEmbed = parseJson(memoryCli(project, state, [
+      'configure-embeddings',
+      'mem0-oss',
+      '--embedder', 'fastembed',
+      '--model', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+      '--json'
+    ], {
+      env: {
+        ...fastEmbedEnv,
+        KNOWLEDGE_MEMORY_PROVIDER_TEST_FASTEMBED_RUNTIME_VERSION: '3.14.6'
+      }
+    }), 'block unsupported FastEmbed runtime');
+    assert(unsupportedFastEmbed.ok === false && unsupportedFastEmbed.diagnostic_code === 'fastembed_runtime_unsupported', 'FastEmbed configure should block unsupported Python runtime before install/smoke');
+    assert((unsupportedFastEmbed.next_commands || []).some((command) => /Python 3\.12/i.test(command)), 'unsupported FastEmbed runtime should point to Python 3.12');
+    configuredConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
+    assert(configuredConfig.embedder?.provider === 'openai', 'unsupported FastEmbed runtime must not overwrite existing config');
+
+    const configuredFastEmbed = parseJson(memoryCli(project, state, [
+      'configure-embeddings',
+      'mem0-oss',
+      '--embedder', 'fastembed',
+      '--model', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+      '--json'
+    ], { env: fastEmbedEnv }), 'configure FastEmbed embeddings');
+    assert(configuredFastEmbed.ok === true && configuredFastEmbed.configuration_written === true, 'FastEmbed embedding configure should write config');
+    assert(configuredFastEmbed.embedding_provider?.provider === 'fastembed', 'FastEmbed configure output must set embedding provider');
+    assert(configuredFastEmbed.embedding_provider?.dimensions === 384, 'FastEmbed configure should use programmatic model dimensions');
+    assert(configuredFastEmbed.provider_scope === 'shared', 'FastEmbed configure should preserve shared provider storage by default');
+    assert(configuredFastEmbed.vector_store?.collection_name !== openAiCollection, 'FastEmbed configure must create a distinct collection from OpenAI');
+    assert((configuredFastEmbed.install_commands || []).includes('python -m pip install fastembed==0.5.1'), 'FastEmbed configure should return pinned install command');
+    assert(configuredFastEmbed.smoke_commands?.add && configuredFastEmbed.smoke_commands?.search && configuredFastEmbed.smoke_commands?.recall, 'FastEmbed configure should return add/search/recall smoke commands');
+    configuredConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
+    assert(configuredConfig.embedder?.provider === 'fastembed', 'FastEmbed config should set embedder provider');
+    assert(configuredConfig.vector_store?.config?.embedding_model_dims === 384, 'FastEmbed config should set Qdrant dimensions');
+    assert(configuredConfig.vector_store?.config?.collection_name !== openAiCollection, 'FastEmbed config should not reuse OpenAI collection');
+    assert(!Object.prototype.hasOwnProperty.call(configuredConfig, 'user_id'), 'FastEmbed config must not store runtime user_id');
+
+    const projectLocalState = path.join(path.dirname(state), 'state project local mem0');
+    fs.mkdirSync(projectLocalState, { recursive: true });
+    const configuredProjectLocal = parseJson(memoryCli(project, projectLocalState, [
+      'configure-embeddings', 'mem0-oss',
+      '--embedder', 'openai',
+      '--model', 'text-embedding-3-small',
+      '--provider-scope', 'project',
+      '--json'
+    ]), 'configure project-local OpenAI embeddings');
+    assert(configuredProjectLocal.provider_scope === 'project', 'project-local configure should report project scope');
+    assert(configuredProjectLocal.vector_store?.path === '.knowledge/external_memory/mem0/qdrant', 'project-local configure should use repo-local qdrant display path');
+    const projectLocalConfig = JSON.parse(fs.readFileSync(path.join(projectLocalState, 'external_memory', 'mem0', 'config.json'), 'utf8'));
+    assert(projectLocalConfig.vector_store?.config?.path === path.join(projectLocalState, 'external_memory', 'mem0', 'qdrant'), 'project-local config should store repo-local qdrant path');
 
     const directInstall = parseJson(memoryCli(project, state, ['install', 'mem0-oss', '--version', 'mem0ai==2.0.4', '--yes-i-reviewed-license', '--json']), 'direct install mem0');
     assert(directInstall.agent_facing?.text?.includes('Recommended setup: node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'install agent-facing output missing recommended setup');
@@ -280,6 +475,13 @@ function testRecipeQuality(project, state) {
 
     const missingPackageState = path.join(path.dirname(state), 'state missing mem0 package');
     fs.mkdirSync(missingPackageState, { recursive: true });
+    parseJson(memoryCli(project, missingPackageState, [
+      'configure-embeddings', 'mem0-oss',
+      '--embedder', 'openai',
+      '--model', 'text-embedding-3-small',
+      '--shared-provider-root', path.join(path.dirname(missingPackageState), 'shared mem0 provider'),
+      '--json'
+    ]), 'configure OpenAI before missing package setup');
     const fakeSelectedPython = path.join(project, 'Python Env', 'python.exe');
     const missingPackageSetup = parseJson(memoryCli(project, missingPackageState, ['setup', 'mem0-oss', '--live', '--python', fakeSelectedPython, '--json'], {
       env: {
@@ -295,6 +497,13 @@ function testRecipeQuality(project, state) {
 
     const versionMismatchState = path.join(path.dirname(state), 'state wrong mem0 package');
     fs.mkdirSync(versionMismatchState, { recursive: true });
+    parseJson(memoryCli(project, versionMismatchState, [
+      'configure-embeddings', 'mem0-oss',
+      '--embedder', 'openai',
+      '--model', 'text-embedding-3-small',
+      '--shared-provider-root', path.join(path.dirname(versionMismatchState), 'shared mem0 provider'),
+      '--json'
+    ]), 'configure OpenAI before version mismatch setup');
     const versionMismatchSetup = parseJson(memoryCli(project, versionMismatchState, ['setup', 'mem0-oss', '--live', '--python', fakeSelectedPython, '--json'], {
       env: {
         KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE: '1',
@@ -314,6 +523,13 @@ function testRecipeQuality(project, state) {
 
     const missingVersionState = path.join(path.dirname(state), 'state missing mem0 package version');
     fs.mkdirSync(missingVersionState, { recursive: true });
+    parseJson(memoryCli(project, missingVersionState, [
+      'configure-embeddings', 'mem0-oss',
+      '--embedder', 'openai',
+      '--model', 'text-embedding-3-small',
+      '--shared-provider-root', path.join(path.dirname(missingVersionState), 'shared mem0 provider'),
+      '--json'
+    ]), 'configure OpenAI before missing version setup');
     const missingVersionSetup = parseJson(memoryCli(project, missingVersionState, ['setup', 'mem0-oss', '--live', '--python', fakeSelectedPython, '--json'], {
       env: {
         KNOWLEDGE_MEMORY_PROVIDER_TEST_MODE: '1',
@@ -335,8 +551,19 @@ function testRecipeQuality(project, state) {
     assert(writtenAgain.recipe === written.recipe, 'write-recipe path changed');
     const second = fs.readFileSync(recipePath, 'utf8');
     assert(first === second, 'write-recipe output should be deterministic');
-    assert(!first.includes('...'), 'recipe must not include ellipsis commands');
+    assert(!hasEllipsisCommand(first), 'recipe must not include ellipsis commands');
     assert(first.includes('node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'recipe missing one recommended setup flow');
+    assert(first.includes('needs_embedding_provider_choice'), 'recipe missing mandatory embedding provider choice setup status');
+    assert(first.includes('must not silently choose OpenAI API or Local FastEmbed'), 'recipe missing no-silent-default policy');
+    assert(first.includes('node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json'), 'recipe missing OpenAI embedding configure command');
+    assert(first.includes('node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json'), 'recipe missing FastEmbed embedding configure command');
+    assert(first.includes('--provider-scope project'), 'recipe missing explicit project-local provider command');
+    assert(first.includes('LLM provider') && first.includes('Embedding provider') && first.includes('Vector store') && first.includes('History store'), 'recipe must distinguish provider/store layers');
+    assert(first.includes('Local FastEmbed is a regular choice, not an emergency fallback'), 'recipe must present Local FastEmbed as a regular choice');
+    assert(first.includes('Never reuse an OpenAI `1536`-dimension collection'), 'recipe missing collection dimension guard');
+    assert(first.includes('default provider storage is shared per OS user'), 'recipe missing shared provider storage default');
+    assert(first.includes('shared provider root is data storage, not a Python virtualenv'), 'recipe missing shared storage/runtime boundary');
+    assert(first.includes('fastembed_onnx_external_data_path_error'), 'recipe missing FastEmbed ONNX diagnostic guidance');
     assert(first.includes('external-memory write'), 'recipe missing live write warning');
     assert(first.includes('source_of_truth: false') && first.includes('trust_effect: advisory_only'), 'recipe missing advisory-only policy');
     assert(first.includes('.knowledge/external_memory/mem0/install_receipt.json'), 'recipe missing canonical receipt path');
@@ -344,9 +571,31 @@ function testRecipeQuality(project, state) {
     assert(fs.existsSync(installDocPath), 'Mem0 install page is missing');
     const installDoc = fs.readFileSync(installDocPath, 'utf8');
     assert(installDoc.includes('node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'), 'Mem0 install page missing recommended setup flow');
+    assert(installDoc.includes('must not silently choose an embedding backend'), 'Mem0 install page missing no-silent-default policy');
+    assert(installDoc.includes('configure-embeddings mem0-oss --embedder openai'), 'Mem0 install page missing OpenAI configure command');
+    assert(installDoc.includes('configure-embeddings mem0-oss --embedder fastembed'), 'Mem0 install page missing FastEmbed configure command');
+    assert(installDoc.includes('--provider-scope project'), 'Mem0 install page missing project-local explicit command');
+    assert(installDoc.includes('Local FastEmbed is a normal install-time choice, not an emergency fallback'), 'Mem0 install page should not frame FastEmbed as an emergency workaround');
     assert(installDoc.includes('receipt_present') && installDoc.includes('runtime_available') && installDoc.includes('package_installed'), 'Mem0 install page missing receipt/runtime/package distinction');
-    assert(installDoc.includes('.knowledge/external_memory/mem0/qdrant') && installDoc.includes('.knowledge/external_memory/mem0/history.db'), 'Mem0 install page missing repo-local storage paths');
+    assert(installDoc.includes('Default provider storage is shared per OS user'), 'Mem0 install page missing shared storage default');
     assert(installDoc.includes('source_of_truth: false') && installDoc.includes('trust_effect: advisory_only'), 'Mem0 install page missing advisory-only boundary');
+    const backendRecipePath = path.join(systemRoot, 'docs', 'cookbook', '10-mem0-embedding-backends.md');
+    assert(fs.existsSync(backendRecipePath), 'Mem0 embedding backend recipe is missing');
+    const backendRecipe = fs.readFileSync(backendRecipePath, 'utf8');
+    assert(backendRecipe.includes('Which backend should Mem0 use for embeddings?'), 'Mem0 backend recipe missing agent question');
+    assert(backendRecipe.includes('must ask the question') && backendRecipe.includes('do not silently choose'), 'Mem0 backend recipe missing required guided-choice policy');
+    assert(backendRecipe.includes('OpenAI API') && backendRecipe.includes('Local FastEmbed'), 'Mem0 backend recipe missing backend choices');
+    assert(backendRecipe.includes('OPENAI_API_KEY') && backendRecipe.includes('sk-...'), 'Mem0 backend recipe missing local terminal key guidance');
+    assert(backendRecipe.includes('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'), 'Mem0 backend recipe missing multilingual-small model');
+    assert(backendRecipe.includes('diagnostic_code: collection_reuse_blocked'), 'Mem0 backend recipe missing collection reuse guard');
+    assert(backendRecipe.includes('--provider-scope project'), 'Mem0 backend recipe missing project-local explicit command');
+    assert(fs.existsSync(path.join(systemRoot, 'docs', 'cookbook', '11-mem0-project-local-provider.md')), 'Mem0 project-local provider recipe is missing');
+    const sharedRecipePath = path.join(systemRoot, 'docs', 'cookbook', '12-mem0-shared-provider-storage.md');
+    assert(fs.existsSync(sharedRecipePath), 'Mem0 shared provider storage recipe is missing');
+    const sharedRecipe = fs.readFileSync(sharedRecipePath, 'utf8');
+    assert(sharedRecipe.includes('--provider-scope shared'), 'Mem0 shared provider recipe must use explicit shared scope for existing configs');
+    assert(sharedRecipe.includes('data storage, not the Python runtime'), 'Mem0 shared provider recipe must separate storage from Python runtime');
+    assert(sharedRecipe.includes('fastembed_onnx_external_data_path_error'), 'Mem0 shared provider recipe missing FastEmbed ONNX diagnostic guidance');
     assertMem0DocsSearchCoverage(project, state);
 
     const validated = parseJson(memoryCli(project, state, ['validate-recipe', 'mem0-oss', '--json']), 'validate Mem0 recipe');
@@ -382,14 +631,19 @@ function main() {
   if (recipeQualityOnly) {
     testRecipeQuality(project, state);
     const result = {
-      schema_version: '3.2.6',
+      schema_version: '3.2.9',
       status: 'pass',
       temp_root: keepTemp ? root : null,
       temp_root_cleaned: !keepTemp,
       checks: [
-        'setup mem0-oss creates receipt/config/agent-facing output',
-        'repo-local Mem0 config stays reproducible and runtime state is isolated',
+        'setup mem0-oss creates receipt and requires explicit embedding provider choice',
+        'shared Mem0 provider storage is default and project-local storage is explicit',
+        'Mem0 config stays reproducible and runtime user state is isolated',
         'setup mem0-oss migrates old receipt schema without install/network claims',
+        'configure-embeddings writes OpenAI config without secrets or runtime user state',
+        'configure-embeddings blocks reuse of an OpenAI 1536-dimension collection for FastEmbed',
+        'configure-embeddings blocks unsupported FastEmbed runtime before install or smoke',
+        'configure-embeddings writes FastEmbed config with programmatic dimensions and smoke commands',
         'install mem0-oss returns one recommended setup command',
         'Mem0 CLIs expose machine-readable help/dispatch metadata',
         'setup --live without mem0ai returns one exact install command',
@@ -401,7 +655,9 @@ function main() {
         'validate-recipe catches duplicate recommended setup flow',
         'validate-recipe catches unsupported install commands',
         'validate-recipe catches malformed node command arguments',
-        'Mem0 install page documents setup, runtime status, repo-local paths, and advisory boundary',
+        'Mem0 install page documents setup, backend choice, runtime status, shared/project-local paths, and advisory boundary',
+        'Mem0 embedding backend recipe documents OpenAI and Local FastEmbed guided flows',
+        'Mem0 shared provider recipe documents explicit shared-scope adoption',
         'search index includes Mem0 docs as external_memory',
         'local search finds Mem0 install page',
         'recipe preserves advisory-only boundary and one recommended setup flow'
@@ -446,7 +702,7 @@ function main() {
   fs.mkdirSync(path.join(embeddingErrorState, 'external_memory', 'mem0'), { recursive: true });
   parseJson(memoryCli(project, embeddingErrorState, ['install', 'mem0-oss', '--version', 'mem0ai==2.0.4', '--yes-i-reviewed-license', '--json']), 'install receipt for embedding cache status');
   fs.writeFileSync(path.join(embeddingErrorState, 'external_memory', 'mem0', 'runtime_status.json'), JSON.stringify({
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     provider_id: 'mem0-oss',
     adapter_id: 'live',
     checked_at: '2026-01-01T00:05:00.000Z',
@@ -486,7 +742,7 @@ function main() {
 
   const liveAuto = parseJson(mem0Cli(project, state, ['health', '--adapter', 'live', '--json']), 'mem0 live auto health');
   assert(liveAuto.live_runtime_checked === true, 'Mem0 live auto health should mark live runtime checked');
-  assert(['python_missing', 'python_permission_error', 'live_operation_timeout', 'python_not_usable', 'mem0_runtime_missing', 'mem0_version_mismatch', 'mem0_available', 'unknown_live_adapter_error', 'python_runtime_error', 'qdrant_path_permission_denied', 'qdrant_lock_busy', 'mem0_import_failed'].includes(liveAuto.diagnostic_code), 'Mem0 live auto health diagnostic code unexpected');
+  assert(['python_missing', 'python_permission_error', 'live_operation_timeout', 'python_not_usable', 'mem0_runtime_missing', 'mem0_version_mismatch', 'mem0_available', 'unknown_live_adapter_error', 'python_runtime_error', 'qdrant_path_permission_denied', 'qdrant_lock_busy', 'mem0_import_failed', 'fastembed_model_download_timeout'].includes(liveAuto.diagnostic_code), 'Mem0 live auto health diagnostic code unexpected');
   if (liveAuto.diagnostic_code === 'mem0_runtime_missing') {
     assert((liveAuto.next_commands || []).some((command) => command.includes('-m pip install mem0ai==2.0.4')), 'Mem0 missing package should include pinned pip command');
     assert(liveAuto.next_commands.length === 1, 'Mem0 missing package should include one recommended install command');
@@ -631,7 +887,7 @@ console.log(JSON.stringify(names.filter((name)=>/graphiti|zep/i.test(name))));
   assert(proNames.length === 0, 'Graphiti/Zep pro provider files leaked into free release artifact');
 
   const result = {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,
@@ -640,16 +896,21 @@ console.log(JSON.stringify(names.filter((name)=>/graphiti|zep/i.test(name))));
       'preview writes no receipt',
       'install refuses without license confirmation',
       'install records receipt without claiming package install',
-      'repo-local Mem0 config stays reproducible and runtime state is isolated',
+      'setup requires explicit Mem0 embedding provider choice before config/live checks',
+      'shared Mem0 provider storage is default and project-local storage is explicit',
+      'Mem0 config stays reproducible and runtime user state is isolated',
       'setup mem0-oss migrates old receipt schema without install/network claims',
       'receipt/runtime/package install fields stay distinct',
       'Mem0 runtime health reports runtime_not_installed without live checks',
       'Mem0 live health uses bounded Python discovery diagnostics',
       'Mem0 live list allows slow local Qdrant startup',
+      'Mem0 live operations require explicit config before storage startup',
       'Mem0 setup enforces pinned mem0ai version',
       'Mem0 setup rejects missing mem0ai runtime version',
+      'configure-embeddings blocks unsupported FastEmbed runtime before install or smoke',
       'Mem0 status and Inspector expose cached runtime version and pin match',
       'Mem0 status preserves runtime cache after embedding provider errors',
+      'Mem0 status preserves runtime cache after FastEmbed ONNX model-cache errors',
       'Mem0 2.0.4 live search/list use filter-based API',
       'Mem0 live operation network classifications are explicit without live writes',
       'Mem0 CLIs expose machine-readable help/dispatch metadata',

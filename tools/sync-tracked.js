@@ -47,7 +47,7 @@ const paths = {
 };
 
 const WATCHED_ROOTS = ['.'];
-const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.knowledge', '.next', '.turbo', '.cache', '.pytest_cache', '.mypy_cache', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes', 'pro2pilot-inspector', '.tmp'];
+const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.knowledge', '.next', '.turbo', '.cache', '.qa-tmp', '.pytest_cache', '.mypy_cache', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes', 'pro2pilot-inspector', '.tmp'];
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.php', '.cs', '.sql', '.toml', '.yaml', '.yml', '.json', '.prisma']);
 
 function exists(filePath) { return fs.existsSync(filePath); }
@@ -89,6 +89,8 @@ function isKnowledgeSourceCheckoutPath(pathStr) {
   if (!top || top.startsWith('.')) return false;
   const full = path.join(repoRoot, top);
   const lower = top.toLowerCase();
+  if (!isDirectory(full)) return false;
+  if (lower === 'knowledge-src' || lower.startsWith('knowledge-src')) return true;
   const pkg = safeReadJson(path.join(full, 'package.json'), {}) || {};
   const hasKnowledgePackage = pkg.name === 'dot-knowledge' || pkg.name === 'knowledge' || /knowledge/.test(String(pkg.name || ''));
   const hasReleaseTool = isFile(path.join(full, 'tools', 'package-release.js'));
@@ -96,8 +98,6 @@ function isKnowledgeSourceCheckoutPath(pathStr) {
   const hasQuickStart = isFile(path.join(full, 'Quick-Start.md'));
   const hasSourceGit = isDirectory(path.join(full, '.git'));
   return (
-    lower === 'knowledge-src' ||
-    lower.startsWith('knowledge-src') ||
     (hasKnowledgePackage && hasReleaseTool && hasInstallManifest) ||
     (hasSourceGit && hasReleaseTool && hasQuickStart)
   );

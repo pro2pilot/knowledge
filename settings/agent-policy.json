@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.6",
+  "schema_version": "3.2.7",
   "concurrent_work_policy": "Parallel Worktrees",
   "merge_policy": "Auto PR",
   "auto_merge": false,

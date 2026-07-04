@@ -1,5 +1,85 @@
 # Changelog
 
+## 3.2.9 Inspector update polish and Local FastEmbed hardening
+
+- Simplified the live Inspector update panel to a launch-checked status and a
+  single Update action.
+- Refreshed the live Inspector update status in the current session after an
+  applied system update.
+- Clarified Mem0 status semantics across offline status, live runtime health,
+  and operational list/add/search/recall checks.
+- Added `fastembed_onnx_external_data_path_error` for Local FastEmbed ONNX
+  model-cache failures and preserved cached Mem0 runtime availability for that
+  diagnostic.
+- Added `fastembed_model_download_timeout` for first-run Local FastEmbed model
+  warmup/download timeouts, with long-timeout retry guidance that does not
+  confuse HuggingFace download messages with OpenAI quota.
+- Improved Local FastEmbed Python runtime selection so configuration can prefer
+  a supported discovered runtime, and live commands can reuse a cached
+  `selected_python` from Mem0 config/status metadata.
+- Preferred the configured Python runtime from `config.meta.json` over stale
+  runtime-status cache entries for live Mem0 commands.
+- Reported Mem0 as configured when `config.json` exists, even without an
+  install approval receipt.
+- Required explicit live Mem0 provider config before operational storage
+  startup so unconfigured commands cannot fall back to default `/tmp/qdrant`.
+- Added a shared Mem0 provider storage adoption recipe using explicit
+  `--provider-scope shared` for existing non-shared configs.
+- Full local release gate and Docker/Linux release gate passed during release
+  preparation. Native macOS/iOS runtime testing was not run.
+
+## 3.2.8 Mem0 shared provider onboarding
+
+- Changed Mem0 setup policy so `setup mem0-oss --live --json` must stop and
+  ask for an explicit embedding backend choice when no Mem0 config exists.
+- Kept OpenAI API and Local FastEmbed as normal guided choices, but removed the
+  silent OpenAI-by-default config creation from setup/recipe generation.
+- Added shared per-user Mem0 provider storage as the default, with
+  project-keyed Qdrant/history/runtime directories so multiple projects can
+  discover the same provider location without mixing project memory.
+- Added explicit project-local provider storage via `--provider-scope project`
+  and documented it as a rare opt-in recipe.
+- Extended Mem0 status/config metadata to report provider scope, shared provider
+  root, project storage key, Qdrant path, and history DB path.
+
+## 3.2.7 Mem0 embedding backend choice and Inspector file links
+
+- Added `memory-provider.js configure-embeddings mem0-oss --json` so Mem0
+  embedding backend selection is a separate agent-guided step from setup.
+- Promoted Local FastEmbed from quota fallback to a normal onboarding choice,
+  with pinned `fastembed==0.5.1`, programmatic dimension detection, and
+  Qdrant collection names tied to provider/model/dimensions.
+- Documented OpenAI API vs Local FastEmbed in
+  `docs/cookbook/10-mem0-embedding-backends.md`, including the LLM provider,
+  embedding provider, vector store, and history store split.
+- Blocked reuse of a previous Qdrant collection when the requested embedding
+  provider, model, or dimensions differ.
+- Fixed Visual Inspector Trust Graph next-action file links by routing them
+  through the live Inspector file-open endpoint instead of inert copied paths.
+- Added a FastEmbed runtime guard so unsupported Python runtimes stop before
+  pinned `fastembed==0.5.1` install/smoke, with Python 3.12 guidance.
+- Added deterministic Inspector next-action smoke coverage for live
+  `/api/files/open` behavior.
+- Removed `docs/release-gates.md` from the public release source and blocked it
+  from future public artifacts.
+- Added source-only maintainer release policy, packaging, validation, release
+  gate, post-release asset, conformance, impact, SBOM, notices, and source
+  deliverable tooling.
+- Excluded maintainer-only release/QA/CI tooling from installed user
+  `.knowledge` artifacts and added artifact-forbidden rules so future leaks
+  fail validation.
+- Hardened source-only release tooling so post-release checks block wrong
+  GitHub author/uploader identity, unsafe download directory cleanup, stale
+  candidate artifact evidence, artifact/package version mismatch, unsafe ZIP
+  inflation, Unicode entry spoofing, and central directory size drift.
+- Added release policy required-entry profiles for public runtime, source
+  release, and maintainer-only surfaces.
+- Hardened release artifact validation for unsafe ZIP paths, duplicate/NFC
+  entries, unsupported compression methods, CRC mismatch, local/central name
+  mismatch, size/ratio caps, and lightweight token leakage patterns.
+- Replaced Mem0 cookbook `OPENAI_API_KEY` examples with safe placeholders that
+  do not look like committed secrets.
+
 ## 3.2.6 Mem0 guided setup and recipe gate
 
 - Added `memory-provider.js setup mem0-oss --live --json` as the recommended

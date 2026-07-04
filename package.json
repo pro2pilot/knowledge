@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.2.6",
+  "version": "3.2.9",
   "description": "Open repo-local trust layer for AI coding agents: routing, evidence, freshness, repair, PR review, and a local Visual Inspector.",
   "type": "commonjs",
   "engines": {
@@ -38,10 +38,6 @@
     "kb:flow:scan": "node tools/flow.js scan",
     "kb:flow:import": "node tools/flow.js import",
     "kb:flow:release": "node tools/flow.js release",
-    "kb:package-release": "node tools/package-release.js",
-    "release:gate": "node tools/release-gate.js --json",
-    "kb:release-gate": "node tools/release-gate.js --json",
-    "kb:source-deliverable": "node tools/validate-source-deliverable.js --json",
     "kb:self-test-install-policy": "node tools/self-test-install-policy.js",
     "kb:install-check": "node tools/install-check.js --json",
     "kb:update-system": "node tools/update-system-files.js",
@@ -64,6 +60,7 @@
     "kb:self-test-memory-providers": "node tools/self-test-memory-providers.js",
     "kb:self-test-external-memory": "node tools/self-test-external-memory.js",
     "kb:self-test-inspector-ui": "node tools/self-test-inspector-ui.js",
+    "kb:self-test-inspector-next-actions": "node tools/self-test-inspector-next-actions.js",
     "kb:self-test-free-core-graph": "node tools/self-test-free-core-graph.js",
     "kb:self-test-inspector-launcher": "node tools/self-test-inspector-launcher.js --json",
     "kb:self-test-inspector-actions": "node tools/self-test-inspector-actions.js --json",

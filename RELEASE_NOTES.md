@@ -1,32 +1,103 @@
 # Release Notes
 
+## v3.2.9 - Inspector update polish and Local FastEmbed hardening
+
+v3.2.9 improves the local Inspector update experience and tightens Mem0 Local
+FastEmbed runtime behavior for agent-guided installs.
+
+### Changed
+
+- Simplified the live Inspector update panel to one Update action backed by the
+  existing launch-time release check.
+- After an update is applied, the current Inspector session now refreshes the
+  displayed update state and current version immediately.
+- Clarified Mem0 setup diagnostics so agents distinguish offline status, live
+  runtime health, and operational list/add/search/recall smoke checks.
+- Added a Local FastEmbed ONNX model-cache diagnostic for live Mem0 operations,
+  with guidance to repair Python/FastEmbed runtime instead of moving shared
+  provider storage.
+- Added a Local FastEmbed model download timeout diagnostic for first-run model
+  warmup, including long-timeout retry guidance and cached Python runtime reuse.
+- Added a shared Mem0 provider storage adoption recipe for existing projects
+  that need to return to the per-user default with explicit `--provider-scope
+  shared`.
+- Live Mem0 Python selection now prefers the configured runtime from
+  `config.meta.json` over stale runtime-status cache entries.
+- Mem0 provider status now reports `configured=true` when `config.json` exists,
+  even if there is no install approval receipt.
+- Live Mem0 add/search/recall/list now require explicit provider config before
+  storage startup, preventing an accidental fallback to default `/tmp/qdrant`.
+
+### Verification
+
+- Full local release gate passed.
+- Public artifact validation passed with 319 entries and 0 violations.
+- Inspector next-action, launcher, UI, action, and update e2e checks passed.
+- Mem0 focused checks passed, including provider choice, shared storage,
+  unsupported FastEmbed runtime guard, cache diagnostics, and status semantics.
+- Live Mem0 Local FastEmbed health/add/search/recall/list passed using
+  `intfloat/multilingual-e5-large` at 1024 dimensions.
+- Docker/Linux release gate passed during release preparation.
+- Native macOS/iOS runtime testing was not run for this release. macOS
+  compatibility is covered only indirectly through POSIX/Linux Docker checks.
+
+## v3.2.7 - Mem0 embedding backend choice and Inspector file links
+
+v3.2.7 makes Mem0 embedding selection an explicit agent-guided install choice
+and fixes Visual Inspector Trust Graph next-action file links. Agents can keep
+setup simple, choose OpenAI API or Local FastEmbed separately, validate
+dimensions before creating Qdrant collections, and open referenced files from
+the live Inspector without copying paths by hand.
+
+### Added
+
+- `node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --json`.
+- OpenAI embedding configuration with `text-embedding-3-small`.
+- Local FastEmbed configuration with pinned `fastembed==0.5.1`, model
+  dimension detection, model warmup guidance, and smoke-test flow.
+- A dedicated cookbook recipe for OpenAI API vs Local FastEmbed onboarding.
+- FastEmbed runtime guard guidance for unsupported Python runtimes, preferring
+  Python 3.12 before install or smoke.
+- Deterministic Inspector next-action smoke coverage for live `/api/files/open`
+  behavior.
+- Source-only maintainer release policy, packaging, validation, release gate,
+  post-release asset, conformance, impact, SBOM, notices, and source deliverable
+  tooling.
+- Required-entry profiles for public runtime, source release, and
+  maintainer-only release surfaces.
+
+### Fixed
+
+- FastEmbed setup refuses to reuse a Qdrant collection created for another
+  provider, model, or embedding dimension.
+- Mem0 configuration now separates LLM provider, embedding provider, vector
+  store, and history store in generated JSON.
+- Visual Inspector Trust Graph next-action file links now use the live
+  `/api/files/open` endpoint with token protection and path traversal checks.
+- Release packaging excludes restore-trust runtime reports from public zips.
+- `docs/release-gates.md` is removed from the public release source and blocked
+  from future public artifacts.
+- Maintainer-only release/QA/CI tooling is excluded from installed user
+  `.knowledge` artifacts and is forbidden by artifact validation rules if it
+  leaks back into a ZIP.
+- Mem0 cookbook `OPENAI_API_KEY` examples now use safe placeholders instead of
+  secret-like sample assignments.
+- Source-only post-release checks now block wrong GitHub release author or asset
+  uploader, unsafe custom download directory cleanup, tag mismatch, and digest
+  mismatch when GitHub reports a SHA-256 digest.
+- Source-only release gates delete the stale candidate ZIP before packaging and
+  skip artifact-dependent checks when package or validation fails.
+- Release artifact validation now rejects ZIP path tricks, duplicate normalized
+  entries, Unicode non-NFC names, unsupported compression, CRC mismatch,
+  local/central header mismatch, central-directory size drift, excessive
+  size/ratio, artifact/package version mismatch, and common secret/token leakage
+  patterns.
+
 ## v3.2.6 - Mem0 guided setup and recipe gate
 
 v3.2.6 turns Mem0 OSS onboarding into a product flow instead of an agent-written
 recipe. A weak agent can run one setup command, get a receipt/config/recipe,
 see live runtime status, and keep Mem0 clearly advisory-only.
-
-### Added
-
-- `node .knowledge/tools/memory-provider.js setup mem0-oss --live --json`.
-- Deterministic `write-recipe` and `validate-recipe` commands for the Mem0
-  cookbook page.
-- Repo-local Mem0 config, runtime status cache, and Inspector onboarding card.
-- Release gate coverage for Mem0 recipe quality.
-
-### Fixed
-
-- Offline status now reads cached live health without importing Python or making
-  network calls.
-- Mem0 receipts, runtime availability, and package install state are reported as
-  separate fields.
-- Live Mem0 search/list use filter-based Mem0 2.0.4 API calls.
-- Live setup now rejects mismatched or unreported Mem0 runtime versions and
-  returns one exact pinned install command.
-- Offline status and Inspector now show cached Mem0 runtime version and whether
-  it matches the pin.
-- Live operation output now distinguishes health/list from add/search/recall
-  embedding-provider behavior.
 
 ## v3.2.5 - Inspector first-run, updater, graph shelf, and shutdown
 

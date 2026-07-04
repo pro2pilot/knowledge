@@ -9,7 +9,7 @@ const zlib = require('zlib');
 const { spawn, spawnSync } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const targetVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.6';
+const targetVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.9';
 const previousVersion = '3.2.4';
 
 function assert(condition, message, details = null) {
@@ -211,6 +211,8 @@ async function main() {
 
     const page = await requestJson(port, 'GET', `/?token=${session.token}`);
     assert(page.status === 200 && page.body.includes('update-banner available'), 'Home update banner should be visibly available');
+    assert(page.body.includes('id="updateApplyButton"') && page.body.includes('>Update</button>'), 'Home update banner should expose one Update button');
+    assert(!page.body.includes('data-update-action="status"') && !page.body.includes('data-update-action="dry-run"'), 'Home update banner should not expose extra update action buttons');
     assert(page.body.includes('data-shutdown="true"'), 'Turn off button is missing in live Inspector');
 
     const dryRun = await requestJson(port, 'POST', '/api/update/dry-run', session.token, {});
@@ -220,9 +222,17 @@ async function main() {
     const apply = await requestJson(port, 'POST', '/api/update/apply', session.token, { confirm: true, expectedVersion: targetVersion });
     assert(apply.status === 200 && apply.json?.ok === true, 'update apply did not succeed', apply);
     assert(apply.json.apply?.verify?.ok === true, 'verify-upgrade did not pass after apply', apply.json.apply);
+    assert(apply.json.status?.status === 'up_to_date', 'apply response did not expose refreshed up_to_date status', apply.json.status);
+    assert(apply.json.status?.current_version === targetVersion, 'apply response current version was not refreshed', apply.json.status);
 
     const installedPkg = JSON.parse(fs.readFileSync(path.join(oldKnowledge, 'package.json'), 'utf8'));
     assert(installedPkg.version === targetVersion, 'installed package version was not updated');
+    const statusAfterApply = await requestJson(port, 'GET', '/api/update/status', session.token);
+    assert(statusAfterApply.status === 200 && statusAfterApply.json?.status?.status === 'up_to_date', 'current live session did not report up_to_date after apply', statusAfterApply);
+    assert(statusAfterApply.json.status.current_version === targetVersion, 'current live session did not report refreshed current version', statusAfterApply.json.status);
+    const pageAfterApply = await requestJson(port, 'GET', `/?token=${session.token}`);
+    assert(pageAfterApply.status === 200 && pageAfterApply.body.includes('data-current-version="' + targetVersion + '"'), 'current live Inspector page did not render refreshed current version');
+    assert(pageAfterApply.body.includes('>Up to date</button>') && !pageAfterApply.body.includes('update-banner available'), 'current live Inspector page did not render applied update state');
     assert(fs.readFileSync(path.join(oldKnowledge, 'wiki', 'curated-note.md'), 'utf8').includes('keep me'), 'curated wiki content was not preserved');
     assert(!fs.existsSync(path.join(repo, 'maintenance')), 'update or launcher created root-level maintenance folder');
 
@@ -241,8 +251,10 @@ async function main() {
         'mock release zip built',
         'Inspector launch check reports update_available',
         'Home update banner is visible',
+        'Home update banner exposes one Update button',
         'dry-run downloads, validates and plans update',
         'apply updates system files',
+        'current Inspector session shows refreshed update state after apply',
         'verify-upgrade passes',
         'curated wiki content preserved',
         'root-level maintenance folder not created',

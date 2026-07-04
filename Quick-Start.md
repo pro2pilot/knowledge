@@ -125,13 +125,15 @@ Memory providers are advisory only. They never outrank current code, tests, evid
 node .knowledge/tools/memory-provider.js list --json
 node .knowledge/tools/memory-provider.js preview mem0-oss --json
 node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json
 node .knowledge/tools/memory-provider.js status-all --json
 node .knowledge/tools/memory-mem0.js health --json
 node .knowledge/tools/memory-mem0.js health --adapter live --json
 node .knowledge/tools/memory-pinecone.js health --json
 ```
 
-Mem0 OSS is the recommended optional free/core backend. Start with `setup mem0-oss --live --json`; it creates or reuses the receipt, writes repo-local config, regenerates the Mem0 cookbook recipe, checks live runtime explicitly, and updates the runtime status cache. Status commands stay offline-safe and distinguish `receipt_present`, `runtime_available`, and `package_installed`. Live add/search/recall require explicit `--adapter live --yes-live-memory`; add is an external-memory write and search/recall return advisory context only. If live import times out, JSON reports `diagnostic_code: live_operation_timeout`, and `--timeout-ms <ms>` can override the wait. Pinecone remains an optional vector/cloud retrieval bridge. Claude MEM is legacy migration data only.
+Mem0 OSS is the recommended optional free/core backend. Start with `setup mem0-oss --live --json`; it creates or reuses the receipt, writes repo-local config, regenerates the Mem0 cookbook recipe, checks live runtime explicitly, and updates the runtime status cache. Choose the Mem0 embedding backend separately with `configure-embeddings`: OpenAI API and Local FastEmbed are both normal guided choices, while LLM provider, embedding provider, Qdrant vector store, and SQLite history store stay distinct. Local FastEmbed must use a new Qdrant collection when provider, model, or dimensions change. Status commands stay offline-safe and distinguish `receipt_present`, `runtime_available`, and `package_installed`. Live add/search/recall require explicit `--adapter live --yes-live-memory`; add is an external-memory write and search/recall return advisory context only. If live import times out, JSON reports `diagnostic_code: live_operation_timeout`, and `--timeout-ms <ms>` can override the wait. Pinecone remains an optional vector/cloud retrieval bridge. Claude MEM is legacy migration data only.
 
 ## Updating an existing `.knowledge` installation
 
@@ -352,12 +354,10 @@ node .knowledge/inspector.js
 
 Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
 
-Use `dist/knowledge-v3.2.6.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
+Use `dist/knowledge-v<package.version>.zip` as the install artifact. Do not copy the source checkout into `.knowledge/` or leave it beside `.knowledge/` as `knowledge-src/`.
 
-```bash
-node tools/package-release.js
-node tools/validate-release-artifact.js dist/knowledge-v3.2.6.zip --json
-```
+Packaging and validation commands are maintainer-only source checkout tools.
+They are intentionally excluded from installed user `.knowledge` artifacts.
 
 ## Free Inspector vs Inspector Pro
 

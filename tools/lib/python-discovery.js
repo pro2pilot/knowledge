@@ -31,11 +31,13 @@ function safeReaddir(dirPath) {
 function addCandidate(candidates, seen, candidate, platform = process.platform) {
   const command = String(candidate.command || '').trim();
   if (!command) return;
-  const key = normalizeKey(command, platform);
+  const args = Array.isArray(candidate.args) ? candidate.args.map((arg) => String(arg)) : [];
+  const key = normalizeKey(`${command}\u0000${args.join('\u0000')}`, platform);
   if (seen.has(key)) return;
   seen.add(key);
   candidates.push({
     command,
+    args,
     source: candidate.source || 'unknown',
     explicit: Boolean(candidate.explicit),
     from_launcher: Boolean(candidate.from_launcher),
@@ -118,6 +120,19 @@ function addLauncherCandidates(candidates, seen, options = {}) {
   }
 }
 
+function addLauncherVersionCandidates(candidates, seen, options = {}) {
+  const platform = options.platform || process.platform;
+  if (platform !== 'win32') return;
+  for (const version of ['3.12', '3.11']) {
+    addCandidate(candidates, seen, {
+      command: 'py',
+      args: [`-${version}`],
+      source: `windows_py_${version}_launcher`,
+      from_launcher: true
+    }, platform);
+  }
+}
+
 function addStandardWindowsCandidates(candidates, seen, options = {}) {
   const env = options.env || process.env;
   const platform = options.platform || process.platform;
@@ -162,6 +177,8 @@ function collectPythonCandidates(options = {}) {
   if (venv) addPythonFromDir(candidates, seen, platform === 'win32' ? path.join(venv, 'Scripts') : path.join(venv, 'bin'), 'VIRTUAL_ENV', platform);
   if (conda) addPythonFromDir(candidates, seen, conda, 'CONDA_PREFIX', platform);
 
+  addLauncherVersionCandidates(candidates, seen, options);
+
   for (const command of platform === 'win32' ? ['python', 'python3'] : []) {
     addCandidate(candidates, seen, { command, source: 'path_command' }, platform);
   }
@@ -200,7 +217,8 @@ function validatePythonCandidate(candidate, options = {}) {
   if (isPathLike(command, platform) && !safeExists(command)) {
     return { ...candidate, status: 'not_found', diagnostic_code: 'python_not_found', error: 'candidate path does not exist' };
   }
-  const res = runCommand(command, ['-c', PYTHON_PROBE], options);
+  const candidateArgs = Array.isArray(candidate.args) ? candidate.args.map((arg) => String(arg)) : [];
+  const res = runCommand(command, [...candidateArgs, '-c', PYTHON_PROBE], options);
   if (res.error) {
     return { ...candidate, status: 'error', diagnostic_code: classifyError(res.error), error: friendlyError(res.error) };
   }

@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.6",
+  "schema_version": "3.2.7",
   "id": "mem0-oss",
   "display_name": "Mem0 OSS",
   "type": "local",
@@ -23,14 +23,24 @@
   "install": {
     "mode": "manual",
     "commands": [
-      "pip install mem0ai==2.0.4"
+      "python -m pip install mem0ai==2.0.4",
+      "python -m pip install fastembed==0.5.1"
     ],
     "requires_network": true,
     "requires_user_confirmation": true,
     "status_report_makes_network_calls": false,
     "recommended_setup_command": "node .knowledge/tools/memory-provider.js setup mem0-oss --live --json",
+    "configure_openai_embeddings_command": "node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json",
+    "configure_fastembed_embeddings_command": "node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json",
     "recipe_command": "node .knowledge/tools/memory-provider.js write-recipe mem0-oss --json",
     "validator_command": "node .knowledge/tools/memory-provider.js validate-recipe mem0-oss --json"
+  },
+  "embedding_onboarding": {
+    "mode": "agent_guided_recipe",
+    "recipe": "docs/cookbook/10-mem0-embedding-backends.md",
+    "layers": ["llm_provider", "embedding_provider", "vector_store", "history_store"],
+    "choices": ["openai", "fastembed"],
+    "collection_policy": "Do not reuse a Qdrant collection when embedding provider, model, or dimensions change."
   },
   "data": {
     "default_path": "<stateRoot>/external_memory/mem0",

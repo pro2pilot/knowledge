@@ -14,7 +14,27 @@ The `.knowledge` CLI does not run this command automatically. Use:
 node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
 ```
 
-That is the recommended guided flow. It records or reuses the receipt, writes repo-local config, refreshes the cookbook recipe, runs explicit live health, and keeps Mem0 advisory-only.
+That is the recommended guided flow. It records or reuses the receipt, refreshes the cookbook recipe, and stops for an explicit embedding backend choice when config is missing. It must not silently choose OpenAI API or Local FastEmbed.
+
+Embedding backend configuration is a required guided step. The agent asks whether to use OpenAI API embeddings or Local FastEmbed, then runs one deterministic command:
+
+```bash
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json
+```
+
+The config keeps LLM provider, embedding provider, Qdrant vector store, and SQLite history store distinct. Shared provider storage is the default so multiple projects can discover the same provider location. Local FastEmbed is a normal install-time choice and must use a new Qdrant collection when dimensions differ from the old OpenAI `1536` collection.
+
+Project-local provider storage is a rare, explicit choice:
+
+```bash
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json
+```
+
+For Local FastEmbed on Windows, use a Python version with wheels for the pinned
+runtime packages. This flow has been battle-tested with Python 3.12; Python 3.14
+can force source builds for `mmh3` or `Pillow` when installing
+`fastembed==0.5.1`.
 
 Low-level receipt commands are still available:
 

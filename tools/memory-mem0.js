@@ -9,6 +9,7 @@ const { providerStateDir, findManifest, buildExternalMemoryReport } = require('.
 const { ensureDir, readJson, writeJsonAtomic, withLock } = require('./lib/json-store');
 const {
   checkPythonModule,
+  collectPythonCandidates,
   discoverPython,
   packageInstallCommand,
   quoteForCommand
@@ -76,6 +77,12 @@ function runtimeStatusFile(context) {
   return path.join(providerStateDir(context, manifest), 'runtime_status.json');
 }
 
+function configMetaFile(context, flags = {}) {
+  if (flags.config) return path.join(path.dirname(path.resolve(String(flags.config))), 'config.meta.json');
+  const manifest = findManifest(context, 'mem0-oss');
+  return path.join(providerStateDir(context, manifest), 'config.meta.json');
+}
+
 function selectedAdapter(flags) {
   return String(flags.adapter || process.env.KNOWLEDGE_MEM0_ADAPTER || 'dry-run').toLowerCase();
 }
@@ -109,11 +116,44 @@ function liveConfig(flags, context) {
   return process.env.KNOWLEDGE_MEM0_CONFIG_JSON || '{}';
 }
 
+function parseLiveConfigObject(raw) {
+  try {
+    const parsed = JSON.parse(String(raw || '{}'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return Object.keys(parsed).length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasExplicitLiveConfig(flags, context) {
+  if (flags.configJson) return Boolean(parseLiveConfigObject(flags.configJson));
+  const configPath = liveConfigPath(flags, context);
+  if (configPath) {
+    if (!fs.existsSync(configPath)) return false;
+    return Boolean(parseLiveConfigObject(fs.readFileSync(configPath, 'utf8')));
+  }
+  return Boolean(parseLiveConfigObject(process.env.KNOWLEDGE_MEM0_CONFIG_JSON || '{}'));
+}
+
 function sanitizeLiveConfig(config) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) return config;
   const next = { ...config };
   delete next.user_id;
   return next;
+}
+
+function mem0RuntimeDirForConfig(configPath) {
+  if (!configPath || !fs.existsSync(configPath)) return null;
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const qdrantPath = config?.vector_store?.config?.path;
+    if (qdrantPath) return path.join(path.dirname(path.resolve(qdrantPath)), 'runtime');
+    if (config?.history_db_path) return path.join(path.dirname(path.resolve(config.history_db_path)), 'runtime');
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function restoreCanonicalLiveConfig(flags, context) {
@@ -127,6 +167,46 @@ function restoreCanonicalLiveConfig(flags, context) {
   return true;
 }
 
+function readJsonSoft(filePath, fallback = null) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function configuredPythonCandidates(flags, context) {
+  if (flags.python || process.env.KNOWLEDGE_MEM0_PYTHON || process.env.MEM0_PYTHON) return [];
+  const runtimeStatus = readJsonSoft(runtimeStatusFile(context), null);
+  const configMeta = readJsonSoft(configMetaFile(context, flags), null);
+  const candidates = [];
+  const add = (command, source) => {
+    const value = String(command || '').trim();
+    if (!value) return;
+    candidates.push({ command: value, source, from_config: true });
+  };
+  add(configMeta?.selected_python || configMeta?.python_runtime?.selected_python, 'mem0 config_meta selected_python');
+  add(runtimeStatus?.selected_python, 'mem0 runtime_status selected_python');
+  return candidates;
+}
+
+function mergePythonCandidates(first, second) {
+  const merged = [];
+  const seen = new Set();
+  for (const candidate of [...(first || []), ...(second || [])]) {
+    const command = String(candidate.command || '').trim();
+    if (!command) continue;
+    const args = Array.isArray(candidate.args) ? candidate.args.map((arg) => String(arg)) : [];
+    const keyRaw = `${command}\u0000${args.join('\u0000')}`;
+    const key = process.platform === 'win32' ? keyRaw.toLowerCase() : keyRaw;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(candidate);
+  }
+  return merged;
+}
+
 function liveProcessEnv(flags, context) {
   const env = {
     ...process.env,
@@ -135,18 +215,28 @@ function liveProcessEnv(flags, context) {
   if (!env.MEM0_TELEMETRY) env.MEM0_TELEMETRY = 'False';
   if (!env.MEM0_TELEMETRY_SAMPLE_RATE) env.MEM0_TELEMETRY_SAMPLE_RATE = '0';
   if (flags.mem0Dir) env.MEM0_DIR = path.resolve(String(flags.mem0Dir));
-  else if (!env.MEM0_DIR && flags.config) env.MEM0_DIR = path.join(path.dirname(path.resolve(String(flags.config))), 'runtime');
-  else if (!env.MEM0_DIR && context) env.MEM0_DIR = path.join(path.dirname(defaultLiveConfigPath(context)), 'runtime');
+  else if (!env.MEM0_DIR && flags.config) env.MEM0_DIR = mem0RuntimeDirForConfig(path.resolve(String(flags.config))) || path.join(path.dirname(path.resolve(String(flags.config))), 'runtime');
+  else if (!env.MEM0_DIR && context) {
+    const configPath = defaultLiveConfigPath(context);
+    env.MEM0_DIR = mem0RuntimeDirForConfig(configPath) || path.join(path.dirname(configPath), 'runtime');
+  }
   if (env.MEM0_DIR) ensureDir(env.MEM0_DIR);
   return env;
 }
 
-function pythonDiscoveryOptions(flags, timeoutMs = DEFAULT_FAST_PYTHON_TIMEOUT_MS) {
-  return {
+function pythonDiscoveryOptions(flags, timeoutMs = DEFAULT_FAST_PYTHON_TIMEOUT_MS, context = null) {
+  const options = {
     flags,
     timeoutMs: numericTimeout(pythonTimeoutFlag(flags), timeoutMs),
     env: process.env
   };
+  if (context) {
+    const preferred = configuredPythonCandidates(flags, context);
+    if (preferred.length) {
+      options.candidates = mergePythonCandidates(preferred, collectPythonCandidates(options));
+    }
+  }
+  return options;
 }
 
 function liveHealthOp(payload) {
@@ -204,9 +294,54 @@ function timeoutRetryCommand(operation = 'health', selectedPython) {
   return `node .knowledge/tools/memory-mem0.js health --adapter live${pythonArg} --timeout-ms 60000 --json`;
 }
 
+function longTimeoutRetryCommand(operation = 'list', selectedPython) {
+  const base = liveOperationRetryCommand(operation, selectedPython);
+  return base.replace(/ --json$/, ' --timeout-ms 300000 --json');
+}
+
+function liveOperationRetryCommand(operation = 'health', selectedPython) {
+  const pythonArg = selectedPython ? ` --python ${quoteForCommand(selectedPython)}` : '';
+  if (operation === 'remember') {
+    return `node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text "Release note: Mem0 embedding backend smoke test" --scope repo${pythonArg} --json`;
+  }
+  if (operation === 'recall') {
+    return `node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory${pythonArg} --json`;
+  }
+  if (operation === 'list') {
+    return `node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory${pythonArg} --json`;
+  }
+  return `node .knowledge/tools/memory-mem0.js health --adapter live${pythonArg} --json`;
+}
+
+function fastEmbedDownloadNextCommands(selectedPython, operation = 'list') {
+  return [
+    'First Local FastEmbed use may download model files; keep the configured shared provider root and rerun the explicit live command with a longer timeout.',
+    'Use a Python 3.12 runtime or virtualenv if the selected Python is unsupported for the pinned FastEmbed runtime.',
+    longTimeoutRetryCommand(operation, selectedPython)
+  ];
+}
+
+function fastEmbedOnnxNextCommands(selectedPython, operation = 'list') {
+  const pythonCommand = selectedPython ? quoteForCommand(selectedPython) : 'python';
+  return [
+    'Use a Python 3.12 runtime or virtualenv for Local FastEmbed if the selected Python is too new or the model cache failure repeats.',
+    `${pythonCommand} -m pip install mem0ai==2.0.4`,
+    `${pythonCommand} -m pip install fastembed==0.5.1`,
+    liveOperationRetryCommand(operation, selectedPython)
+  ];
+}
+
 function liveFailureNextCommands(diagnosticCode, selectedPython, operation = 'health') {
+  if (diagnosticCode === 'mem0_not_configured') {
+    return [
+      'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json',
+      'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json'
+    ];
+  }
   if (diagnosticCode === 'mem0_runtime_missing') return pythonInstallNextCommands(selectedPython);
   if (diagnosticCode === 'mem0_version_mismatch') return pythonInstallNextCommands(selectedPython);
+  if (diagnosticCode === 'fastembed_model_download_timeout') return fastEmbedDownloadNextCommands(selectedPython, operation);
+  if (diagnosticCode === 'fastembed_onnx_external_data_path_error') return fastEmbedOnnxNextCommands(selectedPython, operation);
   if (diagnosticCode === 'live_operation_timeout') {
     return [
       timeoutRetryCommand(operation, selectedPython)
@@ -225,7 +360,19 @@ function liveFailureNextCommands(diagnosticCode, selectedPython, operation = 'he
   return ['Fix the selected Python runtime, then rerun node .knowledge/tools/memory-mem0.js health --adapter live --json'];
 }
 
-function classifyMem0RuntimeFailure(parsed = {}, res = {}, payload = {}) {
+function isFastEmbedOnnxExternalDataError(text) {
+  return /(?:ONNXRuntimeError|onnxruntime|model\.onnx(?:_data)?|external data path validation failed)/i.test(text) &&
+    /(?:external data|onnx_data|allowed directory|blobs|model\.onnx)/i.test(text);
+}
+
+function isFastEmbedModelDownloadTimeout(text) {
+  const value = String(text || '');
+  return /(?:Live Mem0 Python command timed out|timed out|timeout)/i.test(value) &&
+    /(?:Fetching\s+\d+\s+files|huggingface|hf_hub|hf_xet|higher rate limits|snapshot_download|download)/i.test(value) &&
+    !/openai/i.test(value);
+}
+
+function classifyMem0RuntimeFailure(parsed = {}, res = {}, payload = {}, selectedPython = null) {
   const text = [
     parsed.error,
     parsed.stderr,
@@ -233,7 +380,7 @@ function classifyMem0RuntimeFailure(parsed = {}, res = {}, payload = {}) {
     res.stderr,
     res.stdout
   ].filter(Boolean).join('\n');
-  const mayUseEmbeddingProvider = ['remember', 'recall'].includes(String(payload?.op || ''));
+  const mayUseEmbeddingProvider = ['remember', 'recall', 'list'].includes(String(payload?.op || ''));
   if (/(?:already locked|lock busy|currently accessed|resource temporarily unavailable)/i.test(text) && /(?:qdrant|\.lock|lock[- ]?file)/i.test(text)) {
     return {
       diagnostic_code: 'qdrant_lock_busy',
@@ -246,16 +393,36 @@ function classifyMem0RuntimeFailure(parsed = {}, res = {}, payload = {}) {
       next_commands: liveFailureNextCommands('qdrant_path_permission_denied')
     };
   }
+  if (isFastEmbedOnnxExternalDataError(text)) {
+    return {
+      diagnostic_code: 'fastembed_onnx_external_data_path_error',
+      diagnostic_message: 'Local FastEmbed reached the Mem0 runtime, but the ONNX model cache failed to load. Treat this as a Python/FastEmbed/model-cache issue, not as a shared provider root issue.',
+      runtime_boundary: 'fastembed_onnx_model_runtime',
+      next_commands: liveFailureNextCommands('fastembed_onnx_external_data_path_error', selectedPython, payload?.op)
+    };
+  }
+  if (isFastEmbedModelDownloadTimeout(text)) {
+    return {
+      diagnostic_code: 'fastembed_model_download_timeout',
+      diagnostic_message: 'Local FastEmbed reached the Mem0 runtime, but the first model download did not finish before the live command timeout. Treat this as model warmup/download timing, not as OpenAI quota.',
+      runtime_boundary: 'fastembed_model_download',
+      next_commands: liveFailureNextCommands('fastembed_model_download_timeout', selectedPython, payload?.op || 'list')
+    };
+  }
   if (/api key|credentials|OPENAI_API_KEY|authentication/i.test(text) && (/embed|embedding|openai/i.test(text) || mayUseEmbeddingProvider)) {
     return {
       diagnostic_code: 'embedding_provider_missing_credentials',
-      next_commands: ['Configure the embedding provider credentials, then rerun the explicit live command.']
+      next_commands: [
+        'Set OPENAI_API_KEY in the local terminal, or configure Local FastEmbed with node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json'
+      ]
     };
   }
   if (/quota|rate limit|insufficient_quota/i.test(text) && (/embed|embedding|openai/i.test(text) || mayUseEmbeddingProvider)) {
     return {
       diagnostic_code: 'embedding_provider_quota_exceeded',
-      next_commands: ['Use the optional local embedder recipe or retry after quota is available.']
+      next_commands: [
+        'Run the Mem0 embedding backend guided recipe, or configure Local FastEmbed with node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json'
+      ]
     };
   }
   if (/network|timed out|connection|ECONNRESET|ENOTFOUND/i.test(text) && (/embed|embedding|openai/i.test(text) || mayUseEmbeddingProvider)) {
@@ -272,7 +439,7 @@ function filterSafeStderr(value) {
   const kept = [];
   let droppingQdrantShutdown = false;
   for (const line of lines) {
-    if (/Exception ignored while calling deallocator .*QdrantClient\.__del__/i.test(line)) {
+    if (/Exception ignored while calling deallocator .*QdrantClient\.__del__/i.test(line) || /Exception ignored in:\s*<function QdrantClient\.__del__/i.test(line)) {
       droppingQdrantShutdown = true;
       continue;
     }
@@ -282,6 +449,7 @@ function filterSafeStderr(value) {
     }
     if (/ResourceWarning|unclosed.*(?:qdrant|client)|grpc.*shutdown/i.test(line)) continue;
     if (/Failed to load spaCy .* model: spaCy is not installed\. Install it with: pip install mem0ai\[nlp\]/i.test(line)) continue;
+    if (/Xet Storage is enabled|hf_xet package is not installed|Falling back to regular HTTP download|huggingface_hub\[hf_xet\]|pip install hf_xet/i.test(line)) continue;
     kept.push(line);
   }
   return kept.join('\n').trim();
@@ -304,6 +472,21 @@ function runLivePythonProcess(selectedPython, flags, payload, context, script) {
 
 function liveOperationUsesLocalQdrant(payload) {
   return payload && !liveHealthOp(payload);
+}
+
+function configuredEmbeddingProvider(flags, context) {
+  try {
+    const config = JSON.parse(liveConfig(flags, context));
+    return String(config?.embedder?.provider || '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function localStorageNetworkLabel(flags, context) {
+  return configuredEmbeddingProvider(flags, context) === 'fastembed'
+    ? 'not_run_local_qdrant_may_download_local_fastembed_model'
+    : 'not_run_local_qdrant';
 }
 
 function runLiveMem0(flags, payload, context) {
@@ -367,7 +550,7 @@ function runLiveMem0(flags, payload, context) {
       next_commands: liveFailureNextCommands('mem0_version_mismatch', selectedPython, payload?.op)
     });
   }
-  const discovery = discoverPython(pythonDiscoveryOptions(flags));
+  const discovery = discoverPython(pythonDiscoveryOptions(flags, DEFAULT_FAST_PYTHON_TIMEOUT_MS, context));
   if (!discovery.selected) {
     const diagnosticCode = normalizeDiagnosticCode(discovery.diagnostic_code || 'python_not_found');
     return redactSecrets({
@@ -415,6 +598,19 @@ function runLiveMem0(flags, payload, context) {
       python_discovery: discovery,
       selected_python: selectedPython,
       next_commands: [],
+      version: moduleCheck.version || null,
+      expected_version: expectedVersion
+    });
+  }
+  if (!hasExplicitLiveConfig(flags, context)) {
+    return redactSecrets({
+      ok: false,
+      operation: payload?.op || null,
+      diagnostic_code: 'mem0_not_configured',
+      error: 'Live Mem0 operation requires explicit provider config. Run setup/configure so Mem0 does not fall back to default storage.',
+      python_discovery: discovery,
+      selected_python: selectedPython,
+      next_commands: liveFailureNextCommands('mem0_not_configured', selectedPython, payload?.op),
       version: moduleCheck.version || null,
       expected_version: expectedVersion
     });
@@ -503,10 +699,11 @@ except Exception as exc:
   }
   const stderr = filterSafeStderr(res.stderr);
   if (stderr) parsed.stderr = stderr.slice(0, 2000);
-  const runtimeFailure = classifyMem0RuntimeFailure(parsed, res, payload);
+  const runtimeFailure = classifyMem0RuntimeFailure(parsed, res, payload, selectedPython);
   if (!parsed.ok && runtimeFailure) {
-    parsed.diagnostic_code = runtimeFailure.diagnostic_code;
-    parsed.next_commands = runtimeFailure.next_commands;
+    for (const key of ['diagnostic_code', 'diagnostic_message', 'runtime_boundary', 'next_commands']) {
+      if (runtimeFailure[key] !== undefined) parsed[key] = runtimeFailure[key];
+    }
   }
   const diagnosticCode = normalizeDiagnosticCode(parsed.ok ? 'mem0_available' : (parsed.diagnostic_code || 'mem0_runtime_error'));
   return redactSecrets({
@@ -528,6 +725,9 @@ function liveHealthWarnings(raw) {
     const actual = raw.version || 'unknown';
     const expected = raw.expected_version || expectedMem0Version();
     return [`Python has mem0ai ${actual}, but .knowledge requires mem0ai ${expected}.`];
+  }
+  if (raw.diagnostic_code === 'mem0_not_configured') {
+    return ['Live Mem0 runtime is installed, but no provider config is present. Run setup/configure before add/search/list.'];
   }
   if (raw.diagnostic_code === 'live_operation_timeout') {
     return ['Live Mem0 health timed out. First import mem0 on Windows can be slower than warm checks; the default live health timeout is 30000 ms.'];
@@ -606,7 +806,7 @@ function liveAdapter(flags, context) {
       const raw = runLiveMem0(flags, { op: 'list', user_id: input.user_id }, context);
       return advisoryEnvelope(providerId, adapterId, 'list', {
         status: raw.ok ? 'ok' : 'error',
-        network_calls: 'not_run_local_qdrant',
+        network_calls: localStorageNetworkLabel(flags, context),
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
@@ -620,7 +820,7 @@ function liveAdapter(flags, context) {
       return advisoryEnvelope(providerId, adapterId, 'forget', {
         status: raw.ok ? 'ok' : 'error',
         deleted: Boolean(raw.deleted),
-        network_calls: 'not_run_local_qdrant',
+        network_calls: localStorageNetworkLabel(flags, context),
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
         python_discovery: raw.python_discovery || null,
@@ -691,6 +891,9 @@ function runtimeStatusSnapshot(result, context, previous = null) {
   const checkedAt = new Date().toISOString();
   const runtimeStillAvailable = [
     'mem0_available',
+    'fastembed_onnx_external_data_path_error',
+    'fastembed_model_download_timeout',
+    'mem0_not_configured',
     'embedding_provider_missing_credentials',
     'embedding_provider_quota_exceeded',
     'embedding_provider_network_error'
@@ -698,7 +901,7 @@ function runtimeStatusSnapshot(result, context, previous = null) {
   const runtimeAvailable = (['available', 'ok'].includes(statusValue) && diagnosticCode === 'mem0_available') ||
     (runtimeStillAvailable && Boolean(runtimeVersion || result.selected_python || result.raw?.selected_python));
   return {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     provider_id: 'mem0-oss',
     adapter_id: 'live',
     checked_at: checkedAt,
@@ -728,18 +931,18 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     tool: 'memory-mem0.js',
     usage: 'node .knowledge/tools/memory-mem0.js <command> [query] [options] --json',
     commands: [
       { name: 'health', usage: 'node .knowledge/tools/memory-mem0.js health --adapter live --json', network_calls: 'not_run' },
-      { name: 'list', usage: 'node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json', network_calls: 'not_run_local_qdrant' },
+      { name: 'list', usage: 'node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json', network_calls: 'not_run_local_qdrant_may_download_local_fastembed_model' },
       { name: 'add', usage: 'node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text "Release note: Mem0 is advisory-only external memory" --scope repo --json', network_calls: 'may_call_embedding_provider' },
       { name: 'remember', usage: 'node .knowledge/tools/memory-mem0.js remember --adapter live --yes-live-memory --text "Release note: Mem0 is advisory-only external memory" --scope repo --json', network_calls: 'may_call_embedding_provider' },
       { name: 'search', usage: 'node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json', network_calls: 'may_call_embedding_provider' },
       { name: 'recall', usage: 'node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json', network_calls: 'may_call_embedding_provider' },
-      { name: 'delete', usage: 'node .knowledge/tools/memory-mem0.js delete --adapter live --yes-live-memory --id <memory-id> --json', network_calls: 'not_run_local_qdrant' },
-      { name: 'forget', usage: 'node .knowledge/tools/memory-mem0.js forget --adapter live --yes-live-memory --id <memory-id> --json', network_calls: 'not_run_local_qdrant' },
+      { name: 'delete', usage: 'node .knowledge/tools/memory-mem0.js delete --adapter live --yes-live-memory --id <memory-id> --json', network_calls: 'not_run_local_qdrant_may_download_local_fastembed_model' },
+      { name: 'forget', usage: 'node .knowledge/tools/memory-mem0.js forget --adapter live --yes-live-memory --id <memory-id> --json', network_calls: 'not_run_local_qdrant_may_download_local_fastembed_model' },
       { name: 'sync-report', usage: 'node .knowledge/tools/memory-mem0.js sync-report --json', network_calls: 'not_run' },
       { name: 'export-redacted', usage: 'node .knowledge/tools/memory-mem0.js export-redacted --json', network_calls: 'not_run' },
       { name: 'help', usage: 'node .knowledge/tools/memory-mem0.js help --json', network_calls: 'not_run' }
@@ -794,10 +997,13 @@ module.exports.adapterFor = adapterFor;
 module.exports.publicRecord = publicRecord;
 module.exports.__test = {
   classifyMem0RuntimeFailure,
+  configuredPythonCandidates,
   filterSafeStderr,
   liveImportOptions,
   liveMem0TimeoutMs,
   liveProcessEnv,
+  hasExplicitLiveConfig,
+  mem0RuntimeDirForConfig,
   normalizeDiagnosticCode,
   pythonDiscoveryOptions,
   restoreCanonicalLiveConfig,

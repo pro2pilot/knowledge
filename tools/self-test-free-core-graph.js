@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.6';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '3.2.9';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -62,6 +62,9 @@ function main() {
     'Why trust is this',
     'Evidence / tests / code',
     'advisory only, verify against code/tests/evidence',
+    'inspectorFileHref(action)',
+    '/api/files/open?path=',
+    'data-open-path',
     'class="edge routes bundled"',
     'Graph diagnostics',
     'Trust order:',

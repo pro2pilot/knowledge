@@ -28,8 +28,11 @@ What should be checked before trusting the result?
 - `07-team-worktree-pr.md` - coordinate multi-worktree agent PR work.
 - `08-connect-another-agent.md` - add another agent runtime to an existing `.knowledge` repo.
 - `09-mem0-live-memory.md` - set up Mem0 OSS as advisory-only external memory with one guided flow.
+- `10-mem0-embedding-backends.md` - choose OpenAI API or Local FastEmbed embeddings with separate LLM/vector/history config.
+- `11-mem0-project-local-provider.md` - intentionally use repository-local Mem0 provider storage instead of the shared default.
+- `12-mem0-shared-provider-storage.md` - adopt or restore the shared per-user Mem0 provider storage default.
 
-For install semantics, receipt/runtime distinction, and repo-local Mem0 paths, see `../mem0-install.md`.
+For install semantics, receipt/runtime distinction, and shared vs project-local Mem0 paths, see `../mem0-install.md`.
 
 ## Relationship to Quick-Start
 

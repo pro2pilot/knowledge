@@ -69,7 +69,25 @@ Mem0 OSS is the recommended optional memory backend for free/core. The recommend
 node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
 ```
 
-That command records or reuses the install receipt, writes repo-local config under `.knowledge/external_memory/mem0`, regenerates `docs/cookbook/09-mem0-live-memory.md` from the bundled template, runs explicit live health, and updates `runtime_status.json`.
+That command records or reuses the install receipt, regenerates `docs/cookbook/09-mem0-live-memory.md` from the bundled template, and requires an explicit embedding backend choice when config is missing. It must not silently choose OpenAI API or Local FastEmbed. After `configure-embeddings` writes config under `.knowledge/external_memory/mem0`, setup can run explicit live health and update `runtime_status.json`.
+
+Embedding backend selection is a separate guided step:
+
+```bash
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json
+```
+
+The config keeps LLM provider, embedding provider, Qdrant vector store, and SQLite history store distinct. Shared per-user provider storage is the default, with project-keyed Qdrant/history/runtime directories under that shared root. Project-local provider storage is available only by explicit `--provider-scope project`. Local FastEmbed is a normal onboarding choice, not only a quota fallback. When provider, model, or dimensions change, use a new Qdrant collection name.
+
+The shared provider root is only provider data storage. It is not a Python
+virtualenv and does not need to contain `python.exe`. Live Mem0 commands select
+Python from the current shell, active venvs, bounded runtime discovery, or an
+explicit `--python` flag.
+
+For Local FastEmbed on Windows, prefer Python 3.12 for the pinned
+`fastembed==0.5.1` runtime. Python 3.14 can force dependency source builds for
+`mmh3` or `Pillow`; use a Python 3.12 venv if the default `python` is 3.14.
 
 For the install-focused page, see [`mem0-install.md`](mem0-install.md).
 
@@ -83,7 +101,7 @@ Official references checked on 2026-06-06:
 Pinned package in the provider manifest:
 
 ```bash
-pip install mem0ai==2.0.4
+python -m pip install mem0ai==2.0.4
 ```
 
 Do not claim Mem0 is installed unless the package install was actually run in the user's environment or explicit live health found an importable runtime. The `.knowledge` receipt only records approval and provenance. Status separates `receipt_present`, `runtime_available`, and `package_installed`.
@@ -92,9 +110,14 @@ After explicit live health, status also reports the cached `runtime_version`, `e
 
 `memory-mem0.js` exposes an explicit adapter command surface. By default it runs in dry-run mode and reports `status: runtime_not_installed`; with `--adapter test` it can store local advisory JSONL records for QA without pretending a production Mem0 runtime is installed.
 
-`--adapter live` uses bounded Python discovery before importing Mem0. Discovery checks, in order: explicit `--python`, `KNOWLEDGE_MEM0_PYTHON`/`MEM0_PYTHON`, `VIRTUAL_ENV`/`CONDA_PREFIX`, PATH commands, Windows `py`/`pymanager` runtime listings, and standard Python install directories. It does not scan the whole disk. Live Mem0 operations use a 30000 ms default timeout for import, health, and local Qdrant startup, because the first `import mem0` or local store initialization on Windows can be noticeably slower than warm checks; short Python discovery/probe checks stay short. If that wait is exceeded, JSON reports `diagnostic_code: live_operation_timeout`, and `--timeout-ms <ms>` can override the live operation wait. Python probe/import timeout overrides accept `--python-timeout-ms <ms>` and the compatibility alias `--pythonTimeMs <ms>`. If Python is found but `mem0` is not importable, the JSON output reports `diagnostic_code: mem0_runtime_missing` and includes one exact pinned install command for that interpreter. If Mem0 is importable but its `__version__` is missing or does not match the pinned `mem0ai==2.0.4`, JSON reports `diagnostic_code: mem0_version_mismatch` and returns that same single pinned install command. If live writes/searches hit a qdrant lock or storage permission failure, JSON reports `qdrant_lock_busy` or `qdrant_path_permission_denied` instead of a raw stack trace. Embedding-provider failures during live add/search/recall are reported as `embedding_provider_missing_credentials`, `embedding_provider_quota_exceeded`, or `embedding_provider_network_error`; they do not downgrade cached Mem0 runtime availability when the runtime imported successfully. Safe Qdrant shutdown and optional spaCy warnings are filtered so they do not distract from the real diagnostic. Live writes/searches still require explicit live consent such as `--yes-live-memory`.
+`--adapter live` uses bounded Python discovery before importing Mem0. Discovery checks, in order: explicit `--python`, `KNOWLEDGE_MEM0_PYTHON`/`MEM0_PYTHON`, `VIRTUAL_ENV`/`CONDA_PREFIX`, PATH commands, Windows `py`/`pymanager` runtime listings, and standard Python install directories. It does not scan the whole disk. Live Mem0 operations use a 30000 ms default timeout for import, health, and local Qdrant startup, because the first `import mem0` or local store initialization on Windows can be noticeably slower than warm checks; short Python discovery/probe checks stay short. If that wait is exceeded, JSON reports `diagnostic_code: live_operation_timeout`, and `--timeout-ms <ms>` can override the live operation wait. Python probe/import timeout overrides accept `--python-timeout-ms <ms>` and the compatibility alias `--pythonTimeMs <ms>`. If Python is found but `mem0` is not importable, the JSON output reports `diagnostic_code: mem0_runtime_missing` and includes one exact pinned install command for that interpreter. If Mem0 is importable but its `__version__` is missing or does not match the pinned `mem0ai==2.0.4`, JSON reports `diagnostic_code: mem0_version_mismatch` and returns that same single pinned install command. If live writes/searches hit a qdrant lock or storage permission failure, JSON reports `qdrant_lock_busy` or `qdrant_path_permission_denied` instead of a raw stack trace. Embedding-provider failures during live add/search/recall are reported as `embedding_provider_missing_credentials`, `embedding_provider_quota_exceeded`, or `embedding_provider_network_error`; they do not downgrade cached Mem0 runtime availability when the runtime imported successfully. Local FastEmbed ONNX model-cache failures are reported as `fastembed_onnx_external_data_path_error`; that diagnostic means health may still be OK, but a full live operation could not load the configured local model. Safe Qdrant shutdown and optional spaCy warnings are filtered so they do not distract from the real diagnostic. Live writes/searches still require explicit live consent such as `--yes-live-memory`.
 
-Live operation network classification is explicit: health and local list do not call network by themselves; add, search, and recall may call the configured embedding provider. Adapter subprocesses set `MEM0_TELEMETRY=False`, `MEM0_TELEMETRY_SAMPLE_RATE=0`, and a repo-local `MEM0_DIR` runtime directory without changing the user's global environment.
+Live operation network classification is explicit: health does not call network
+by itself; local list reads Qdrant but may still initialize the configured local
+embedder/model runtime; add, search, and recall may call the configured
+embedding provider. Adapter subprocesses set `MEM0_TELEMETRY=False`,
+`MEM0_TELEMETRY_SAMPLE_RATE=0`, and a `MEM0_DIR` runtime directory beside the
+selected provider storage without changing the user's global environment.
 
 ## Pinecone
 
@@ -119,7 +142,7 @@ Graphiti and Zep are not bundled in the free/core install asset:
 - Graphiti-style temporal graph memory is out of scope for this free/core release.
 - Zep-style managed or BYOC memory is out of scope for this free/core release.
 
-Free core may mention these future provider categories, but it does not ship their adapters, manifests, runtime code, or provider-specific rules. They are excluded from `dist/knowledge-v3.2.6.zip`.
+Free core may mention these future provider categories, but it does not ship their adapters, manifests, runtime code, or provider-specific rules. They are excluded from `dist/knowledge-v<package.version>.zip`.
 
 ## Migrating from Claude MEM
 

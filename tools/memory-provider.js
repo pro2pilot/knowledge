@@ -8,6 +8,7 @@ const {
   recordInstall,
   recordUpdate,
   setupMem0Provider,
+  configureMem0Embeddings,
   writeMem0Recipe,
   validateMem0Recipe,
   uninstallProvider,
@@ -33,7 +34,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.2.6',
+    schema_version: '3.2.9',
     tool: 'memory-provider.js',
     usage: 'node .knowledge/tools/memory-provider.js <command> [provider] [options] --json',
     commands: [
@@ -41,6 +42,7 @@ function help() {
       { name: 'preview', usage: 'node .knowledge/tools/memory-provider.js preview mem0-oss --json' },
       { name: 'install', usage: 'node .knowledge/tools/memory-provider.js install mem0-oss --version mem0ai==2.0.4 --yes-i-reviewed-license --json' },
       { name: 'setup', usage: 'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json' },
+      { name: 'configure-embeddings', usage: 'node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 [--provider-scope shared|project] --json' },
       { name: 'write-recipe', usage: 'node .knowledge/tools/memory-provider.js write-recipe mem0-oss --json' },
       { name: 'validate-recipe', usage: 'node .knowledge/tools/memory-provider.js validate-recipe mem0-oss --json' },
       { name: 'status', usage: 'node .knowledge/tools/memory-provider.js status mem0-oss --json' },
@@ -76,6 +78,7 @@ function main(argv = process.argv.slice(2)) {
   else if (command === 'preview') result = previewProvider(context, providerId, options);
   else if (command === 'install') result = recordInstall(context, providerId, flags, options);
   else if (command === 'setup') result = setupMem0Provider(context, providerId, flags, options);
+  else if (command === 'configure-embeddings') result = configureMem0Embeddings(context, providerId, flags, options);
   else if (command === 'write-recipe') result = writeMem0Recipe(context, providerId, options);
   else if (command === 'validate-recipe') result = validateMem0Recipe(context, providerId, options);
   else if (command === 'update') result = recordUpdate(context, providerId, flags, options);

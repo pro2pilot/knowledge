@@ -81,6 +81,12 @@ function firstHeading(markdown, fallback) {
 
 function classify(relative) {
   if (relative.startsWith('wiki/')) return 'wiki';
+  if ([
+    'docs/cookbook/09-mem0-live-memory.md',
+    'docs/cookbook/10-mem0-embedding-backends.md',
+    'docs/cookbook/11-mem0-project-local-provider.md',
+    'docs/cookbook/12-mem0-shared-provider-storage.md'
+  ].includes(relative)) return 'external_memory';
   if (relative.startsWith('docs/cookbook/')) return 'cookbook';
   if (['docs/mem0-install.md', 'docs/memory-providers.md', 'docs/external-memory.md'].includes(relative)) return 'external_memory';
   if (relative === 'decisions.json') return 'decision';

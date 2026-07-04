@@ -32,6 +32,13 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function requiredEntriesForProfile(policy, profile = 'public_runtime') {
+  if (policy.required_entry_profiles && Array.isArray(policy.required_entry_profiles[profile])) {
+    return policy.required_entry_profiles[profile];
+  }
+  return Array.isArray(policy.required_entries) ? policy.required_entries : [];
+}
+
 function runNode(args, cwd, env = {}) {
   const res = spawnSync(process.execPath, args, {
     cwd,
@@ -281,7 +288,7 @@ function assertInstalledSystemComplete(repo) {
     'memory-providers/mem0/manifest.json',
     'memory-providers/pinecone/manifest.json',
     'benchmarks/run-benchmarks.js',
-    '.release-notes/v3.2.6.md',
+    '.release-notes/v3.2.9.md',
     '.gitignore',
     '.gitattributes',
     'inspector.js',
@@ -330,6 +337,29 @@ function main(argv = process.argv.slice(2)) {
       assert(entries.includes('.knowledge/benchmarks/run-benchmarks.js'), 'Artifact does not contain benchmark runner.', {});
       assert(!entries.some((entry) => /(^|\/)\.git(\/|$)/.test(entry)), 'Artifact contains Git metadata.', {});
       assert(!entries.some((entry) => entry.startsWith('.knowledge/.github/')), 'Artifact contains source .github metadata.', {});
+      assert(!entries.includes('.knowledge/docs/release-gates.md'), 'Artifact contains release gate runbook.', {});
+      const maintainerOnlyEntries = [
+        '.knowledge/release-policy.json',
+        '.knowledge/tools/release-gate.js',
+        '.knowledge/tools/package-release.js',
+        '.knowledge/tools/validate-release-artifact.js',
+        '.knowledge/tools/post-release-live-asset.js',
+        '.knowledge/tools/conformance-install-smoke.js',
+        '.knowledge/tools/classify-release-impact.js',
+        '.knowledge/tools/generate-conformance-report.js',
+        '.knowledge/tools/validate-sbom.js',
+        '.knowledge/tools/validate-third-party-notices.js',
+        '.knowledge/tools/validate-source-deliverable.js'
+      ];
+      const leakedMaintainerOnly = maintainerOnlyEntries.filter((entry) => entries.includes(entry));
+      assert(leakedMaintainerOnly.length === 0, 'Artifact contains maintainer-only release tooling.', { leakedMaintainerOnly });
+      const releasePolicy = readJson(path.join(sourceRoot, 'release-policy.json'));
+      const missingPolicyRequired = requiredEntriesForProfile(releasePolicy, 'public_runtime').filter((entry) => !entries.includes(entry));
+      assert(missingPolicyRequired.length === 0, 'Artifact is missing release-policy required entries.', { missingPolicyRequired });
+      const forbiddenPolicyHits = releasePolicy.forbidden_entries
+        .map((rule) => ({ rule, regex: new RegExp(rule.pattern, rule.flags || '') }))
+        .flatMap(({ rule, regex }) => entries.filter((entry) => regex.test(entry)).map((entry) => ({ entry, rule: rule.id || rule.pattern })));
+      assert(forbiddenPolicyHits.length === 0, 'Artifact contains entries forbidden by release-policy.json.', { forbiddenPolicyHits });
       return { output_path: packageSummary.output_path, entries: entries.length };
     });
 
@@ -341,7 +371,6 @@ function main(argv = process.argv.slice(2)) {
         '.knowledge/.gitignore',
         '.knowledge/README.md',
         '.knowledge/Quick-Start.md',
-        '.knowledge/tools/package-release.js',
         '.knowledge/tools/install-check.js',
         '.knowledge/templates/git-policy/.knowledge.gitignore'
       ];
