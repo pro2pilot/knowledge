@@ -1,8 +1,8 @@
 # Release Notes
 
-## v3.2.9 - Inspector update polish and Local FastEmbed hardening
+## v3.2.10 - Inspector update polish and Local FastEmbed hardening
 
-v3.2.9 improves the local Inspector update experience and tightens Mem0 Local
+v3.2.10 improves the local Inspector update experience and tightens Mem0 Local
 FastEmbed runtime behavior for agent-guided installs.
 
 ### Changed

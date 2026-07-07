@@ -35,7 +35,7 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -45,7 +45,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -54,7 +54,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -63,7 +63,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -288,24 +288,53 @@ let launchUpdateStatus = null;
 let server = null;
 let shutdownScheduled = false;
 
+function currentSystemVersion() {
+  return (safeJson('package.json', {}).version || '3.2.10').replace(/^v/i, '').trim();
+}
+
+function decorateUpdateStatus(status = {}, config = null, configError = null) {
+  let cfg = config;
+  let cfgError = configError;
+  if (!cfg) {
+    try { cfg = checkUpdates.getConfig(); } catch (error) { cfg = {}; cfgError = error; }
+  }
+  const systemVersion = currentSystemVersion();
+  const out = {
+    ...(status && typeof status === 'object' ? status : { status: 'never_checked' }),
+    current_version: systemVersion,
+    enabled: Object.prototype.hasOwnProperty.call(cfg, 'enabled') ? Boolean(cfg.enabled) : Boolean(status?.enabled),
+    mode: cfg.mode || status?.mode || 'advisory_only',
+    interval_days: Number(cfg.interval_days || status?.interval_days || 7),
+    auto_check_on_inspector_open: cfg.auto_check_on_inspector_open !== false,
+    auto_update: false,
+    update_apply_requires_confirmation: true,
+    update_check_note: cfg.auto_check_on_inspector_open === false
+      ? 'Automatic update checks on Inspector start are disabled.'
+      : 'Live Inspector checks for new releases when it starts. Updates are never applied automatically.'
+  };
+  if (!out.status) out.status = 'never_checked';
+  if (cfgError && !out.config_error) out.config_error = cfgError.message;
+  return out;
+}
+
 function runUpdateCheckOnLaunch() {
   if (process.env.KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH === '1') return null;
   let config;
   try { config = checkUpdates.getConfig(); } catch (error) {
-    launchUpdateStatus = { status: 'check_failed', reason: 'config_error', error: error.message };
+    launchUpdateStatus = decorateUpdateStatus({ status: 'check_failed', reason: 'config_error', error: error.message }, {}, error);
     return null;
   }
   if (config.auto_check_on_inspector_open === false) {
-    launchUpdateStatus = { ...checkUpdates.readStatus(), status: 'disabled', reason: 'auto_check_on_inspector_open_false' };
+    launchUpdateStatus = decorateUpdateStatus({ ...checkUpdates.readStatus(), status: 'disabled', reason: 'auto_check_on_inspector_open_false' }, config);
     return null;
   }
   launchUpdateCheck = checkUpdates.checkNow(config, 'inspector_launch')
     .then((status) => {
-      launchUpdateStatus = status;
+      launchUpdateStatus = decorateUpdateStatus(status, config);
       return status;
     })
     .catch((error) => {
-      launchUpdateStatus = { status: 'check_failed', reason: 'inspector_launch', error: error.message };
+      launchUpdateStatus = decorateUpdateStatus({ status: 'check_failed', reason: 'inspector_launch', error: error.message }, config);
       return launchUpdateStatus;
     });
   return launchUpdateCheck;
@@ -313,7 +342,7 @@ function runUpdateCheckOnLaunch() {
 
 async function updateStatus() {
   if (launchUpdateCheck) await launchUpdateCheck;
-  return launchUpdateStatus || checkUpdates.readStatus();
+  return decorateUpdateStatus(launchUpdateStatus || checkUpdates.readStatus());
 }
 
 function updateDryRunPlan(status, prepared = null) {
@@ -601,7 +630,8 @@ function state() {
   const prImpact = safeJson('maintenance/pr_impact.json', { status: 'not_generated', changed_files: [], affected_modules: [], policy_warnings: [] });
   const agentActivity = safeJson('sessions/agent-registry.json', { sessions: [] });
   const concurrency = safeJson('maintenance/concurrency_policy.json', {});
-  const update = safeJson('maintenance/update_status.json', { status: 'never_checked' });
+  const rawUpdate = safeJson('maintenance/update_status.json', { status: 'never_checked' });
+  const update = decorateUpdateStatus(rawUpdate);
   const settings = loadSettings();
   const footer = settings.report_footer;
   const activeSessions = (agentActivity.sessions || []).filter((session) => ['running', 'waiting'].includes(session.status));
@@ -617,7 +647,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.9',
+      version: safeJson('package.json', {}).version || '3.2.10',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,
@@ -805,12 +835,31 @@ async function handle(req, res) {
   if (req.method === 'GET' && url.pathname === '/api/update/status') {
     let status;
     if (url.searchParams.get('refresh') === '1') {
-      status = await checkUpdates.checkNow(checkUpdates.getConfig(), 'inspector_manual_refresh');
+      const config = checkUpdates.getConfig();
+      status = decorateUpdateStatus(await checkUpdates.checkNow(config, 'inspector_manual_refresh'), config);
       launchUpdateStatus = status;
     } else {
       status = await updateStatus();
     }
     return sendJson(res, 200, { ok: true, status, release: status });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/update/auto-check') {
+    const body = await readBody(req);
+    if (typeof body.enabled !== 'boolean') {
+      return sendJson(res, 400, { ok: false, error: 'enabled_boolean_required' });
+    }
+    const config = checkUpdates.setAutoCheckOnInspectorOpen(body.enabled);
+    const status = decorateUpdateStatus(checkUpdates.readStatus(), config);
+    launchUpdateStatus = status;
+    return sendJson(res, 200, {
+      ok: true,
+      status,
+      config: {
+        auto_check_on_inspector_open: status.auto_check_on_inspector_open,
+        auto_update: false,
+        update_apply_requires_confirmation: true
+      }
+    });
   }
   if (req.method === 'POST' && url.pathname === '/api/update/dry-run') {
     const status = await updateStatus();

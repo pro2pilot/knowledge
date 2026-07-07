@@ -86,6 +86,14 @@ the first Local FastEmbed model download or warmup timed out. Keep the same
 shared provider root and collection, then rerun the same explicit live command
 with a longer timeout such as `--timeout-ms 300000`.
 
+If list/search/recall reports `diagnostic_code: qdrant_lock_busy` or
+`diagnostic_code: qdrant_path_permission_denied`, treat it as a storage
+availability issue, not as a missing Python/Mem0 install. Do not silently move
+the project from shared storage to project-local storage. Close the process
+holding the Qdrant path or repair file permissions, then rerun the same live
+command. Use `--provider-scope project` only after the user explicitly chooses
+project-local storage.
+
 ## Existing Local Data
 
 This recipe does not automatically copy old Qdrant/history files. If preserving

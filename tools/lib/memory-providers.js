@@ -203,7 +203,9 @@ function mem0StoragePlan(context, manifest, flags = {}, existingConfig = null) {
   const existingHistory = existingConfig?.history_db_path || null;
 
   if (!requested && existingQdrant) {
-    const inferred = existingMeta?.provider_scope || inferMem0ProviderScope(context, existingQdrant, existingSharedRoot);
+    const pathInferred = inferMem0ProviderScope(context, existingQdrant, existingSharedRoot);
+    const metaScope = existingMeta?.provider_scope || null;
+    const inferred = pathInferred || metaScope;
     const existingDir = path.dirname(path.resolve(existingQdrant));
     return {
       provider_scope: inferred || 'custom',
@@ -212,7 +214,10 @@ function mem0StoragePlan(context, manifest, flags = {}, existingConfig = null) {
       data_dir: existingDir,
       qdrant_path: path.resolve(existingQdrant),
       history_db_path: existingHistory ? path.resolve(existingHistory) : path.join(existingDir, 'history.db'),
-      preserved_existing_paths: true
+      preserved_existing_paths: true,
+      metadata_provider_scope: metaScope,
+      path_inferred_provider_scope: pathInferred,
+      metadata_scope_mismatch: Boolean(metaScope && pathInferred && metaScope !== pathInferred)
     };
   }
 
@@ -352,10 +357,12 @@ function genericProviderStatus(context, manifest) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), null);
   const runtimeStatus = manifest.id === 'mem0-oss' ? safeReadJson(runtimeStatusPath(context, manifest), null) : null;
+  const storageDiagnostic = manifest.id === 'mem0-oss' && ['qdrant_lock_busy', 'qdrant_path_permission_denied'].includes(runtimeStatus?.diagnostic_code);
   const liveRuntimeOk = Boolean(
     runtimeStatus
     && (
       runtimeStatus.runtime_available === true
+      || (storageDiagnostic && Boolean(runtimeStatus.version || runtimeStatus.selected_python))
       || (
         runtimeStatus.diagnostic_code === 'mem0_available'
         && ['available', 'ok'].includes(String(runtimeStatus.status || '').toLowerCase())
@@ -372,7 +379,7 @@ function genericProviderStatus(context, manifest) {
     : null;
   const mem0Adapter = manifest.id === 'mem0-oss' ? readMem0AdapterSummary(dir) : null;
   const status = liveRuntimeOk
-    ? 'available'
+    ? (storageDiagnostic ? 'storage_unavailable' : 'available')
     : installExecuted
     ? (receipt.enabled === false ? 'disabled' : 'installed')
     : (manifest.id === 'mem0-oss' ? 'runtime_not_installed' : 'available');
@@ -387,6 +394,12 @@ function genericProviderStatus(context, manifest) {
   if (manifest.install?.requires_network) warnings.push('Install/update requires explicit user action and may use network outside status/report mode.');
   if (manifest.type === 'optional') warnings.push('Provider implementation is optional and is not bundled into free core.');
   const mem0Config = manifest.id === 'mem0-oss' ? readMem0ConfigSummary(context, manifest) : null;
+  if (manifest.id === 'mem0-oss' && mem0Config?.metadata_scope_mismatch) {
+    warnings.push(`Mem0 config metadata says provider_scope=${mem0Config.metadata_provider_scope}, but the configured Qdrant path is ${mem0Config.path_inferred_provider_scope}. Status follows the actual storage path; rerun configure-embeddings with --provider-scope shared or --provider-scope project to make the choice explicit.`);
+  }
+  if (manifest.id === 'mem0-oss' && mem0Config?.provider_scope === 'project') {
+    warnings.push('Mem0 project-local storage is active. Shared user storage remains the default; project-local storage should be an explicit user choice.');
+  }
   const mem0Configured = Boolean(manifest.id === 'mem0-oss' && fs.existsSync(mem0ConfigPath(context, manifest)));
   return {
     provider_id: manifest.id,
@@ -395,7 +408,7 @@ function genericProviderStatus(context, manifest) {
     type: manifest.type || 'local',
     layer: manifest.layer,
     status,
-    runtime_health: liveRuntimeOk ? 'ok' : (installExecuted ? 'unknown' : (manifest.id === 'mem0-oss' ? 'not_available' : 'unknown')),
+    runtime_health: storageDiagnostic ? 'storage_unavailable' : (liveRuntimeOk ? 'ok' : (installExecuted ? 'unknown' : (manifest.id === 'mem0-oss' ? 'not_available' : 'unknown'))),
     enabled: Boolean(liveRuntimeOk || (receipt?.enabled && installExecuted)),
     installed: packageInstalled,
     receipt_present: receiptPresent,
@@ -408,6 +421,12 @@ function genericProviderStatus(context, manifest) {
     provider_scope: mem0Config?.provider_scope || null,
     shared_provider_root: mem0Config?.shared_provider_root || null,
     project_storage_key: mem0Config?.project_storage_key || null,
+    metadata_provider_scope: mem0Config?.metadata_provider_scope || null,
+    path_inferred_provider_scope: mem0Config?.path_inferred_provider_scope || null,
+    metadata_scope_mismatch: mem0Config?.metadata_scope_mismatch || false,
+    stale_shared_provider_root: mem0Config?.stale_shared_provider_root || null,
+    stale_shared_qdrant_path: mem0Config?.stale_shared_qdrant_path || null,
+    stale_shared_lock_path: mem0Config?.stale_shared_lock_path || null,
     data_path: dir,
     path: dir,
     license_spdx: manifest.license?.spdx || 'unknown',
@@ -444,8 +463,9 @@ function genericProviderStatus(context, manifest) {
     selected_python: mem0Config?.selected_python || runtimeStatus?.selected_python || null,
     python_runtime: mem0Config?.python_runtime || null,
     live_operations_require_explicit_consent: manifest.id === 'mem0-oss',
-    records_count: mem0Adapter?.records_count || 0,
-    last_retrieval_count: mem0Adapter?.last_retrieval_count || 0,
+    records_count: runtimeStatus?.records_count ?? mem0Adapter?.records_count ?? 0,
+    last_retrieval_count: runtimeStatus?.last_retrieval_count ?? mem0Adapter?.last_retrieval_count ?? 0,
+    last_retrieval_query: runtimeStatus?.last_retrieval_query || null,
     adapter_records_count: mem0Adapter?.records_count || 0,
     override_attempts_blocked: mem0Adapter?.override_attempts_blocked || 0,
     source_of_truth: false,
@@ -557,7 +577,7 @@ function buildExternalMemoryReport(context, options = {}) {
   ]));
   const providerStatuses = Object.fromEntries(providers.map((provider) => [provider.provider_id.replace(/-/g, '_'), provider]));
   const metrics = {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -571,7 +591,7 @@ function buildExternalMemoryReport(context, options = {}) {
     unknown_license_count: providers.filter((provider) => !provider.license_spdx || provider.license_spdx === 'unknown').length
   };
   const report = {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -666,7 +686,7 @@ function recordInstall(context, providerId, flags = {}, options = {}) {
   }
   const dir = providerStateDir(context, manifest);
   const receipt = {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     installed_at: null,
@@ -736,7 +756,7 @@ function recordUpdate(context, providerId, flags = {}, options = {}) {
   requireConfirmation(flags, 'update');
   const toVersion = requireVersion(flags.to || flags.version, 'update');
   const receipt = {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     updated_at: null,
@@ -815,14 +835,25 @@ function readMem0ConfigSummary(context, manifest) {
   const llmConfig = config?.llm?.config || {};
   const inferred = inferMem0Collection(vectorConfig.collection_name);
   const sharedRoot = defaultSharedMem0Root();
-  const providerScope = meta?.provider_scope || inferMem0ProviderScope(context, vectorConfig.path, sharedRoot);
+  const pathInferredProviderScope = inferMem0ProviderScope(context, vectorConfig.path, sharedRoot);
+  const metadataProviderScope = meta?.provider_scope || null;
+  const providerScope = pathInferredProviderScope || metadataProviderScope;
+  const metadataScopeMismatch = Boolean(metadataProviderScope && pathInferredProviderScope && metadataProviderScope !== pathInferredProviderScope);
+  const staleSharedRoot = metadataScopeMismatch && metadataProviderScope === 'shared' ? meta?.shared_provider_root || sharedRoot : null;
+  const staleProjectStorageKey = metadataScopeMismatch && metadataProviderScope === 'shared' ? meta?.project_storage_key || projectStorageKey(context) : null;
   return {
     config_exists: Boolean(config),
     config_path: fs.existsSync(configPath) ? displayPath(context, configPath) : null,
     config_meta_path: fs.existsSync(metaPath) ? displayPath(context, metaPath) : null,
     provider_scope: providerScope,
-    shared_provider_root: meta?.shared_provider_root || (providerScope === 'shared' ? sharedRoot : null),
-    project_storage_key: meta?.project_storage_key || (providerScope === 'shared' ? projectStorageKey(context) : null),
+    metadata_provider_scope: metadataProviderScope,
+    path_inferred_provider_scope: pathInferredProviderScope,
+    metadata_scope_mismatch: metadataScopeMismatch,
+    stale_shared_provider_root: staleSharedRoot,
+    stale_shared_qdrant_path: staleSharedRoot && staleProjectStorageKey ? path.join(staleSharedRoot, 'projects', staleProjectStorageKey, 'qdrant') : null,
+    stale_shared_lock_path: staleSharedRoot && staleProjectStorageKey ? path.join(staleSharedRoot, 'projects', staleProjectStorageKey, 'qdrant', '.lock') : null,
+    shared_provider_root: providerScope === 'shared' ? (meta?.shared_provider_root || sharedRoot) : null,
+    project_storage_key: providerScope === 'shared' ? (meta?.project_storage_key || projectStorageKey(context)) : null,
     llm_provider: config?.llm?.provider || null,
     llm_model: llmConfig.model || null,
     embedding_provider: config?.embedder?.provider || inferred.embedding_provider,
@@ -1321,7 +1352,7 @@ function writeMem0EmbeddingConfig(context, manifest, spec, flags = {}) {
 
   writeJsonAtomic(configPath, nextConfig);
   const meta = {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     provider_id: manifest.id,
     generated_at: nowIso(),
     generated_by: getAgentId(),
@@ -1429,7 +1460,7 @@ function ensureMem0RepoConfig(context, manifest) {
   }
   writeJsonAtomic(configPath, nextConfig);
   writeJsonAtomic(metaPath, {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     provider_id: manifest.id,
     generated_at: nowIso(),
     config_path: configPath,
@@ -1860,10 +1891,10 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     recordInstall(context, manifest.id, { ...flags, version, yesIReviewedLicense: true }, options);
     receipt = safeReadJson(receiptFile, null);
     receiptAction = 'created';
-  } else if (receipt.schema_version !== '3.2.9') {
+  } else if (receipt.schema_version !== '3.2.10') {
     receipt = {
       ...receipt,
-      schema_version: '3.2.9',
+      schema_version: '3.2.10',
       migrated_at: nowIso(),
       migration_note: 'Mem0 install receipt schema migrated by setup; no install or network action was executed.'
     };
@@ -1981,7 +2012,7 @@ function uninstallProvider(context, providerId, flags = {}, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), {});
   const uninstall = {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     provider_id: manifest.id,
     uninstalled_at: nowIso(),
     uninstall_mode: 'manual_receipt',
@@ -2056,7 +2087,7 @@ function listProviders(context, options = {}) {
   const manifests = loadProviderManifests(context, options);
   return {
     ok: true,
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     generated_at: nowIso(),
     mode: context.mode,
     providers: manifests.map((manifest) => ({

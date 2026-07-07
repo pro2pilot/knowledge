@@ -113,6 +113,12 @@ function writeConfig(updates) {
   ].join('\n');
   fs.writeFileSync(configPath, `${base.trimEnd()}\n\n${block}`, 'utf8');
 }
+function setAutoCheckOnInspectorOpen(enabled) {
+  const config = getConfig();
+  config.auto_check_on_inspector_open = enabled !== false;
+  writeConfig(config);
+  return getConfig();
+}
 function semverParts(version) {
   return String(version || '0.0.0').replace(/^v/i, '').split(/[+-]/)[0].split('.').map((p) => Number(p.replace(/\D/g, '') || 0));
 }
@@ -190,7 +196,7 @@ function selectReleaseAsset(latest) {
 
 function makeStatusBase(config) {
   return {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,
@@ -290,6 +296,7 @@ async function main(argv = process.argv.slice(2)) {
 
 module.exports = Object.assign(main, {
   getConfig,
+  setAutoCheckOnInspectorOpen,
   readStatus,
   checkNow,
   isDue,

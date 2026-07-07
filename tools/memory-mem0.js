@@ -349,12 +349,16 @@ function liveFailureNextCommands(diagnosticCode, selectedPython, operation = 'he
   }
   if (diagnosticCode === 'qdrant_lock_busy') {
     return [
-      'node .knowledge/tools/memory-mem0.js health --adapter live --json'
+      'Keep shared Mem0 provider storage unless the user explicitly chooses project-local storage.',
+      'Close the process holding the Qdrant lock or reboot, then rerun node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json',
+      'Only after explicit user approval for project-local storage, run node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json'
     ];
   }
   if (diagnosticCode === 'qdrant_path_permission_denied') {
     return [
-      'node .knowledge/tools/memory-provider.js setup mem0-oss --live --json'
+      'Do not silently move shared Mem0 provider storage into this repository.',
+      'Repair permissions or close the process holding the shared Qdrant path, then rerun node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json',
+      'If the user explicitly wants project-local storage, run node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json'
     ];
   }
   return ['Fix the selected Python runtime, then rerun node .knowledge/tools/memory-mem0.js health --adapter live --json'];
@@ -738,6 +742,10 @@ function liveHealthWarnings(raw) {
   return ['Live Mem0 runtime was not available or not configured.'];
 }
 
+function isQdrantStorageDiagnostic(value) {
+  return ['qdrant_lock_busy', 'qdrant_path_permission_denied'].includes(String(value || ''));
+}
+
 function liveAdapter(flags, context) {
   const providerId = 'mem0-oss';
   const adapterId = 'live';
@@ -750,9 +758,10 @@ function liveAdapter(flags, context) {
   return {
     health() {
       const raw = runLiveMem0(flags, { op: 'health' }, context);
+      const storageUnavailable = isQdrantStorageDiagnostic(raw.diagnostic_code);
       return advisoryEnvelope(providerId, adapterId, 'health', {
-        status: raw.ok ? 'available' : 'runtime_not_installed',
-        runtime_health: raw.ok ? 'ok' : 'not_available',
+        status: raw.ok ? 'available' : (storageUnavailable ? 'storage_unavailable' : 'runtime_not_installed'),
+        runtime_health: raw.ok ? 'ok' : (storageUnavailable ? 'storage_unavailable' : 'not_available'),
         live_runtime_checked: true,
         network_calls: 'not_run',
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'runtime_not_installed'),
@@ -790,6 +799,21 @@ function liveAdapter(flags, context) {
       requireConsent('recall');
       const raw = runLiveMem0(flags, { op: 'recall', query: input.query, user_id: input.user_id }, context);
       return advisoryEnvelope(providerId, adapterId, 'recall', {
+        status: raw.ok ? 'ok' : 'error',
+        query: input.query || '',
+        network_calls: 'may_call_embedding_provider',
+        diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
+        selected_python: raw.selected_python || null,
+        python_discovery: raw.python_discovery || null,
+        next_commands: raw.next_commands || [],
+        raw,
+        warnings: ['Live Mem0 retrieval is advisory-only; verify against code/tests/evidence before use.']
+      });
+    },
+    search(input = {}) {
+      requireConsent('search');
+      const raw = runLiveMem0(flags, { op: 'recall', query: input.query, user_id: input.user_id }, context);
+      return advisoryEnvelope(providerId, adapterId, 'search', {
         status: raw.ok ? 'ok' : 'error',
         query: input.query || '',
         network_calls: 'may_call_embedding_provider',
@@ -883,12 +907,25 @@ function syncReport(context, adapterId) {
   });
 }
 
+function liveResultItems(result) {
+  const candidates = [
+    result?.raw?.raw?.results,
+    result?.raw?.results,
+    result?.results
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
 function runtimeStatusSnapshot(result, context, previous = null) {
   const diagnosticCode = result.diagnostic_code || 'mem0_available';
   const statusValue = String(result.status || '').toLowerCase();
   const runtimeVersion = result.version || result.raw?.version || result.raw?.raw?.version || null;
   const expectedVersion = result.expected_version || result.raw?.expected_version || result.raw?.raw?.expected_version || (runtimeVersion ? expectedMem0Version(context) : null);
   const checkedAt = new Date().toISOString();
+  const storageUnavailable = isQdrantStorageDiagnostic(diagnosticCode);
   const runtimeStillAvailable = [
     'mem0_available',
     'fastembed_onnx_external_data_path_error',
@@ -896,12 +933,27 @@ function runtimeStatusSnapshot(result, context, previous = null) {
     'mem0_not_configured',
     'embedding_provider_missing_credentials',
     'embedding_provider_quota_exceeded',
-    'embedding_provider_network_error'
+    'embedding_provider_network_error',
+    'qdrant_lock_busy',
+    'qdrant_path_permission_denied'
   ].includes(diagnosticCode);
   const runtimeAvailable = (['available', 'ok'].includes(statusValue) && diagnosticCode === 'mem0_available') ||
     (runtimeStillAvailable && Boolean(runtimeVersion || result.selected_python || result.raw?.selected_python));
+  const resultCount = liveResultItems(result).length;
+  const previousRecordsCount = Number(previous?.records_count || 0);
+  const previousRetrievalCount = Number(previous?.last_retrieval_count || 0);
+  const recordsCount = result.operation === 'list' && result.status === 'ok'
+    ? resultCount
+    : (result.operation === 'remember' && result.persisted && previous?.records_count !== undefined
+      ? previousRecordsCount + 1
+      : (result.operation === 'forget' && result.deleted && previous?.records_count !== undefined
+        ? Math.max(0, previousRecordsCount - 1)
+        : previousRecordsCount));
+  const lastRetrievalCount = ['search', 'recall'].includes(result.operation) && result.status === 'ok'
+    ? resultCount
+    : previousRetrievalCount;
   return {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     provider_id: 'mem0-oss',
     adapter_id: 'live',
     checked_at: checkedAt,
@@ -910,7 +962,7 @@ function runtimeStatusSnapshot(result, context, previous = null) {
       : previous?.last_live_health_check || (previous?.operation === 'health' ? previous?.checked_at || null : null),
     operation: result.operation,
     status: result.status,
-    runtime_health: result.runtime_health || (runtimeAvailable ? 'ok' : 'not_available'),
+    runtime_health: result.runtime_health || (storageUnavailable ? 'storage_unavailable' : (runtimeAvailable ? 'ok' : 'not_available')),
     diagnostic_code: diagnosticCode,
     selected_python: result.selected_python || null,
     version: runtimeVersion,
@@ -918,6 +970,9 @@ function runtimeStatusSnapshot(result, context, previous = null) {
     runtime_available: runtimeAvailable,
     package_installed: runtimeAvailable,
     network_calls: result.network_calls || 'not_run',
+    records_count: recordsCount,
+    last_retrieval_count: lastRetrievalCount,
+    last_retrieval_query: ['search', 'recall'].includes(result.operation) ? result.query || null : previous?.last_retrieval_query || null,
     source_of_truth: false,
     trust_role: 'advisory_only',
     trust_effect: 'advisory_only',
@@ -931,7 +986,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     tool: 'memory-mem0.js',
     usage: 'node .knowledge/tools/memory-mem0.js <command> [query] [options] --json',
     commands: [
@@ -969,7 +1024,8 @@ function main(argv = process.argv.slice(2)) {
   let result;
   if (command === 'health') result = adapter.health(input);
   else if (command === 'add' || command === 'remember') result = adapter.remember(input);
-  else if (command === 'search' || command === 'recall') result = adapter.recall(input);
+  else if (command === 'search') result = typeof adapter.search === 'function' ? adapter.search(input) : { ...adapter.recall(input), operation: 'search' };
+  else if (command === 'recall') result = adapter.recall(input);
   else if (command === 'list') result = adapter.list(input);
   else if (command === 'delete' || command === 'forget') result = adapter.forget(input);
   else if (command === 'sync-report') result = syncReport(context, adapter.adapterId);

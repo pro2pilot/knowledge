@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.2.10 Mem0 storage diagnostics patch
+
+- Made Mem0 provider status follow the actual configured Qdrant path when
+  `config.meta.json` has stale shared/project-local scope metadata.
+- Added explicit stale-scope fields so agents can see
+  `metadata_scope_mismatch`, the metadata scope, and the path-inferred scope.
+- Classified Qdrant lock/permission failures as storage availability problems
+  instead of missing Mem0/Python runtime installs.
+- Preserved cached Mem0 runtime/package availability when Qdrant storage is
+  locked or not writable.
+- Updated Mem0 recipes so agents do not silently move shared provider storage
+  into a project-local path as a lock workaround.
+- Polished the Inspector updater: one visible `Update` action, explicit
+  `Auto-check: On/Off` launch-check mode, no automatic apply, and clearer
+  in-session refresh/shutdown feedback.
+- Removed stale mojibake text from the generated Inspector UI.
+- Excluded maintainer-only release self-tests from the public runtime artifact
+  when they depend on internal packaging or validation tools.
+- Full release gate was not run for this patch preparation.
+
 ## 3.2.9 Inspector update polish and Local FastEmbed hardening
 
 - Simplified the live Inspector update panel to a launch-checked status and a

@@ -8,7 +8,7 @@ const path = require('path');
 const { spawnSync, spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.9';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.10';
 const keepTemp = process.argv.includes('--keep-temp');
 const teamModeFixtureRequested = process.argv.includes('--team-mode-fixture');
 let rootForCleanup = null;
@@ -158,6 +158,9 @@ async function main() {
   assert((build.features || []).includes('plain_language_outcome_panels'), 'status missing plain_language_outcome_panels feature');
   assert((build.features || []).includes('inline_file_preview_drawer'), 'status missing inline_file_preview_drawer feature');
   assert((build.features || []).includes('vscode_simple_browser_layout'), 'status missing vscode_simple_browser_layout feature');
+  assert((build.features || []).includes('app_shell_renderer'), 'status missing app_shell_renderer feature');
+  assert((build.features || []).includes('inspector_update_auto_check_mode'), 'status missing inspector_update_auto_check_mode feature');
+  assert((build.features || []).includes('inspector_startup_update_check'), 'status missing inspector_startup_update_check feature');
   const htmlPath = path.join(state, 'inspector', 'index.html');
   const html = fs.readFileSync(htmlPath, 'utf8');
 
@@ -172,15 +175,35 @@ async function main() {
   ];
   const missingTabs = tabs.filter((tab) => !html.includes(`>${tab}</button>`) && !html.includes(`>${tab}</h2>`));
   assert(missingTabs.length === 0, `Inspector missing tab(s): ${missingTabs.join(', ')}`);
-  for (const route of ['home', 'review', 'trust', 'agents', 'reports', 'settings', 'pro']) {
-    assert(html.includes(`data-route="${route}"`), `Inspector missing canonical route: ${route}`);
+  const routes = ['home', 'review', 'trust', 'agents', 'reports', 'settings', 'pro'];
+  function panelForRoute(route) {
+    const marker = `data-route="${route}" aria-label=`;
+    const start = html.indexOf(marker);
+    assert(start >= 0, `Inspector missing tab panel route marker: ${route}`);
+    const panelStart = html.lastIndexOf('<section class="tab-panel', start);
+    const nextPanel = html.indexOf('<section class="tab-panel', start + marker.length);
+    const end = nextPanel >= 0 ? nextPanel : html.indexOf('</main>', start);
+    assert(panelStart >= 0 && end > panelStart, `Inspector route panel could not be sliced: ${route}`);
+    return html.slice(panelStart, end);
   }
+  for (const route of routes) {
+    assert(html.includes(`data-route="${route}"`), `Inspector missing canonical route: ${route}`);
+    const panel = panelForRoute(route);
+    assert(panel.includes('data-outcome-panel="true"'), `Inspector route ${route} missing outcome panel.`);
+    assert(panel.includes('data-advanced-shelf='), `Inspector route ${route} missing advanced shelf.`);
+  }
+  assert((html.match(/<aside class="sidebar">/g) || []).length === 1, 'Inspector should render one app sidebar shell.');
+  assert((html.match(/<header class="topbar">/g) || []).length === 1, 'Inspector should render one app topbar shell.');
   assert(html.includes('data-outcome-panel="true"'), 'Inspector pages must render plain-language outcome panels.');
   assert(html.includes('data-advanced-shelf='), 'Inspector pages must render collapsible advanced shelves.');
   assert(html.includes('data-file-preview-drawer="true"'), 'Inspector missing inline file preview drawer.');
   assert(html.includes('openInspectorFile(pathValue'), 'Inspector client must open Next action links through inline preview.');
+  assert(html.includes("fetch('/api/files/open?path='+encodeURIComponent(pathValue)"), 'Inspector client must fetch /api/files/open for Next action previews.');
   assert(!/data-open-path="[^"]+"[^>]*target="_blank"/.test(html), 'Next action file links must not leave the Inspector by default.');
   assert(html.includes('code -g '), 'File preview should expose a VS Code copy command.');
+  assert(html.includes('function initInspectorLiveState()'), 'Inspector client missing startup live-state initializer.');
+  assert((html.match(/id="updateApplyButton"/g) || []).length === 1, 'Inspector should render exactly one Update button.');
+  assert(!html.includes('data-update-action="status"') && !html.includes('data-update-action="dry-run"'), 'Inspector update banner should not expose extra status/dry-run buttons.');
   assert(!html.includes('>Command Center</button>'), 'Command Center must not be a top-level tab');
   assert(!html.includes('>Metrics</button>'), 'Metrics must not be a top-level tab');
   assert(!html.includes('>Work</button>'), 'Work must not be a top-level tab');
@@ -307,6 +330,8 @@ async function main() {
     assert(pageRes.body.includes('metric-card'), 'live Inspector missing metric card styling.');
     assert(pageRes.body.includes('data-shutdown="true"'), 'live Inspector missing Turn off button.');
     assert(pageRes.body.includes('data-graph-toggle="free-core"'), 'live Inspector missing graph collapse control.');
+    assert(pageRes.body.includes('id="updateAutoCheckMode"') && pageRes.body.includes('data-update-mode="auto-check"'), 'live Inspector missing auto-check mode button.');
+    assert(pageRes.body.includes('Checks on Inspector start') || pageRes.body.includes('checks for new releases when it starts'), 'update banner should explain start-up auto-check behavior.');
     const deniedOnboarding = await requestJson(port, 'POST', '/api/settings/onboarding', { user_mode: 'advanced' });
     assert(deniedOnboarding.status === 401, 'onboarding save must require token.');
     const onboardingRes = await requestJson(port, 'POST', '/api/settings/onboarding', {
@@ -369,6 +394,15 @@ async function main() {
     assert(actionsRes.status === 200 && actionsRes.json?.actions?.some((action) => action.id === 'trust.restore.safe'), 'Inspector API actions missing Restore Trust.');
     const updateStatusRes = await requestJson(port, 'GET', '/api/update/status', null, sessionRes.json.token);
     assert(updateStatusRes.status === 200 && updateStatusRes.json?.status, 'Inspector update status API missing.');
+    assert(updateStatusRes.json.status.auto_check_on_inspector_open === true, 'update status should expose start-up auto-check mode.');
+    assert(updateStatusRes.json.status.auto_update === false, 'Inspector update status must never imply automatic apply.');
+    assert(updateStatusRes.json.status.update_apply_requires_confirmation === true, 'update status should require manual apply confirmation.');
+    const deniedAutoCheck = await requestJson(port, 'POST', '/api/update/auto-check', { enabled: false });
+    assert(deniedAutoCheck.status === 401, 'auto-check toggle must require token.');
+    const autoCheckOff = await requestJson(port, 'POST', '/api/update/auto-check', { enabled: false }, sessionRes.json.token);
+    assert(autoCheckOff.status === 200 && autoCheckOff.json?.status?.auto_check_on_inspector_open === false, 'auto-check toggle should turn off start-up checks.');
+    const autoCheckOn = await requestJson(port, 'POST', '/api/update/auto-check', { enabled: true }, sessionRes.json.token);
+    assert(autoCheckOn.status === 200 && autoCheckOn.json?.status?.auto_check_on_inspector_open === true, 'auto-check toggle should turn start-up checks back on.');
   } finally {
     server.kill();
   }
@@ -420,10 +454,13 @@ async function main() {
       'no known local path leaks',
       'copy command attributes exist',
       'canonical route ids render',
+      'single app shell renders across all routes',
       'plain-language outcome panels render',
       'advanced shelves render',
+      'each route has outcome and advanced detail shelf',
       'inline file preview drawer renders',
       'Next action links stay inside Inspector',
+      'Next action links fetch /api/files/open',
       'token-protected Inspector API works',
       'first-run onboarding wizard renders',
       'upgrade-missing onboarding marker reopens setup',
@@ -435,6 +472,8 @@ async function main() {
       'trust repair agent prompt renders',
       'onboarding card collapses after save',
       'update status API renders launch check status',
+      'startup update check initializer renders',
+      'update banner exposes one Update button and one auto-check mode',
       'turn off button renders in live Inspector',
       'collapsible graph shelf renders',
       'graph node drilldown hooks render',

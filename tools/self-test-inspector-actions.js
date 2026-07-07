@@ -8,6 +8,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.10';
 const required = ['doctor.run', 'flow.release', 'inspector.rebuild', 'trust.restore.safe', 'pr.review.basic', 'pr.impact.basic', 'repair.queue.refresh', 'memory.status', 'team.status', 'agent.sessions.refresh', 'queue.status', 'merge.readiness', 'benchmark.summary'];
 const removed = [
   ['report', 'debug_bundle'].join('.'),
@@ -84,7 +85,7 @@ async function main() {
     assert(fs.existsSync(run.json.run.stdout_path), 'stdout log was not saved');
     const deletedAction = await request(port, 'POST', `/api/actions/${removed[0]}/run`, token, { confirmed: true });
     assert(deletedAction.status === 423 && deletedAction.json.run.status === 'blocked', 'removed action id must be blocked');
-    console.log(JSON.stringify({ schema_version: '3.2.4', status: 'pass', checks: ['token auth', 'required action registry', 'removed actions absent', 'action lifecycle passed', 'logs saved'] }, null, 2));
+    console.log(JSON.stringify({ schema_version: systemVersion, status: 'pass', checks: ['token auth', 'required action registry', 'removed actions absent', 'action lifecycle passed', 'logs saved'] }, null, 2));
   } finally {
     child.kill();
     fs.rmSync(root, { recursive: true, force: true });

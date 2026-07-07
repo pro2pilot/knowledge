@@ -13,9 +13,9 @@ const repoRoot = context.targetRoot;
 const lockDir = path.join(stateRoot, '.lock');
 const systemVersion = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.9';
+    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.10';
   } catch {
-    return '3.2.9';
+    return '3.2.10';
   }
 })();
 
@@ -71,14 +71,14 @@ function hrefForPath(value) {
 
 function fileLink(value, options = {}) {
   const raw = normalizePath(value);
-  if (!raw) return '<span class="muted">Р Р†Р вЂљРІР‚Сњ</span>';
+  if (!raw) return '<span class="muted">-</span>';
   const label = options.short ? shortPath(raw, options.short) : raw;
   const href = hrefForPath(raw);
   const cls = options.className || 'file-link';
   return `<a class="${cls}" href="${esc(href)}" title="${esc(raw)}">${esc(label)}</a>`;
 }
 
-function listLinks(values, empty = 'Р Р†Р вЂљРІР‚Сњ') {
+function listLinks(values, empty = '-') {
   const arr = toArray(values).filter(Boolean);
   if (!arr.length) return `<span class="muted">${esc(empty)}</span>`;
   return `<div class="link-list">${arr.map((item) => fileLink(item, { short: 72 })).join('')}</div>`;
@@ -88,12 +88,12 @@ function shortPath(value, max = 64) {
   const text = normalizePath(value);
   if (text.length <= max) return text;
   const parts = text.split('/');
-  if (parts.length <= 2) return `Р Р†Р вЂљР’В¦${text.slice(-(max - 1))}`;
+  if (parts.length <= 2) return `...${text.slice(-(max - 1))}`;
   const last = parts.pop();
   const first = parts.shift();
-  const candidate = `${first}/Р Р†Р вЂљР’В¦/${last}`;
+  const candidate = `${first}/.../${last}`;
   if (candidate.length <= max) return candidate;
-  return `Р Р†Р вЂљР’В¦/${last.slice(-(max - 3))}`;
+  return `.../${last.slice(-(max - 3))}`;
 }
 
 function copyButton(command, label = 'Copy') {
@@ -110,7 +110,7 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -120,7 +120,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -129,7 +129,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -138,7 +138,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.9',
+  schema_version: '3.2.10',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -207,7 +207,15 @@ function collect() {
   const searchIndex = safeJson('search/index.json', { documents: [] });
   const wikiLint = safeJson('maintenance/wiki_lint_report.json', {});
   const prImpact = safeJson('maintenance/pr_impact.json', { status: 'not_generated', changed_files: [], affected_modules: [], policy_warnings: [] });
-  const updateStatus = safeJson('maintenance/update_status.json', { status: 'never_checked' });
+  const updateStatusRaw = safeJson('maintenance/update_status.json', { status: 'never_checked' });
+  const updateStatus = (() => {
+    const status = updateStatusRaw && typeof updateStatusRaw === 'object' ? { ...updateStatusRaw } : { status: 'never_checked' };
+    if (!status.current_version) status.current_version = systemVersion;
+    if (status.current_version !== systemVersion) {
+      status.current_version = systemVersion;
+    }
+    return status;
+  })();
   const agentRegistry = safeJson('sessions/agent-registry.json', { schema_version: 'knowledge-agent-registry.v1', sessions: [] });
   const settings = loadSettings();
   settings.user_mode = settings.operator_profile.user_mode || 'simple';
@@ -812,7 +820,7 @@ function graphShelfSummary(graph, nodes, edges) {
 }
 
 function graphToggleButton(expanded = true) {
-  const arrow = expanded ? 'Р Р†РІР‚вЂњРЎвЂў' : 'Р Р†РІР‚вЂњРЎвЂ';
+  const arrow = expanded ? 'v' : '>';
   const label = expanded ? 'Collapse' : 'Expand';
   return `<button class="copy-btn graph-toggle-btn" type="button" data-graph-toggle="free-core" aria-expanded="${expanded ? 'true' : 'false'}"><span class="graph-toggle-arrow" aria-hidden="true">${arrow}</span> ${label}</button>`;
 }
@@ -875,7 +883,7 @@ function legacyGraphSvg(data) {
   const edgeMarkup = layout.edges.map((edge) => {
     const relation = edge.relation || edge.type || 'related';
     const valid = edge.valid === false ? ' invalid' : '';
-    return `<path d="${edgePath(edge)}" class="edge ${esc(relation)}${valid}"><title>${esc(relation)}\n${esc(edge.from)} Р Р†РІР‚В РІР‚в„ў ${esc(edge.to)}</title></path>`;
+    return `<path d="${edgePath(edge)}" class="edge ${esc(relation)}${valid}"><title>${esc(relation)}\n${esc(edge.from)} -> ${esc(edge.to)}</title></path>`;
   }).join('');
   const nodes = layout.nodes.map((node) => {
     const trust = trustClass(node.trust || node.status || 'advisory_only');
@@ -888,7 +896,7 @@ function legacyGraphSvg(data) {
 }
 
 function emptyState(title, text, command) {
-  return `<div class="empty-state"><div class="empty-icon">Р Р†РІР‚вЂќРІР‚РЋ</div><h3>${esc(title)}</h3><p>${esc(text)}</p>${command ? commandBox(command, 'Copy fix command') : ''}</div>`;
+  return `<div class="empty-state"><div class="empty-icon">i</div><h3>${esc(title)}</h3><p>${esc(text)}</p>${command ? commandBox(command, 'Copy fix command') : ''}</div>`;
 }
 
 function rowAttr(search, filter = '') {
@@ -904,7 +912,7 @@ function renderModules(data) {
     const trust = module.trust_status || 'unknown';
     const reasons = module.reasons || [];
     const search = [module.module_id, trust, module.confidence, module.path, module.card, reasons.join(' ')].join(' ');
-    return `<tr${rowAttr(search, trust)}><td><strong>${esc(module.module_id)}</strong></td><td><span class="pill ${trustClass(trust)}">${esc(trust)}</span></td><td>${esc(module.confidence || 'Р Р†Р вЂљРІР‚Сњ')}</td><td><ul class="reason-list">${reasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul></td><td>${module.path ? fileLink(module.path, { short: 46 }) : '<span class="muted">Р Р†Р вЂљРІР‚Сњ</span>'}</td><td>${fileLink(module.card || `.knowledge/modules/${module.module_id}.json`, { short: 46 })}</td></tr>`;
+    return `<tr${rowAttr(search, trust)}><td><strong>${esc(module.module_id)}</strong></td><td><span class="pill ${trustClass(trust)}">${esc(trust)}</span></td><td>${esc(module.confidence || '-')}</td><td><ul class="reason-list">${reasons.map((reason) => `<li>${esc(reason)}</li>`).join('')}</ul></td><td>${module.path ? fileLink(module.path, { short: 46 }) : '<span class="muted">-</span>'}</td><td>${fileLink(module.card || `.knowledge/modules/${module.module_id}.json`, { short: 46 })}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -914,7 +922,7 @@ function renderRepair(data) {
   return `<div class="table-controls"><input data-table-search="repair" placeholder="Filter repair queue..."><select data-table-filter="repair"><option value="">All priorities</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></div><table class="filterable" data-table="repair"><thead><tr><th>Priority</th><th>Status</th><th>Subject</th><th>Artifacts</th><th>Reason</th></tr></thead><tbody>${rows.map((item) => {
     const priority = item.priority || 'medium';
     const search = [priority, item.status, item.subject, item.reason, toArray(item.affected_artifacts).join(' ')].join(' ');
-    return `<tr${rowAttr(search, priority)}><td><span class="pill ${trustClass(priority)}">${esc(priority)}</span></td><td>${esc(item.status || 'open')}</td><td>${esc(item.subject)}</td><td>${listLinks(item.affected_artifacts)}</td><td>${esc(item.reason || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
+    return `<tr${rowAttr(search, priority)}><td><span class="pill ${trustClass(priority)}">${esc(priority)}</span></td><td>${esc(item.status || 'open')}</td><td>${esc(item.subject)}</td><td>${listLinks(item.affected_artifacts)}</td><td>${esc(item.reason || '-')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -924,7 +932,7 @@ function renderStale(data) {
   return `<div class="table-controls"><input data-table-search="stale" placeholder="Filter stale items..."><select data-table-filter="stale"><option value="">All statuses</option><option value="stale">stale</option><option value="missing">missing</option><option value="changed">changed</option><option value="needs_recheck">needs_recheck</option></select></div><table class="filterable" data-table="stale"><thead><tr><th>Status</th><th>Artifact</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows.map((item) => {
     const status = item.status || 'stale';
     const search = [status, item.artifact, item.reason, item.action].join(' ');
-    return `<tr${rowAttr(search, status)}><td><span class="pill ${trustClass(status)}">${esc(status)}</span></td><td>${fileLink(item.artifact, { short: 70 })}</td><td>${esc(item.reason || 'Р Р†Р вЂљРІР‚Сњ')}</td><td>${esc(item.action || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
+    return `<tr${rowAttr(search, status)}><td><span class="pill ${trustClass(status)}">${esc(status)}</span></td><td>${fileLink(item.artifact, { short: 70 })}</td><td>${esc(item.reason || '-')}</td><td>${esc(item.action || '-')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -934,7 +942,7 @@ function renderCriticalFiles(data) {
   return `<div class="table-controls"><input data-table-search="critical" placeholder="Filter files..."><select data-table-filter="critical"><option value="">All classes</option><option value="critical">critical</option><option value="important">important</option></select></div><table class="filterable" data-table="critical"><thead><tr><th>Class</th><th>Path</th><th>Modules</th><th>Reason</th></tr></thead><tbody>${rows.map((file) => {
     const cls = file.classification || 'important';
     const search = [cls, file.path, toArray(file.modules).join(' '), file.reason].join(' ');
-    return `<tr${rowAttr(search, cls)}><td><span class="pill ${trustClass(cls)}">${esc(cls)}</span></td><td>${fileLink(file.path, { short: 82 })}</td><td>${esc(toArray(file.modules).join(', ') || 'Р Р†Р вЂљРІР‚Сњ')}</td><td>${esc(file.reason || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
+    return `<tr${rowAttr(search, cls)}><td><span class="pill ${trustClass(cls)}">${esc(cls)}</span></td><td>${fileLink(file.path, { short: 82 })}</td><td>${esc(toArray(file.modules).join(', ') || '-')}</td><td>${esc(file.reason || '-')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -952,7 +960,7 @@ function renderExternal(data) {
   return `<table class="filterable" data-table="external"><thead><tr><th>Provider</th><th>Enabled</th><th>Mode</th><th>Trust role</th><th>Path/source</th><th>Warnings</th></tr></thead><tbody>${providers.map((provider) => {
     const warnings = toArray(provider.warnings).join('; ');
     const search = [provider.provider, provider.mode, provider.path, provider.source, warnings].join(' ');
-    return `<tr${rowAttr(search, provider.mode || '')}><td><strong>${esc(provider.provider || 'unknown')}</strong></td><td>${esc(provider.enabled ?? false)}</td><td>${esc(provider.mode || provider.status || 'unknown')}</td><td>${esc(provider.trust_role || 'advisory_only')}</td><td>${esc(provider.path || provider.source || 'Р Р†Р вЂљРІР‚Сњ')}</td><td>${esc(warnings || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr>`;
+    return `<tr${rowAttr(search, provider.mode || '')}><td><strong>${esc(provider.provider || 'unknown')}</strong></td><td>${esc(provider.enabled ?? false)}</td><td>${esc(provider.mode || provider.status || 'unknown')}</td><td>${esc(provider.trust_role || 'advisory_only')}</td><td>${esc(provider.path || provider.source || '-')}</td><td>${esc(warnings || '-')}</td></tr>`;
   }).join('')}</tbody></table><div class="mini-actions">${copyButton('node .knowledge/tools/external-memory-status.js --json', 'Copy status command')}${copyButton('node .knowledge/tools/external/pinecone-search.js "query" --dry-run', 'Copy dry-run search')}</div>`;
 }
 
@@ -1030,10 +1038,12 @@ function renderUpdates(data) {
     ['Apply Update', 'node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --target-knowledge-root .knowledge --apply --yes --json'],
     ['Verify Upgrade', 'node .knowledge/tools/update-system-files.js --verify-upgrade --json']
   ];
-  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current ${esc(current)} Р вЂ™Р’В· Latest ${esc(latest)} Р вЂ™Р’В· Asset ${esc(asset)}. Served Inspector checks the official release feed on launch; static Inspector stays local and command-only.</p></div><div class="mini-actions"><button class="copy-btn" type="button" data-update-action="status">Check Now</button><button class="copy-btn" type="button" data-update-action="dry-run">View Plan</button><button class="copy-btn danger-btn" type="button" data-update-action="apply">Apply Update</button></div></div><pre class="markdown-preview" id="updateOutput">No live update action has run in this Inspector tab yet.</pre><div class="quick-actions">${manual.map(([label, command]) => `<button class="action-card" type="button" data-copy="${esc(command)}"><span>${esc(label)}</span><code>${esc(command)}</code></button>`).join('')}</div>`;
+  const autoCheck = status.auto_check_on_inspector_open !== false;
+  const note = status.update_check_note || 'Live Inspector checks for new releases when it starts. Updates are never applied automatically.';
+  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}" data-asset-name="${esc(asset)}" data-auto-check="${autoCheck ? 'true' : 'false'}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current <span data-update-current>${esc(current)}</span> / Latest <span data-update-latest>${esc(latest)}</span> / Asset <span data-update-asset>${esc(asset)}</span>. <span data-update-note>${esc(note)}</span></p></div><div class="mini-actions"><button class="copy-btn mode-btn" type="button" id="updateAutoCheckMode" data-update-mode="auto-check" aria-pressed="${autoCheck ? 'true' : 'false'}">${autoCheck ? 'Auto-check: On' : 'Auto-check: Off'}</button><button class="copy-btn danger-btn" type="button" id="updateApplyButton" data-update-action="apply"${state === 'update_available' ? '' : ' disabled'}>${state === 'update_available' ? 'Update' : (state === 'check_failed' ? 'Check failed' : 'Up to date')}</button></div></div><pre class="markdown-preview" id="updateOutput">No live update action has run in this Inspector tab yet.</pre><div class="quick-actions">${manual.map(([label, command]) => `<button class="action-card" type="button" data-copy="${esc(command)}"><span>${esc(label)}</span><code>${esc(command)}</code></button>`).join('')}</div>`;
 }
 
-function renderUpdatesV2(data) {
+function renderUpdatesV2(data, options = {}) {
   const status = data.updateStatus || {};
   const latest = status.latest_version || '-';
   const current = status.current_version || '-';
@@ -1042,14 +1052,21 @@ function renderUpdatesV2(data) {
   const stateClass = state === 'update_available' ? ' available' : state === 'check_failed' ? ' failed' : '';
   const canUpdate = state === 'update_available';
   const buttonLabel = canUpdate ? 'Update' : (state === 'check_failed' ? 'Check failed' : 'Up to date');
-  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}" data-asset-name="${esc(asset)}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current <span data-update-current>${esc(current)}</span> / Latest <span data-update-latest>${esc(latest)}</span> / Asset <span data-update-asset>${esc(asset)}</span></p></div><div class="mini-actions"><button class="copy-btn danger-btn" type="button" id="updateApplyButton" data-update-action="apply"${canUpdate ? '' : ' disabled'}>${esc(buttonLabel)}</button></div></div><pre class="markdown-preview" id="updateOutput" hidden></pre>`;
+  const autoCheck = status.auto_check_on_inspector_open !== false;
+  const modeLabel = autoCheck ? 'Auto-check: On' : 'Auto-check: Off';
+  const modeTitle = autoCheck
+    ? 'Live Inspector checks for new releases on start. It never applies updates automatically.'
+    : 'Automatic update checks on Inspector start are disabled.';
+  const note = status.update_check_note || modeTitle;
+  const modeDisabled = options.live ? '' : ' disabled';
+  return `<div class="update-banner${stateClass}" id="updateBanner" data-current-version="${esc(current)}" data-latest-version="${esc(latest)}" data-asset-name="${esc(asset)}" data-auto-check="${autoCheck ? 'true' : 'false'}"><div><strong>Update status: <span id="updateState">${esc(state)}</span></strong><p class="sub" id="updateSummary">Current <span data-update-current>${esc(current)}</span> / Latest <span data-update-latest>${esc(latest)}</span> / Asset <span data-update-asset>${esc(asset)}</span>. <span data-update-note>${esc(note)}</span></p></div><div class="mini-actions"><button class="copy-btn mode-btn" type="button" id="updateAutoCheckMode" data-update-mode="auto-check" aria-pressed="${autoCheck ? 'true' : 'false'}" title="${esc(modeTitle)}"${modeDisabled}>${esc(modeLabel)}</button><button class="copy-btn danger-btn" type="button" id="updateApplyButton" data-update-action="apply"${canUpdate ? '' : ' disabled'}>${esc(buttonLabel)}</button></div></div><pre class="markdown-preview" id="updateOutput" hidden></pre>`;
 }
 
 function renderRouting(data) {
   const routing = data.routing || {};
   const first = routing.first_read_strategy?.read_first || '.knowledge/maintenance/routing_bundle.json';
   const modules = routing.modules || [];
-  return `<table class="kv"><tr><th>First read</th><td>${esc(first)}</td></tr><tr><th>Mode</th><td>${esc(data.context.mode)}</td></tr><tr><th>Modules</th><td>${esc(modules.length)}</td></tr><tr><th>High risk</th><td>${esc((routing.high_risk_modules || []).join(', ') || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Source of truth</th><td>${esc((routing.source_of_truth_order || []).join(' > '))}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/build-routing-bundle.js --json', 'Copy rebuild command')}</div>`;
+  return `<table class="kv"><tr><th>First read</th><td>${esc(first)}</td></tr><tr><th>Mode</th><td>${esc(data.context.mode)}</td></tr><tr><th>Modules</th><td>${esc(modules.length)}</td></tr><tr><th>High risk</th><td>${esc((routing.high_risk_modules || []).join(', ') || '-')}</td></tr><tr><th>Source of truth</th><td>${esc((routing.source_of_truth_order || []).join(' > '))}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/build-routing-bundle.js --json', 'Copy rebuild command')}</div>`;
 }
 
 function renderPrPreview(data) {
@@ -1084,7 +1101,7 @@ function renderTeamMode(data) {
   const ctx = data.context || {};
   const active = data.team?.workspaces_total ?? 0;
   const warnings = Array.from(new Set([...(ctx.warnings || []), ...(data.team?.warnings || [])]));
-  return `<table class="kv"><tr><th>Mode</th><td>${esc(ctx.mode || 'repo')}</td></tr><tr><th>Repo ID</th><td>${esc(ctx.repoId || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Workspace</th><td>${esc(ctx.workspaceId || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Agent</th><td>${esc(ctx.agentId || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Target root</th><td>${esc(ctx.targetRoot || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>State root</th><td>${esc(ctx.stateRoot || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr><tr><th>Branch/head</th><td>${esc(`${ctx.branch || 'unknown'} / ${(ctx.headSha || '').slice(0, 12) || 'unknown'}`)}</td></tr><tr><th>Active workspaces</th><td>${esc(active)}</td></tr><tr><th>Flow lock owner</th><td>${esc(data.lockOwner ? `${data.lockOwner.agentId || data.lockOwner.pid} on ${data.lockOwner.branch || 'unknown'}` : 'none')}</td></tr><tr><th>Warnings</th><td>${esc(warnings.join('; ') || 'Р Р†Р вЂљРІР‚Сњ')}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/worktree-status.js --json', 'Copy worktree check')}${copyButton('node .knowledge/tools/flow.js release --exclusive --json', 'Copy exclusive release')}${copyButton('node .knowledge/tools/team-status.js --team-root <teamRoot> --json', 'Copy team status')}</div>`;
+  return `<table class="kv"><tr><th>Mode</th><td>${esc(ctx.mode || 'repo')}</td></tr><tr><th>Repo ID</th><td>${esc(ctx.repoId || '-')}</td></tr><tr><th>Workspace</th><td>${esc(ctx.workspaceId || '-')}</td></tr><tr><th>Agent</th><td>${esc(ctx.agentId || '-')}</td></tr><tr><th>Target root</th><td>${esc(ctx.targetRoot || '-')}</td></tr><tr><th>State root</th><td>${esc(ctx.stateRoot || '-')}</td></tr><tr><th>Branch/head</th><td>${esc(`${ctx.branch || 'unknown'} / ${(ctx.headSha || '').slice(0, 12) || 'unknown'}`)}</td></tr><tr><th>Active workspaces</th><td>${esc(active)}</td></tr><tr><th>Flow lock owner</th><td>${esc(data.lockOwner ? `${data.lockOwner.agentId || data.lockOwner.pid} on ${data.lockOwner.branch || 'unknown'}` : 'none')}</td></tr><tr><th>Warnings</th><td>${esc(warnings.join('; ') || '-')}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/worktree-status.js --json', 'Copy worktree check')}${copyButton('node .knowledge/tools/flow.js release --exclusive --json', 'Copy exclusive release')}${copyButton('node .knowledge/tools/team-status.js --team-root <teamRoot> --json', 'Copy team status')}</div>`;
 }
 
 function renderTeamModePanel(data) {
@@ -1286,6 +1303,15 @@ function renderFilePreviewDrawer() {
   return `<aside class="file-preview-drawer" data-file-preview-drawer="true" aria-live="polite" hidden><div class="file-preview-head"><div><span class="eyebrow">File preview</span><strong data-file-preview-title="true">No file selected</strong><small data-file-preview-meta="true">Next action links open here in live mode.</small></div><button type="button" class="copy-btn" data-file-preview-close="true">Close</button></div><div class="mini-actions file-preview-actions"><button type="button" class="copy-btn" data-file-preview-copy-path="true" disabled>Copy path</button><button type="button" class="copy-btn" data-file-preview-copy-code="true" disabled>Copy code -g</button><a class="copy-btn graph-action-link" href="#" data-file-preview-fallback="true">Open raw</a></div><pre class="file-preview-body" data-file-preview-body="true">Select a module card, .knowledge file, or spec file from Next action.</pre></aside>`;
 }
 
+function renderAppShell({ data, nav, sections, qualityScore, branch, head, updateState, turnOffButton }) {
+  return `<div class="app">
+<aside class="sidebar"><div class="brand">.knowledge Inspector ${esc(systemVersion)}</div><nav>${nav}</nav></aside>
+<div class="content">
+<header class="topbar"><div class="topbar-main"><h1>.knowledge Inspector ${esc(systemVersion)}</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip" data-update-chip>Update: ${esc(updateState)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></div><div class="topbar-actions">${turnOffButton}</div></header>
+<main>${sections}</main>
+</div></div>`;
+}
+
 function inspectorDesignCss() {
   return `
 :root{--bg-0:#0a0a0c;--bg-1:#0f0f12;--bg-2:#14141a;--bg-3:#1a1a22;--line-soft:rgba(255,255,255,.06);--line-strong:rgba(255,255,255,.12);--fg-main:#ededf0;--fg-dim:#a4a4ad;--fg-mute:#6b6b75;--amber:oklch(.78 .13 75);--trusted:oklch(.78 .11 165);--info:oklch(.76 .1 230);--advisory:oklch(.76 .09 290);--blocker:oklch(.72 .15 35)}
@@ -1354,9 +1380,9 @@ function render(data) {
   const staleCount = (data.stale.items || data.stale.stale_items || []).length;
   const wikiEdges = (data.wikiGraph.edges || []).length;
   const searchDocs = (data.searchIndex.documents || []).length;
-  const qualityScore = data.quality.quality_score ?? data.quality.score ?? 'Р Р†Р вЂљРІР‚Сњ';
+  const qualityScore = data.quality.quality_score ?? data.quality.score ?? '-';
   const secretStatus = data.secretScan.status || 'not_run';
-  const wikiLintScore = data.wikiLint.quality_score ?? 'Р Р†Р вЂљРІР‚Сњ';
+  const wikiLintScore = data.wikiLint.quality_score ?? '-';
   const generated = esc(data.generated_at);
   return `<!doctype html>
 <html lang="en">
@@ -1370,13 +1396,13 @@ function render(data) {
 </style>
 </head>
 <body>
-<header><div class="topbar"><div><h1>.knowledge Visual Inspector</h1><div class="sub">Generated ${generated} Р вЂ™Р’В· source of truth remains current code and tests.</div></div><div class="mini-stat-row"><div class="mini-stat"><strong>${esc(qualityScore)}</strong>quality</div><div class="mini-stat"><strong>${esc(moduleCount)}</strong>modules</div><div class="mini-stat"><strong>${esc(searchDocs)}</strong>search docs</div><div class="mini-stat"><strong>${esc(secretStatus)}</strong>secret scan</div></div></div><input class="global-filter" id="globalFilter" placeholder="Filter all tables by module, path, trust, command, reason..."></header>
+<header><div class="topbar"><div><h1>.knowledge Visual Inspector</h1><div class="sub">Generated ${generated} / source of truth remains current code and tests.</div></div><div class="mini-stat-row"><div class="mini-stat"><strong>${esc(qualityScore)}</strong>quality</div><div class="mini-stat"><strong>${esc(moduleCount)}</strong>modules</div><div class="mini-stat"><strong>${esc(searchDocs)}</strong>search docs</div><div class="mini-stat"><strong>${esc(secretStatus)}</strong>secret scan</div></div></div><input class="global-filter" id="globalFilter" placeholder="Filter all tables by module, path, trust, command, reason..."></header>
 <main>
 <section>${renderQuickActions()}</section>
 <section class="grid stats">${countsHtml}<div class="stat"><div class="num">${esc(qualityScore)}</div><div class="cap">quality</div></div><div class="stat"><div class="num">${esc(wikiLintScore)}</div><div class="cap">wiki lint</div></div><div class="stat"><div class="num">${esc(repairCount)}</div><div class="cap">repair queue</div></div><div class="stat"><div class="num">${esc(staleCount)}</div><div class="cap">stale items</div></div><div class="stat"><div class="num">${esc(wikiEdges)}</div><div class="cap">wiki edges</div></div></section>
 <section class="grid two"><div class="card"><h2>Routing Bundle View</h2>${renderRouting(data)}</div><div class="card"><h2>Team Mode</h2>${renderTeamMode(data)}</div></section>
 <section>${freeCoreGraphSvg(data)}</section>
-<section class="grid two"><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div><div class="card"><h2>Modules <span class="sub">Р вЂ™Р’В· with low-confidence explanations</span></h2>${renderModules(data)}</div></section>
+<section class="grid two"><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div><div class="card"><h2>Modules <span class="sub">/ with low-confidence explanations</span></h2>${renderModules(data)}</div></section>
 <section class="grid two"><div class="card"><h2>Repair Queue</h2>${renderRepair(data)}</div><div class="card"><h2>Stale Items</h2>${renderStale(data)}</div></section>
 <section class="card"><h2>Critical / Important Files</h2>${renderCriticalFiles(data)}</section>
 <section class="grid two"><div class="card"><h2>PR Summary Preview</h2>${renderPrPreview(data)}</div><div class="card"><h2>Inspector Pro waitlist</h2>${renderProWaitlist(data)}</div></section>
@@ -1388,16 +1414,16 @@ function showToast(text){ toast.textContent = text || 'Copied'; toast.classList.
 function copyText(text){ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(()=>showToast('Copied command')).catch(()=>fallbackCopy(text)); } else fallbackCopy(text); }
 function fallbackCopy(text){ const el=document.createElement('textarea'); el.value=text; document.body.appendChild(el); el.select(); document.execCommand('copy'); el.remove(); showToast('Copied command'); }
 function escapeHtmlClient(value){return String(value||'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
-function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'Р Р†РІР‚вЂњРЎвЂ':'Р Р†РІР‚вЂњРЎвЂў')+'</span> '+(collapsed?'Expand':'Collapse')}
+function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'>':'v')+'</span> '+(collapsed?'Expand':'Collapse')}
 function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.innerHTML=graphToggleHtml(collapsed);button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
 function initGraphShelves(){document.querySelectorAll('[data-graph-shelf]').forEach((shelf)=>{const id=shelf.getAttribute('data-graph-shelf');let collapsed=false;try{collapsed=localStorage.getItem('knowledge.graph.'+id+'.collapsed')==='1'}catch{}setGraphShelf(id,collapsed)})}
 function graphList(items,empty,formatter){const values=Array.isArray(items)?items:[];if(!values.length)return '<p class="muted">'+escapeHtmlClient(empty)+'</p>';return '<ul>'+values.map((item)=>'<li>'+formatter(item)+'</li>').join('')+'</ul>'}
-function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' Р Р†РІР‚В РІР‚в„ў '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
+function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' -> '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
 function graphArtifacts(values,empty){return graphList(values,empty,(item)=>escapeHtmlClient(item))}
 function inspectorFileHref(action){if(liveMode&&sessionToken&&action.path)return '/api/files/open?path='+encodeURIComponent(action.path)+'&token='+encodeURIComponent(sessionToken);return action.href||'#'}
 function graphAction(action){if(action.href){const rawPath=action.path||'';return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(inspectorFileHref(action))+'" data-open-path="'+escapeHtmlClient(rawPath)+'" data-open-label="'+escapeHtmlClient(action.label||'Open')+'">'+escapeHtmlClient(action.label||'Open')+'</a>'}if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
-function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' Р вЂ™Р’В· ')}
-function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+(pathValue?' Р вЂ™Р’В· Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
+function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' / ')}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+(pathValue?' / Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
 document.addEventListener('click', (event)=>{ const graphToggle=event.target.closest('[data-graph-toggle]'); if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle'); const shelf=document.querySelector('[data-graph-shelf="'+id+'"]'); setGraphShelf(id,!shelf?.classList.contains('is-collapsed')); return;} const graphNode=event.target.closest('[data-graph-node]'); if(graphNode){showGraphNodeDetail(graphNode); return;} const btn=event.target.closest('[data-copy]'); if(btn) copyText(btn.getAttribute('data-copy')); });
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
 function applyFilters(tableName){ const searchInput=document.querySelector('[data-table-search="'+tableName+'"]'); const select=document.querySelector('[data-table-filter="'+tableName+'"]'); const global=document.getElementById('globalFilter'); const q=((searchInput&&searchInput.value)||'').toLowerCase(); const g=(global.value||'').toLowerCase(); const f=((select&&select.value)||'').toLowerCase(); document.querySelectorAll('table[data-table="'+tableName+'"] tbody tr').forEach(row=>{ const text=(row.getAttribute('data-search')||row.textContent||'').toLowerCase(); const rowFilter=(row.getAttribute('data-filter')||'').toLowerCase(); const okText=(!q||text.includes(q)) && (!g||text.includes(g)); const okFilter=!f||rowFilter===f||rowFilter.includes(f); row.style.display=(okText&&okFilter)?'':'none'; }); }
@@ -1447,7 +1473,7 @@ function renderTabbed(data, options = {}) {
   const searchBody = `<div class="empty-state"><h3>Local search</h3><p>${esc(searchDocs)} indexed documents. Search runs locally from generated index data.</p>${commandBox('node .knowledge/tools/search-knowledge.js "<query>"', 'Copy search command')}</div>`;
   const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/install-check.js --json"><span>Run Install Check</span><code>node .knowledge/tools/install-check.js --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Release artifact hygiene</h3><p>Use the uploaded release asset for install checks; source snapshots are not install packages.</p></div>`;
   const onboarding = renderOnboarding(data, options);
-  const updatesPanel = renderUpdatesV2(data);
+  const updatesPanel = renderUpdatesV2(data, options);
   const updateState = data.updateStatus?.status || 'never_checked';
   const turnOffButton = options.live
     ? '<button class="copy-btn danger-btn turn-off-btn" type="button" data-shutdown="true">Turn off</button>'
@@ -1514,12 +1540,7 @@ ${inspectorDesignCss()}
 </style>
 </head>
 <body>
-<div class="app">
-<aside class="sidebar"><div class="brand">.knowledge Inspector ${esc(systemVersion)}</div><nav>${nav}</nav></aside>
-<div class="content">
-<header class="topbar"><div class="topbar-main"><h1>.knowledge Inspector ${esc(systemVersion)}</h1><div class="chips"><span class="chip">Repo: ${esc(data.context?.repoId || 'local')}</span><span class="chip">Team Mode: ${esc(data.context?.mode || 'repo')}</span><span class="chip">Doctor score: ${esc(qualityScore)}</span><span class="chip">Branch: ${esc(branch)}</span><span class="chip">Head SHA: ${esc(head)}</span><span class="chip" data-update-chip>Update: ${esc(updateState)}</span><span class="chip">No cloud</span><span class="chip">No telemetry</span><span class="chip">Build time: ${esc(data.generated_at)}</span></div></div><div class="topbar-actions">${turnOffButton}</div></header>
-<main>${sections}</main>
-</div></div>
+${renderAppShell({ data, nav, sections, qualityScore, branch, head, updateState, turnOffButton })}
 ${renderFilePreviewDrawer()}
 <div id="toast" class="toast">Copied</div>
 <script>
@@ -1541,22 +1562,23 @@ async function openInspectorFile(pathValue,fallbackHref){if(!pathValue)return fa
 function closeFilePreview(){const drawer=document.querySelector('[data-file-preview-drawer="true"]');if(drawer)drawer.hidden=true}
 function extractUpdateStatus(json){return json?.refreshed_status||json?.apply?.refreshed_status||json?.status||json?.release||json?.dry_run?.status||json?.dry_run?.json||{}}
 function setUpdateText(selector,value){document.querySelectorAll(selector).forEach((el)=>{el.textContent=value||'-'})}
-function paintUpdateStatus(status,json){const s=status||{};const current=s.current_version||'-';const latest=s.latest_version||'-';const asset=s.asset_name||'knowledge-v<version>.zip';const stateText=s.status||'never_checked';const state=document.getElementById('updateState');if(state)state.textContent=stateText;setUpdateText('[data-update-current]',current);setUpdateText('[data-update-latest]',latest);setUpdateText('[data-update-asset]',asset);document.querySelectorAll('[data-update-chip]').forEach((el)=>{el.textContent='Update: '+stateText});const banner=document.getElementById('updateBanner');if(banner){banner.setAttribute('data-current-version',current);banner.setAttribute('data-latest-version',latest);banner.setAttribute('data-asset-name',asset);banner.classList.toggle('available',stateText==='update_available');banner.classList.toggle('failed',json?.ok===false||stateText==='check_failed')}const button=document.getElementById('updateApplyButton');if(button){const canUpdate=stateText==='update_available';button.disabled=!canUpdate;button.textContent=canUpdate?'Update':(stateText==='check_failed'?'Check failed':'Up to date')}return s}
+function paintUpdateStatus(status,json){const s=status||{};const current=s.current_version||'-';const latest=s.latest_version||'-';const asset=s.asset_name||'knowledge-v<version>.zip';const stateText=s.status||'never_checked';const autoCheck=s.auto_check_on_inspector_open!==false;const autoNote=s.update_check_note||(autoCheck?'Live Inspector checks for new releases when it starts. Updates are never applied automatically.':'Automatic update checks on Inspector start are disabled.');const state=document.getElementById('updateState');if(state)state.textContent=stateText;setUpdateText('[data-update-current]',current);setUpdateText('[data-update-latest]',latest);setUpdateText('[data-update-asset]',asset);setUpdateText('[data-update-note]',autoNote);document.querySelectorAll('[data-update-chip]').forEach((el)=>{el.textContent='Update: '+stateText});const banner=document.getElementById('updateBanner');if(banner){banner.setAttribute('data-current-version',current);banner.setAttribute('data-latest-version',latest);banner.setAttribute('data-asset-name',asset);banner.setAttribute('data-auto-check',autoCheck?'true':'false');banner.classList.toggle('available',stateText==='update_available');banner.classList.toggle('failed',json?.ok===false||stateText==='check_failed')}const mode=document.getElementById('updateAutoCheckMode');if(mode){const busy=mode.getAttribute('data-busy')==='true';mode.textContent=autoCheck?'Auto-check: On':'Auto-check: Off';mode.setAttribute('aria-pressed',autoCheck?'true':'false');mode.title=autoCheck?'Checks on Inspector start; updates still require confirmation.':'Auto-check on Inspector start is off.';if(!busy)mode.disabled=!liveMode}const button=document.getElementById('updateApplyButton');if(button){const canUpdate=stateText==='update_available';button.disabled=!canUpdate;button.textContent=canUpdate?'Update':(stateText==='check_failed'?'Check failed':'Up to date')}return s}
+async function toggleUpdateAutoCheck(button){if(!liveMode||!sessionToken){showToast('Run live Inspector to change auto-check');return}const enabled=button.getAttribute('aria-pressed')!=='true';button.setAttribute('data-busy','true');button.disabled=true;button.textContent=enabled?'Turning on...':'Turning off...';const json=await updateApi('/api/update/auto-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});button.setAttribute('data-busy','false');if(json&&json.ok){paintUpdateStatus(extractUpdateStatus(json),json);showToast(enabled?'Auto-check enabled':'Auto-check disabled')}else{button.disabled=false;paintUpdateStatus(extractUpdateStatus(json),json||{ok:false})}}
 async function updateApi(path,options){const output=document.getElementById('updateOutput');const isApply=String(path||'').includes('/api/update/apply');try{const opts=options||{};opts.headers=authHeaders(opts.headers);const button=document.getElementById('updateApplyButton');if(isApply&&button){button.disabled=true;button.textContent='Updating...'}const res=await fetch(path,opts);const json=await res.json();paintUpdateStatus(extractUpdateStatus(json),json);if(output){output.hidden=!isApply&&!json?.error;output.textContent=JSON.stringify(json,null,2)}if(isApply)showToast(json.ok?'Update applied':'Update needs review');return json}catch(error){if(output){output.hidden=false;output.textContent='Update API unavailable in static mode: '+error.message}paintUpdateStatus({status:'check_failed',error:error.message},{ok:false});return null}}
 function escapeHtmlClient(value){return String(value||'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
-function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'Р Р†РІР‚вЂњРЎвЂ':'Р Р†РІР‚вЂњРЎвЂў')+'</span> '+(collapsed?'Expand':'Collapse')}
+function graphToggleHtml(collapsed){return '<span class="graph-toggle-arrow" aria-hidden="true">'+(collapsed?'>':'v')+'</span> '+(collapsed?'Expand':'Collapse')}
 function setGraphShelf(id,collapsed){const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');if(!shelf)return;shelf.classList.toggle('is-collapsed',collapsed);const button=shelf.querySelector('[data-graph-toggle]');if(button){button.innerHTML=graphToggleHtml(collapsed);button.setAttribute('aria-expanded',collapsed?'false':'true')}try{localStorage.setItem('knowledge.graph.'+id+'.collapsed',collapsed?'1':'0')}catch{}}
 function initGraphShelves(){document.querySelectorAll('[data-graph-shelf]').forEach((shelf)=>{const id=shelf.getAttribute('data-graph-shelf');let collapsed=false;try{collapsed=localStorage.getItem('knowledge.graph.'+id+'.collapsed')==='1'}catch{}setGraphShelf(id,collapsed)})}
 function graphList(items,empty,formatter){const values=Array.isArray(items)?items:[];if(!values.length)return '<p class="muted">'+escapeHtmlClient(empty)+'</p>';return '<ul>'+values.map((item)=>'<li>'+formatter(item)+'</li>').join('')+'</ul>'}
-function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' Р Р†РІР‚В РІР‚в„ў '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
+function graphEdgeText(edge){return '<b>'+escapeHtmlClient(edge.relation||'related')+'</b> '+escapeHtmlClient(edge.from||'')+' -> '+escapeHtmlClient(edge.to||'')+(edge.source?' <small>'+escapeHtmlClient(edge.source)+'</small>':'')+(edge.reason?'<em>'+escapeHtmlClient(edge.reason)+'</em>':'')}
 function graphArtifacts(values,empty){return graphList(values,empty,(item)=>escapeHtmlClient(item))}
 function inspectorFileHref(action){if(liveMode&&sessionToken&&action.path)return '/api/files/open?path='+encodeURIComponent(action.path)+'&token='+encodeURIComponent(sessionToken);return action.href||'#'}
 function graphAction(action){if(action.href){const rawPath=action.path||'';return '<a class="copy-btn graph-action-link" href="'+escapeHtmlClient(inspectorFileHref(action))+'" data-open-path="'+escapeHtmlClient(rawPath)+'" data-open-label="'+escapeHtmlClient(action.label||'Open')+'">'+escapeHtmlClient(action.label||'Open')+'</a>'}if(action.command)return '<button class="copy-btn" type="button" data-copy="'+escapeHtmlClient(action.command)+'">'+escapeHtmlClient(action.label||'Copy')+'</button>';return '<span class="pill">'+escapeHtmlClient(action.label||'Action')+'</span>'}
-function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' Р вЂ™Р’В· ')}
-function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' Р вЂ™Р’В· Trust: '+escapeHtmlClient(trust)+(pathValue?' Р вЂ™Р’В· Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
+function graphStatusText(status){const s=status||{};const bits=['node status: '+(s.node_status||'unknown'),s.broken?'broken':'not broken',s.orphan?'orphan':'not orphan',s.stale?'stale':'not stale'];return bits.join(' / ')}
+function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+'</span>'+(pathValue?'<span>Path: '+escapeHtmlClient(pathValue)+'</span>':'')+'<code>'+escapeHtmlClient(command)+'</code>';return}const v=payload.verification||{};detail.innerHTML='<div class="graph-detail-head"><strong>'+escapeHtmlClient(title)+'</strong><span>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+(pathValue?' / Path: '+escapeHtmlClient(pathValue):'')+'</span>'+(payload.advisory_note?'<span class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</span>':'')+'</div><div class="graph-detail-grid"><section><h4>Incoming links</h4>'+graphList(payload.incoming,'No incoming links for this node.',graphEdgeText)+'</section><section><h4>Outgoing links</h4>'+graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText)+'</section><section><h4>Why trust is this</h4><p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</section><section><h4>Evidence / tests / code</h4><b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':'')+'</section><section><h4>Status</h4><p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.')+'</section><section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section></div>'}
 function graphDetailShelf(id,title,body,summary){return '<details class="advanced-shelf" data-advanced-shelf="'+escapeHtmlClient(id)+'"><summary><span>'+escapeHtmlClient(title)+'</span><small>'+escapeHtmlClient(summary||'Advanced detail')+'</small></summary><div class="advanced-shelf-body">'+body+'</div></details>'}
 function showGraphNodeDetail(node){const detail=document.querySelector('[data-graph-detail="true"]');if(!detail)return;let payload=null;try{payload=JSON.parse(node.getAttribute('data-graph-detail-json')||'null')}catch{}const group=node.getAttribute('data-graph-group')||payload?.type||'other';const title=payload?.title||node.getAttribute('data-graph-title')||node.getAttribute('data-graph-id')||'Graph node';const trust=payload?.trust||node.getAttribute('data-graph-trust')||'advisory_only';const pathValue=payload?.path||node.getAttribute('data-graph-path')||'';const command=node.getAttribute('data-graph-command')||'node .knowledge/tools/restore-trust.js --safe --json';const moduleId=node.getAttribute('data-graph-module')||'';if(group==='module'){const input=document.querySelector('[data-table-search="modules"]');if(input&&moduleId){input.value=moduleId;applyFilters('modules')}}if(!payload){detail.innerHTML='<div class="graph-detail-summary"><strong>'+escapeHtmlClient(title)+'</strong><p>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+'</p>'+(pathValue?'<p>Path: '+escapeHtmlClient(pathValue)+'</p>':'')+'</div>'+graphDetailShelf('graph-command','Command','<code>'+escapeHtmlClient(command)+'</code>','Exact fallback command.');return}const v=payload.verification||{};const summary='<div class="graph-detail-summary"><strong>'+escapeHtmlClient(title)+'</strong><p>Type: '+escapeHtmlClient(group)+' / Trust: '+escapeHtmlClient(trust)+(pathValue?' / Path: '+escapeHtmlClient(pathValue):'')+'</p>'+(payload.advisory_note?'<p class="graph-advisory">'+escapeHtmlClient(payload.advisory_note)+'</p>':'')+'<p>'+escapeHtmlClient(payload.trust_reason||'Trust comes from graph metadata; verify before behavior edits.')+'</p>'+(payload.why_route?'<p>'+escapeHtmlClient(payload.why_route)+'</p>':'')+'</div>';const actions='<section><h4>Next action</h4><div class="graph-detail-actions">'+(payload.next_actions||[]).map(graphAction).join('')+'</div></section>';detail.innerHTML='<div class="graph-detail-head">'+summary+actions+'</div><div class="graph-detail-grid">'+graphDetailShelf('graph-incoming','Incoming links',graphList(payload.incoming,'No incoming links for this node.',graphEdgeText),'Links pointing to this node.')+graphDetailShelf('graph-outgoing','Outgoing links',graphList(payload.outgoing,'No outgoing links for this node.',graphEdgeText),'Links leaving this node.')+graphDetailShelf('graph-evidence','Evidence / tests / code','<b>Evidence</b>'+graphArtifacts(v.evidence,'No evidence JSON listed.')+'<b>Tests</b>'+graphArtifacts(v.tests,'No tests listed.')+'<b>Code</b>'+graphArtifacts(v.code,'No code/module files listed.')+(v.gaps&&v.gaps.length?'<p class="muted">'+escapeHtmlClient(v.gaps.join(' '))+'</p>':''),'Raw verification sources.')+graphDetailShelf('graph-status','Status','<p>'+escapeHtmlClient(graphStatusText(payload.status))+'</p>'+graphArtifacts(payload.status?.stale_items||[],'No stale items matched this node.'),'Broken/orphan/stale details.')+'</div>'}
-async function shutdownInspector(){if(!liveMode||!sessionToken){showToast('No live Inspector process');return}if(!confirm('Turn off the live Inspector and release this port?'))return;const out=document.getElementById('result');setResultPanel(true,'Inspector shutdown');if(out)out.textContent='Closing Inspector server...';try{const res=await fetch('/api/shutdown',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast('Inspector is shutting down');setTimeout(()=>{try{window.close()}catch{}},450)}catch(error){if(out)out.textContent='Shutdown request failed: '+error.message}}
+async function shutdownInspector(){if(!liveMode||!sessionToken){showToast('No live Inspector process');return}if(!confirm('Turn off the live Inspector and release this port?'))return;const out=document.getElementById('result');const button=document.querySelector('[data-shutdown="true"]');if(button){button.disabled=true;button.textContent='Turning off...'}setResultPanel(true,'Inspector shutdown');if(out)out.textContent='Closing Inspector server...';try{const res=await fetch('/api/shutdown',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'});const json=await res.json();if(!res.ok)throw new Error(json?.error||('HTTP '+res.status));if(out)out.textContent=JSON.stringify(json,null,2);if(button)button.textContent='Turning off';showToast('Inspector is shutting down');setTimeout(()=>{try{window.close()}catch{}},450)}catch(error){if(button){button.disabled=false;button.textContent='Turn off'}if(out)out.textContent='Shutdown request failed: '+error.message}}
 function branchByName(name){return (gitBranchState.branches||[]).find((branch)=>branch.name===name)||null}
 function setBranchField(name,value){document.querySelectorAll('[data-branch-field="'+name+'"]').forEach((el)=>{el.textContent=value||'none'})}
 function dirtyLabel(diagnostics){if(diagnostics.current_worktree_dirty===true){const s=diagnostics.dirty_summary||{};return 'dirty ('+(s.changed||0)+' changed, '+(s.staged||0)+' staged)'}if(diagnostics.current_worktree_dirty===false)return 'clean';return 'not checked in current worktree'}
@@ -1571,10 +1593,11 @@ function onboardingAgentSummary(agent){const bits=[agent.runtime?'runtime '+agen
 function applyOnboardingAgentSettings(agentId){const settings=onboardingSettings()[agentId]||{};setControlValue('onboarding-user-mode',settings.user_mode||'simple');setControlValue('onboarding-permission',settings.agents_can_do_without_asking||'run checks and reports');setControlValue('onboarding-concurrency',settings.concurrent_work_policy||'Safe Queue');setControlValue('onboarding-merge',settings.merge_policy||'Manual Only');setControlValue('onboarding-footer',settings.report_footer_mode||'compact');const agent=onboardingAgents().find((item)=>item.id===agentId)||{};document.querySelectorAll('[data-onboarding-agent-summary]').forEach((el)=>{el.textContent=onboardingAgentSummary(agent)})}
 async function saveOnboarding(){if(!liveMode||!sessionToken){copyText('node .knowledge/inspector.js');return}const out=document.getElementById('result');setResultPanel(true,'Setup response');if(out)out.textContent='Saving first-run setup...';const selectedAgent=onboardingSelectedAgent();const body={agent_id:selectedAgent.id,agent_runtime:selectedAgent.runtime||selectedAgent.id,agent_display_name:selectedAgent.label||selectedAgent.id,user_mode:document.getElementById('onboarding-user-mode')?.value||'simple',agents_can_do_without_asking:document.getElementById('onboarding-permission')?.value||'run checks and reports',concurrent_work_policy:document.getElementById('onboarding-concurrency')?.value||'Safe Queue',merge_policy:document.getElementById('onboarding-merge')?.value||'Manual Only',report_footer_mode:document.getElementById('onboarding-footer')?.value||'compact',detected_agent_runtime:selectedAgent.runtime||selectedAgent.id};const res=await fetch('/api/settings/onboarding',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){const card=document.getElementById('onboarding-wizard');const bodyEl=card?.querySelector('.onboarding-body');if(bodyEl)bodyEl.hidden=true;if(card)card.setAttribute('data-onboarding-expanded','false');showToast('Setup saved')}}
 async function runLocalAction(id){if(!liveMode||!sessionToken)return;const out=document.getElementById('result');setResultPanel(true,'Latest local action output');if(out)out.textContent='Running '+id+'...';const res=await fetch('/api/actions/'+encodeURIComponent(id)+'/run',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify({confirmed:true})});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast(json.ok?'Action finished':'Action needs review')}
-document.addEventListener('click',(event)=>{const openLink=event.target.closest('[data-open-path]');if(openLink){const pathValue=openLink.getAttribute('data-open-path')||'';if(pathValue){event.preventDefault();openInspectorFile(pathValue,openLink.getAttribute('href')||'#');return}}const closePreview=event.target.closest('[data-file-preview-close]');if(closePreview){closeFilePreview();return}const copyPreviewPath=event.target.closest('[data-file-preview-copy-path]');if(copyPreviewPath){copyText(currentPreviewPath);return}const copyPreviewCode=event.target.closest('[data-file-preview-copy-code]');if(copyPreviewCode){copyText(codeCommandForPath(currentPreviewPath));return}const copy=event.target.closest('[data-copy]');if(copy){copyText(copy.getAttribute('data-copy'));return}const shutdown=event.target.closest('[data-shutdown]');if(shutdown){shutdownInspector();return}const graphToggle=event.target.closest('[data-graph-toggle]');if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle');const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');setGraphShelf(id,!shelf?.classList.contains('is-collapsed'));return}const graphNode=event.target.closest('[data-graph-node]');if(graphNode){showGraphNodeDetail(graphNode);return}const resultToggle=event.target.closest('[data-result-toggle]');if(resultToggle){const panel=document.querySelector('[data-result-panel="true"]');const open=panel?.classList.contains('is-collapsed');setResultPanel(open,open?'Latest local action output':'Collapsed until an action runs');return}const toggle=event.target.closest('[data-onboarding-toggle]');if(toggle){const card=document.getElementById('onboarding-wizard');const body=card?.querySelector('.onboarding-body');if(body){body.hidden=!body.hidden;if(card)card.setAttribute('data-onboarding-expanded',body.hidden?'false':'true')}return}const save=event.target.closest('[data-onboarding-save]');if(save){saveOnboarding();return}const localAction=event.target.closest('[data-action]');if(localAction){runLocalAction(localAction.getAttribute('data-action'));return}const update=event.target.closest('[data-update-action]');if(update){const action=update.getAttribute('data-update-action');setResultPanel(true,'Update action output');if(action==='status')updateApi('/api/update/status?refresh=1');if(action==='dry-run')updateApi('/api/update/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(action==='apply'&&confirm('Apply .knowledge system update now? Project knowledge will be preserved and a backup will be created.')){const latest=document.getElementById('updateBanner')?.getAttribute('data-latest-version')||'';updateApi('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,expectedVersion:latest&&latest!=='-'?latest:null})})}return}const tab=event.target.closest('[data-tab]');if(tab){document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach((p)=>p.classList.remove('active'));tab.classList.add('active');const panel=document.querySelector('[data-panel="'+tab.getAttribute('data-tab')+'"]');if(panel)panel.classList.add('active')}});
+document.addEventListener('click',(event)=>{const openLink=event.target.closest('[data-open-path]');if(openLink){const pathValue=openLink.getAttribute('data-open-path')||'';if(pathValue){event.preventDefault();openInspectorFile(pathValue,openLink.getAttribute('href')||'#');return}}const closePreview=event.target.closest('[data-file-preview-close]');if(closePreview){closeFilePreview();return}const copyPreviewPath=event.target.closest('[data-file-preview-copy-path]');if(copyPreviewPath){copyText(currentPreviewPath);return}const copyPreviewCode=event.target.closest('[data-file-preview-copy-code]');if(copyPreviewCode){copyText(codeCommandForPath(currentPreviewPath));return}const copy=event.target.closest('[data-copy]');if(copy){copyText(copy.getAttribute('data-copy'));return}const shutdown=event.target.closest('[data-shutdown]');if(shutdown){shutdownInspector();return}const graphToggle=event.target.closest('[data-graph-toggle]');if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle');const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');setGraphShelf(id,!shelf?.classList.contains('is-collapsed'));return}const graphNode=event.target.closest('[data-graph-node]');if(graphNode){showGraphNodeDetail(graphNode);return}const resultToggle=event.target.closest('[data-result-toggle]');if(resultToggle){const panel=document.querySelector('[data-result-panel="true"]');const open=panel?.classList.contains('is-collapsed');setResultPanel(open,open?'Latest local action output':'Collapsed until an action runs');return}const toggle=event.target.closest('[data-onboarding-toggle]');if(toggle){const card=document.getElementById('onboarding-wizard');const body=card?.querySelector('.onboarding-body');if(body){body.hidden=!body.hidden;if(card)card.setAttribute('data-onboarding-expanded',body.hidden?'false':'true')}return}const save=event.target.closest('[data-onboarding-save]');if(save){saveOnboarding();return}const localAction=event.target.closest('[data-action]');if(localAction){runLocalAction(localAction.getAttribute('data-action'));return}const updateMode=event.target.closest('[data-update-mode="auto-check"]');if(updateMode){toggleUpdateAutoCheck(updateMode);return}const update=event.target.closest('[data-update-action]');if(update){const action=update.getAttribute('data-update-action');setResultPanel(true,'Update action output');if(action==='status')updateApi('/api/update/status?refresh=1');if(action==='dry-run')updateApi('/api/update/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(action==='apply'&&confirm('Apply .knowledge system update now? Project knowledge will be preserved and a backup will be created.')){const latest=document.getElementById('updateBanner')?.getAttribute('data-latest-version')||'';updateApi('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,expectedVersion:latest&&latest!=='-'?latest:null})})}return}const tab=event.target.closest('[data-tab]');if(tab){document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach((p)=>p.classList.remove('active'));tab.classList.add('active');const panel=document.querySelector('[data-panel="'+tab.getAttribute('data-tab')+'"]');if(panel)panel.classList.add('active')}});
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
 document.addEventListener('change',(event)=>{const agentSelect=event.target.closest('[data-onboarding-agent-select]');if(agentSelect){applyOnboardingAgentSettings(agentSelect.value);return}const select=event.target.closest('[data-branch-select]');if(select)refreshBranchDiagnostics(select.value)});
-if(location.protocol==='http:'||location.protocol==='https:')updateApi('/api/update/status');
+async function initInspectorLiveState(){if(location.protocol==='http:'||location.protocol==='https:')await updateApi('/api/update/status')}
+initInspectorLiveState();
 initGraphShelves();
 function applyFilters(tableName){const searchInput=document.querySelector('[data-table-search="'+tableName+'"]');const select=document.querySelector('[data-table-filter="'+tableName+'"]');const q=((searchInput&&searchInput.value)||'').toLowerCase();const f=((select&&select.value)||'').toLowerCase();document.querySelectorAll('table[data-table="'+tableName+'"] tbody tr').forEach((row)=>{const text=(row.getAttribute('data-search')||row.textContent||'').toLowerCase();const rowFilter=(row.getAttribute('data-filter')||'').toLowerCase();row.style.display=((!q||text.includes(q))&&(!f||rowFilter===f||rowFilter.includes(f)))?'':'none'})}
 document.querySelectorAll('[data-table-search],[data-table-filter]').forEach((el)=>el.addEventListener('input',()=>applyFilters(el.getAttribute('data-table-search')||el.getAttribute('data-table-filter'))));
@@ -1674,6 +1697,9 @@ function build(options = {}) {
       ,'advanced_detail_shelves'
       ,'inline_file_preview_drawer'
       ,'vscode_simple_browser_layout'
+      ,'app_shell_renderer'
+      ,'inspector_update_auto_check_mode'
+      ,'inspector_startup_update_check'
     ]
   };
   writeJsonAtomic(path.join(outDir, 'status.json'), status);
@@ -1685,6 +1711,7 @@ if (require.main === module) withLock(lockDir, () => build({ quiet: process.argv
 const runBuild = (options = {}) => options.skipLock ? build(options) : withLock(lockDir, () => build(options));
 module.exports = Object.assign(runBuild, {
   collect,
+  renderAppShell,
   renderTabbed,
   sanitizeInspectorHtml,
   sanitizeInspectorData,

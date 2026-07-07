@@ -140,6 +140,11 @@ explicitly wants provider data inside the repository, use:
 node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json
 ```
 
+Do not switch to `--provider-scope project` just to work around
+`qdrant_lock_busy` or `qdrant_path_permission_denied`. First repair the shared
+Qdrant path by closing the process that owns the lock or fixing permissions.
+Project-local storage is a separate user choice.
+
 The generated config must show:
 
 ```txt

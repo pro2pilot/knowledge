@@ -9,7 +9,7 @@ const { spawn, spawnSync } = require('child_process');
 const systemRoot = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(systemRoot, 'package.json');
 const packageJson = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) : {};
-const schemaVersion = packageJson.version || '3.2.9';
+const schemaVersion = packageJson.version || '3.2.10';
 const keepTemp = process.argv.includes('--keep-temp');
 
 function rmWithRetry(targetPath, attempts = 8) {
@@ -216,6 +216,7 @@ async function main() {
     assert(inspectorHtml.body.includes('data-open-path'), 'Inspector HTML did not render open-path metadata');
     assert(inspectorHtml.body.includes('data-file-preview-drawer="true"'), 'Inspector HTML did not render inline file preview drawer');
     assert(inspectorHtml.body.includes('openInspectorFile(pathValue'), 'Inspector HTML did not wire Next action links to inline preview');
+    assert(inspectorHtml.body.includes("fetch('/api/files/open?path='+encodeURIComponent(pathValue)"), 'Inspector preview did not fetch /api/files/open from the client');
     assert(inspectorHtml.body.includes('data-file-preview-copy-code="true"'), 'Inspector preview missing VS Code command copy control');
     assert(!/data-open-path="[^"]+"[^>]*target="_blank"/.test(inspectorHtml.body), 'Next action links should not leave Inspector by default');
     assert(inspectorHtml.body.includes('.knowledge/modules/web.json'), 'Inspector HTML did not include module card open path');
@@ -243,6 +244,7 @@ async function main() {
         'Trust Graph module next-action paths rendered',
         'inline file preview drawer rendered',
         'Next action links are intercepted inside Inspector',
+        'client preview fetches /api/files/open',
         'VS Code code -g copy command exposed',
         'module card opened through /api/files/open',
         'project spec opened through /api/files/open',

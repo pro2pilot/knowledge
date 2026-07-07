@@ -7,6 +7,7 @@ const os = require('os');
 const { spawnSync, spawn } = require('child_process');
 
 const sourceKnowledgeRoot = path.resolve(__dirname, '..');
+const packageVersion = JSON.parse(fs.readFileSync(path.join(sourceKnowledgeRoot, 'package.json'), 'utf8')).version || '3.2.10';
 const keepTemp = process.argv.includes('--keep-temp');
 let rootForCleanup = null;
 
@@ -181,7 +182,7 @@ async function main() {
   for (const file of inspectorDataFiles) JSON.parse(fs.readFileSync(file, 'utf8'));
 
   const result = {
-    schema_version: '3.2.4',
+    schema_version: packageVersion,
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

@@ -34,7 +34,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.2.9',
+    schema_version: '3.2.10',
     tool: 'memory-provider.js',
     usage: 'node .knowledge/tools/memory-provider.js <command> [provider] [options] --json',
     commands: [

@@ -132,6 +132,13 @@ Project-local provider storage is not the default. Use it only when the user exp
 node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --provider-scope project --json
 ```
 
+Do not use project-local storage as an automatic repair for
+`qdrant_lock_busy` or `qdrant_path_permission_denied`. Those diagnostics mean
+the configured Qdrant path is locked or not writable. Keep shared storage by
+default, repair the process/permissions problem, and switch to
+`--provider-scope project` only after the user explicitly chooses a
+repository-owned provider.
+
 For existing projects that need to return to the shared per-user default, use
 [`cookbook/12-mem0-shared-provider-storage.md`](cookbook/12-mem0-shared-provider-storage.md).
 

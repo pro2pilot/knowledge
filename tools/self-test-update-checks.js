@@ -5,7 +5,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const checkUpdates = require('./check-updates');
-const version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version || '3.2.9';
+const version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version || '3.2.10';
 
 function asset(name) {
   return { name, browser_download_url: `https://example.invalid/${name}`, size: 1, content_type: 'application/zip' };
