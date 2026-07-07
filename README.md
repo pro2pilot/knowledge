@@ -238,6 +238,10 @@ Methodology:
 
 https://pro2pilot.com/knowledge/technical-notes/benchmarks/
 
+Privacy boundary:
+
+Real-world benchmark context, when referenced, must follow the published protocol and limitations. Raw data, project names, code, repository paths, and raw logs are not public.
+
 Technical proof:
 
 ```txt
