@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.4",
+  "schema_version": "3.2.11",
   "suites": [
     { "id": "GATE-00", "slug": "gate-00", "title": "Release and QA Gate", "cluster": "precondition" },
     { "id": "KB-01", "slug": "kb-01-install-release", "title": "Install and Release Health", "cluster": "sourcegraph/local-first" },

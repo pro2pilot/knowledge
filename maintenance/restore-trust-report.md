@@ -14,8 +14,8 @@ What changed:
 
 Current state:
 - Trust status: unknown
-- Stale items: 1891
-- Repair items: 1892
+- Stale items: 0
+- Repair items: 1
 
 Next step:
 - Review the Inspector or run PR Impact before merging source changes.

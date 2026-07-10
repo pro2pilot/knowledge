@@ -60,3 +60,10 @@ Replaces code review.
 ```bash
 node .knowledge/tools/flow.js release --no-color
 ```
+
+## Signed context delta
+
+The metrics report keeps a signed token delta separate from the non-negative
+`estimated_tokens_saved` field. A negative delta is reported as estimated
+overhead, not mislabeled as savings. Small repositories can legitimately show
+overhead; release claims require the representative baseline/assisted benchmark.

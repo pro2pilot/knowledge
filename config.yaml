@@ -1,4 +1,4 @@
-version: 3.2.10
+version: 3.2.11
 config_schema_version: 1
 distribution: public_release
 project_index: .knowledge/project_index.json
@@ -16,7 +16,7 @@ criticality_policy:
   critical: runtime entrypoints, lifecycle services, claim/queue/billing/storage/auth boundaries, foundational migrations
   important: module card key files, config, middleware, interface definitions, public adapters
   contextual: docs, handoff notes, secondary UI, examples, support scripts
-  ignore: node_modules, .git, generated outputs, caches, worktrees, build artifacts
+  ignore: node_modules, .git, generated outputs, caches, worktrees, build artifacts, legacy .knowledge backups, QA runs, baseline fixtures
 trust_policy:
   trusted_when:
     - critical files are tracked

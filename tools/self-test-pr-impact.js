@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { systemVersion } = require('./lib/system-version');
 
 const systemRoot = path.resolve(__dirname, '..');
 const keepTemp = process.argv.includes('--keep-temp');
@@ -52,7 +53,7 @@ function seedFixture(parent, name) {
   writeFile(path.join(repo, 'src', 'no-evidence.js'), 'export const evidence = false;\n');
   writeJson(path.join(knowledge, 'evidence', 'auth.json'), { file: 'src/auth.js', checked: true });
   writeJson(path.join(knowledge, 'modules', 'module_registry.json'), {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     modules: [
       {
         module_id: 'auth',
@@ -96,7 +97,7 @@ function seedFixture(parent, name) {
     evidence_files: []
   });
   writeJson(path.join(knowledge, 'maintenance', 'trust_report.json'), {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     modules: {
       trusted: ['auth', 'no_evidence'],
       routing_trusted: ['stale'],
@@ -194,7 +195,7 @@ function main() {
   assert(runtimeResult.status === 'block', 'staged runtime file should block');
 
   const output = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

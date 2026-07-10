@@ -6,6 +6,7 @@ const path = require('path');
 const { parseCliArgs, resolveKnowledgeContext, jsonContext } = require('./lib/path-context');
 const { readJson, writeJsonAtomic, ensureDir, getAgentId } = require('./lib/json-store');
 const { buildExternalMemoryReport } = require('./lib/memory-providers');
+const { systemVersion } = require('./lib/system-version');
 
 function nowIso() {
   return new Date().toISOString();
@@ -59,7 +60,7 @@ function buildBundle(context) {
   const external = buildExternalMemoryReport(context, { write: true });
   const maintenance = path.join(context.stateRoot, 'maintenance');
   const bundle = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     kind: 'debug-bundle',
     generated_at: nowIso(),
     generated_by: getAgentId(),

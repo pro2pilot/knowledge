@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { systemVersion } = require('./lib/system-version');
 
 const systemRoot = path.resolve(__dirname, '..');
 const keepTemp = process.argv.includes('--keep-temp');
@@ -79,7 +80,7 @@ function main() {
   assert((doctor.checks || []).some((check) => check.check === 'memory_source_of_truth_policy'), 'doctor missing memory trust policy check');
 
   const result = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,

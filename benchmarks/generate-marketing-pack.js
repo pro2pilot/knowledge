@@ -6,10 +6,12 @@ const path = require('path');
 const crypto = require('crypto');
 const { parseCliArgs } = require('../tools/lib/path-context');
 const { ensureDir, readJson, writeJsonAtomic } = require('../tools/lib/json-store');
-const { createZip } = require('../tools/package-release');
+const { systemVersion } = require('../tools/lib/system-version');
+const { writeZip } = require('../tools/lib/zip-store');
 const { forbiddenPatterns } = require('./lib/redaction');
 
 const root = path.resolve(__dirname, '..');
+const SCHEMA_VERSION = systemVersion(root);
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
@@ -237,7 +239,7 @@ function zipDirectory(dir, zipPath) {
     const rel = path.relative(dir, abs).replace(/\\/g, '/');
     return { abs, rel, name: rel };
   });
-  createZip(entries, zipPath);
+  writeZip(zipPath, entries.map((entry) => ({ name: entry.name, data: fs.readFileSync(entry.abs) })));
 }
 
 function generate(runId) {
@@ -247,7 +249,7 @@ function generate(runId) {
   const blocked = blockedSuites(manifest);
   for (const dir of ['', 'screenshots', 'charts', 'verification']) ensureDir(path.join(packDir, dir));
   writeJsonAtomic(path.join(packDir, 'manifest.json'), {
-    schema_version: '3.3.0',
+    schema_version: SCHEMA_VERSION,
     run_id: runId,
     source_benchmark_run: `benchmark-runs/${runId}`,
     generated_at: new Date().toISOString(),
@@ -281,7 +283,7 @@ Findings: ${scan.findings.length}
   if (scan.findings.length) throw new Error(`marketing pack redaction failed: ${JSON.stringify(scan.findings.slice(0, 5))}`);
   zipDirectory(packDir, path.join(root, 'marketing-proof-packs', `${runId}.zip`));
   return {
-    schema_version: '3.3.0',
+    schema_version: SCHEMA_VERSION,
     status: 'ok',
     run_id: runId,
     pack_dir: `marketing-proof-packs/${runId}`,
@@ -304,7 +306,7 @@ if (require.main === module) {
   try { main(); }
   catch (error) {
     const { flags } = parseCliArgs(process.argv.slice(2));
-    const output = { schema_version: '3.3.0', status: 'failed', error: error.message };
+    const output = { schema_version: SCHEMA_VERSION, status: 'failed', error: error.message };
     if (flags.json) console.log(JSON.stringify(output, null, 2));
     else console.error(error.message);
     process.exit(2);

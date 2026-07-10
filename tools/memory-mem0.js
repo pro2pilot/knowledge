@@ -210,7 +210,8 @@ function mergePythonCandidates(first, second) {
 function liveProcessEnv(flags, context) {
   const env = {
     ...process.env,
-    KNOWLEDGE_MEM0_CONFIG_JSON: liveConfig(flags, context)
+    PYTHONUTF8: process.env.PYTHONUTF8 || '1',
+    PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8'
   };
   if (!env.MEM0_TELEMETRY) env.MEM0_TELEMETRY = 'False';
   if (!env.MEM0_TELEMETRY_SAMPLE_RATE) env.MEM0_TELEMETRY_SAMPLE_RATE = '0';
@@ -222,6 +223,14 @@ function liveProcessEnv(flags, context) {
   }
   if (env.MEM0_DIR) ensureDir(env.MEM0_DIR);
   return env;
+}
+
+function encodeLivePythonPayload(flags, payload, context) {
+  const envelope = {
+    ...payload,
+    __knowledge_mem0_config_json: liveConfig(flags, context)
+  };
+  return Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64');
 }
 
 function pythonDiscoveryOptions(flags, timeoutMs = DEFAULT_FAST_PYTHON_TIMEOUT_MS, context = null) {
@@ -466,7 +475,7 @@ function liveLockDir(context) {
 
 function runLivePythonProcess(selectedPython, flags, payload, context, script) {
   return spawnSync(selectedPython, ['-c', script], {
-    input: JSON.stringify(payload),
+    input: encodeLivePythonPayload(flags, payload, context),
     encoding: 'utf8',
     env: liveProcessEnv(flags, context),
     windowsHide: true,
@@ -620,9 +629,10 @@ function runLiveMem0(flags, payload, context) {
     });
   }
   const script = String.raw`
-import json, os, sys, warnings
+import base64, json, os, sys, warnings
 warnings.filterwarnings("ignore", category=ResourceWarning, message=r".*(unclosed|qdrant|client).*")
-payload = json.loads(sys.stdin.read() or "{}")
+payload_raw = base64.b64decode((sys.stdin.read() or "").strip() or "e30=").decode("utf-8")
+payload = json.loads(payload_raw or "{}")
 try:
     import mem0
     from mem0 import Memory
@@ -631,7 +641,8 @@ except Exception as exc:
     sys.exit(0)
 
 def make_memory():
-    config = json.loads(os.environ.get("KNOWLEDGE_MEM0_CONFIG_JSON") or "{}")
+    config_json = payload.get("__knowledge_mem0_config_json") or os.environ.get("KNOWLEDGE_MEM0_CONFIG_JSON") or "{}"
+    config = json.loads(config_json)
     if hasattr(Memory, "from_config"):
         return Memory.from_config(config) if config else Memory()
     try:
@@ -828,8 +839,12 @@ function liveAdapter(flags, context) {
     list(input = {}) {
       requireConsent('list');
       const raw = runLiveMem0(flags, { op: 'list', user_id: input.user_id }, context);
+      const records = livePublicRecords(raw, input);
       return advisoryEnvelope(providerId, adapterId, 'list', {
         status: raw.ok ? 'ok' : 'error',
+        records_count: records.length,
+        records,
+        results: records,
         network_calls: localStorageNetworkLabel(flags, context),
         diagnostic_code: raw.diagnostic_code || (raw.ok ? 'mem0_available' : 'mem0_runtime_error'),
         selected_python: raw.selected_python || null,
@@ -907,16 +922,91 @@ function syncReport(context, adapterId) {
   });
 }
 
-function liveResultItems(result) {
+function asRecordArray(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return [];
   const candidates = [
-    result?.raw?.raw?.results,
-    result?.raw?.results,
-    result?.results
+    value?.results,
+    value?.result,
+    value?.data,
+    value?.items,
+    value?.records,
+    value?.memories,
+    value?.output,
+    value?.payload
   ];
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      const nested = asRecordArray(candidate);
+      if (nested.length) return nested;
+    }
   }
   return [];
+}
+
+function liveResultItems(result) {
+  const candidates = [
+    result,
+    result?.raw,
+    result?.raw?.raw,
+    result?.raw?.result
+  ];
+  for (const candidate of candidates) {
+    const found = asRecordArray(candidate);
+    if (found.length) return found;
+  }
+  return [];
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '');
+}
+
+function liveItemText(item) {
+  return firstDefined(
+    item?.memory,
+    item?.text,
+    item?.content,
+    item?.value,
+    item?.payload?.text,
+    item?.payload?.memory,
+    item?.metadata?.text,
+    item?.content_text,
+    item?.result?.text
+  );
+}
+
+function liveItemMetadata(item) {
+  const metadata = item?.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+    ? { ...item.metadata }
+    : {};
+  for (const key of ['text', 'memory']) delete metadata[key];
+  return redactSecrets(metadata);
+}
+
+function publicLiveRecord(item, input = {}) {
+  const text = liveItemText(item);
+  return {
+    id: String(firstDefined(item?.id, item?.memory_id, item?.memoryId, item?.uuid, item?.record_id, item?.metadata?.id, item?.metadata?.memory_id, '')),
+    provider_id: 'mem0-oss',
+    scope: firstDefined(item?.metadata?.scope, input.scope, 'repo'),
+    user_id: firstDefined(item?.user_id, item?.metadata?.user_id, input.user_id, null),
+    created_at: firstDefined(item?.created_at, item?.createdAt, item?.metadata?.created_at, item?.result?.created_at, null),
+    updated_at: firstDefined(item?.updated_at, item?.updatedAt, item?.metadata?.updated_at, item?.result?.updated_at, null),
+    text: input.include_text && text !== undefined ? String(text) : undefined,
+    metadata: liveItemMetadata(item),
+    score: item?.score,
+    source_of_truth: false,
+    trust_effect: 'advisory_only',
+    override_attempt: false
+  };
+}
+
+function livePublicRecords(result, input = {}) {
+  return liveResultItems(result)
+    .map((item) => publicLiveRecord(item, input))
+    .filter((record) => record.id);
 }
 
 function runtimeStatusSnapshot(result, context, previous = null) {
@@ -953,7 +1043,7 @@ function runtimeStatusSnapshot(result, context, previous = null) {
     ? resultCount
     : previousRetrievalCount;
   return {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     provider_id: 'mem0-oss',
     adapter_id: 'live',
     checked_at: checkedAt,
@@ -986,7 +1076,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     tool: 'memory-mem0.js',
     usage: 'node .knowledge/tools/memory-mem0.js <command> [query] [options] --json',
     commands: [
@@ -1058,7 +1148,9 @@ module.exports.__test = {
   liveImportOptions,
   liveMem0TimeoutMs,
   liveProcessEnv,
+  encodeLivePythonPayload,
   hasExplicitLiveConfig,
+  livePublicRecords,
   mem0RuntimeDirForConfig,
   normalizeDiagnosticCode,
   pythonDiscoveryOptions,

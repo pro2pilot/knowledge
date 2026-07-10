@@ -120,10 +120,35 @@ function looksLikeSecret(value) {
     /\b(sk|pk|m0sk|pcsk|eyJ)[A-Za-z0-9_./+=-]{20,}\b/.test(text);
 }
 
+function legacyProjectRootKnowledgeBackups() {
+  let entries = [];
+  try { entries = fs.readdirSync(repoRoot, { withFileTypes: true }); } catch { return []; }
+  return entries
+    .filter((entry) => entry.isDirectory() && /^\.knowledge[_-]backup(?:[_-].*)?$/i.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+}
+
 function doctorUnlocked(options = {}) {
   ensureDir(path.join(stateRoot, 'maintenance'));
   const issues = [];
   const checks = [];
+  const legacyBackups = legacyProjectRootKnowledgeBackups();
+  checks.push({
+    check: 'legacy_project_root_knowledge_backups',
+    status: legacyBackups.length ? 'warn' : 'pass',
+    count: legacyBackups.length,
+    paths: legacyBackups
+  });
+  if (legacyBackups.length) {
+    issue(
+      issues,
+      'low',
+      'legacy_project_root_knowledge_backup',
+      `${legacyBackups.length} legacy .knowledge backup director${legacyBackups.length === 1 ? 'y is' : 'ies are'} outside .knowledge state. They are excluded from discovery; verify the current update before archiving or removing them.`,
+      legacyBackups[0]
+    );
+  }
   const projectRequired = [
     'project_index.json',
     'modules/module_registry.json',
@@ -251,9 +276,14 @@ function doctorUnlocked(options = {}) {
   checks.push({ check: 'search_index', status: searchIndexExists ? 'pass' : 'warn', artifact: '.knowledge/search/index.json' });
   if (!searchIndexExists) issue(issues, 'low', 'search_index_missing', 'Search index is missing. Run build-search-index.js for token-efficient knowledge retrieval.', '.knowledge/search/index.json');
 
-  const eventsDir = path.join(stateRoot, 'maintenance', 'events');
-  checks.push({ check: 'append_only_events_dir', status: fs.existsSync(eventsDir) ? 'pass' : 'fail', artifact: '.knowledge/maintenance/events/' });
-  if (!fs.existsSync(eventsDir)) issue(issues, 'medium', 'events_dir_missing', 'Append-only events directory is missing.', '.knowledge/maintenance/events/');
+  const eventsDir = context.mode === 'team'
+    ? path.join(context.teamRoot, 'repos', context.repoId, 'events')
+    : path.join(stateRoot, 'maintenance', 'events');
+  const eventsArtifact = context.mode === 'team'
+    ? `.knowledge-team/repos/${context.repoId}/events/`
+    : '.knowledge/maintenance/events/';
+  checks.push({ check: 'append_only_events_dir', status: fs.existsSync(eventsDir) ? 'pass' : 'fail', artifact: eventsArtifact });
+  if (!fs.existsSync(eventsDir)) issue(issues, 'medium', 'events_dir_missing', 'Append-only events directory is missing.', eventsArtifact);
 
   // doctor itself does not run the scan (keeps doctor fast and side-effect-free);
   // it just reports the latest run. Use `node .knowledge/tools/scan-secrets.js`

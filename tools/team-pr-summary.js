@@ -7,6 +7,7 @@ const { parseCliArgs } = require('./lib/path-context');
 const { detectGitContext } = require('./lib/git-context');
 const { findWorkspace, appendTeamEvent } = require('./lib/team-store');
 const { ensureDir, readJson, writeFileAtomic } = require('./lib/json-store');
+const { systemVersion } = require('./lib/system-version');
 
 function listChangedFiles(targetRoot) {
   const git = detectGitContext(targetRoot);
@@ -76,7 +77,7 @@ ${(repair.queue || []).slice(0, 10).map((item) => `- ${item.priority || 'medium'
 
   writeFileAtomic(outPath, md);
   const result = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     generated_at: new Date().toISOString(),
     workspace,
     branch: changed.git.branch,
@@ -108,4 +109,3 @@ if (require.main === module) {
 }
 
 module.exports = main;
-

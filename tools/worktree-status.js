@@ -5,6 +5,7 @@ const path = require('path');
 const { parseCliArgs, stableRepoId } = require('./lib/path-context');
 const { detectGitContext } = require('./lib/git-context');
 const { findWorkspace, listTeamStatus, appendTeamEvent } = require('./lib/team-store');
+const { systemVersion } = require('./lib/system-version');
 
 function main(argv = process.argv.slice(2)) {
   const { flags } = parseCliArgs(argv);
@@ -38,7 +39,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const out = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     generated_at: new Date().toISOString(),
     target_root: targetRoot,
     repo_id: repoId,

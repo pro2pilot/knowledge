@@ -5,7 +5,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const checkUpdates = require('./check-updates');
-const version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version || '3.2.10';
+const version = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version || '3.2.11';
 
 function asset(name) {
   return { name, browser_download_url: `https://example.invalid/${name}`, size: 1, content_type: 'application/zip' };
@@ -34,7 +34,7 @@ function main() {
   const tagless = checkUpdates.selectReleaseAsset({ assets: [asset(`knowledge-v${version}.zip`)] });
   assert.strictEqual(tagless, null, 'selector must not guess an asset without a release tag');
   assert.strictEqual(checkUpdates.compareVersions('3.2.4', '3.2.5'), -1, 'patch version comparison must detect newer releases');
-  assert.strictEqual(checkUpdates.compareVersions('3.2.10', '3.2.5'), 1, 'patch version comparison must sort multi-digit patches');
+  assert.strictEqual(checkUpdates.compareVersions('3.2.11', '3.2.5'), 1, 'patch version comparison must sort multi-digit patches');
   assert.strictEqual(checkUpdates.compareVersions('v3.2.5', '3.2.5'), 0, 'version comparison should ignore v prefix');
 
   console.log(JSON.stringify({

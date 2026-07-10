@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync, spawn } = require('child_process');
+const { systemVersion } = require('./lib/system-version');
 
 const sourceKnowledgeRoot = path.resolve(__dirname, '..');
 const keepTemp = process.argv.includes('--keep-temp');
@@ -157,6 +158,24 @@ async function main() {
   const [r1, r2] = await Promise.all([flow1, flow2]);
   assert(r1.code === 0, `doctor flow failed\n${r1.stderr}\n${r1.stdout}`);
   assert(r2.code === 0, `release flow failed\n${r2.stderr}\n${r2.stdout}`);
+  const doctorFlow = JSON.parse(r1.stdout);
+  const doctorStep = (doctorFlow.steps || []).find((step) => step.step === 'doctor');
+  assert(doctorStep?.status === 'pass', 'team doctor did not report a semantic pass');
+  assert((doctorStep.semantic_errors || []).length === 0, 'team doctor exposed semantic errors');
+
+  const requiredWorkspaceRuntime = [
+    'freshness.json',
+    'maintenance/trust_report.json',
+    'maintenance/handoff_summary.json',
+    'maintenance/routing_bundle.json',
+    'maps/file_criticality.json',
+    'maps/wiki_graph.json',
+    'maintenance/wiki_lint_report.json',
+    'maintenance/secret_scan_report.json'
+  ];
+  for (const rel of requiredWorkspaceRuntime) {
+    assert(fs.existsSync(path.join(reg1.workspace.stateRoot, rel)), `team doctor runtime artifact missing: ${rel}`);
+  }
 
   for (const file of walkJson(teamRoot)) JSON.parse(fs.readFileSync(file, 'utf8'));
   assert(!fs.existsSync(path.join(teamRoot, 'repos', reg1.context.repoId, 'locks', 'flow.lock')), 'flow lock was not released');
@@ -204,7 +223,7 @@ async function main() {
   assert(unreg.workspace.status === 'archived', 'workspace unregister did not archive');
 
   const result = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     status: 'pass',
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,
@@ -218,6 +237,7 @@ async function main() {
       'duplicate workspaceId failure',
       'duplicate agentId warning',
       'parallel doctor/release exclusive flows',
+      'team doctor semantic health and runtime regeneration',
       'stale lock cleanup',
       'JSON corruption scan',
       'lock released',

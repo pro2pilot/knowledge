@@ -8,7 +8,7 @@ const path = require('path');
 const { spawnSync, spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.10';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.11';
 const keepTemp = process.argv.includes('--keep-temp');
 const teamModeFixtureRequested = process.argv.includes('--team-mode-fixture');
 let rootForCleanup = null;

@@ -10,6 +10,7 @@ const {
   appendNdjson,
   sleepSync
 } = require('./json-store');
+const { systemVersion } = require('./system-version');
 
 function nowIso() {
   return new Date().toISOString();
@@ -54,7 +55,7 @@ function appendTeamEvent(context, type, payload = {}) {
 
 function readRegistry(teamRoot) {
   return readJson(path.join(teamRoot, 'registry.json'), {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     created_at: nowIso(),
     updated_at: null,
     repos: []
@@ -92,7 +93,7 @@ function initTeam(context) {
   const repoJsonPath = path.join(base, 'repo.json');
   const existing = readJson(repoJsonPath, {});
   const repoJson = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     repoId: context.repoId,
     targetRoot: context.targetRoot,
     projectKnowledgeRoot: context.projectKnowledgeRoot,
@@ -149,7 +150,7 @@ function registerWorkspace(context, extra = {}) {
     ...(duplicateAgentWorkspaces.length ? [`agentId duplicate in active workspaces: ${duplicateAgentWorkspaces.join(', ')}`] : [])
   ]));
   const workspace = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     workspaceId: context.workspaceId,
     agentId: context.agentId,
     repoId: context.repoId,
@@ -311,7 +312,7 @@ function listTeamStatus(teamRoot) {
     return Number.isFinite(ts) && Date.now() - ts > staleAfterMs;
   });
   return {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     generated_at: nowIso(),
     teamRoot,
     registry,

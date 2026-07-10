@@ -8,7 +8,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.10';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.11';
 const required = ['doctor.run', 'flow.release', 'inspector.rebuild', 'trust.restore.safe', 'pr.review.basic', 'pr.impact.basic', 'repair.queue.refresh', 'memory.status', 'team.status', 'agent.sessions.refresh', 'queue.status', 'merge.readiness', 'benchmark.summary'];
 const removed = [
   ['report', 'debug_bundle'].join('.'),

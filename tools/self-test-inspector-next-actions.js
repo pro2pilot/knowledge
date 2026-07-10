@@ -9,7 +9,7 @@ const { spawn, spawnSync } = require('child_process');
 const systemRoot = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(systemRoot, 'package.json');
 const packageJson = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) : {};
-const schemaVersion = packageJson.version || '3.2.10';
+const schemaVersion = packageJson.version || '3.2.11';
 const keepTemp = process.argv.includes('--keep-temp');
 
 function rmWithRetry(targetPath, attempts = 8) {

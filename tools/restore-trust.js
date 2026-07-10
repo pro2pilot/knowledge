@@ -6,6 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext, contextEnv } = require('./lib/path-context');
 const { ensureDir, readJson, writeJsonAtomic } = require('./lib/json-store');
+const { systemVersion } = require('./lib/system-version');
 
 const SAFE_STEPS = [
   ['sync', ['tools/sync-tracked.js', '--scan']],
@@ -77,7 +78,7 @@ function main(argv = process.argv.slice(2)) {
   ensureDir(path.join(context.stateRoot, 'maintenance'));
   const steps = SAFE_STEPS.map((step) => runStep(context, step));
   const report = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     generated_at: new Date().toISOString(),
     safe: true,
     status: steps.every((step) => step.status === 'passed') ? 'passed' : 'failed',

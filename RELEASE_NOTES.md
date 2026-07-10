@@ -1,5 +1,25 @@
 # Release Notes
 
+## v3.2.11 - Mem0 list normalization
+
+v3.2.11 starts as a focused Mem0 CLI usability patch on top of the final
+v3.2.10 release line.
+
+### Fixed
+
+- Live `memory-mem0.js list --adapter live --yes-live-memory --json` now
+  exposes Mem0 2.x records as top-level `records` and `results` arrays instead
+  of requiring agents to inspect raw provider internals.
+- Normalized live list records include stable `id` fields so follow-up
+  `delete/forget` cleanup commands can be generated deterministically.
+- Added regression coverage for the observed `raw.raw.results` Mem0 response
+  shape, including metadata redaction.
+
+### Verification
+
+- Focused Mem0 provider self-test planned for this patch line.
+- Full release gate has not been run for this preparation step.
+
 ## v3.2.10 - Inspector update polish and Local FastEmbed hardening
 
 v3.2.10 improves the local Inspector update experience and tightens Mem0 Local

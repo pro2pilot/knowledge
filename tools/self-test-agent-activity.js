@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { systemVersion } = require('./lib/system-version');
 
 const systemRoot = path.resolve(__dirname, '..');
 
@@ -36,7 +37,7 @@ function main() {
   assert(heartbeat.session.last_heartbeat_at, 'heartbeat missing');
   assert(report.recent_sessions.length >= 1, 'report missing sessions');
   assert(finish.session.status === 'done', 'finish did not mark done');
-  console.log(JSON.stringify({ schema_version: '3.2.4', status: 'pass', checks: ['start', 'heartbeat', 'report', 'finish', 'identity fields'] }, null, 2));
+  console.log(JSON.stringify({ schema_version: systemVersion(), status: 'pass', checks: ['start', 'heartbeat', 'report', 'finish', 'identity fields'] }, null, 2));
   fs.rmSync(root, { recursive: true, force: true });
 }
 

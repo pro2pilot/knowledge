@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { systemVersion } = require('./lib/system-version');
 
 const knowledgeRoot = path.resolve(__dirname, '..');
 const templatesRoot = path.join(knowledgeRoot, 'templates', 'official');
@@ -188,7 +189,7 @@ function applyOne(id, options = {}) {
   planned.push(repairAdded.length === 0 ? '= unchanged maintenance/repair_queue.json' : `~ modify  maintenance/repair_queue.json (+${repairAdded.length} items)`);
 
   const appliedPath = path.join(knowledgeRoot, 'maintenance', 'applied_templates.json');
-  const applied = readJson(appliedPath, { schema_version: '3.2.4', generated_at: null, templates: [] });
+  const applied = readJson(appliedPath, { schema_version: systemVersion(), generated_at: null, templates: [] });
   const before = applied.templates.find((t) => t.id === tpl.id);
   if (!before) {
     applied.templates.push({

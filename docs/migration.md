@@ -21,7 +21,26 @@ node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply
 node .knowledge/tools/update-system-files.js --verify-upgrade --from <new-knowledge-root> --json
 ```
 
-The updater writes a report with permission preflight, system created/updated counts, migration defaults created, project-preserved counts, runtime regeneration checks, missing system paths, stale/repair counts, and a curated preservation proof.
+The updater writes a report with permission preflight, system
+created/updated/removed counts, migration defaults, project-preserved counts,
+semantic runtime regeneration checks, SHA-256 source parity, stale/repair
+counts, and a post-check preservation proof for every pre-existing protected
+curated file. New bootstrap files and explicitly runtime-managed
+`module_registry.json`/`file_facts.json` changes are reported separately. A
+backup is considered disposable only when
+`backup_verification.safe_to_remove` is `true`; otherwise it remains a rollback
+backup.
+
+Verified backups are stored under `.knowledge/maintenance/install-backups/`
+and can be pruned explicitly:
+
+```bash
+node .knowledge/tools/update-system-files.js --prune-verified-backups --yes --json
+```
+
+The prune command never removes an unverified backup. Legacy
+`.knowledge_backup_*` directories in the repository root are excluded from
+ingest/sync and surfaced by `doctor` for manual archival or cleanup.
 
 ## Bootstrap From 3.1.8-Like Installs
 
@@ -34,4 +53,11 @@ node <new-knowledge-root>/tools/update-system-files.js --from <new-knowledge-roo
 node <repo>/.knowledge/tools/update-system-files.js --verify-upgrade --from <new-knowledge-root> --json
 ```
 
-This mode installs the updater and all manifest-listed system paths before running post-checks. It must not change curated project knowledge unless a separate migration mode explicitly says so. Missing required project defaults, for example `external_memory/registry.json` and `external_memory/retrieval_policy.json`, are created only when absent and are reported as migration defaults.
+This mode installs the updater and all manifest-listed system paths before
+running post-checks. If project runtime has never been initialized, it selects
+one non-interactive `flow import` and then verifies with `flow release`; an
+initialized project goes directly to `flow release`. It must not change an
+existing protected curated file unless a separate migration mode explicitly
+says so. Missing required project defaults, for example
+`external_memory/registry.json` and `external_memory/retrieval_policy.json`, are
+created only when absent and are reported as migration defaults.

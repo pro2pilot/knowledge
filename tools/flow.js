@@ -16,10 +16,11 @@ const { spawnSync, spawn } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext, contextEnv, jsonContext } = require('./lib/path-context');
 const { ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { acquireTeamLock, appendTeamEvent, updateWorkspaceFlow } = require('./lib/team-store');
+const { inspectSemanticJson } = require('./lib/semantic-json');
 
 const flows = {
   scan: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
-  doctor: ['external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'doctor.js'],
+  doctor: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'scan-secrets.js', 'doctor.js'],
   lint: ['build-wiki-graph.js', 'lint-wiki.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
   import: ['install-check.js --json', 'ingest-existing-project.js --merge', 'sync-tracked.js --scan --discover', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
   release: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
@@ -103,12 +104,18 @@ function runOne(cmd, context) {
   const stderr = (res.stderr || '').toString();
   let parsed = null;
   if (stdout.trim()) {
-    try { parsed = JSON.parse(stdout); } catch { parsed = null; }
+    try { parsed = JSON.parse(stdout.trim().replace(/^\uFEFF/, '')); } catch { parsed = null; }
   }
+  const semantic = parsed ? inspectSemanticJson(parsed) : { ok: true, errors: [] };
+  const success = res.status === 0 && semantic.ok;
   return {
     step: STEP_LABELS[file] || file.replace(/\.js$/, ''),
     command: `${file}${args.length ? ' ' + args.join(' ') : ''}`,
     exit: res.status,
+    success,
+    status: success ? 'pass' : 'fail',
+    json_status: parsed?.status || null,
+    semantic_errors: semantic.errors,
     duration_ms,
     parsed,
     stdout: stdout.trim().slice(0, 4000),
@@ -198,8 +205,8 @@ function writeFlowLog(name, started, results, totalMs, context) {
     started_at: started.toISOString(),
     duration_total_ms: totalMs,
     steps_total: results.length,
-    steps_ok: results.filter((r) => r.exit === 0).length,
-    overall_status: results.every((r) => r.exit === 0) ? 'ok' : 'failed',
+    steps_ok: results.filter((r) => r.success).length,
+    overall_status: results.every((r) => r.success) ? 'ok' : 'failed',
     steps: results
   });
   return displayPath(file, context);
@@ -223,16 +230,16 @@ function runFlow(options) {
   for (const cmd of stepsForFlow(name, context)) {
     const result = runOne(cmd, context);
     results.push(result);
-    appendTeamEvent(context, 'flow_step', { flow: name, step: result.step, exit: result.exit, duration_ms: result.duration_ms });
+    appendTeamEvent(context, 'flow_step', { flow: name, step: result.step, exit: result.exit, success: result.success, duration_ms: result.duration_ms });
     if (!quiet && !json) {
-      const status = result.exit === 0 ? ansi.ok('ok') : ansi.fail('fail');
+      const status = result.success ? ansi.ok('ok') : ansi.fail('fail');
       const detail = detailFor(result);
       const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
       console.log(`[ ${status} ] ${pad(result.step, 11)} ${String(result.duration_ms).padStart(5, ' ')} ms${detail ? '  /  ' + detail : ''}`);
     }
   }
   const totalMs = Date.now() - startedMs;
-  const ok = results.filter((r) => r.exit === 0).length;
+  const ok = results.filter((r) => r.success).length;
   const total = results.length;
   const logRel = writeFlowLog(name, started, results, totalMs, context);
   const overall = ok === total ? 'ok' : 'failed';
@@ -260,7 +267,17 @@ function runFlow(options) {
     warnings: context.warnings,
     flow_log: logRel,
     onboarding_follow_up: onboarding,
-    steps: results.map((r) => ({ step: r.step, command: r.command, exit: r.exit, duration_ms: r.duration_ms, summary: detailFor(r) }))
+    steps: results.map((r) => ({
+      step: r.step,
+      command: r.command,
+      exit: r.exit,
+      success: r.success,
+      status: r.status,
+      json_status: r.json_status,
+      semantic_errors: r.semantic_errors,
+      duration_ms: r.duration_ms,
+      summary: detailFor(r)
+    }))
   };
   updateWorkspaceFlow(context, out);
   appendTeamEvent(context, 'flow_end', { flow: name, overall_status: overall, steps_ok: ok, steps_total: total, flow_log: logRel });

@@ -7,7 +7,7 @@ const os = require('os');
 const { spawnSync, spawn } = require('child_process');
 
 const sourceKnowledgeRoot = path.resolve(__dirname, '..');
-const packageVersion = JSON.parse(fs.readFileSync(path.join(sourceKnowledgeRoot, 'package.json'), 'utf8')).version || '3.2.10';
+const packageVersion = JSON.parse(fs.readFileSync(path.join(sourceKnowledgeRoot, 'package.json'), 'utf8')).version || '3.2.11';
 const keepTemp = process.argv.includes('--keep-temp');
 let rootForCleanup = null;
 
@@ -119,7 +119,7 @@ function parseJsonAndNdjson(root) {
 }
 
 async function main() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge team inspector json тест '));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge team inspector json С‚РµСЃС‚ '));
   rootForCleanup = root;
   const repo = path.join(root, 'repo main with spaces');
   const worktrees = path.join(root, 'worktrees');
@@ -138,7 +138,7 @@ async function main() {
   must('git', ['commit', '-m', 'initial fixture'], { cwd: repo });
 
   const w1 = path.join(worktrees, 'codex task 1');
-  const w2 = path.join(worktrees, 'claude задача 2');
+  const w2 = path.join(worktrees, 'claude Р·Р°РґР°С‡Р° 2');
   const w3 = path.join(worktrees, 'opencode task 3');
   must('git', ['worktree', 'add', w1, '-b', 'bot/codex-task-1'], { cwd: repo });
   must('git', ['worktree', 'add', w2, '-b', 'bot/claude-task-2'], { cwd: repo });
@@ -155,7 +155,7 @@ async function main() {
   fs.mkdirSync(path.join(reg1.workspace.stateRoot, 'maintenance'), { recursive: true });
   fs.writeFileSync(path.join(reg1.workspace.stateRoot, 'maintenance', 'windows-path-snippet.json'), JSON.stringify({
     snippet: 'C:\\\\fixture path\\\\with spaces\\\\quoted.json',
-    cyrillic: 'кириллица survives JSON serialization'
+    cyrillic: 'РєРёСЂРёР»Р»РёС†Р° survives JSON serialization'
   }, null, 2), 'utf8');
 
   const doctor = spawnNode(path.join(w1, '.knowledge', 'tools', 'flow.js'), ['doctor', '--team-root', teamRoot, '--target-root', w1, '--workspace-id', 'codex-task-1', '--agent-id', 'codex-01', '--json'], { cwd: w1 });

@@ -6,6 +6,7 @@ const path = require('path');
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
 const { readJson } = require('./lib/json-store');
 const { estimateForFile } = require('./lib/token-estimate');
+const { systemVersion } = require('./lib/system-version');
 
 function safeJson(file, fallback) {
   try { return readJson(file, fallback); } catch { return fallback; }
@@ -70,7 +71,7 @@ function main(argv = process.argv.slice(2)) {
   const footer = renderFooter(context, settings);
   const result = {
     ok: true,
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     mode: settings.mode || 'compact',
     footer
   };

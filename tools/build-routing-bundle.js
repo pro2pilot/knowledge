@@ -19,8 +19,22 @@ function projectPath(relPath) { return path.join(knowledgeRoot, relPath); }
 function statePath(relPath) { return path.join(stateRoot, relPath); }
 function display(relPath) { return context.mode === 'repo' ? `.knowledge/${relPath}` : path.join(stateRoot, relPath); }
 function compactArray(value, max = 20) { return Array.isArray(value) ? value.slice(0, max) : []; }
+function normalizeProviderId(value) {
+  const id = String(value || '').trim().toLowerCase().replace(/_/g, '-');
+  return id === 'mem0' ? 'mem0-oss' : id;
+}
+function providerList(value) {
+  if (Array.isArray(value)) return value.filter((provider) => provider && typeof provider === 'object');
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value)
+    .filter(([, provider]) => provider && typeof provider === 'object')
+    .map(([key, provider]) => ({ provider_id: provider.provider_id || provider.provider || key, ...provider }));
+}
 function providerStatus(externalStatus, providerId) {
-  return (externalStatus.providers || []).find((provider) => provider.provider_id === providerId || provider.provider === providerId) || {};
+  const expected = normalizeProviderId(providerId);
+  return providerList(externalStatus.providers).find((provider) => (
+    normalizeProviderId(provider.provider_id || provider.provider) === expected
+  )) || {};
 }
 function normalizeTrustBuckets(trustReport) {
   const modules = trustReport.modules || {};
@@ -158,7 +172,7 @@ function buildUnlocked(options = {}) {
       mode: providerStatus(externalStatus, 'mem0-oss').mode || providerStatus(externalStatus, 'pinecone').mode || 'disabled',
       source_of_truth: false,
       trust_effect: 'advisory_only',
-      legacy_providers_detected: (externalStatus.legacy_providers_detected || []).length,
+      legacy_providers_detected: providerList(externalStatus.legacy_providers_detected).length,
       command: 'node .knowledge/tools/memory-provider.js status-all --json'
     },
     maintenance_commands: [

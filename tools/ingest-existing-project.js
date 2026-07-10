@@ -11,6 +11,16 @@ const repoRoot = process.cwd();
 const kitRoot = path.resolve(__dirname, '..');
 const knowledgeRoot = path.join(repoRoot, '.knowledge');
 const agentId = getAgentId();
+const GENERATED_WORKSPACE_DIR_PATTERNS = [
+  /^\.knowledge[_-]backup(?:[_-].*)?$/i,
+  /^qa[_-]?runs?$/i,
+  /^_baseline(?:[_-].*)?$/i,
+  /^__pycache__$/i
+];
+
+function isGeneratedWorkspaceDirName(name) {
+  return GENERATED_WORKSPACE_DIR_PATTERNS.some((pattern) => pattern.test(String(name || '')));
+}
 
 function parseArgs(argv) {
   const args = new Set(argv);
@@ -66,6 +76,7 @@ function ignoredSourceCheckouts() {
   return entries
     .filter((entry) => entry.isDirectory())
     .filter((entry) => !['.knowledge', '.agents', '.claude', '.opencode', 'node_modules', '.git'].includes(entry.name))
+    .filter((entry) => !isGeneratedWorkspaceDirName(entry.name))
     .filter((entry) => isKnowledgeSourceCheckoutDir(path.join(repoRoot, entry.name), entry.name))
     .map((entry) => `${entry.name}/`)
     .sort();
@@ -77,6 +88,7 @@ function listTopLevelDirectories() {
     .map((d) => d.name)
     .filter((name) => name === '.github' || !name.startsWith('.'))
     .filter((name) => !['node_modules', '.knowledge', '.knowledge', '.agents', '.claude', '.opencode'].includes(name))
+    .filter((name) => !isGeneratedWorkspaceDirName(name))
     .filter((name) => !isKnowledgeSourceCheckoutDir(path.join(repoRoot, name), name));
 }
 

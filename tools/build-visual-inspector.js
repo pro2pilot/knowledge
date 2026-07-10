@@ -13,9 +13,9 @@ const repoRoot = context.targetRoot;
 const lockDir = path.join(stateRoot, '.lock');
 const systemVersion = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.10';
+    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.11';
   } catch {
-    return '3.2.10';
+    return '3.2.11';
   }
 })();
 
@@ -110,7 +110,7 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -120,7 +120,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -129,7 +129,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -138,7 +138,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,

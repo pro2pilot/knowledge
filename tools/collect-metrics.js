@@ -39,10 +39,12 @@ function main() {
   ].map(readText).join('\n');
   const routeTokens = estimateTokens(routeText);
   const multiTokens = estimateTokens(multi);
+  const tokenDelta = multiTokens - routeTokens;
+  const percentDelta = multiTokens ? Math.round((1 - routeTokens / multiTokens) * 100) : 0;
   const externalMemoryReport = readJson(path.join(stateRoot, 'maintenance', 'external_memory_status.json'), { providers: [], metrics: {} });
   const externalMemoryMetrics = readJson(path.join(stateRoot, 'metrics', 'external_memory.json'), externalMemoryReport.metrics || {});
   const metrics = {
-    schema_version: '3.2.4',
+    schema_version: '3.2.11',
     generated_at: new Date().toISOString(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -61,8 +63,11 @@ function main() {
       bundle_bytes: bytes(routePath),
       bundle_tokens_approx: routeTokens,
       legacy_first_read_tokens_approx: multiTokens,
-      estimated_tokens_saved: Math.max(0, multiTokens - routeTokens),
-      estimated_percent_saved: multiTokens ? Math.round((1 - routeTokens / multiTokens) * 100) : 0
+      estimated_token_delta: tokenDelta,
+      estimated_percent_delta: percentDelta,
+      estimated_tokens_saved: Math.max(0, tokenDelta),
+      estimated_percent_saved: Math.max(0, percentDelta),
+      assessment: tokenDelta > 0 ? 'estimated_savings' : tokenDelta < 0 ? 'estimated_overhead' : 'neutral'
     },
     indexes: {
       search_documents: readJson(path.join(stateRoot, 'search', 'index.json'), { documents: [] }).documents.length,
@@ -90,6 +95,8 @@ Token estimator: ${metrics.token_estimator}
 - Routing bundle tokens (approx): ${metrics.routing.bundle_tokens_approx}
 - Legacy first-read tokens (approx): ${metrics.routing.legacy_first_read_tokens_approx}
 - Estimated tokens saved: ${metrics.routing.estimated_tokens_saved} (${metrics.routing.estimated_percent_saved}%)
+- Signed token delta: ${metrics.routing.estimated_token_delta} (${metrics.routing.estimated_percent_delta}%; positive means savings)
+- Assessment: ${metrics.routing.assessment}
 - Search documents: ${metrics.indexes.search_documents}
 - Wiki graph: ${metrics.indexes.wiki_nodes} nodes / ${metrics.indexes.wiki_edges} edges
 - Doctor score: ${metrics.health.doctor_score}

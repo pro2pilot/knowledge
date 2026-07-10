@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
 const { resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
@@ -146,7 +147,7 @@ function main(argv = process.argv.slice(2)) {
     : 'clean';
 
   const report = {
-    schema_version: '3.2.4',
+    schema_version: systemVersion(),
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,

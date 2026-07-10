@@ -1,5 +1,54 @@
 # Changelog
 
+## 3.2.11 Mem0 list normalization patch
+
+- Prepared the next release source directory from the final 3.2.10 release
+  line.
+- Fixed live Mem0 `list` output so records from Mem0 2.x responses are exposed
+  as top-level `records`/`results`, including stable `id` fields for follow-up
+  delete/cleanup commands.
+- Added regression coverage for the observed `raw.raw.results` response shape
+  so agents no longer need to traverse raw provider internals to find memory
+  ids.
+- Hardened SPARK Battle QA so `failed=0` means zero unexpected semantic
+  failures, with explicit expected-negative and environment-blocked outcomes.
+- Added real local FastEmbed utility assertions for persisted add and non-empty
+  search/recall/list, plus effective lock contention injection.
+- Made custom shared roots consistent across configure/setup/status and added
+  source-hash freshness checks for final release evidence.
+- Made the live Node-to-Python Mem0 payload ASCII-safe via UTF-8 base64 transport
+  so Unicode project paths and memory text survive Windows process boundaries.
+- Removed mojibake from Mem0 agent-facing setup output.
+- Added semantic JSON validation to release/evaluation checks and made full or
+  release mode require a current memory battle report.
+- Added evaluation latency and routing context-economy fields for measured,
+  claim-safe release evidence.
+- Made `flow` and the system updater treat semantic JSON failures as failures,
+  including a `doctor` process that exits zero with `status: broken`.
+- Added post-update SHA-256 parity, explicit obsolete-system-file cleanup,
+  final post-check preservation proof for protected curated files, and
+  machine-readable backup disposition.
+- Added confirmation-gated pruning for verified backups; unverified backups are
+  retained and legacy project-root backup/QA/baseline directories are excluded
+  from ingest and sync.
+- Added deterministic update bootstrap for installed artifacts that have not
+  completed project initialization, while initialized projects continue to use
+  the direct release refresh path.
+- Made routing generation tolerant of legacy external-memory provider maps and
+  made free-core graph diagnostics depend on structural invariants rather than
+  fixture size.
+- Required the current release note in packaged artifacts and rejected release
+  notes newer than the artifact version.
+- Normalized runtime-generated report schemas to the installed system version
+  and added a focused schema/dependency hygiene self-test.
+- Decoupled the public benchmark runner from maintainer-only packaging tools.
+- Made release-impact classification include committed, staged, unstaged, and
+  untracked changes; an unavailable git baseline now requires the conservative
+  full/conformance path instead of allowing a quick release decision.
+- Made the team-mode doctor flow regenerate isolated workspace health reports
+  and check the canonical shared append-only event store; added regression
+  assertions for semantic health and required runtime artifacts.
+
 ## 3.2.10 Mem0 storage diagnostics patch
 
 - Made Mem0 provider status follow the actual configured Qdrant path when

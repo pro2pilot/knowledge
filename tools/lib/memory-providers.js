@@ -353,7 +353,7 @@ function pineconeStatus(context, manifest, registry, sources) {
   };
 }
 
-function genericProviderStatus(context, manifest) {
+function genericProviderStatus(context, manifest, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), null);
   const runtimeStatus = manifest.id === 'mem0-oss' ? safeReadJson(runtimeStatusPath(context, manifest), null) : null;
@@ -393,7 +393,7 @@ function genericProviderStatus(context, manifest) {
   if (manifest.id === 'mem0-oss') warnings.push('Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.');
   if (manifest.install?.requires_network) warnings.push('Install/update requires explicit user action and may use network outside status/report mode.');
   if (manifest.type === 'optional') warnings.push('Provider implementation is optional and is not bundled into free core.');
-  const mem0Config = manifest.id === 'mem0-oss' ? readMem0ConfigSummary(context, manifest) : null;
+  const mem0Config = manifest.id === 'mem0-oss' ? readMem0ConfigSummary(context, manifest, options) : null;
   if (manifest.id === 'mem0-oss' && mem0Config?.metadata_scope_mismatch) {
     warnings.push(`Mem0 config metadata says provider_scope=${mem0Config.metadata_provider_scope}, but the configured Qdrant path is ${mem0Config.path_inferred_provider_scope}. Status follows the actual storage path; rerun configure-embeddings with --provider-scope shared or --provider-scope project to make the choice explicit.`);
   }
@@ -567,7 +567,7 @@ function buildExternalMemoryReport(context, options = {}) {
   const providers = manifests.map((manifest) => (
     manifest.id === 'pinecone'
       ? pineconeStatus(context, manifest, registry, sources)
-      : genericProviderStatus(context, manifest)
+      : genericProviderStatus(context, manifest, options)
   ));
   const providerOverrideAttempts = providers.reduce((sum, provider) => sum + Number(provider.override_attempts_blocked || 0), 0);
   const legacy = detectLegacyClaude(context, registry);
@@ -577,7 +577,7 @@ function buildExternalMemoryReport(context, options = {}) {
   ]));
   const providerStatuses = Object.fromEntries(providers.map((provider) => [provider.provider_id.replace(/-/g, '_'), provider]));
   const metrics = {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -591,7 +591,7 @@ function buildExternalMemoryReport(context, options = {}) {
     unknown_license_count: providers.filter((provider) => !provider.license_spdx || provider.license_spdx === 'unknown').length
   };
   const report = {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -686,7 +686,7 @@ function recordInstall(context, providerId, flags = {}, options = {}) {
   }
   const dir = providerStateDir(context, manifest);
   const receipt = {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     installed_at: null,
@@ -756,7 +756,7 @@ function recordUpdate(context, providerId, flags = {}, options = {}) {
   requireConfirmation(flags, 'update');
   const toVersion = requireVersion(flags.to || flags.version, 'update');
   const receipt = {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     updated_at: null,
@@ -825,7 +825,7 @@ function inferMem0Collection(collectionName) {
   return inferred;
 }
 
-function readMem0ConfigSummary(context, manifest) {
+function readMem0ConfigSummary(context, manifest, flags = {}) {
   const configPath = mem0ConfigPath(context, manifest);
   const metaPath = mem0ConfigMetaPath(context, manifest);
   const config = safeReadJson(configPath, null);
@@ -834,7 +834,7 @@ function readMem0ConfigSummary(context, manifest) {
   const embedderConfig = config?.embedder?.config || {};
   const llmConfig = config?.llm?.config || {};
   const inferred = inferMem0Collection(vectorConfig.collection_name);
-  const sharedRoot = defaultSharedMem0Root();
+  const sharedRoot = meta?.shared_provider_root || defaultSharedMem0Root(flags);
   const pathInferredProviderScope = inferMem0ProviderScope(context, vectorConfig.path, sharedRoot);
   const metadataProviderScope = meta?.provider_scope || null;
   const providerScope = pathInferredProviderScope || metadataProviderScope;
@@ -1352,7 +1352,7 @@ function writeMem0EmbeddingConfig(context, manifest, spec, flags = {}) {
 
   writeJsonAtomic(configPath, nextConfig);
   const meta = {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     provider_id: manifest.id,
     generated_at: nowIso(),
     generated_by: getAgentId(),
@@ -1417,14 +1417,14 @@ function writeMem0EmbeddingConfig(context, manifest, spec, flags = {}) {
   };
 }
 
-function ensureMem0RepoConfig(context, manifest) {
+function ensureMem0RepoConfig(context, manifest, flags = {}) {
   const dir = providerStateDir(context, manifest);
   const configPath = mem0ConfigPath(context, manifest);
   const metaPath = mem0ConfigMetaPath(context, manifest);
   ensureDir(dir);
 
   const existing = safeReadJson(configPath, null);
-  const storage = mem0StoragePlan(context, manifest, {}, existing);
+  const storage = mem0StoragePlan(context, manifest, flags, existing);
   ensureDir(storage.data_dir);
   ensureDir(storage.qdrant_path);
   const existingVectorConfig = existing?.vector_store?.config || {};
@@ -1460,7 +1460,7 @@ function ensureMem0RepoConfig(context, manifest) {
   }
   writeJsonAtomic(configPath, nextConfig);
   writeJsonAtomic(metaPath, {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     provider_id: manifest.id,
     generated_at: nowIso(),
     config_path: configPath,
@@ -1891,10 +1891,10 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     recordInstall(context, manifest.id, { ...flags, version, yesIReviewedLicense: true }, options);
     receipt = safeReadJson(receiptFile, null);
     receiptAction = 'created';
-  } else if (receipt.schema_version !== '3.2.10') {
+  } else if (receipt.schema_version !== '3.2.11') {
     receipt = {
       ...receipt,
-      schema_version: '3.2.10',
+      schema_version: '3.2.11',
       migrated_at: nowIso(),
       migration_note: 'Mem0 install receipt schema migrated by setup; no install or network action was executed.'
     };
@@ -1905,7 +1905,7 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
   const configExists = fs.existsSync(mem0ConfigPath(context, manifest));
   if (!configExists) {
     const question = mem0EmbeddingProviderQuestion();
-    const status = statusProvider(context, manifest.id, { ...options, write: true });
+    const status = statusProvider(context, manifest.id, { ...options, ...flags, write: true });
     return {
       ok: true,
       action: 'setup',
@@ -1927,7 +1927,7 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
       status,
       runtime_available: false,
       package_installed: false,
-      agent_message: 'Mem0 setup requires an explicit embedding provider choice before live setup.',
+      agent_message: 'Mem0 is connected to .knowledge as advisory-only external memory',
       agent_facing: {
         text: [
           'Ask the user which Mem0 embedding backend to use before running live setup.',
@@ -1945,9 +1945,9 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
       trust_effect: 'advisory_only'
     };
   }
-  const config = ensureMem0RepoConfig(context, manifest);
+  const config = ensureMem0RepoConfig(context, manifest, flags);
   const liveHealth = flags.live ? runMem0LiveHealth(context, flags, config) : null;
-  const status = statusProvider(context, manifest.id, { ...options, write: true });
+  const status = statusProvider(context, manifest.id, { ...options, ...flags, write: true });
   const runtimeAvailable = Boolean(liveHealth?.status === 'available' || status.runtime_available);
   const recommendedInstall = firstRecommendedInstallCommand(liveHealth);
   const setupStatus = runtimeAvailable
@@ -1961,12 +1961,12 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
   const searchCommand = 'node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json';
   const recallCommand = 'node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json';
   const agentLines = [
-    'Mem0 Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦ Р В РЎвЂќ .knowledge Р В РЎвЂќР В Р’В°Р В РЎвЂќ advisory-only external memory.',
+    'Mem0 is connected to .knowledge as advisory-only external memory.',
     `Receipt: ${displayPath(context, receiptFile)}`,
-    'Live Р В РЎвЂўР В РЎвЂ”Р В Р’ВµР РЋР вЂљР В Р’В°Р РЋРІР‚В Р В РЎвЂР В РЎвЂ Р В Р вЂ¦Р В Р’Вµ Р В Р’В·Р В Р’В°Р В РЎвЂ”Р РЋРЎвЂњР РЋР С“Р В РЎвЂќР В Р’В°Р РЋР вЂ№Р РЋРІР‚С™Р РЋР С“Р РЋР РЏ Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂўР В РЎВР В Р’В°Р РЋРІР‚С™Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р В РЎвЂќР В РЎвЂ.',
-    `Р В РІР‚СњР В Р’В»Р РЋР РЏ Р В Р’В·Р В Р’В°Р В РЎвЂ”Р В РЎвЂР РЋР С“Р В РЎвЂ Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В РІвЂћвЂ“: ${addCommand}`,
-    `Р В РІР‚СњР В Р’В»Р РЋР РЏ Р В РЎвЂ”Р В РЎвЂўР В РЎвЂР РЋР С“Р В РЎвЂќР В Р’В° Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В РІвЂћвЂ“: ${searchCommand}`,
-    `Р В РІР‚СњР В Р’В»Р РЋР РЏ recall Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р РЋРЎвЂњР В РІвЂћвЂ“: ${recallCommand}`,
+    'Live operations do not run automatically.',
+    `To add useful memory: ${addCommand}`,
+    `To search memory: ${searchCommand}`,
+    `To recall memory: ${recallCommand}`,
     'Boundary: advisory-only.'
   ];
   if (recommendedInstall && !runtimeAvailable) agentLines.splice(3, 0, `Recommended install: ${recommendedInstall}`);
@@ -1992,7 +1992,7 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     package_installed: runtimeAvailable,
     recommended_command: recommendedInstall,
     next_commands: recommendedInstall && !runtimeAvailable ? [recommendedInstall] : [],
-    agent_message: 'Mem0 Р В РЎвЂ”Р В РЎвЂўР В РўвЂР В РЎвЂќР В Р’В»Р РЋР вЂ№Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦ Р В РЎвЂќ .knowledge Р В РЎвЂќР В Р’В°Р В РЎвЂќ advisory-only external memory',
+    agent_message: 'Mem0 is connected to .knowledge as advisory-only external memory',
     agent_facing: {
       text: agentLines.join('\n'),
       add_command: addCommand,
@@ -2012,7 +2012,7 @@ function uninstallProvider(context, providerId, flags = {}, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), {});
   const uninstall = {
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     provider_id: manifest.id,
     uninstalled_at: nowIso(),
     uninstall_mode: 'manual_receipt',
@@ -2087,7 +2087,7 @@ function listProviders(context, options = {}) {
   const manifests = loadProviderManifests(context, options);
   return {
     ok: true,
-    schema_version: '3.2.10',
+    schema_version: '3.2.11',
     generated_at: nowIso(),
     mode: context.mode,
     providers: manifests.map((manifest) => ({

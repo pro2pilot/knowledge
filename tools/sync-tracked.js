@@ -47,7 +47,12 @@ const paths = {
 };
 
 const WATCHED_ROOTS = ['.'];
-const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.knowledge', '.next', '.turbo', '.cache', '.qa-tmp', '.pytest_cache', '.mypy_cache', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes', 'pro2pilot-inspector', '.tmp'];
+const IGNORED_SEGMENTS = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.next', '.turbo', '.cache', '.qa-tmp', '.pytest_cache', '.mypy_cache', '__pycache__', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes', 'pro2pilot-inspector', '.tmp'];
+const IGNORED_SEGMENT_PATTERNS = [
+  /^\.knowledge[_-]backup(?:[_-].*)?$/i,
+  /^qa[_-]?runs?$/i,
+  /^_baseline(?:[_-].*)?$/i
+];
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs', '.java', '.kt', '.swift', '.rb', '.php', '.cs', '.sql', '.toml', '.yaml', '.yml', '.json', '.prisma']);
 
 function exists(filePath) { return fs.existsSync(filePath); }
@@ -108,6 +113,7 @@ function isIgnored(pathStr) {
   if (isKnowledgeSourceCheckoutPath(normalized)) return true;
   if (normalized.split('/').some((part) => part.startsWith('.tmp-'))) return true;
   const parts = normalized.split('/');
+  if (parts.some((part) => IGNORED_SEGMENT_PATTERNS.some((pattern) => pattern.test(part)))) return true;
   return IGNORED_SEGMENTS.some((segment) => parts.includes(segment));
 }
 function isDocPath(pathStr) {
@@ -253,6 +259,55 @@ function mainUnlocked() {
   freshness.artifact_dependencies = freshness.artifact_dependencies || {};
   fileCriticality.files = fileCriticality.files || [];
   fileCriticality.coverage_by_module = fileCriticality.coverage_by_module || {};
+  fileFacts.facts = fileFacts.facts || [];
+
+  const ignoredTrackedPaths = freshness.tracked_files
+    .map((entry) => entry.path)
+    .filter((entryPath) => isIgnored(entryPath));
+  const ignoredTrackedSet = new Set(ignoredTrackedPaths);
+  freshness.tracked_files = freshness.tracked_files.filter((entry) => !ignoredTrackedSet.has(entry.path));
+  fileCriticality.files = fileCriticality.files.filter((entry) => !isIgnored(entry.path));
+  fileFacts.facts = fileFacts.facts.filter((entry) => !isIgnored(entry.file));
+
+  const ignoredModules = (moduleRegistry.modules || []).filter((moduleInfo) =>
+    moduleInfo.module_id !== 'root' && isIgnored(moduleInfo.path || moduleInfo.module_id)
+  );
+  const ignoredModuleIds = new Set(ignoredModules.map((moduleInfo) => moduleInfo.module_id));
+  const ignoredModuleCards = new Set(ignoredModules.map((moduleInfo) => moduleInfo.card).filter(Boolean));
+  moduleRegistry.modules = (moduleRegistry.modules || []).filter((moduleInfo) => !ignoredModuleIds.has(moduleInfo.module_id));
+  const ignoredModuleCardsRemoved = [];
+  for (const card of ignoredModuleCards) {
+    const cardPath = resolveArtifactPath(card);
+    const modulesRoot = path.resolve(knowledgeRoot, 'modules') + path.sep;
+    if (!path.resolve(cardPath).startsWith(modulesRoot)) continue;
+    if (!isFile(cardPath)) continue;
+    fs.rmSync(cardPath, { force: true });
+    ignoredModuleCardsRemoved.push(card);
+  }
+  for (const moduleId of ignoredModuleIds) delete fileCriticality.coverage_by_module[moduleId];
+  for (const coverage of Object.values(fileCriticality.coverage_by_module)) {
+    for (const key of ['important_or_critical_files', 'tracked_in_freshness', 'referenced_by_module_card', 'covered_by_evidence', 'uncovered']) {
+      if (Array.isArray(coverage[key])) coverage[key] = coverage[key].filter((entryPath) => !isIgnored(entryPath));
+    }
+  }
+  for (const item of staleItems.items || []) {
+    const detectedPath = String(item.reason || '').match(/detected:\s+(.+)$/i)?.[1];
+    if (ignoredModuleCards.has(item.artifact) || (detectedPath && isIgnored(detectedPath))) {
+      item.status = 'resolved';
+      item.resolved_at = timestamp;
+      item.resolved_by = agentId;
+      item.resolution = 'Removed generated backup/QA/baseline path from active knowledge discovery.';
+    }
+  }
+  for (const item of repairQueue.queue || []) {
+    const detectedPath = String(item.subject || '').match(/\bfile\s+(.+)$/i)?.[1];
+    if ((item.affected_artifacts || []).some((artifact) => ignoredModuleCards.has(artifact)) || (detectedPath && isIgnored(detectedPath))) {
+      item.status = 'resolved';
+      item.resolved_at = timestamp;
+      item.resolved_by = agentId;
+      item.resolution = 'Removed generated backup/QA/baseline path from active knowledge discovery.';
+    }
+  }
 
   const touchedHint = parseTouchedHint();
   const candidateFiles = new Set(touchedHint);
@@ -423,9 +478,10 @@ function mainUnlocked() {
   automationStatus.automation_health = missingFiles.length > 0 ? 'degraded_missing_files' : (newFiles.some((file) => ['critical', 'important'].includes(file.classification)) ? 'degraded_new_uncovered_files' : 'healthy');
   automationStatus.watched_roots = WATCHED_ROOTS;
   automationStatus.ignored_segments = IGNORED_SEGMENTS;
+  automationStatus.ignored_segment_patterns = IGNORED_SEGMENT_PATTERNS.map((pattern) => pattern.source);
   automationStatus.trigger_history = limitArray([...(automationStatus.trigger_history || []), { timestamp, trigger, agent_id: agentId, changed_files: changedFiles, new_files: newFiles.map((file) => file.path) }], 200);
 
-  const syncEntry = { timestamp, action: 'sync_tracked_files', trigger, agent_id: agentId, full_scan: fullScan, changed_files: changedFiles, missing_files: missingFiles, new_files: newFiles.map((file) => ({ path: file.path, classification: file.classification, module_id: file.module_id })), impacted_artifacts: Array.from(touchedArtifacts), trust_report_refreshed: true };
+  const syncEntry = { timestamp, action: 'sync_tracked_files', trigger, agent_id: agentId, full_scan: fullScan, changed_files: changedFiles, missing_files: missingFiles, new_files: newFiles.map((file) => ({ path: file.path, classification: file.classification, module_id: file.module_id })), ignored_tracked_paths_removed: ignoredTrackedPaths, ignored_modules_removed: Array.from(ignoredModuleIds), ignored_module_cards_removed: ignoredModuleCardsRemoved, impacted_artifacts: Array.from(touchedArtifacts), trust_report_refreshed: true };
   syncLog.generated_at = timestamp;
   syncLog.entries = limitArray([...(syncLog.entries || []), syncEntry], 200);
 
@@ -433,6 +489,8 @@ function mainUnlocked() {
   updateActiveTasks(timestamp, note);
 
   writeJsonAtomic(paths.freshness, freshness);
+  writeJsonAtomic(paths.moduleRegistry, moduleRegistry);
+  writeJsonAtomic(paths.fileFacts, fileFacts);
   writeJsonAtomic(paths.fileCriticality, fileCriticality);
   writeJsonAtomic(paths.staleItems, staleItems);
   writeJsonAtomic(paths.repairQueue, repairQueue);
@@ -465,7 +523,7 @@ function mainUnlocked() {
   const eventDate = timestamp.slice(0, 10);
   appendNdjson(path.join(paths.eventLogDir, `${eventDate}.ndjson`), { type: 'sync', ...syncEntry, routing_bundle: routingBundleSummary });
 
-  return { trigger, agent_id: agentId, full_scan: fullScan, changed_files: changedFiles, missing_files: missingFiles, new_files: newFiles, trusted_modules: trustedModules, near_trusted_modules: nearTrustedModules, routing_trusted_modules: routingTrustedModules, advisory_only_modules: advisoryOnlyModules, suspect_modules: suspectModules, low_confidence_modules: lowModules, routing_bundle: routingBundleSummary };
+  return { status: automationStatus.routing_bundle_status === 'failed' ? 'failed' : 'ok', trigger, agent_id: agentId, full_scan: fullScan, changed_files: changedFiles, missing_files: missingFiles, new_files: newFiles, ignored_tracked_paths_removed: ignoredTrackedPaths, ignored_modules_removed: Array.from(ignoredModuleIds), ignored_module_cards_removed: ignoredModuleCardsRemoved, trusted_modules: trustedModules, near_trusted_modules: nearTrustedModules, routing_trusted_modules: routingTrustedModules, advisory_only_modules: advisoryOnlyModules, suspect_modules: suspectModules, low_confidence_modules: lowModules, routing_bundle: routingBundleSummary };
 }
 
 function main() {
@@ -475,7 +533,9 @@ function main() {
 
 if (require.main === module) {
   try {
-    console.log(JSON.stringify(main(), null, 2));
+    const result = main();
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== 'ok') process.exit(2);
   } catch (error) {
     console.error(error.stack || error.message);
     process.exit(1);

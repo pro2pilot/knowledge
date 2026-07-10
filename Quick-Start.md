@@ -200,7 +200,29 @@ node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply
 
 The updater creates a timestamped backup of the current `.knowledge/`, writes
 `.knowledge/maintenance/update_system_files_report.json`, then runs
-`install-check`, `doctor`, and `flow release --no-color`.
+`install-check`, `doctor`, and `flow release` with semantic JSON checks. It also
+compares every installed system file with the update source by SHA-256 and,
+after all semantic post-checks, proves that every pre-existing protected
+curated file is still present and unchanged. Newly bootstrapped files and the
+explicitly runtime-managed module registry/file-facts are reported separately.
+
+If an older installed artifact has not completed project initialization yet,
+the updater runs one non-interactive `flow import` before the final
+`flow release`. An initialized project uses `flow release` directly and is not
+blindly re-ingested.
+
+Backups live under `.knowledge/maintenance/install-backups/`, outside project
+source discovery. A successful update writes `backup-verification.json` with
+`safe_to_remove: true`. Keep any backup without that verdict. To remove only
+verified backups, with an explicit confirmation:
+
+```bash
+node .knowledge/tools/update-system-files.js --prune-verified-backups --yes --json
+```
+
+Legacy project-root directories such as `.knowledge_backup_<timestamp>` are
+ignored by discovery and reported by `doctor`; archive or remove them only
+after `--verify-upgrade --from <new-knowledge-root> --json` passes.
 
 Do not replace the whole `.knowledge/` folder unless the user explicitly asks
 for a reset.
@@ -306,7 +328,10 @@ node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --dry-r
 node .knowledge/tools/update-system-files.js --from <new-knowledge-root> --apply --yes
 ```
 
-The updater preserves curated project knowledge byte-for-byte, creates only missing migration defaults such as required `external_memory` policy files, regenerates runtime/status artifacts, and reports stale knowledge as repair work instead of silently deleting it.
+The updater preserves every pre-existing protected curated file through the
+final post-checks, creates only missing migration defaults such as required
+`external_memory` policy files, regenerates runtime/status artifacts, and
+reports additions or allowed runtime-managed registry changes separately.
 
 ## Official templates
 

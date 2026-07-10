@@ -6,6 +6,7 @@ const path = require('path');
 const { resolveKnowledgeContext, jsonContext, parseCliArgs } = require('./lib/path-context');
 const { readJson, writeJsonAtomic, ensureDir, getAgentId } = require('./lib/json-store');
 const { buildExternalMemoryReport } = require('./lib/memory-providers');
+const { systemVersion } = require('./lib/system-version');
 
 function nowIso() {
   return new Date().toISOString();
@@ -45,7 +46,7 @@ function buildSnapshot(context) {
   const stale = readStateJson(context, 'maintenance/stale_items.json', { items: [] });
   const critical = readStateJson(context, 'maps/file_criticality.json', { files: [] });
   const snapshot = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     kind: 'pro-inspector-snapshot',
     generated_at: nowIso(),
     generated_by: getAgentId(),

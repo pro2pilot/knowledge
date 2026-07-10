@@ -1,5 +1,5 @@
 {
-  "schema_version": "3.2.10",
+  "schema_version": "3.2.11",
   "system_paths": [
     ".gitattributes",
     ".gitignore",
@@ -61,6 +61,10 @@
     "contradictions.json",
     "project_index.json"
   ],
+  "curated_runtime_mutable_paths": [
+    "modules/module_registry.json",
+    "evidence/file_facts.json"
+  ],
   "runtime_regenerate_paths": [
     "freshness.json",
     "external_memory",
@@ -73,6 +77,9 @@
   "repair_default_paths": [
     "external_memory/registry.json",
     "external_memory/retrieval_policy.json"
+  ],
+  "system_remove_paths": [
+    ".release-notes/v3.3.0.md"
   ],
   "system_exclude_paths": [
     "benchmarks/results",

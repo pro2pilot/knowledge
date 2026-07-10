@@ -4,6 +4,7 @@
 const path = require('path');
 const { ensureDir, writeFileAtomic } = require('./lib/json-store');
 const { resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const outDir = path.join(context.stateRoot, 'maintenance', 'graphs');
@@ -105,7 +106,7 @@ function main() {
   };
   for (const [name, content] of Object.entries(graphs)) writeFileAtomic(path.join(outDir, name), content);
   const written = Object.keys(graphs).map((name) => context.mode === 'repo' ? `.knowledge/maintenance/graphs/${name}` : path.join(outDir, name));
-  const result = { schema_version: '3.2.4', mode: context.mode, written };
+  const result = { schema_version: systemVersion(), mode: context.mode, written };
   console.log(JSON.stringify(result, null, 2));
   return result;
 }

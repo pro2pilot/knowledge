@@ -12,6 +12,7 @@ const { readJson, ensureDir, writeJsonAtomic } = require('./lib/json-store');
 const { listActions, loadEntitlements } = require('./lib/action-registry');
 const { runAction, getRun } = require('./lib/action-runner');
 const { detectGitContext } = require('./lib/git-context');
+const { inspectSemanticJson } = require('./lib/semantic-json');
 const visualInspector = require('./build-visual-inspector');
 const checkUpdates = require('./check-updates');
 
@@ -35,7 +36,7 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -45,7 +46,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -54,7 +55,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -63,7 +64,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.10',
+  schema_version: '3.2.11',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -289,7 +290,7 @@ let server = null;
 let shutdownScheduled = false;
 
 function currentSystemVersion() {
-  return (safeJson('package.json', {}).version || '3.2.10').replace(/^v/i, '').trim();
+  return (safeJson('package.json', {}).version || '3.2.11').replace(/^v/i, '').trim();
 }
 
 function decorateUpdateStatus(status = {}, config = null, configError = null) {
@@ -483,12 +484,15 @@ function runTool(script, args, label) {
   });
   let json = null;
   try { json = JSON.parse((res.stdout || '').trim()); } catch {}
+  const semantic = json ? inspectSemanticJson(json) : { ok: false, errors: ['tool did not emit valid JSON'] };
+  const ok = res.status === 0 && semantic.ok;
   return {
     label,
     command: `node .knowledge/tools/${script}${args.length ? ' ' + args.join(' ') : ''}`,
     exit: res.status,
-    ok: res.status === 0,
+    ok,
     json,
+    semantic_errors: semantic.errors,
     stdout: (res.stdout || '').trim().slice(0, 12000),
     stderr: (res.stderr || '').trim().slice(0, 4000)
   };
@@ -647,7 +651,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.10',
+      version: safeJson('package.json', {}).version || '3.2.11',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,
