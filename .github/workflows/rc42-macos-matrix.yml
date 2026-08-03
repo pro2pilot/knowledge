@@ -43,7 +43,7 @@ jobs:
       - name: Verify replay manifest before test execution
         shell: bash
         run: |
-          node qa-runtime/replay/run-all.js > qa-results/replay-manifest.stdout.log 2> qa-results/replay-manifest.stderr.log
+          node qa-runtime/replay/run-all.js --candidate qa/rc42/knowledge-v3.3.0-step1-rc4-r42.zip > qa-results/replay-manifest.stdout.log 2> qa-results/replay-manifest.stderr.log
 
       - name: Run external shipped-self-tests
         id: self_tests
