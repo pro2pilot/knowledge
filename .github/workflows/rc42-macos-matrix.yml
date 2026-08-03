@@ -33,19 +33,24 @@ jobs:
           expected='ebdeebd5b67ca3ec4f61779e28fd3018e5eee697b00d1705d194b733b41259f0'
           actual="$(shasum -a 256 qa/rc42/knowledge-v3.3.0-step1-rc4-r42.zip | awk '{print $1}')"
           test "$actual" = "$expected"
+          test "$(shasum -a 256 qa/rc42/contained-locks-3.3.0-audit-rc42.zip | awk '{print $1}')" = '642e5c74d858e5de180162b3b460a494c186a01a2c1397244cdf93a141315916'
           CANDIDATE_SHA256="$actual" node -e "const fs=require('fs'); fs.writeFileSync('qa-results/environment.json', JSON.stringify({os:process.platform,arch:process.arch,node:process.version,candidate_sha256:process.env.CANDIDATE_SHA256},null,2)+'\\n')"
+
+      - name: Extract immutable external replay
+        shell: bash
+        run: unzip -q qa/rc42/contained-locks-3.3.0-audit-rc42.zip replay/* -d qa-runtime
 
       - name: Verify replay manifest before test execution
         shell: bash
         run: |
-          node qa/rc42/replay/run-all.js > qa-results/replay-manifest.stdout.log 2> qa-results/replay-manifest.stderr.log
+          node qa-runtime/replay/run-all.js > qa-results/replay-manifest.stdout.log 2> qa-results/replay-manifest.stderr.log
 
       - name: Run external shipped-self-tests
         id: self_tests
         continue-on-error: true
         shell: bash
         run: |
-          node qa/rc42/replay/tools/run-shipped-self-tests.js \
+          node qa-runtime/replay/tools/run-shipped-self-tests.js \
             --artifact qa/rc42/knowledge-v3.3.0-step1-rc4-r42.zip \
             --out qa-results/all-shipped-self-tests.json \
             > qa-results/shipped-self-tests.stdout.log \
