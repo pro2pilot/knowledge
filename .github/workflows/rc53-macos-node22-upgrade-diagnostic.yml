@@ -1,0 +1,69 @@
+name: RC53 macOS Node 22 upgrade diagnostic
+
+on:
+  push:
+    branches:
+      - agent/rc53-macos-upgrade-diagnostic
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: ''
+          package-manager-cache: false
+
+      - name: Verify immutable inputs and extract replay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = 'qa/rc53/knowledge-v3.3.0-step1-rc4-r53.zip'
+          $audit = 'qa/rc53/rc53-os-node-matrix-audit.zip'
+          $baseline = 'qa/rc53/knowledge-v3.2.11.zip'
+          if ((Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -ne '65a5e0bc60e8e588ddf3d4360dcb0505c63e47d19389ff323215e4f00d7a9049') { throw 'candidate SHA mismatch' }
+          if ((Get-FileHash $audit -Algorithm SHA256).Hash.ToLowerInvariant() -ne '40e87008730501cfe08a017abe07ba8c3fd2b9ca38484fc64b45ba64ed357529') { throw 'audit SHA mismatch' }
+          if ((Get-FileHash $baseline -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79') { throw 'baseline SHA mismatch' }
+          $work = Join-Path $env:RUNNER_TEMP 'rc53-macos-node22-diagnostic'
+          if (Test-Path $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          Expand-Archive -LiteralPath $audit -DestinationPath $work -Force
+          if (!(Test-Path (Join-Path $work 'replay/manifest.json'))) { throw 'audit replay manifest was not extracted' }
+
+      - name: Capture complete exact-upgrade verifier result
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'rc53-macos-node22-diagnostic'
+          $out = Join-Path $work 'cell'
+          $published = 'qa-results/macos-node22-diagnostic'
+          & node qa/rc53/run-macos-node22-upgrade-diagnostic.js `
+            --candidate (Resolve-Path 'qa/rc53/knowledge-v3.3.0-step1-rc4-r53.zip') `
+            --replay (Join-Path $work 'replay') `
+            --baseline (Resolve-Path 'qa/rc53/knowledge-v3.2.11.zip') `
+            --out $out
+          Copy-Item -LiteralPath $out -Destination $published -Recurse -Force
+
+      - name: Assert diagnostic evidence was captured
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = 'qa-results/macos-node22-diagnostic/upgrade-verify-raw.json'
+          if (!(Test-Path $raw)) { throw 'raw verifier capture missing' }
+          $body = Get-Content -Raw $raw | ConvertFrom-Json
+          if ($body.captured_verify_upgrade_invocations.Count -lt 1) { throw 'verify-upgrade was not observed' }
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc53-macos-node22-upgrade-diagnostic
+          path: qa-results/macos-node22-diagnostic/
+          if-no-files-found: error
