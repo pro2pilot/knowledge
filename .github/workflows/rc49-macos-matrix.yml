@@ -1,0 +1,78 @@
+name: RC49 macOS compatibility matrix
+
+on:
+  push:
+    branches:
+      - agent/rc49-macos-matrix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shipped-self-tests:
+    name: macOS / Node ${{ matrix.node }}
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ''
+          package-manager-cache: false
+
+      - name: Verify exact candidate and external harness
+        shell: bash
+        run: |
+          mkdir -p qa-results
+          candidate='qa/rc49/knowledge-v3.3.0-step1-rc4-r49.zip'
+          audit='qa/rc49/rc49-macos-harness-audit.zip'
+          expected_candidate='78f5476788c7b8d1a6339566617cf539d67a2b40f5d4fed8b0bbe5e88fdf9fdd'
+          expected_audit='4bc6d20619dd9b9332ad3da166b52691b32f389975e6a9dbcb23e99bccc307d9'
+          actual_candidate="$(shasum -a 256 "$candidate" | awk '{print $1}')"
+          actual_audit="$(shasum -a 256 "$audit" | awk '{print $1}')"
+          test "$actual_candidate" = "$expected_candidate"
+          test "$actual_audit" = "$expected_audit"
+          CANDIDATE_SHA256="$actual_candidate" AUDIT_SHA256="$actual_audit" node -e "const fs=require('fs'); fs.writeFileSync('qa-results/environment.json', JSON.stringify({os:process.platform,arch:process.arch,node:process.version,candidate_sha256:process.env.CANDIDATE_SHA256,audit_sha256:process.env.AUDIT_SHA256},null,2)+'\\n')"
+
+      - name: Extract immutable external replay
+        shell: bash
+        run: unzip -q qa/rc49/rc49-macos-harness-audit.zip replay/* -d qa-runtime
+
+      - name: Verify replay manifest before test execution
+        shell: bash
+        run: |
+          node qa-runtime/replay/run-all.js --candidate qa/rc49/knowledge-v3.3.0-step1-rc4-r49.zip \
+            > qa-results/replay-manifest.stdout.log \
+            2> qa-results/replay-manifest.stderr.log
+
+      - name: Run external shipped-self-tests
+        id: self_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          node qa-runtime/replay/tools/run-shipped-self-tests.js \
+            --artifact qa/rc49/knowledge-v3.3.0-step1-rc4-r49.zip \
+            --out qa-results/all-shipped-self-tests.json \
+            > qa-results/shipped-self-tests.stdout.log \
+            2> qa-results/shipped-self-tests.stderr.log
+
+      - name: Upload matrix evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc49-macos-node${{ matrix.node }}-evidence
+          path: qa-results/
+          if-no-files-found: error
+
+      - name: Enforce shipped-self-test verdict
+        if: always()
+        shell: bash
+        run: |
+          test -f qa-results/all-shipped-self-tests.json
+          node -e "const r=require('./qa-results/all-shipped-self-tests.json'); if(r.status!=='pass'||r.passed!==26||r.failed!==0) process.exit(1)"
