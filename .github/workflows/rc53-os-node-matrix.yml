@@ -1,0 +1,141 @@
+name: RC53 OS and Node compatibility matrix
+
+on:
+  push:
+    branches:
+      - agent/rc53-os-node-matrix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: ${{ matrix.slug }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slug: windows-node18
+            os: windows
+            short: w18
+            runner: windows-2022
+            node: 18
+          - slug: windows-node20
+            os: windows
+            short: w20
+            runner: windows-2022
+            node: 20
+          - slug: windows-node22
+            os: windows
+            short: w22
+            runner: windows-2022
+            node: 22
+          - slug: ubuntu-node18
+            os: ubuntu
+            runner: ubuntu-24.04
+            node: 18
+          - slug: ubuntu-node20
+            os: ubuntu
+            runner: ubuntu-24.04
+            node: 20
+          - slug: ubuntu-node22
+            os: ubuntu
+            runner: ubuntu-24.04
+            node: 22
+          - slug: macos-node18
+            os: macos
+            runner: macos-15-intel
+            node: 18
+          - slug: macos-node20
+            os: macos
+            runner: macos-15-intel
+            node: 20
+          - slug: macos-node22
+            os: macos
+            runner: macos-15-intel
+            node: 22
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ''
+          package-manager-cache: false
+
+      - name: Verify immutable inputs and extract full replay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = 'qa/rc53/knowledge-v3.3.0-step1-rc4-r53.zip'
+          $audit = 'qa/rc53/rc53-os-node-matrix-audit.zip'
+          $baseline = 'qa/rc53/knowledge-v3.2.11.zip'
+          $expectedCandidate = '65a5e0bc60e8e588ddf3d4360dcb0505c63e47d19389ff323215e4f00d7a9049'
+          $expectedAudit = '40e87008730501cfe08a017abe07ba8c3fd2b9ca38484fc64b45ba64ed357529'
+          $expectedBaseline = 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79'
+          if ((Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedCandidate) { throw 'candidate SHA mismatch' }
+          if ((Get-FileHash $audit -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedAudit) { throw 'audit SHA mismatch' }
+          if ((Get-FileHash $baseline -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedBaseline) { throw 'baseline SHA mismatch' }
+          if ('${{ matrix.os }}' -eq 'windows') {
+            $work = Join-Path 'C:\km' '${{ matrix.short }}'
+          } else {
+            $work = Join-Path $env:RUNNER_TEMP "rc53-${{ matrix.slug }}"
+          }
+          if (Test-Path $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          Expand-Archive -LiteralPath $audit -DestinationPath $work -Force
+          if (!(Test-Path (Join-Path $work 'replay/manifest.json'))) { throw 'audit replay manifest was not extracted' }
+
+      - name: Run external matrix cell
+        id: cell
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ matrix.os }}' -eq 'windows') {
+            $work = Join-Path 'C:\km' '${{ matrix.short }}'
+            $env:TEMP = $work
+            $env:TMP = $work
+          } else {
+            $work = Join-Path $env:RUNNER_TEMP "rc53-${{ matrix.slug }}"
+          }
+          $out = Join-Path $work 'cell'
+          $published = Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}"
+          & node qa/rc53/run-matrix-cell.js `
+            --candidate (Resolve-Path 'qa/rc53/knowledge-v3.3.0-step1-rc4-r53.zip') `
+            --audit (Resolve-Path 'qa/rc53/rc53-os-node-matrix-audit.zip') `
+            --replay (Join-Path $work 'replay') `
+            --baseline (Resolve-Path 'qa/rc53/knowledge-v3.2.11.zip') `
+            --out $out `
+            --os '${{ matrix.os }}' `
+            --node-major '${{ matrix.node }}' `
+            --upgrade='${{ matrix.node == 22 }}' `
+            --expected-candidate '65a5e0bc60e8e588ddf3d4360dcb0505c63e47d19389ff323215e4f00d7a9049' `
+            --expected-audit '40e87008730501cfe08a017abe07ba8c3fd2b9ca38484fc64b45ba64ed357529' `
+            --expected-baseline 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79' `
+            --source-commit 'f3e921b7828760a281458b7e2a39efbd03459ee2'
+          $exitCode = $LASTEXITCODE
+          if (Test-Path $out) { Copy-Item -LiteralPath $out -Destination $published -Recurse -Force }
+          exit $exitCode
+
+      - name: Upload per-cell evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc53-${{ matrix.slug }}
+          path: qa-results/${{ matrix.slug }}/
+          if-no-files-found: error
+
+      - name: Enforce cell verdict
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = 'qa-results/${{ matrix.slug }}/result.json'
+          if (!(Test-Path $result)) { throw 'cell result.json missing' }
+          $body = Get-Content -Raw $result | ConvertFrom-Json
+          if ($body.status -ne 'pass') { throw "cell failed: $($body.error.message)" }
+          $tests = Get-Content -Raw 'qa-results/${{ matrix.slug }}/self-tests.json' | ConvertFrom-Json
+          if ($tests.status -ne 'pass' -or $tests.passed -ne 26 -or $tests.failed -ne 0) { throw 'shipped self-tests are not 26/26' }
