@@ -1,0 +1,91 @@
+name: RC52 macOS preflight
+
+on:
+  push:
+    branches:
+      - agent/rc52-macos-preflight
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-replay:
+    name: macOS / Node ${{ matrix.node }}
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ''
+          package-manager-cache: false
+
+      - name: Verify immutable inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-results
+          candidate='qa/rc52-preflight/knowledge-v3.3.0-step1-rc4-r52.zip'
+          audit='qa/rc52-preflight/rc52-macos-preflight-audit.zip'
+          expected_candidate='d42b4b0122566423c4a4d2c987bdd5744c59b4c2debcff5333a52204c539c037'
+          expected_audit='aab63d358a83a7c01db22731ec94bd25f0ddf8e00df8ab4eb4b567daf33bd0c4'
+          actual_candidate="$(shasum -a 256 "$candidate" | awk '{print $1}')"
+          actual_audit="$(shasum -a 256 "$audit" | awk '{print $1}')"
+          test "$actual_candidate" = "$expected_candidate"
+          test "$actual_audit" = "$expected_audit"
+          CANDIDATE_SHA256="$actual_candidate" AUDIT_SHA256="$actual_audit" node -e "const fs=require('fs'); fs.writeFileSync('qa-results/environment.json', JSON.stringify({os:process.platform,arch:process.arch,node:process.version,candidate_sha256:process.env.CANDIDATE_SHA256,audit_sha256:process.env.AUDIT_SHA256},null,2)+'\\n')"
+
+      - name: Extract external replay into a short independent directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/rc52-macos-preflight-${{ matrix.node }}"
+          mkdir -p "$work/outside"
+          unzip -q qa/rc52-preflight/rc52-macos-preflight-audit.zip 'replay/*' -d "$work"
+
+      - name: Verify nested replay manifest before tools run
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/rc52-macos-preflight-${{ matrix.node }}"
+          (
+            cd "$work/outside"
+            env -u NODE_PATH -u KNOWLEDGE_ROOT -u KNOWLEDGE_SYSTEM_ROOT -u KNOWLEDGE_TARGET_ROOT -u KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT -u KNOWLEDGE_STATE_ROOT -u KNOWLEDGE_TEAM_ROOT -u KNOWLEDGE_WORKSPACE_ID -u KNOWLEDGE_REPO_ID -u KNOWLEDGE_SOURCE_ROOT \
+              node "$work/replay/run-all.js" --candidate "$GITHUB_WORKSPACE/qa/rc52-preflight/knowledge-v3.3.0-step1-rc4-r52.zip"
+          ) > qa-results/replay.stdout.log 2> qa-results/replay.stderr.log
+
+      - name: Run all shipped self-tests from external replay
+        id: self_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/rc52-macos-preflight-${{ matrix.node }}"
+          (
+            cd "$work/outside"
+            env -u NODE_PATH -u KNOWLEDGE_ROOT -u KNOWLEDGE_SYSTEM_ROOT -u KNOWLEDGE_TARGET_ROOT -u KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT -u KNOWLEDGE_STATE_ROOT -u KNOWLEDGE_TEAM_ROOT -u KNOWLEDGE_WORKSPACE_ID -u KNOWLEDGE_REPO_ID -u KNOWLEDGE_SOURCE_ROOT \
+              node "$work/replay/tools/run-shipped-self-tests.js" --artifact "$GITHUB_WORKSPACE/qa/rc52-preflight/knowledge-v3.3.0-step1-rc4-r52.zip" --out "$GITHUB_WORKSPACE/qa-results/all-shipped-self-tests.json"
+          ) > qa-results/shipped-self-tests.stdout.log 2> qa-results/shipped-self-tests.stderr.log
+
+      - name: Upload macOS preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc52-macos-node${{ matrix.node }}-preflight
+          path: qa-results/
+          if-no-files-found: error
+
+      - name: Enforce external replay and shipped-self-test verdict
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s qa-results/replay.stdout.log
+          test -f qa-results/all-shipped-self-tests.json
+          node -e "const r=require('./qa-results/all-shipped-self-tests.json'); if(r.status!=='pass'||r.passed!==26||r.failed!==0) process.exit(1)"
