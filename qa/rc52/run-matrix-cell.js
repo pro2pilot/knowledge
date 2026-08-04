@@ -108,6 +108,59 @@ function run(id, executable, args, options = {}) {
   return { ...item, stdout: result.stdout || '', stderr: result.stderr || '' };
 }
 
+// A conformance failure can include every individual assertion and legitimately
+// exceed the small pipe buffer observed on macOS hosted runners. Stream it to
+// the evidence file so diagnostics are complete and are never mistaken for a
+// candidate failure caused by a truncated harness capture.
+function runStreaming(id, executable, args, options = {}) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const stdoutPath = path.join(out, 'stdout', `${id}.log`);
+    const stderrPath = path.join(out, 'stderr', `${id}.log`);
+    const stdout = fs.createWriteStream(stdoutPath, { encoding: 'utf8' });
+    const stderr = fs.createWriteStream(stderrPath, { encoding: 'utf8' });
+    let spawnError = null;
+    let timedOut = false;
+    const child = spawn(executable, args, {
+      cwd: options.cwd || path.dirname(out),
+      env: options.env || cleanEnv(),
+      windowsHide: true
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, options.timeout || 300000);
+    child.once('error', (error) => { spawnError = error; });
+    child.stdout.pipe(stdout);
+    child.stderr.pipe(stderr);
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      if (!stdout.writableEnded) stdout.end();
+      if (!stderr.writableEnded) stderr.end();
+      const finish = (stream) => stream.writableFinished ? Promise.resolve() : new Promise((done) => stream.once('finish', done));
+      Promise.all([
+        finish(stdout),
+        finish(stderr)
+      ]).then(() => {
+        const item = {
+          id,
+          command: [executable, ...args],
+          cwd: portable(options.cwd || path.dirname(out)),
+          exit_code: code,
+          signal: signal || null,
+          duration_ms: Date.now() - started,
+          stdout: portable(path.relative(out, stdoutPath)),
+          stderr: portable(path.relative(out, stderrPath)),
+          spawn_error: spawnError ? { code: spawnError.code || null, message: spawnError.message } : (timedOut ? { code: 'ETIMEDOUT', message: `${id} exceeded its timeout` } : null),
+          status: code === 0 && !spawnError && !timedOut ? 'pass' : 'fail'
+        };
+        commands.push(item);
+        resolve({ ...item, stdout_path: stdoutPath, stderr_path: stderrPath });
+      });
+    });
+  });
+}
+
 function checkSyntax(knowledgeRoot) {
   const files = walk(knowledgeRoot, (file) => file.endsWith('.js'));
   const failures = [];
@@ -257,9 +310,9 @@ async function main() {
   inspectLocks(fixture);
   let upgrade = { status: 'not_run_by_scope', reason: 'exact upgrade runs on Node 22 once per OS', baseline_sha256: baseline ? sha256(baseline) : null };
   if (upgradeEnabled) {
-    const result = run('exact-upgrade', process.execPath, [path.join(replay, 'tools', 'conformance-install-smoke.js'), candidate, '--previous-artifact', baseline, '--json', '--keep-failed'], { cwd: externalCwd, timeout: 600000 });
-    upgrade = parseJson(result.stdout, 'exact-upgrade');
-    if (upgrade.status !== 'pass') throw new Error('exact upgrade report is not pass');
+    const result = await runStreaming('exact-upgrade', process.execPath, [path.join(replay, 'tools', 'conformance-install-smoke.js'), candidate, '--previous-artifact', baseline, '--json', '--keep-failed'], { cwd: externalCwd, timeout: 600000 });
+    upgrade = parseJson(fs.readFileSync(result.stdout_path, 'utf8'), 'exact-upgrade');
+    if (result.status !== 'pass' || upgrade.status !== 'pass') throw new Error(`exact upgrade report is not pass (${upgrade.status || 'unreadable'})`);
   }
   write(path.join(out, 'upgrade-report.json'), upgrade);
   const workflow = { status: 'pass', flow_import: parseJson(flowImport.stdout, 'flow-import'), flow_release: parseJson(flowRelease.stdout, 'flow-release'), doctor: parseJson(doctor.stdout, 'doctor'), inspector_build: inspectorBuild.status, task_routing: parseJson(routing.stdout, 'task-routing'), field_report: parseJson(field.stdout, 'field-report-start') };
