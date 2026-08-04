@@ -126,6 +126,7 @@ jobs:
         with:
           name: rc54-${{ matrix.slug }}
           path: qa-results/${{ matrix.slug }}/
+          include-hidden-files: true
           if-no-files-found: error
 
       - name: Enforce cell verdict
