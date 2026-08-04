@@ -33,8 +33,8 @@ jobs:
           mkdir -p qa-results
           candidate='qa/rc52-preflight/knowledge-v3.3.0-step1-rc4-r52.zip'
           audit='qa/rc52-preflight/rc52-macos-preflight-audit.zip'
-          expected_candidate='d42b4b0122566423c4a4d2c987bdd5744c59b4c2debcff5333a52204c539c037'
-          expected_audit='aab63d358a83a7c01db22731ec94bd25f0ddf8e00df8ab4eb4b567daf33bd0c4'
+          expected_candidate='dcf225daeb964b2b561f4dc0de9b11733a4c1c31af61ff8e423ddfe157ed093e'
+          expected_audit='08bfee691ebf44617310404bfc1388bbe2ff2ce6dc75c0739f7bacb5d45739d5'
           actual_candidate="$(shasum -a 256 "$candidate" | awk '{print $1}')"
           actual_audit="$(shasum -a 256 "$audit" | awk '{print $1}')"
           test "$actual_candidate" = "$expected_candidate"
