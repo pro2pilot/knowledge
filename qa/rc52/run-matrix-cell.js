@@ -82,6 +82,9 @@ function run(id, executable, args, options = {}) {
     env: options.env || cleanEnv(),
     encoding: 'utf8',
     timeout: options.timeout || 300000,
+    // conformance-install-smoke keeps per-step forensic tails. A macOS
+    // failure can legitimately exceed the small inherited capture limit.
+    maxBuffer: 4 * 1024 * 1024,
     windowsHide: true
   });
   const stdoutPath = path.join(out, 'stdout', `${id}.log`);
@@ -254,7 +257,7 @@ async function main() {
   inspectLocks(fixture);
   let upgrade = { status: 'not_run_by_scope', reason: 'exact upgrade runs on Node 22 once per OS', baseline_sha256: baseline ? sha256(baseline) : null };
   if (upgradeEnabled) {
-    const result = run('exact-upgrade', process.execPath, [path.join(replay, 'tools', 'conformance-install-smoke.js'), candidate, '--previous-artifact', baseline, '--json'], { cwd: externalCwd, timeout: 600000 });
+    const result = run('exact-upgrade', process.execPath, [path.join(replay, 'tools', 'conformance-install-smoke.js'), candidate, '--previous-artifact', baseline, '--json', '--keep-failed'], { cwd: externalCwd, timeout: 600000 });
     upgrade = parseJson(result.stdout, 'exact-upgrade');
     if (upgrade.status !== 'pass') throw new Error('exact upgrade report is not pass');
   }

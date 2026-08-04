@@ -19,14 +19,17 @@ jobs:
         include:
           - slug: windows-node18
             os: windows
+            short: w18
             runner: windows-2022
             node: 18
           - slug: windows-node20
             os: windows
+            short: w20
             runner: windows-2022
             node: 20
           - slug: windows-node22
             os: windows
+            short: w22
             runner: windows-2022
             node: 22
           - slug: ubuntu-node18
@@ -75,7 +78,11 @@ jobs:
           if ((Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedCandidate) { throw 'candidate SHA mismatch' }
           if ((Get-FileHash $audit -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedAudit) { throw 'audit SHA mismatch' }
           if ((Get-FileHash $baseline -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedBaseline) { throw 'baseline SHA mismatch' }
-          $work = Join-Path $env:RUNNER_TEMP "rc52-${{ matrix.slug }}"
+          if ('${{ matrix.os }}' -eq 'windows') {
+            $work = Join-Path 'C:\km' '${{ matrix.short }}'
+          } else {
+            $work = Join-Path $env:RUNNER_TEMP "rc52-${{ matrix.slug }}"
+          }
           if (Test-Path $work) { Remove-Item -LiteralPath $work -Recurse -Force }
           New-Item -ItemType Directory -Path $work -Force | Out-Null
           Expand-Archive -LiteralPath $audit -DestinationPath $work -Force
@@ -87,9 +94,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $work = Join-Path $env:RUNNER_TEMP "rc52-${{ matrix.slug }}"
-          $out = Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}"
-          node qa/rc52/run-matrix-cell.js `
+          if ('${{ matrix.os }}' -eq 'windows') {
+            $work = Join-Path 'C:\km' '${{ matrix.short }}'
+            $env:TEMP = $work
+            $env:TMP = $work
+          } else {
+            $work = Join-Path $env:RUNNER_TEMP "rc52-${{ matrix.slug }}"
+          }
+          $out = Join-Path $work 'cell'
+          $published = Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}"
+          & node qa/rc52/run-matrix-cell.js `
             --candidate (Resolve-Path 'qa/rc52/knowledge-v3.3.0-step1-rc4-r52.zip') `
             --audit (Resolve-Path 'qa/rc52/rc52-os-node-matrix-audit.zip') `
             --replay (Join-Path $work 'replay') `
@@ -102,6 +116,9 @@ jobs:
             --expected-audit '816fe5c48d9a994b09eae225eb9911ca7982fae9a29b4bce83ec377f020fc248' `
             --expected-baseline 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79' `
             --source-commit 'd6d600f394e49e3560c259fa5e68b768270125d9'
+          $exitCode = $LASTEXITCODE
+          if (Test-Path $out) { Copy-Item -LiteralPath $out -Destination $published -Recurse -Force }
+          exit $exitCode
 
       - name: Upload per-cell evidence
         if: always()
