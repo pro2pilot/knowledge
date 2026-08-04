@@ -135,8 +135,8 @@ function runStreaming(id, executable, args, options = {}) {
     child.stderr.pipe(stderr);
     child.once('close', (code, signal) => {
       clearTimeout(timer);
-      if (!stdout.writableEnded) stdout.end();
-      if (!stderr.writableEnded) stderr.end();
+      // pipe() owns stream termination. Calling end() here can cut off the
+      // final buffered 64 KiB chunk after the child has closed its descriptor.
       const finish = (stream) => stream.writableFinished ? Promise.resolve() : new Promise((done) => stream.once('finish', done));
       Promise.all([
         finish(stdout),
