@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.local/schemas/knowledge/memory-provider.schema.json",
+  "title": ".knowledge memory provider manifest",
+  "type": "object",
+  "required": ["id", "display_name", "type", "license", "source", "install", "data", "trust_policy"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string" },
+    "display_name": { "type": "string" },
+    "type": { "enum": ["local", "cloud", "managed", "self_hosted", "optional", "legacy"] },
+    "recommended": { "type": "boolean" },
+    "recommended_for": { "type": "array", "items": { "type": "string" } },
+    "license": {
+      "type": "object",
+      "required": ["spdx", "url", "requires_notice"],
+      "properties": {
+        "spdx": { "type": "string" },
+        "url": { "type": "string" },
+        "requires_notice": { "type": "boolean" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["homepage", "repository", "package", "version_pin"],
+      "properties": {
+        "homepage": { "type": "string" },
+        "repository": { "type": "string" },
+        "package": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "version_pin": { "type": ["string", "null"] },
+        "verified_at": { "type": "string" }
+      }
+    },
+    "install": {
+      "type": "object",
+      "required": ["mode", "commands", "requires_network", "requires_user_confirmation"],
+      "properties": {
+        "mode": { "enum": ["manual", "script", "docker", "package"] },
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "requires_network": { "type": "boolean" },
+        "requires_user_confirmation": { "type": "boolean" }
+      }
+    },
+    "data": {
+      "type": "object",
+      "required": ["default_path", "stores_user_data", "scope"],
+      "properties": {
+        "default_path": { "type": "string" },
+        "state_dir_name": { "type": "string" },
+        "stores_user_data": { "type": "boolean" },
+        "scope": { "enum": ["repo", "workspace", "team", "org"] }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "required": ["contract", "tool", "default_mode", "operations", "live_requires_explicit_consent"],
+      "properties": {
+        "contract": { "type": "string" },
+        "tool": { "type": "string" },
+        "default_mode": { "type": "string" },
+        "supported_modes": { "type": "array", "items": { "type": "string" } },
+        "operations": { "type": "array", "items": { "type": "string" } },
+        "live_requires_explicit_consent": { "type": "boolean" },
+        "status_report_makes_network_calls": { "const": false },
+        "output_redacts_memory_text_by_default": { "type": "boolean" },
+        "output_redacts_secrets": { "type": "boolean" }
+      }
+    },
+    "trust_policy": {
+      "type": "object",
+      "required": ["source_of_truth", "trust_effect", "can_raise_trust", "can_overwrite_curated_knowledge"],
+      "properties": {
+        "source_of_truth": { "const": false },
+        "trust_effect": { "const": "advisory_only" },
+        "can_raise_trust": { "const": false },
+        "can_overwrite_curated_knowledge": { "const": false }
+      }
+    }
+  }
+}

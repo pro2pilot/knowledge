@@ -1,0 +1,19 @@
+name: Knowledge PR Summary
+on:
+  pull_request:
+jobs:
+  knowledge-pr-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build PR summary
+        run: |
+          node .knowledge/tools/flow.js release
+      - name: Upload PR summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-pr-summary
+          path: .knowledge/maintenance/pr_summary.md

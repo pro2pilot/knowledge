@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.local/schemas/knowledge/external-memory-report.schema.json",
+  "title": ".knowledge external memory status report",
+  "type": "object",
+  "required": ["providers", "recommended_provider", "legacy_providers_detected", "source_of_truth_policy", "warnings"],
+  "additionalProperties": true,
+  "properties": {
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["provider_id", "provider_name", "status", "scope", "source_of_truth", "trust_effect", "warnings", "errors"],
+        "properties": {
+          "provider_id": { "type": "string" },
+          "provider_name": { "type": "string" },
+          "status": { "enum": ["not_configured", "available", "installed", "enabled", "disabled", "error", "legacy"] },
+          "scope": { "enum": ["repo", "workspace", "team", "org"] },
+          "data_path": { "type": ["string", "null"] },
+          "license_spdx": { "type": ["string", "null"] },
+          "version": { "type": ["string", "null"] },
+          "last_sync": { "type": ["string", "null"] },
+          "records_count": { "type": "number" },
+          "last_retrieval_count": { "type": "number" },
+          "source_of_truth": { "const": false },
+          "trust_effect": { "const": "advisory_only" },
+          "warnings": { "type": "array", "items": { "type": "string" } },
+          "errors": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "recommended_provider": { "const": "mem0-oss" },
+    "legacy_providers_detected": { "type": "array" },
+    "source_of_truth_policy": {
+      "type": "object",
+      "properties": {
+        "external_memory_source_of_truth": { "const": false },
+        "external_memory_can_raise_trust": { "const": false },
+        "external_memory_can_overwrite_curated_knowledge": { "const": false }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

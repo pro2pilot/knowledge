@@ -1,0 +1,38 @@
+{
+  "schema_version": "3.2.4",
+  "id": "node-monorepo",
+  "name": "Node Monorepo",
+  "description": "Workspace packages, app/service boundaries, shared libraries, build graph, and package-level trust for Node monorepos.",
+  "keywords": [
+    "node",
+    "typescript",
+    "monorepo",
+    "pnpm",
+    "turbo",
+    "workspace"
+  ],
+  "suggested_modules": [
+    "root",
+    "apps",
+    "packages",
+    "services",
+    "shared",
+    "tooling"
+  ],
+  "critical_paths": [
+    "workspace dependency graph",
+    "shared package public APIs",
+    "build/test pipeline",
+    "environment configuration",
+    "package publish boundaries"
+  ],
+  "always_recheck": [
+    "workspace config",
+    "shared APIs",
+    "build scripts",
+    "package manifests"
+  ],
+  "wiki_pages": {
+    "wiki/architecture/node-monorepo-map.md": "# Node Monorepo Map\n\nStatus: advisory template seed. This page is a scaffold, not a verified project fact. Verify against current code and tests before raising trust.\n\nMap apps, packages, services, shared libraries, and build dependencies.\n"
+  }
+}

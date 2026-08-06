@@ -1,0 +1,24 @@
+name: Knowledge Health
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+jobs:
+  knowledge-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run knowledge doctor
+        run: |
+          node .knowledge/tools/flow.js doctor
+      - name: Upload knowledge reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-health
+          path: |
+            .knowledge/maintenance/quality_report.json
+            .knowledge/maintenance/routing_bundle.json
+            .knowledge/maintenance/wiki_lint_report.json
