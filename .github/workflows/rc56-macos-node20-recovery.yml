@@ -1,6 +1,9 @@
 name: RC56 macOS Node 20 recovery
 
 on:
+  push:
+    branches:
+      - agent/rc56-os-node-matrix
   workflow_dispatch:
 
 permissions:
