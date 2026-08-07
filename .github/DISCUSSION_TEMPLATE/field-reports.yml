@@ -24,6 +24,18 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: report-relationship
+    attributes:
+      label: "What type of report is this?"
+      description: "Choose the relationship that should be disclosed publicly."
+      options:
+        - "First-party maintainer dogfooding"
+        - "Independent user report"
+        - "Internal QA report"
+        - "Controlled comparison"
+    validations:
+      required: true
+  - type: dropdown
     id: keep-using
     attributes:
       label: "Would you keep using .knowledge in this repository?"
