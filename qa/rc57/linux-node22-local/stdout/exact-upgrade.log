@@ -1,0 +1,523 @@
+{
+  "schema_version": "conformance-install-smoke.v1",
+  "status": "pass",
+  "artifact": "knowledge-v3.3.0-step1-rc4-r57.zip",
+  "root": "<clean-install-smoke>",
+  "extract": {
+    "entries": 327,
+    "total_uncompressed_bytes": 2889624
+  },
+  "upgrade": {
+    "previous_version": "3.2.11",
+    "previous_artifact_sha256": "b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79",
+    "candidate_version": "3.3.0",
+    "canaries_checked": 2,
+    "canary_hashes_unchanged": true,
+    "required_runtime_files_checked": 4
+  },
+  "steps": [
+    {
+      "id": "repair-artifact-boundary",
+      "command": "<internal assertion>",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "required_entries_checked": 9,
+      "forbidden_prefixes_checked": 2,
+      "missing": [],
+      "leaked": []
+    },
+    {
+      "id": "git-init",
+      "command": "git init",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 5,
+      "stdout_tail": "Initialized empty Git repository in <local-path>\n",
+      "stderr_tail": "hint: Using 'master' as the name for the initial branch. This default branch name\nhint: is subject to change. To configure the initial branch name to use in all\nhint: of your new repositories, which will suppress this warning, call:\nhint:\nhint: \tgit config --global init.defaultBranch <name>\nhint:\nhint: Names commonly chosen instead of 'master' are 'main', 'trunk' and\nhint: 'development'. The just-created branch can be renamed via this command:\nhint:\nhint: \tgit branch -m <name>\n",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "Initialized empty Git repository in <local-path>\n",
+          "stderr_tail": "hint: Using 'master' as the name for the initial branch. This default branch name\nhint: is subject to change. To configure the initial branch name to use in all\nhint: of your new repositories, which will suppress this warning, call:\nhint:\nhint: \tgit config --global init.defaultBranch <name>\nhint:\nhint: Names commonly chosen instead of 'master' are 'main', 'trunk' and\nhint: 'development'. The just-created branch can be renamed via this command:\nhint:\nhint: \tgit branch -m <name>\n"
+        }
+      ]
+    },
+    {
+      "id": "git-config-email",
+      "command": "git config user.email knowledge-smoke@example.invalid",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 3,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "git-config-name",
+      "command": "git config user.name Knowledge Smoke",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 2,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "git-add-fixture",
+      "command": "git add app.js .knowledge",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 60,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "git-commit-fixture",
+      "command": "git commit -m clean install smoke fixture",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 50,
+      "stdout_tail": "s/self-test-external-memory.js\n create mode 100644 .knowledge/tools/self-test-field-report.js\n create mode 100644 .knowledge/tools/self-test-flow-finalization.js\n create mode 100644 .knowledge/tools/self-test-handoff-current-state.js\n create mode 100644 .knowledge/tools/self-test-inspector-actions.js\n create mode 100644 .knowledge/tools/self-test-inspector-launcher.js\n create mode 100644 .knowledge/tools/self-test-inspector-next-actions.js\n create mode 100644 .knowledge/tools/self-test-inspector-ui.js\n create mode 100644 .knowledge/tools/self-test-json-store-windows-writes.js\n create mode 100644 .knowledge/tools/self-test-pr-impact.js\n create mode 100644 .knowledge/tools/self-test-recertify-lifecycle.js\n create mode 100644 .knowledge/tools/self-test-repair-on-touch.js\n create mode 100644 .knowledge/tools/self-test-repair-session-isolation.js\n create mode 100644 .knowledge/tools/self-test-restore-trust.js\n create mode 100644 .knowledge/tools/self-test-safe-queue.js\n create mode 100644 .knowledge/tools/self-test-task-routing.js\n create mode 100644 .knowledge/tools/self-test-team-mode.js\n create mode 100644 .knowledge/tools/self-test-trust-transaction.js\n create mode 100644 .knowledge/tools/self-test-update-checks.js\n create mode 100644 .knowledge/tools/self-test-wiki-structural-status.js\n create mode 100644 .knowledge/tools/serve-inspector.js\n create mode 100644 .knowledge/tools/sync-tracked.js\n create mode 100644 .knowledge/tools/task-routing.js\n create mode 100644 .knowledge/tools/team-init.js\n create mode 100644 .knowledge/tools/team-pr-summary.js\n create mode 100644 .knowledge/tools/team-status.js\n create mode 100644 .knowledge/tools/update-system-files.js\n create mode 100644 .knowledge/tools/watch-maintenance.js\n create mode 100644 .knowledge/tools/watch-smoke.js\n create mode 100644 .knowledge/tools/workspace-register.js\n create mode 100644 .knowledge/tools/workspace-unregister.js\n create mode 100644 .knowledge/tools/worktree-status.js\n create mode 100644 app.js\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "s/self-test-external-memory.js\n create mode 100644 .knowledge/tools/self-test-field-report.js\n create mode 100644 .knowledge/tools/self-test-flow-finalization.js\n create mode 100644 .knowledge/tools/self-test-handoff-current-state.js\n create mode 100644 .knowledge/tools/self-test-inspector-actions.js\n create mode 100644 .knowledge/tools/self-test-inspector-launcher.js\n create mode 100644 .knowledge/tools/self-test-inspector-next-actions.js\n create mode 100644 .knowledge/tools/self-test-inspector-ui.js\n create mode 100644 .knowledge/tools/self-test-json-store-windows-writes.js\n create mode 100644 .knowledge/tools/self-test-pr-impact.js\n create mode 100644 .knowledge/tools/self-test-recertify-lifecycle.js\n create mode 100644 .knowledge/tools/self-test-repair-on-touch.js\n create mode 100644 .knowledge/tools/self-test-repair-session-isolation.js\n create mode 100644 .knowledge/tools/self-test-restore-trust.js\n create mode 100644 .knowledge/tools/self-test-safe-queue.js\n create mode 100644 .knowledge/tools/self-test-task-routing.js\n create mode 100644 .knowledge/tools/self-test-team-mode.js\n create mode 100644 .knowledge/tools/self-test-trust-transaction.js\n create mode 100644 .knowledge/tools/self-test-update-checks.js\n create mode 100644 .knowledge/tools/self-test-wiki-structural-status.js\n create mode 100644 .knowledge/tools/serve-inspector.js\n create mode 100644 .knowledge/tools/sync-tracked.js\n create mode 100644 .knowledge/tools/task-routing.js\n create mode 100644 .knowledge/tools/team-init.js\n create mode 100644 .knowledge/tools/team-pr-summary.js\n create mode 100644 .knowledge/tools/team-status.js\n create mode 100644 .knowledge/tools/update-system-files.js\n create mode 100644 .knowledge/tools/watch-maintenance.js\n create mode 100644 .knowledge/tools/watch-smoke.js\n create mode 100644 .knowledge/tools/workspace-register.js\n create mode 100644 .knowledge/tools/workspace-unregister.js\n create mode 100644 .knowledge/tools/worktree-status.js\n create mode 100644 app.js\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "install-check",
+      "command": "node .knowledge/tools/install-check.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 99,
+      "stdout_tail": "     \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"9f96c7dd3b1b093a3cefc5d7021b0148b2026c2d3a15b2af23f62913335e7ae3\"\n      },\n      {\n        \"lock_name\": \"wiki-lint\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"9f96c7dd3b1b093a3cefc5d7021b0148b2026c2d3a15b2af23f62913335e7ae3\"\n      }\n    ]\n  },\n  \"issues\": [\n    {\n      \"severity\": \"info\",\n      \"code\": \"fresh_runtime_missing\",\n      \"message\": \"maintenance/routing_bundle.json is absent. This is normal before first flow import.\",\n      \"artifact\": \".knowledge/maintenance/routing_bundle.json\"\n    },\n    {\n      \"severity\": \"info\",\n      \"code\": \"root_gitattributes_optional\",\n      \"message\": \"Root .gitattributes is optional. See .knowledge/templates/git-policy/gitattributes.snippet for recommendations.\",\n      \"artifact\": \".gitattributes\"\n    }\n  ],\n  \"fixes_available\": [],\n  \"fixes_applied\": [],\n  \"next_commands\": [\n    \"node .knowledge/tools/install-agent-integrations.js --runtime codex\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime claude\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime opencode\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime gemini\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime copilot\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime devin\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime windsurf\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime continue\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime roo\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime aider\",\n    \"node .knowledge/tools/flow.js import\"\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "     \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"9f96c7dd3b1b093a3cefc5d7021b0148b2026c2d3a15b2af23f62913335e7ae3\"\n      },\n      {\n        \"lock_name\": \"wiki-lint\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"9f96c7dd3b1b093a3cefc5d7021b0148b2026c2d3a15b2af23f62913335e7ae3\"\n      }\n    ]\n  },\n  \"issues\": [\n    {\n      \"severity\": \"info\",\n      \"code\": \"fresh_runtime_missing\",\n      \"message\": \"maintenance/routing_bundle.json is absent. This is normal before first flow import.\",\n      \"artifact\": \".knowledge/maintenance/routing_bundle.json\"\n    },\n    {\n      \"severity\": \"info\",\n      \"code\": \"root_gitattributes_optional\",\n      \"message\": \"Root .gitattributes is optional. See .knowledge/templates/git-policy/gitattributes.snippet for recommendations.\",\n      \"artifact\": \".gitattributes\"\n    }\n  ],\n  \"fixes_available\": [],\n  \"fixes_applied\": [],\n  \"next_commands\": [\n    \"node .knowledge/tools/install-agent-integrations.js --runtime codex\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime claude\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime opencode\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime gemini\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime copilot\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime devin\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime windsurf\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime continue\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime roo\",\n    \"node .knowledge/tools/install-agent-integrations.js --runtime aider\",\n    \"node .knowledge/tools/flow.js import\"\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "flow-import",
+      "command": "node .knowledge/tools/flow.js import --no-color --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 1448,
+      "stdout_tail": ": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"healthy\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 88,\n      \"summary\": \"100 /100 healthy\"\n    },\n    {\n      \"step\": \"ext-memory\",\n      \"command\": \"external-memory-status.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 65,\n      \"summary\": \"manual\"\n    },\n    {\n      \"step\": \"routing\",\n      \"command\": \"build-routing-bundle.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 85,\n      \"summary\": \"- modules\"\n    },\n    {\n      \"step\": \"search-idx\",\n      \"command\": \"build-search-index.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 90,\n      \"summary\": \"43 docs\"\n    },\n    {\n      \"step\": \"inspector\",\n      \"command\": \"build-visual-inspector.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 106,\n      \"summary\": \"index.html\"\n    },\n    {\n      \"step\": \"secret-scan\",\n      \"command\": \"scan-secrets.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"clean\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 87,\n      \"summary\": \"clean / 0 findings\"\n    },\n    {\n      \"step\": \"updates\",\n      \"command\": \"check-updates.js --auto --json\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"not_due\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 24,\n      \"summary\": \"not_due\"\n    },\n    {\n      \"step\": \"doctor\",\n      \"command\": \"doctor.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"healthy\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 156,\n      \"summary\": \"93 /100 healthy\"\n    }\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": ": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"healthy\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 88,\n      \"summary\": \"100 /100 healthy\"\n    },\n    {\n      \"step\": \"ext-memory\",\n      \"command\": \"external-memory-status.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 65,\n      \"summary\": \"manual\"\n    },\n    {\n      \"step\": \"routing\",\n      \"command\": \"build-routing-bundle.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 85,\n      \"summary\": \"- modules\"\n    },\n    {\n      \"step\": \"search-idx\",\n      \"command\": \"build-search-index.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 90,\n      \"summary\": \"43 docs\"\n    },\n    {\n      \"step\": \"inspector\",\n      \"command\": \"build-visual-inspector.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": null,\n      \"semantic_errors\": [],\n      \"duration_ms\": 106,\n      \"summary\": \"index.html\"\n    },\n    {\n      \"step\": \"secret-scan\",\n      \"command\": \"scan-secrets.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"clean\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 87,\n      \"summary\": \"clean / 0 findings\"\n    },\n    {\n      \"step\": \"updates\",\n      \"command\": \"check-updates.js --auto --json\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"not_due\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 24,\n      \"summary\": \"not_due\"\n    },\n    {\n      \"step\": \"doctor\",\n      \"command\": \"doctor.js\",\n      \"exit\": 0,\n      \"success\": true,\n      \"status\": \"pass\",\n      \"json_status\": \"healthy\",\n      \"semantic_errors\": [],\n      \"duration_ms\": 156,\n      \"summary\": \"93 /100 healthy\"\n    }\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "repair-on-touch-plan",
+      "command": "node .knowledge/tools/repair-on-touch.js plan --task-id conformance-task --session-id conformance-session --task Conformance install scope --changed-file app.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 198,
+      "stdout_tail": "\n      \"exact_lifecycle_closure_only\": true\n    }\n  },\n  \"global\": {\n    \"score\": 93,\n    \"status\": \"healthy_with_debt\"\n  },\n  \"task_readiness\": {\n    \"score\": 93,\n    \"status\": \"ready_with_warnings\",\n    \"relevant_findings_open\": 1,\n    \"relevant_findings_closed\": 0,\n    \"relevant_lifecycle_ids\": [\n      \"LC-36018ac9bd7265d7\"\n    ],\n    \"excluded_unrelated_findings\": 0\n  },\n  \"deferred_unrelated_findings\": 0,\n  \"summary\": {\n    \"findings_considered\": 1,\n    \"findings_selected\": 1,\n    \"findings_deferred\": 0\n  },\n  \"budget\": {\n    \"limits\": {\n      \"max_findings_per_task\": 2,\n      \"max_extra_minutes\": 5,\n      \"max_extra_context_percent\": 10\n    },\n    \"selected\": {\n      \"findings\": 1,\n      \"estimated_minutes\": 2,\n      \"estimated_context_percent\": 4\n    },\n    \"exhausted\": false\n  },\n  \"opportunities\": [\n    {\n      \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n      \"code\": \"suspect_module\",\n      \"module_id\": \"root\",\n      \"artifact\": \"app.js\",\n      \"affected_artifacts\": [\n        \".knowledge/modules/root.json\",\n        \"app.js\"\n      ],\n      \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n      \"severity\": \"medium\",\n      \"score_cost\": 7,\n      \"repair_class\": \"verify_on_touch\",\n      \"required_checks\": [\n        \"read_current_source\",\n        \"run_relevant_tests\",\n        \"compare_existing_claims\"\n      ],\n      \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n      \"safe_during_current_task\": true,\n      \"critical_path\": false,\n      \"security_sensitive\": false,\n      \"status\": \"selected\",\n      \"estimated_additional_work\": {\n        \"minutes\": 2,\n        \"context_percent\": 4\n      },\n      \"relation_to_current_task\": \"direct_overlap\",\n      \"decision_reason\": \"task_relevant_and_within_budget\",\n      \"requires_confirmation\": false,\n      \"confirmation_evidence\": {\n        \"critical_path\": false,\n        \"security_finding\": false,\n        \"exact_finding\": false\n      }\n    }\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "\n      \"exact_lifecycle_closure_only\": true\n    }\n  },\n  \"global\": {\n    \"score\": 93,\n    \"status\": \"healthy_with_debt\"\n  },\n  \"task_readiness\": {\n    \"score\": 93,\n    \"status\": \"ready_with_warnings\",\n    \"relevant_findings_open\": 1,\n    \"relevant_findings_closed\": 0,\n    \"relevant_lifecycle_ids\": [\n      \"LC-36018ac9bd7265d7\"\n    ],\n    \"excluded_unrelated_findings\": 0\n  },\n  \"deferred_unrelated_findings\": 0,\n  \"summary\": {\n    \"findings_considered\": 1,\n    \"findings_selected\": 1,\n    \"findings_deferred\": 0\n  },\n  \"budget\": {\n    \"limits\": {\n      \"max_findings_per_task\": 2,\n      \"max_extra_minutes\": 5,\n      \"max_extra_context_percent\": 10\n    },\n    \"selected\": {\n      \"findings\": 1,\n      \"estimated_minutes\": 2,\n      \"estimated_context_percent\": 4\n    },\n    \"exhausted\": false\n  },\n  \"opportunities\": [\n    {\n      \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n      \"code\": \"suspect_module\",\n      \"module_id\": \"root\",\n      \"artifact\": \"app.js\",\n      \"affected_artifacts\": [\n        \".knowledge/modules/root.json\",\n        \"app.js\"\n      ],\n      \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n      \"severity\": \"medium\",\n      \"score_cost\": 7,\n      \"repair_class\": \"verify_on_touch\",\n      \"required_checks\": [\n        \"read_current_source\",\n        \"run_relevant_tests\",\n        \"compare_existing_claims\"\n      ],\n      \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n      \"safe_during_current_task\": true,\n      \"critical_path\": false,\n      \"security_sensitive\": false,\n      \"status\": \"selected\",\n      \"estimated_additional_work\": {\n        \"minutes\": 2,\n        \"context_percent\": 4\n      },\n      \"relation_to_current_task\": \"direct_overlap\",\n      \"decision_reason\": \"task_relevant_and_within_budget\",\n      \"requires_confirmation\": false,\n      \"confirmation_evidence\": {\n        \"critical_path\": false,\n        \"security_finding\": false,\n        \"exact_finding\": false\n      }\n    }\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "repair-on-touch-status",
+      "command": "node .knowledge/tools/repair-on-touch.js status --task-id conformance-task --session-id conformance-session --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 105,
+      "stdout_tail": "\"findings_selected\": 1,\n        \"findings_deferred\": 0\n      },\n      \"budget\": {\n        \"limits\": {\n          \"max_findings_per_task\": 2,\n          \"max_extra_minutes\": 5,\n          \"max_extra_context_percent\": 10\n        },\n        \"selected\": {\n          \"findings\": 1,\n          \"estimated_minutes\": 2,\n          \"estimated_context_percent\": 4\n        },\n        \"exhausted\": false\n      },\n      \"opportunities\": [\n        {\n          \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n          \"code\": \"suspect_module\",\n          \"module_id\": \"root\",\n          \"artifact\": \"app.js\",\n          \"affected_artifacts\": [\n            \".knowledge/modules/root.json\",\n            \"app.js\"\n          ],\n          \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n          \"severity\": \"medium\",\n          \"score_cost\": 7,\n          \"repair_class\": \"verify_on_touch\",\n          \"required_checks\": [\n            \"read_current_source\",\n            \"run_relevant_tests\",\n            \"compare_existing_claims\"\n          ],\n          \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n          \"safe_during_current_task\": true,\n          \"critical_path\": false,\n          \"security_sensitive\": false,\n          \"status\": \"selected\",\n          \"estimated_additional_work\": {\n            \"minutes\": 2,\n            \"context_percent\": 4\n          },\n          \"relation_to_current_task\": \"direct_overlap\",\n          \"decision_reason\": \"task_relevant_and_within_budget\",\n          \"requires_confirmation\": false,\n          \"confirmation_evidence\": {\n            \"critical_path\": false,\n            \"security_finding\": false,\n            \"exact_finding\": false\n          }\n        }\n      ]\n    }\n  },\n  \"verification_receipts\": {\n    \"status\": \"verified\",\n    \"receipts\": [],\n    \"invalid\": []\n  },\n  \"verified_closures\": [],\n  \"dedicated_verification_receipts\": [],\n  \"closure_provenance\": {\n    \"status\": \"verified\",\n    \"invalid\": []\n  }\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "\"findings_selected\": 1,\n        \"findings_deferred\": 0\n      },\n      \"budget\": {\n        \"limits\": {\n          \"max_findings_per_task\": 2,\n          \"max_extra_minutes\": 5,\n          \"max_extra_context_percent\": 10\n        },\n        \"selected\": {\n          \"findings\": 1,\n          \"estimated_minutes\": 2,\n          \"estimated_context_percent\": 4\n        },\n        \"exhausted\": false\n      },\n      \"opportunities\": [\n        {\n          \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n          \"code\": \"suspect_module\",\n          \"module_id\": \"root\",\n          \"artifact\": \"app.js\",\n          \"affected_artifacts\": [\n            \".knowledge/modules/root.json\",\n            \"app.js\"\n          ],\n          \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n          \"severity\": \"medium\",\n          \"score_cost\": 7,\n          \"repair_class\": \"verify_on_touch\",\n          \"required_checks\": [\n            \"read_current_source\",\n            \"run_relevant_tests\",\n            \"compare_existing_claims\"\n          ],\n          \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n          \"safe_during_current_task\": true,\n          \"critical_path\": false,\n          \"security_sensitive\": false,\n          \"status\": \"selected\",\n          \"estimated_additional_work\": {\n            \"minutes\": 2,\n            \"context_percent\": 4\n          },\n          \"relation_to_current_task\": \"direct_overlap\",\n          \"decision_reason\": \"task_relevant_and_within_budget\",\n          \"requires_confirmation\": false,\n          \"confirmation_evidence\": {\n            \"critical_path\": false,\n            \"security_finding\": false,\n            \"exact_finding\": false\n          }\n        }\n      ]\n    }\n  },\n  \"verification_receipts\": {\n    \"status\": \"verified\",\n    \"receipts\": [],\n    \"invalid\": []\n  },\n  \"verified_closures\": [],\n  \"dedicated_verification_receipts\": [],\n  \"closure_provenance\": {\n    \"status\": \"verified\",\n    \"invalid\": []\n  }\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "repair-on-touch-self-test",
+      "command": "node .knowledge/tools/self-test-repair-on-touch.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 5721,
+      "stdout_tail": " identity\",\n    \"68 repeated apply of the same content-addressed receipt is idempotent\",\n    \"68a clean post-Doctor state commits the phase-two trust transaction\",\n    \"68c post-closure source drift lowers current readiness without mutation\",\n    \"68d new frozen-plan debt lowers readiness and status redacts private text\",\n    \"68b live rebuild disable blocks, then safe-only closes only generated debt\",\n    \"69 a changed source observation reopens the same lifecycle ID\",\n    \"70 runtime artifacts satisfy their published schema contracts\",\n    \"70a scoped plan loader rejects symlink, malformed, rebound, and oversized files\",\n    \"70b KVR producer and loader fail closed on schema and size boundaries\",\n    \"70c KVE rejects timeout, signal, unknown fields, and oversized records\",\n    \"71 routing inventory records normalize to module IDs without widening scope\",\n    \"72 every repeatable CLI list flag preserves all occurrences\"\n  ],\n  \"artifacts\": {\n    \"pre_repair_reproduction\": {\n      \"finding_id\": \"LC-c74f1835eb533b8b\",\n      \"session_1_open\": true,\n      \"session_2_repeated\": true,\n      \"receipt_created\": false\n    },\n    \"transaction_faults\": [\n      {\n        \"point\": \"after_initial_manifest\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_stage_0\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_stage_1\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_prepare_manifest\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_commit_marker\",\n        \"state\": \"new\"\n      },\n      {\n        \"point\": \"after_promote_0\",\n        \"state\": \"new\"\n      },\n      {\n        \"point\": \"after_promote_1\",\n        \"state\": \"new\"\n      },\n      {\n        \"point\": \"after_committed_manifest\",\n        \"state\": \"new\"\n      }\n    ],\n    \"sample_receipt_id\": \"KVR-cbbe1223cb56e2e9644ae091902b78ce612005e7546c67355a80222b89112841\",\n    \"sample_task_scope_hash\": \"63afc66d9abc11ff88f34f487a5971f396929834900de20b1199a0b9c87af3d2\"\n  }\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": " identity\",\n    \"68 repeated apply of the same content-addressed receipt is idempotent\",\n    \"68a clean post-Doctor state commits the phase-two trust transaction\",\n    \"68c post-closure source drift lowers current readiness without mutation\",\n    \"68d new frozen-plan debt lowers readiness and status redacts private text\",\n    \"68b live rebuild disable blocks, then safe-only closes only generated debt\",\n    \"69 a changed source observation reopens the same lifecycle ID\",\n    \"70 runtime artifacts satisfy their published schema contracts\",\n    \"70a scoped plan loader rejects symlink, malformed, rebound, and oversized files\",\n    \"70b KVR producer and loader fail closed on schema and size boundaries\",\n    \"70c KVE rejects timeout, signal, unknown fields, and oversized records\",\n    \"71 routing inventory records normalize to module IDs without widening scope\",\n    \"72 every repeatable CLI list flag preserves all occurrences\"\n  ],\n  \"artifacts\": {\n    \"pre_repair_reproduction\": {\n      \"finding_id\": \"LC-c74f1835eb533b8b\",\n      \"session_1_open\": true,\n      \"session_2_repeated\": true,\n      \"receipt_created\": false\n    },\n    \"transaction_faults\": [\n      {\n        \"point\": \"after_initial_manifest\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_stage_0\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_stage_1\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_prepare_manifest\",\n        \"state\": \"old\"\n      },\n      {\n        \"point\": \"after_commit_marker\",\n        \"state\": \"new\"\n      },\n      {\n        \"point\": \"after_promote_0\",\n        \"state\": \"new\"\n      },\n      {\n        \"point\": \"after_promote_1\",\n        \"state\": \"new\"\n      },\n      {\n        \"point\": \"after_committed_manifest\",\n        \"state\": \"new\"\n      }\n    ],\n    \"sample_receipt_id\": \"KVR-cbbe1223cb56e2e9644ae091902b78ce612005e7546c67355a80222b89112841\",\n    \"sample_task_scope_hash\": \"63afc66d9abc11ff88f34f487a5971f396929834900de20b1199a0b9c87af3d2\"\n  }\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "dedicated-verification-self-test",
+      "command": "node .knowledge/tools/self-test-dedicated-verification.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 4793,
+      "stdout_tail": "play remains read-only after live policy is lowered\",\n    \"13 a competing dedicated receipt cannot replace closure evidence\",\n    \"14 tampering with the stored verification receipt breaks idempotent replay\",\n    \"15 source mutation after review rejects closure without state mutation\",\n    \"16 a scoped team cap explicitly blocks dedicated planning\",\n    \"17 the live team cap blocks new dedicated reviews\",\n    \"18 the live team cap blocks dedicated apply after a prior review\",\n    \"19 strict KDVR validation rejects unknown fields and duplicate artifacts\",\n    \"20 KDVR validation binds verifier type, predicate, KVR, lifecycle, and identity\",\n    \"21 KDVR loader rejects directories and oversized regular files\",\n    \"21a KDVR save rejects a symlink or junction receipt store\",\n    \"22 injected promotion fault does not report success\",\n    \"22a report commands do not recover or rewrite a faulted trust transaction\",\n    \"23 retry recovers the transaction to a single all-new closure\",\n    \"24 concurrent exact applies serialize to one closure and one card reference\",\n    \"25 generic manual-review findings require and accept the same trusted KDVR path\",\n    \"26 old dedicated evidence cannot validate a new finding identity\",\n    \"27 an old KVR/KDVR pair cannot close a reopened occurrence\",\n    \"28 an old KVR cannot mint a new KDVR after reopen\"\n  ],\n  \"artifacts\": {\n    \"primary_kvr\": \"KVR-663bf2664ee3e8e8223661d66334571766da385abc69eb184dc5d297719eebd2\",\n    \"primary_kdvr\": \"KDVR-f734c82d0a3a68f6c2ce7294ac5da09d1045a67bebba1c2126dadf221c933d58\",\n    \"primary_lifecycle\": \"LC-f2bc3ab138bceb34\",\n    \"fault_retry_idempotent\": true,\n    \"injected_delay_timing\": {\n      \"execution_started_ns\": \"1964964677315\",\n      \"execution_finished_ns\": \"1965907330566\",\n      \"execution_duration_ms\": 942.653,\n      \"verification_started_ns\": \"1965907331077\",\n      \"verification_finished_ns\": \"1965908800659\",\n      \"total_repair_wall_time_ms\": 944.123\n    },\n    \"cli_empty_exit_retries\": 0\n  }\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "play remains read-only after live policy is lowered\",\n    \"13 a competing dedicated receipt cannot replace closure evidence\",\n    \"14 tampering with the stored verification receipt breaks idempotent replay\",\n    \"15 source mutation after review rejects closure without state mutation\",\n    \"16 a scoped team cap explicitly blocks dedicated planning\",\n    \"17 the live team cap blocks new dedicated reviews\",\n    \"18 the live team cap blocks dedicated apply after a prior review\",\n    \"19 strict KDVR validation rejects unknown fields and duplicate artifacts\",\n    \"20 KDVR validation binds verifier type, predicate, KVR, lifecycle, and identity\",\n    \"21 KDVR loader rejects directories and oversized regular files\",\n    \"21a KDVR save rejects a symlink or junction receipt store\",\n    \"22 injected promotion fault does not report success\",\n    \"22a report commands do not recover or rewrite a faulted trust transaction\",\n    \"23 retry recovers the transaction to a single all-new closure\",\n    \"24 concurrent exact applies serialize to one closure and one card reference\",\n    \"25 generic manual-review findings require and accept the same trusted KDVR path\",\n    \"26 old dedicated evidence cannot validate a new finding identity\",\n    \"27 an old KVR/KDVR pair cannot close a reopened occurrence\",\n    \"28 an old KVR cannot mint a new KDVR after reopen\"\n  ],\n  \"artifacts\": {\n    \"primary_kvr\": \"KVR-663bf2664ee3e8e8223661d66334571766da385abc69eb184dc5d297719eebd2\",\n    \"primary_kdvr\": \"KDVR-f734c82d0a3a68f6c2ce7294ac5da09d1045a67bebba1c2126dadf221c933d58\",\n    \"primary_lifecycle\": \"LC-f2bc3ab138bceb34\",\n    \"fault_retry_idempotent\": true,\n    \"injected_delay_timing\": {\n      \"execution_started_ns\": \"1964964677315\",\n      \"execution_finished_ns\": \"1965907330566\",\n      \"execution_duration_ms\": 942.653,\n      \"verification_started_ns\": \"1965907331077\",\n      \"verification_finished_ns\": \"1965908800659\",\n      \"total_repair_wall_time_ms\": 944.123\n    },\n    \"cli_empty_exit_retries\": 0\n  }\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "repair-session-isolation-self-test",
+      "command": "node .knowledge/tools/self-test-repair-session-isolation.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 489,
+      "stdout_tail": "{\n  \"schema_version\": \"3.3.0\",\n  \"status\": \"pass\",\n  \"checks_total\": 4,\n  \"checks\": [\n    \"implicit sessions remain unique\",\n    \"receipt and plan identity bind task plus session\",\n    \"same-session concurrent plans serialize to valid JSON\",\n    \"same-session telemetry and latest advisory remain valid and clean\"\n  ],\n  \"task_id\": \"TASK-concurrent-session\",\n  \"session_id\": \"SESSION-concurrent-session\",\n  \"plan_artifact\": \"maintenance/repair_sessions/972726629e290890210d34f215f5198861244c004c953543ec1c1f7e19fe84a5.json\",\n  \"telemetry_artifact\": \"maintenance/repair_sessions/972726629e290890210d34f215f5198861244c004c953543ec1c1f7e19fe84a5.telemetry.json\",\n  \"concurrent_plan_attempts\": 1,\n  \"concurrent_telemetry_attempts\": 1,\n  \"fixture_cleaned\": true\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "{\n  \"schema_version\": \"3.3.0\",\n  \"status\": \"pass\",\n  \"checks_total\": 4,\n  \"checks\": [\n    \"implicit sessions remain unique\",\n    \"receipt and plan identity bind task plus session\",\n    \"same-session concurrent plans serialize to valid JSON\",\n    \"same-session telemetry and latest advisory remain valid and clean\"\n  ],\n  \"task_id\": \"TASK-concurrent-session\",\n  \"session_id\": \"SESSION-concurrent-session\",\n  \"plan_artifact\": \"maintenance/repair_sessions/972726629e290890210d34f215f5198861244c004c953543ec1c1f7e19fe84a5.json\",\n  \"telemetry_artifact\": \"maintenance/repair_sessions/972726629e290890210d34f215f5198861244c004c953543ec1c1f7e19fe84a5.telemetry.json\",\n  \"concurrent_plan_attempts\": 1,\n  \"concurrent_telemetry_attempts\": 1,\n  \"fixture_cleaned\": true\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "field-report-start",
+      "command": "node .knowledge/tools/field-report.js start --new --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 92,
+      "stdout_tail": "ost one concrete follow-up when the answer is vague or lacks evidence.\"},{\"id\":\"final-assessment\",\"type\":\"string\",\"required\":true,\"prompt\":\"Give the best fit, when it is unnecessary, top improvements, and final verdict.\",\"reason\":\"This judgment must come from the tester and is not inferred from repository metrics.\",\"options\":null,\"minimum\":null,\"maximum\":null,\"follow_up\":\"Ask at most one concrete follow-up when the answer is vague or lacks evidence.\"},{\"id\":\"github-publication-permission\",\"type\":\"enum\",\"required\":true,\"prompt\":\"May this report be published to GitHub Discussions?\",\"reason\":\"This judgment must come from the tester and is not inferred from repository metrics.\",\"options\":[{\"value\":\"github_publication_allowed\",\"label\":\"Allowed to publish on GitHub\"},{\"value\":\"local_draft_only\",\"label\":\"Keep as a local draft\"}],\"minimum\":null,\"maximum\":null,\"follow_up\":\"Ask at most one concrete follow-up when the answer is vague or lacks evidence.\"},{\"id\":\"publication-permission\",\"type\":\"enum\",\"required\":true,\"prompt\":\"What external reuse is allowed?\",\"reason\":\"This judgment must come from the tester and is not inferred from repository metrics.\",\"options\":[{\"value\":\"link_and_quote_with_attribution\",\"label\":\"The project may link and quote with attribution\"},{\"value\":\"link_only\",\"label\":\"The project may link; quotes require separate permission\"},{\"value\":\"github_only\",\"label\":\"Keep this report on GitHub only\"},{\"value\":\"undecided\",\"label\":\"Permission not decided yet\"}],\"minimum\":null,\"maximum\":null,\"follow_up\":\"Ask at most one concrete follow-up when the answer is vague or lacks evidence.\"}],\"answer_template_path\":\"<local-path>\",\"next_command\":\"node .knowledge/tools/field-report.js ingest --report-id=fr_20260807_8ca0933e --answers=<local-path>\"}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "ost one concrete follow-up when the answer is vague or lacks evidence.\"},{\"id\":\"final-assessment\",\"type\":\"string\",\"required\":true,\"prompt\":\"Give the best fit, when it is unnecessary, top improvements, and final verdict.\",\"reason\":\"This judgment must come from the tester and is not inferred from repository metrics.\",\"options\":null,\"minimum\":null,\"maximum\":null,\"follow_up\":\"Ask at most one concrete follow-up when the answer is vague or lacks evidence.\"},{\"id\":\"github-publication-permission\",\"type\":\"enum\",\"required\":true,\"prompt\":\"May this report be published to GitHub Discussions?\",\"reason\":\"This judgment must come from the tester and is not inferred from repository metrics.\",\"options\":[{\"value\":\"github_publication_allowed\",\"label\":\"Allowed to publish on GitHub\"},{\"value\":\"local_draft_only\",\"label\":\"Keep as a local draft\"}],\"minimum\":null,\"maximum\":null,\"follow_up\":\"Ask at most one concrete follow-up when the answer is vague or lacks evidence.\"},{\"id\":\"publication-permission\",\"type\":\"enum\",\"required\":true,\"prompt\":\"What external reuse is allowed?\",\"reason\":\"This judgment must come from the tester and is not inferred from repository metrics.\",\"options\":[{\"value\":\"link_and_quote_with_attribution\",\"label\":\"The project may link and quote with attribution\"},{\"value\":\"link_only\",\"label\":\"The project may link; quotes require separate permission\"},{\"value\":\"github_only\",\"label\":\"Keep this report on GitHub only\"},{\"value\":\"undecided\",\"label\":\"Permission not decided yet\"}],\"minimum\":null,\"maximum\":null,\"follow_up\":\"Ask at most one concrete follow-up when the answer is vague or lacks evidence.\"}],\"answer_template_path\":\"<local-path>\",\"next_command\":\"node .knowledge/tools/field-report.js ingest --report-id=fr_20260807_8ca0933e --answers=<local-path>\"}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "field-report-self-test",
+      "command": "node .knowledge/tools/self-test-field-report.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 2996,
+      "stdout_tail": "y publisher works when CI=true\",\n    \"publication: common CI truthy variants are recognized\",\n    \"publication: duplicate publication is blocked\",\n    \"publication: unknown response after remote success reconciles without duplicate\",\n    \"publication: unknown outcome plus repeated null lookup never recreates\",\n    \"publication: ambiguous or hash-mismatched reconciliation never creates again\",\n    \"publication: published journal finalizes a stale manifest without network\",\n    \"publication: adapter result cannot overwrite authoritative receipt provenance\",\n    \"publication: real/non-test publisher is blocked in CI\",\n    \"publication: edits after approval invalidate approval and preview\",\n    \"publication: approval hash binds internal draft and provenance artifacts\",\n    \"approval: semantic facts exclude collection timestamps but retain semantic values\",\n    \"publication: post-preview mutation cannot reach copy or open side effects\",\n    \"routing: live routing is revalidated before render, approval, preview, and final publication\",\n    \"workflow: cancel is terminal and idempotent\",\n    \"usability: copy and Discussion URL helpers are available\",\n    \"usability: Windows URL opening avoids command-shell interpretation\",\n    \"locking: a stale-looking live local owner is not reclaimed\",\n    \"locking: a stale foreign-host owner is preserved when liveness is unknown\",\n    \"locking: a confirmed dead local owner is reclaimed atomically\",\n    \"locking: releasing an old handle cannot delete a replacement owner\",\n    \"modes: team state remains under its isolated stateRoot\",\n    \"CLI: JSON stdout is one v2 object and stderr stays empty\",\n    \"CLI: explicit context flags override environment and isolate stateRoot\",\n    \"CLI: quiet and no-color emit no stdout decoration\",\n    \"CLI: help and unknown flags exit before context or state side effects\",\n    \"clean install: the physically copied Field Report runtime starts\",\n    \"contract drift: a changed generated form is rejected\"\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "y publisher works when CI=true\",\n    \"publication: common CI truthy variants are recognized\",\n    \"publication: duplicate publication is blocked\",\n    \"publication: unknown response after remote success reconciles without duplicate\",\n    \"publication: unknown outcome plus repeated null lookup never recreates\",\n    \"publication: ambiguous or hash-mismatched reconciliation never creates again\",\n    \"publication: published journal finalizes a stale manifest without network\",\n    \"publication: adapter result cannot overwrite authoritative receipt provenance\",\n    \"publication: real/non-test publisher is blocked in CI\",\n    \"publication: edits after approval invalidate approval and preview\",\n    \"publication: approval hash binds internal draft and provenance artifacts\",\n    \"approval: semantic facts exclude collection timestamps but retain semantic values\",\n    \"publication: post-preview mutation cannot reach copy or open side effects\",\n    \"routing: live routing is revalidated before render, approval, preview, and final publication\",\n    \"workflow: cancel is terminal and idempotent\",\n    \"usability: copy and Discussion URL helpers are available\",\n    \"usability: Windows URL opening avoids command-shell interpretation\",\n    \"locking: a stale-looking live local owner is not reclaimed\",\n    \"locking: a stale foreign-host owner is preserved when liveness is unknown\",\n    \"locking: a confirmed dead local owner is reclaimed atomically\",\n    \"locking: releasing an old handle cannot delete a replacement owner\",\n    \"modes: team state remains under its isolated stateRoot\",\n    \"CLI: JSON stdout is one v2 object and stderr stays empty\",\n    \"CLI: explicit context flags override environment and isolate stateRoot\",\n    \"CLI: quiet and no-color emit no stdout decoration\",\n    \"CLI: help and unknown flags exit before context or state side effects\",\n    \"clean install: the physically copied Field Report runtime starts\",\n    \"contract drift: a changed generated form is rejected\"\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "doctor",
+      "command": "node .knowledge/tools/doctor.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 146,
+      "stdout_tail": "2026-08-07T00:21:18.401Z\"\n    }\n  ],\n  \"issues\": [\n    {\n      \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n      \"code\": \"suspect_module\",\n      \"module_id\": \"root\",\n      \"artifact\": \"app.js\",\n      \"affected_artifacts\": [\n        \".knowledge/modules/root.json\",\n        \"app.js\"\n      ],\n      \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n      \"severity\": \"medium\",\n      \"score_cost\": 7,\n      \"repair_class\": \"verify_on_touch\",\n      \"required_checks\": [\n        \"read_current_source\",\n        \"run_relevant_tests\",\n        \"compare_existing_claims\"\n      ],\n      \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n      \"safe_during_current_task\": true,\n      \"critical_path\": false,\n      \"security_sensitive\": false,\n      \"status\": \"open\",\n      \"estimated_additional_work\": {\n        \"minutes\": 2,\n        \"context_percent\": 4\n      }\n    }\n  ],\n  \"findings\": [\n    {\n      \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n      \"code\": \"suspect_module\",\n      \"module_id\": \"root\",\n      \"artifact\": \"app.js\",\n      \"affected_artifacts\": [\n        \".knowledge/modules/root.json\",\n        \"app.js\"\n      ],\n      \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n      \"severity\": \"medium\",\n      \"score_cost\": 7,\n      \"repair_class\": \"verify_on_touch\",\n      \"required_checks\": [\n        \"read_current_source\",\n        \"run_relevant_tests\",\n        \"compare_existing_claims\"\n      ],\n      \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n      \"safe_during_current_task\": true,\n      \"critical_path\": false,\n      \"security_sensitive\": false,\n      \"status\": \"open\",\n      \"estimated_additional_work\": {\n        \"minutes\": 2,\n        \"context_percent\": 4\n      }\n    }\n  ],\n  \"global\": {\n    \"score\": 93,\n    \"status\": \"healthy_with_debt\",\n    \"findings_open\": 1\n  },\n  \"pending_trust_closures_observed\": [],\n  \"queue_transitions\": []\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "2026-08-07T00:21:18.401Z\"\n    }\n  ],\n  \"issues\": [\n    {\n      \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n      \"code\": \"suspect_module\",\n      \"module_id\": \"root\",\n      \"artifact\": \"app.js\",\n      \"affected_artifacts\": [\n        \".knowledge/modules/root.json\",\n        \"app.js\"\n      ],\n      \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n      \"severity\": \"medium\",\n      \"score_cost\": 7,\n      \"repair_class\": \"verify_on_touch\",\n      \"required_checks\": [\n        \"read_current_source\",\n        \"run_relevant_tests\",\n        \"compare_existing_claims\"\n      ],\n      \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n      \"safe_during_current_task\": true,\n      \"critical_path\": false,\n      \"security_sensitive\": false,\n      \"status\": \"open\",\n      \"estimated_additional_work\": {\n        \"minutes\": 2,\n        \"context_percent\": 4\n      }\n    }\n  ],\n  \"findings\": [\n    {\n      \"lifecycle_id\": \"LC-36018ac9bd7265d7\",\n      \"code\": \"suspect_module\",\n      \"module_id\": \"root\",\n      \"artifact\": \"app.js\",\n      \"affected_artifacts\": [\n        \".knowledge/modules/root.json\",\n        \"app.js\"\n      ],\n      \"message\": \"Module root is suspect; current source and relevant tests must be verified before behavior claims.\",\n      \"severity\": \"medium\",\n      \"score_cost\": 7,\n      \"repair_class\": \"verify_on_touch\",\n      \"required_checks\": [\n        \"read_current_source\",\n        \"run_relevant_tests\",\n        \"compare_existing_claims\"\n      ],\n      \"resolution_predicate\": \"source_and_relevant_tests_confirm_claim\",\n      \"safe_during_current_task\": true,\n      \"critical_path\": false,\n      \"security_sensitive\": false,\n      \"status\": \"open\",\n      \"estimated_additional_work\": {\n        \"minutes\": 2,\n        \"context_percent\": 4\n      }\n    }\n  ],\n  \"global\": {\n    \"score\": 93,\n    \"status\": \"healthy_with_debt\",\n    \"findings_open\": 1\n  },\n  \"pending_trust_closures_observed\": [],\n  \"queue_transitions\": []\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "build-inspector",
+      "command": "node .knowledge/tools/build-visual-inspector.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 90,
+      "stdout_tail": "{\n  \"generated_at\": \"2026-08-07T00:21:33.205Z\",\n  \"generated_by\": \"86148408c8aa-30822\",\n  \"mode\": \"repo\",\n  \"output\": \".knowledge/inspector/index.html\",\n  \"data\": \".knowledge/inspector/data.json\",\n  \"features\": [\n    \"improved_wiki_graph\",\n    \"per_table_filters\",\n    \"file_links\",\n    \"empty_states\",\n    \"low_confidence_explanations\",\n    \"copy_command_fallback\",\n    \"canonical_navigation\",\n    \"team_mode_panel\",\n    \"routing_bundle_view\",\n    \"pr_summary_preview\",\n    \"pr_impact_preview\",\n    \"external_memory_status\",\n    \"memory_provider_cards\",\n    \"conversion_signal_preview\",\n    \"tabbed_navigation\",\n    \"local_action_drawer_fallback\",\n    \"memory_provider_runtime_boundary\",\n    \"restore_trust_entrypoint\",\n    \"git_branch_diagnostics\",\n    \"shared_live_static_renderer\",\n    \"collapsible_onboarding\",\n    \"metric_severity_cards\",\n    \"trust_repair_agent_prompt\",\n    \"inspector_update_api\",\n    \"inspector_update_apply\",\n    \"inspector_shutdown\",\n    \"collapsible_trust_graph\",\n    \"graph_node_drilldown\",\n    \"onboarding_agent_picker\",\n    \"plain_language_outcome_panels\",\n    \"advanced_detail_shelves\",\n    \"inline_file_preview_drawer\",\n    \"vscode_simple_browser_layout\",\n    \"app_shell_renderer\",\n    \"inspector_update_auto_check_mode\",\n    \"inspector_startup_update_check\",\n    \"repair_on_touch_settings\",\n    \"repair_opportunities\",\n    \"global_doctor_and_task_readiness\"\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "{\n  \"generated_at\": \"2026-08-07T00:21:33.205Z\",\n  \"generated_by\": \"86148408c8aa-30822\",\n  \"mode\": \"repo\",\n  \"output\": \".knowledge/inspector/index.html\",\n  \"data\": \".knowledge/inspector/data.json\",\n  \"features\": [\n    \"improved_wiki_graph\",\n    \"per_table_filters\",\n    \"file_links\",\n    \"empty_states\",\n    \"low_confidence_explanations\",\n    \"copy_command_fallback\",\n    \"canonical_navigation\",\n    \"team_mode_panel\",\n    \"routing_bundle_view\",\n    \"pr_summary_preview\",\n    \"pr_impact_preview\",\n    \"external_memory_status\",\n    \"memory_provider_cards\",\n    \"conversion_signal_preview\",\n    \"tabbed_navigation\",\n    \"local_action_drawer_fallback\",\n    \"memory_provider_runtime_boundary\",\n    \"restore_trust_entrypoint\",\n    \"git_branch_diagnostics\",\n    \"shared_live_static_renderer\",\n    \"collapsible_onboarding\",\n    \"metric_severity_cards\",\n    \"trust_repair_agent_prompt\",\n    \"inspector_update_api\",\n    \"inspector_update_apply\",\n    \"inspector_shutdown\",\n    \"collapsible_trust_graph\",\n    \"graph_node_drilldown\",\n    \"onboarding_agent_picker\",\n    \"plain_language_outcome_panels\",\n    \"advanced_detail_shelves\",\n    \"inline_file_preview_drawer\",\n    \"vscode_simple_browser_layout\",\n    \"app_shell_renderer\",\n    \"inspector_update_auto_check_mode\",\n    \"inspector_startup_update_check\",\n    \"repair_on_touch_settings\",\n    \"repair_opportunities\",\n    \"global_doctor_and_task_readiness\"\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "self-test-inspector-ui",
+      "command": "node .knowledge/tools/self-test-inspector-ui.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 668,
+      "stdout_tail": "{\n  \"schema_version\": \"3.3.0\",\n  \"status\": \"pass\",\n  \"team_mode_fixture_requested\": false,\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"inspector_server_launch_attempts\": 1,\n  \"checks\": [\n    \"all canonical tabs render\",\n    \"forbidden top-level tabs are absent\",\n    \"memory provider cards render\",\n    \"no external scripts/css/images\",\n    \"no known local path leaks\",\n    \"copy command attributes exist\",\n    \"canonical route ids render\",\n    \"single app shell renders across all routes\",\n    \"plain-language outcome panels render\",\n    \"advanced shelves render\",\n    \"each route has outcome and advanced detail shelf\",\n    \"inline file preview drawer renders\",\n    \"Next action links stay inside Inspector\",\n    \"Next action links fetch /api/files/open\",\n    \"token-protected Inspector API works\",\n    \"first-run onboarding wizard renders\",\n    \"upgrade-missing onboarding marker reopens setup\",\n    \"onboarding save writes per-agent settings\",\n    \"git branch selector defaults to active branch\",\n    \"git branch diagnostics API switches target branch\",\n    \"actions endpoint includes Restore Trust\",\n    \"live/static Inspector share tabular Knowledge Trust UI\",\n    \"trust repair agent prompt renders\",\n    \"onboarding card collapses after save\",\n    \"update status API renders launch check status\",\n    \"startup update check initializer renders\",\n    \"update banner exposes one Update button and one auto-check mode\",\n    \"turn off button renders in live Inspector\",\n    \"collapsible graph shelf renders\",\n    \"graph node drilldown hooks render\",\n    \"empty states render\",\n    \"team-mode inspector data.json parses\",\n    \"team-mode inspector DOM renders workspace status\"\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "{\n  \"schema_version\": \"3.3.0\",\n  \"status\": \"pass\",\n  \"team_mode_fixture_requested\": false,\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"inspector_server_launch_attempts\": 1,\n  \"checks\": [\n    \"all canonical tabs render\",\n    \"forbidden top-level tabs are absent\",\n    \"memory provider cards render\",\n    \"no external scripts/css/images\",\n    \"no known local path leaks\",\n    \"copy command attributes exist\",\n    \"canonical route ids render\",\n    \"single app shell renders across all routes\",\n    \"plain-language outcome panels render\",\n    \"advanced shelves render\",\n    \"each route has outcome and advanced detail shelf\",\n    \"inline file preview drawer renders\",\n    \"Next action links stay inside Inspector\",\n    \"Next action links fetch /api/files/open\",\n    \"token-protected Inspector API works\",\n    \"first-run onboarding wizard renders\",\n    \"upgrade-missing onboarding marker reopens setup\",\n    \"onboarding save writes per-agent settings\",\n    \"git branch selector defaults to active branch\",\n    \"git branch diagnostics API switches target branch\",\n    \"actions endpoint includes Restore Trust\",\n    \"live/static Inspector share tabular Knowledge Trust UI\",\n    \"trust repair agent prompt renders\",\n    \"onboarding card collapses after save\",\n    \"update status API renders launch check status\",\n    \"startup update check initializer renders\",\n    \"update banner exposes one Update button and one auto-check mode\",\n    \"turn off button renders in live Inspector\",\n    \"collapsible graph shelf renders\",\n    \"graph node drilldown hooks render\",\n    \"empty states render\",\n    \"team-mode inspector data.json parses\",\n    \"team-mode inspector DOM renders workspace status\"\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "self-test-team-mode",
+      "command": "node .knowledge/tools/self-test-team-mode.js",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 6243,
+      "stdout_tail": "{\n  \"schema_version\": \"3.3.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"team_root\": \"<local-path> team тест bveoar/.knowledge-team shared\",\n  \"checks\": [\n    \"temp git repo with spaces and Cyrillic path\",\n    \"two worktrees\",\n    \"team-init\",\n    \"workspace-register for two agents\",\n    \"missing teamRoot and missing workspaceId failures\",\n    \"duplicate workspaceId failure\",\n    \"duplicate agentId warning\",\n    \"parallel doctor/release exclusive flows\",\n    \"team doctor semantic health and runtime regeneration\",\n    \"failed exclusive doctor releases lock and records semantic failure\",\n    \"stale lock cleanup\",\n    \"JSON corruption scan\",\n    \"lock released\",\n    \"events written\",\n    \"doctor/external memory/worktree events written\",\n    \"workspace states separated\",\n    \"team-status sees both workspaces\",\n    \"team-status reports stale workspaces\",\n    \"branch/head detected\",\n    \"branch mismatch warning\",\n    \"missing targetRoot warning\",\n    \"dirty workspace warning\",\n    \"staged generated runtime warning\",\n    \"shared external memory warning\",\n    \"inspector builds in repo and team modes\",\n    \"workspace archive\"\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "{\n  \"schema_version\": \"3.3.0\",\n  \"status\": \"pass\",\n  \"temp_root\": null,\n  \"temp_root_cleaned\": true,\n  \"team_root\": \"<local-path> team тест bveoar/.knowledge-team shared\",\n  \"checks\": [\n    \"temp git repo with spaces and Cyrillic path\",\n    \"two worktrees\",\n    \"team-init\",\n    \"workspace-register for two agents\",\n    \"missing teamRoot and missing workspaceId failures\",\n    \"duplicate workspaceId failure\",\n    \"duplicate agentId warning\",\n    \"parallel doctor/release exclusive flows\",\n    \"team doctor semantic health and runtime regeneration\",\n    \"failed exclusive doctor releases lock and records semantic failure\",\n    \"stale lock cleanup\",\n    \"JSON corruption scan\",\n    \"lock released\",\n    \"events written\",\n    \"doctor/external memory/worktree events written\",\n    \"workspace states separated\",\n    \"team-status sees both workspaces\",\n    \"team-status reports stale workspaces\",\n    \"branch/head detected\",\n    \"branch mismatch warning\",\n    \"missing targetRoot warning\",\n    \"dirty workspace warning\",\n    \"staged generated runtime warning\",\n    \"shared external memory warning\",\n    \"inspector builds in repo and team modes\",\n    \"workspace archive\"\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "memory-status-all",
+      "command": "node .knowledge/tools/memory-provider.js status-all --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 64,
+      "stdout_tail": "      \"Install/update requires explicit user action and may use network outside status/report mode.\"\n      ],\n      \"errors\": []\n    },\n    \"pinecone\": {\n      \"provider_id\": \"pinecone\",\n      \"provider\": \"pinecone\",\n      \"provider_name\": \"Pinecone\",\n      \"type\": \"cloud\",\n      \"layer\": \"free_core\",\n      \"status\": \"disabled\",\n      \"runtime_health\": \"not_available\",\n      \"enabled\": false,\n      \"installed\": false,\n      \"configured\": false,\n      \"detected\": false,\n      \"mode\": \"disabled\",\n      \"scope\": \"repo\",\n      \"data_path\": null,\n      \"path\": null,\n      \"api_key_required\": false,\n      \"index\": null,\n      \"namespace\": null,\n      \"adapter_contract\": \"knowledge.memory_adapter.v1\",\n      \"adapter_command\": \"node .knowledge/tools/memory-pinecone.js health --json\",\n      \"license_spdx\": \"Service-TOS\",\n      \"version\": null,\n      \"records_count\": 0,\n      \"last_retrieval_count\": 0,\n      \"source_of_truth\": false,\n      \"trust_effect\": \"advisory_only\",\n      \"trust_role\": \"advisory_only\",\n      \"warnings\": [],\n      \"errors\": []\n    }\n  },\n  \"legacy_providers_detected\": [],\n  \"sources\": {\n    \"configured_sources\": 0,\n    \"namespace\": null,\n    \"index\": null\n  },\n  \"live_checks\": {\n    \"status_report_mode\": \"offline\",\n    \"network_calls\": \"not_run\",\n    \"adapter_live_calls_require_explicit_command\": true\n  },\n  \"warnings\": [\n    \"Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.\",\n    \"Install/update requires explicit user action and may use network outside status/report mode.\"\n  ],\n  \"metrics\": {\n    \"schema_version\": \"3.3.0\",\n    \"generated_at\": \"2026-08-07T00:21:40.198Z\",\n    \"generated_by\": \"86148408c8aa-32825\",\n    \"mode\": \"repo\",\n    \"provider_count\": 2,\n    \"enabled_provider_count\": 0,\n    \"legacy_provider_count\": 0,\n    \"external_memory_records_count\": 0,\n    \"last_retrieval_count\": 0,\n    \"external_memory_override_count\": 0,\n    \"override_attempts_blocked\": 0,\n    \"unknown_license_count\": 0\n  }\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "      \"Install/update requires explicit user action and may use network outside status/report mode.\"\n      ],\n      \"errors\": []\n    },\n    \"pinecone\": {\n      \"provider_id\": \"pinecone\",\n      \"provider\": \"pinecone\",\n      \"provider_name\": \"Pinecone\",\n      \"type\": \"cloud\",\n      \"layer\": \"free_core\",\n      \"status\": \"disabled\",\n      \"runtime_health\": \"not_available\",\n      \"enabled\": false,\n      \"installed\": false,\n      \"configured\": false,\n      \"detected\": false,\n      \"mode\": \"disabled\",\n      \"scope\": \"repo\",\n      \"data_path\": null,\n      \"path\": null,\n      \"api_key_required\": false,\n      \"index\": null,\n      \"namespace\": null,\n      \"adapter_contract\": \"knowledge.memory_adapter.v1\",\n      \"adapter_command\": \"node .knowledge/tools/memory-pinecone.js health --json\",\n      \"license_spdx\": \"Service-TOS\",\n      \"version\": null,\n      \"records_count\": 0,\n      \"last_retrieval_count\": 0,\n      \"source_of_truth\": false,\n      \"trust_effect\": \"advisory_only\",\n      \"trust_role\": \"advisory_only\",\n      \"warnings\": [],\n      \"errors\": []\n    }\n  },\n  \"legacy_providers_detected\": [],\n  \"sources\": {\n    \"configured_sources\": 0,\n    \"namespace\": null,\n    \"index\": null\n  },\n  \"live_checks\": {\n    \"status_report_mode\": \"offline\",\n    \"network_calls\": \"not_run\",\n    \"adapter_live_calls_require_explicit_command\": true\n  },\n  \"warnings\": [\n    \"Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.\",\n    \"Install/update requires explicit user action and may use network outside status/report mode.\"\n  ],\n  \"metrics\": {\n    \"schema_version\": \"3.3.0\",\n    \"generated_at\": \"2026-08-07T00:21:40.198Z\",\n    \"generated_by\": \"86148408c8aa-32825\",\n    \"mode\": \"repo\",\n    \"provider_count\": 2,\n    \"enabled_provider_count\": 0,\n    \"legacy_provider_count\": 0,\n    \"external_memory_records_count\": 0,\n    \"last_retrieval_count\": 0,\n    \"external_memory_override_count\": 0,\n    \"override_attempts_blocked\": 0,\n    \"unknown_license_count\": 0\n  }\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "repair-on-touch-status-requires-scope",
+      "command": "node .knowledge/tools/repair-on-touch.js status --json",
+      "status": "pass",
+      "exit_code": 1,
+      "duration_ms": 103,
+      "stdout_tail": "",
+      "stderr_tail": "{\n  \"status\": \"error\",\n  \"code\": \"repair_plan_scope_required\",\n  \"message\": \"Status requires explicit --task-id and --session-id\",\n  \"validation\": null\n}\n",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 1,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "",
+          "stderr_tail": "{\n  \"status\": \"error\",\n  \"code\": \"repair_plan_scope_required\",\n  \"message\": \"Status requires explicit --task-id and --session-id\",\n  \"validation\": null\n}\n"
+        }
+      ],
+      "expected_failure": true,
+      "expected_nonzero_exit": true,
+      "expected_failure_code": "repair_plan_scope_required",
+      "observed_failure_code": "repair_plan_scope_required"
+    },
+    {
+      "id": "upgrade-previous-release",
+      "command": "<internal assertion>",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "previous_version": "3.2.11",
+      "previous_artifact_sha256": "b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79",
+      "target_source_fixture": "app.js"
+    },
+    {
+      "id": "upgrade-3.2.11-to-3.3.0",
+      "command": "node <local-path> --target-knowledge-root <local-path> --from <local-path> --apply --yes --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 2971,
+      "stdout_tail": " {\\n      \\\"step\\\": \\\"task-routing\\\",\\n      \\\"command\\\": \\\"task-routing.js refresh --all --quiet\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 41,\\n      \\\"summary\\\": \\\"\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"inspector\\\",\\n      \\\"command\\\": \\\"build-visual-inspector.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 81,\\n      \\\"summary\\\": \\\"index.html\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"metrics\\\",\\n      \\\"command\\\": \\\"collect-metrics.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 45,\\n      \\\"summary\\\": \\\"routing scopes not comparable\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"pr-summary\\\",\\n      \\\"command\\\": \\\"generate-pr-summary.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 50,\\n      \\\"summary\\\": \\\"\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"graphs\\\",\\n      \\\"command\\\": \\\"render-graph-execution.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 28,\\n      \\\"summary\\\": \\\"\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"harness\\\",\\n      \\\"command\\\": \\\"evaluation-harness.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": \\\"release_candidate\\\",\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 669,\\n      \\\"summary\\\": \\\"\\\"\\n    }\\n  ]\\n}\",\n      \"stderr\": \"\"\n    }\n  ],\n  \"report_write\": {\n    \"status\": \"ok\",\n    \"path\": \".knowledge/maintenance/update_system_files_report.json\"\n  },\n  \"report\": \".knowledge/maintenance/update_system_files_report.json\"\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": " {\\n      \\\"step\\\": \\\"task-routing\\\",\\n      \\\"command\\\": \\\"task-routing.js refresh --all --quiet\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 41,\\n      \\\"summary\\\": \\\"\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"inspector\\\",\\n      \\\"command\\\": \\\"build-visual-inspector.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 81,\\n      \\\"summary\\\": \\\"index.html\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"metrics\\\",\\n      \\\"command\\\": \\\"collect-metrics.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 45,\\n      \\\"summary\\\": \\\"routing scopes not comparable\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"pr-summary\\\",\\n      \\\"command\\\": \\\"generate-pr-summary.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 50,\\n      \\\"summary\\\": \\\"\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"graphs\\\",\\n      \\\"command\\\": \\\"render-graph-execution.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": null,\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 28,\\n      \\\"summary\\\": \\\"\\\"\\n    },\\n    {\\n      \\\"step\\\": \\\"harness\\\",\\n      \\\"command\\\": \\\"evaluation-harness.js\\\",\\n      \\\"exit\\\": 0,\\n      \\\"success\\\": true,\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"json_status\\\": \\\"release_candidate\\\",\\n      \\\"semantic_errors\\\": [],\\n      \\\"duration_ms\\\": 669,\\n      \\\"summary\\\": \\\"\\\"\\n    }\\n  ]\\n}\",\n      \"stderr\": \"\"\n    }\n  ],\n  \"report_write\": {\n    \"status\": \"ok\",\n    \"path\": \".knowledge/maintenance/update_system_files_report.json\"\n  },\n  \"report\": \".knowledge/maintenance/update_system_files_report.json\"\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "upgrade-repair-state-preservation",
+      "command": "<internal assertion>",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 0,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "installed_version": "3.3.0",
+      "canaries_checked": 2,
+      "hash_mismatches": [],
+      "missing_installed_runtime": []
+    },
+    {
+      "id": "upgrade-verify",
+      "command": "node .knowledge/tools/update-system-files.js --verify-upgrade --from <local-path> --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 266,
+      "stdout_tail": "on\\\": \\\"3.3.0\\\",\\n      \\\"latest_version\\\": null\\n    },\\n    {\\n      \\\"check\\\": \\\"search_index\\\",\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"artifact\\\": \\\".knowledge/search/index.json\\\"\\n    },\\n    {\\n      \\\"check\\\": \\\"append_only_events_dir\\\",\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"artifact\\\": \\\".knowledge/maintenance/events/\\\"\\n    },\\n    {\\n      \\\"check\\\": \\\"secret_scan\\\",\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"findings_total\\\": 0,\\n      \\\"secret_scan_status\\\": \\\"clean\\\",\\n      \\\"generated_at\\\": \\\"2026-08-07T00:21:42.223Z\\\"\\n    }\\n  ],\\n  \\\"issues\\\": [\\n    {\\n      \\\"lifecycle_id\\\": \\\"LC-36018ac9bd7265d7\\\",\\n      \\\"code\\\": \\\"suspect_module\\\",\\n      \\\"module_id\\\": \\\"root\\\",\\n      \\\"artifact\\\": \\\"app.js\\\",\\n      \\\"affected_artifacts\\\": [\\n        \\\".knowledge/modules/root.json\\\",\\n        \\\"app.js\\\"\\n      ],\\n      \\\"message\\\": \\\"Module root is suspect; current source and relevant tests must be verified before behavior claims.\\\",\\n      \\\"severity\\\": \\\"medium\\\",\\n      \\\"score_cost\\\": 7,\\n      \\\"repair_class\\\": \\\"verify_on_touch\\\",\\n      \\\"required_checks\\\": [\\n        \\\"read_current_source\\\",\\n        \\\"run_relevant_tests\\\",\\n        \\\"compare_existing_claims\\\"\\n      ],\\n      \\\"resolution_predicate\\\": \\\"source_and_relevant_tests_confirm_claim\\\",\\n      \\\"safe_during_current_task\\\": true,\\n      \\\"critical_path\\\": false,\\n      \\\"security_sensitive\\\": false,\\n      \\\"status\\\": \\\"open\\\",\\n      \\\"estimated_additional_work\\\": {\\n        \\\"minutes\\\": 2,\\n        \\\"context_percent\\\": 4\\n      }\\n    }\\n  ],\\n  \\\"findings\\\": [\\n    {\\n      \\\"lifecycle_id\\\": \\\"LC-36018ac9bd7265d7\\\",\\n      \\\"code\\\": \\\"suspect_module\\\",\\n      \\\"module_id\\\": \\\"root\\\",\\n      \\\"artifact\\\": \\\"app.js\\\",\\n      \\\"affected_artifacts\\\": [\\n        \\\".knowledge/modules/root.json\\\",\\n        \\\"app.js\\\"\\n      ],\\n      \\\"message\\\": \\\"Module root is suspect; current source and relevant tests must be verified before behavior claims.\\\",\\n      \\\"severit\",\n      \"stderr\": \"\"\n    }\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "on\\\": \\\"3.3.0\\\",\\n      \\\"latest_version\\\": null\\n    },\\n    {\\n      \\\"check\\\": \\\"search_index\\\",\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"artifact\\\": \\\".knowledge/search/index.json\\\"\\n    },\\n    {\\n      \\\"check\\\": \\\"append_only_events_dir\\\",\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"artifact\\\": \\\".knowledge/maintenance/events/\\\"\\n    },\\n    {\\n      \\\"check\\\": \\\"secret_scan\\\",\\n      \\\"status\\\": \\\"pass\\\",\\n      \\\"findings_total\\\": 0,\\n      \\\"secret_scan_status\\\": \\\"clean\\\",\\n      \\\"generated_at\\\": \\\"2026-08-07T00:21:42.223Z\\\"\\n    }\\n  ],\\n  \\\"issues\\\": [\\n    {\\n      \\\"lifecycle_id\\\": \\\"LC-36018ac9bd7265d7\\\",\\n      \\\"code\\\": \\\"suspect_module\\\",\\n      \\\"module_id\\\": \\\"root\\\",\\n      \\\"artifact\\\": \\\"app.js\\\",\\n      \\\"affected_artifacts\\\": [\\n        \\\".knowledge/modules/root.json\\\",\\n        \\\"app.js\\\"\\n      ],\\n      \\\"message\\\": \\\"Module root is suspect; current source and relevant tests must be verified before behavior claims.\\\",\\n      \\\"severity\\\": \\\"medium\\\",\\n      \\\"score_cost\\\": 7,\\n      \\\"repair_class\\\": \\\"verify_on_touch\\\",\\n      \\\"required_checks\\\": [\\n        \\\"read_current_source\\\",\\n        \\\"run_relevant_tests\\\",\\n        \\\"compare_existing_claims\\\"\\n      ],\\n      \\\"resolution_predicate\\\": \\\"source_and_relevant_tests_confirm_claim\\\",\\n      \\\"safe_during_current_task\\\": true,\\n      \\\"critical_path\\\": false,\\n      \\\"security_sensitive\\\": false,\\n      \\\"status\\\": \\\"open\\\",\\n      \\\"estimated_additional_work\\\": {\\n        \\\"minutes\\\": 2,\\n        \\\"context_percent\\\": 4\\n      }\\n    }\\n  ],\\n  \\\"findings\\\": [\\n    {\\n      \\\"lifecycle_id\\\": \\\"LC-36018ac9bd7265d7\\\",\\n      \\\"code\\\": \\\"suspect_module\\\",\\n      \\\"module_id\\\": \\\"root\\\",\\n      \\\"artifact\\\": \\\"app.js\\\",\\n      \\\"affected_artifacts\\\": [\\n        \\\".knowledge/modules/root.json\\\",\\n        \\\"app.js\\\"\\n      ],\\n      \\\"message\\\": \\\"Module root is suspect; current source and relevant tests must be verified before behavior claims.\\\",\\n      \\\"severit\",\n      \"stderr\": \"\"\n    }\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    },
+    {
+      "id": "upgrade-install-check",
+      "command": "node .knowledge/tools/install-check.js --json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 82,
+      "stdout_tail": "ac203919\"\n      },\n      {\n        \"lock_name\": \"visual-inspector\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      },\n      {\n        \"lock_name\": \"watch-maintenance\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      },\n      {\n        \"lock_name\": \"wiki-graph\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      },\n      {\n        \"lock_name\": \"wiki-lint\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      }\n    ]\n  },\n  \"issues\": [\n    {\n      \"severity\": \"info\",\n      \"code\": \"root_gitattributes_optional\",\n      \"message\": \"Root .gitattributes is optional. See .knowledge/templates/git-policy/gitattributes.snippet for recommendations.\",\n      \"artifact\": \".gitattributes\"\n    }\n  ],\n  \"fixes_available\": [],\n  \"fixes_applied\": [],\n  \"next_commands\": [\n    \"node .knowledge/tools/flow.js release --no-color\"\n  ]\n}\n",
+      "stderr_tail": "",
+      "attempts": [
+        {
+          "attempt": 1,
+          "exit_code": 0,
+          "signal": null,
+          "error_code": null,
+          "error_message": "",
+          "stdout_tail": "ac203919\"\n      },\n      {\n        \"lock_name\": \"visual-inspector\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      },\n      {\n        \"lock_name\": \"watch-maintenance\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      },\n      {\n        \"lock_name\": \"wiki-graph\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      },\n      {\n        \"lock_name\": \"wiki-lint\",\n        \"resource_id\": null,\n        \"root_kind\": \"state\",\n        \"status\": \"safe\",\n        \"current\": {\n          \"status\": \"safe\",\n          \"owner\": null\n        },\n        \"root_kinds\": [\n          \"state\",\n          \"project\"\n        ],\n        \"physical_root_id\": \"2e36c4b23b85610ada5bff4ed2c0afa4d21807ea4ff0fe8c75dfda3aac203919\"\n      }\n    ]\n  },\n  \"issues\": [\n    {\n      \"severity\": \"info\",\n      \"code\": \"root_gitattributes_optional\",\n      \"message\": \"Root .gitattributes is optional. See .knowledge/templates/git-policy/gitattributes.snippet for recommendations.\",\n      \"artifact\": \".gitattributes\"\n    }\n  ],\n  \"fixes_available\": [],\n  \"fixes_applied\": [],\n  \"next_commands\": [\n    \"node .knowledge/tools/flow.js release --no-color\"\n  ]\n}\n",
+          "stderr_tail": ""
+        }
+      ]
+    }
+  ],
+  "failures": []
+}

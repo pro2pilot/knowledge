@@ -1,0 +1,172 @@
+{
+  "flow": "import",
+  "mode": "repo",
+  "repo_id": "local-repo-d44174edfe",
+  "workspace_id": null,
+  "agent_id": null,
+  "target_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+  "project_knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+  "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+  "branch": "master",
+  "head_sha": "7644d810cf21c8e26bca0f8a8ae90910f31bf9bc",
+  "started_at": "2026-08-07T00:21:11.961Z",
+  "duration_total_ms": 1526,
+  "steps_total": 12,
+  "steps_ok": 12,
+  "checks_status": "ok",
+  "status": "ok",
+  "overall_status": "ok",
+  "warnings": [
+    "agent is on main",
+    "dirty workspace"
+  ],
+  "flow_log": ".knowledge/maintenance/flow-logs/import-2026-08-07T00-21-11-961Z-27930-25fb98d3.json",
+  "flow_log_bytes": 83130,
+  "flow_log_sha256": "f2ee650c6dcfd4ecf3ac0a35a520a311a540e75b48039770ccff4cb43fdabb62",
+  "flow_log_status": "written",
+  "flow_log_error": null,
+  "failure_code": null,
+  "onboarding_follow_up": {
+    "required": true,
+    "reason": "upgrade_missing_completion_marker",
+    "command": "node .knowledge/inspector.js",
+    "note": "The system is ready. Complete First-run setup in the live Inspector for full behavior and autonomy controls.",
+    "chat_message": ".knowledge is installed and already working. I opened the local Inspector for First-run setup so you can tune agent behavior, autonomy rules, and chat/report preferences for full capabilities.",
+    "auto_launch": true,
+    "auto_launch_disable_env": "KNOWLEDGE_FLOW_NO_OPEN=1"
+  },
+  "steps": [
+    {
+      "step": "install-check",
+      "command": "install-check.js --json",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": "ok",
+      "semantic_errors": [],
+      "duration_ms": 106,
+      "summary": ""
+    },
+    {
+      "step": "ingest",
+      "command": "ingest-existing-project.js --merge",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": null,
+      "semantic_errors": [],
+      "duration_ms": 435,
+      "summary": ""
+    },
+    {
+      "step": "sync",
+      "command": "sync-tracked.js --scan --discover",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": "ok",
+      "semantic_errors": [],
+      "duration_ms": 143,
+      "summary": ""
+    },
+    {
+      "step": "wiki-graph",
+      "command": "build-wiki-graph.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": null,
+      "semantic_errors": [],
+      "duration_ms": 64,
+      "summary": "12 nodes / 17 edges"
+    },
+    {
+      "step": "lint",
+      "command": "lint-wiki.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": "healthy",
+      "semantic_errors": [],
+      "duration_ms": 96,
+      "summary": "100 /100 healthy"
+    },
+    {
+      "step": "ext-memory",
+      "command": "external-memory-status.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": null,
+      "semantic_errors": [],
+      "duration_ms": 76,
+      "summary": "manual"
+    },
+    {
+      "step": "routing",
+      "command": "build-routing-bundle.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": null,
+      "semantic_errors": [],
+      "duration_ms": 105,
+      "summary": "- modules"
+    },
+    {
+      "step": "search-idx",
+      "command": "build-search-index.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": null,
+      "semantic_errors": [],
+      "duration_ms": 94,
+      "summary": "44 docs"
+    },
+    {
+      "step": "inspector",
+      "command": "build-visual-inspector.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": null,
+      "semantic_errors": [],
+      "duration_ms": 108,
+      "summary": "index.html"
+    },
+    {
+      "step": "secret-scan",
+      "command": "scan-secrets.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": "clean",
+      "semantic_errors": [],
+      "duration_ms": 101,
+      "summary": "clean / 0 findings"
+    },
+    {
+      "step": "updates",
+      "command": "check-updates.js --auto --json",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": "not_due",
+      "semantic_errors": [],
+      "duration_ms": 19,
+      "summary": "not_due"
+    },
+    {
+      "step": "doctor",
+      "command": "doctor.js",
+      "exit": 0,
+      "success": true,
+      "status": "pass",
+      "json_status": "usable_with_warnings",
+      "semantic_errors": [],
+      "duration_ms": 174,
+      "summary": "86 /100 usable_with_warnings"
+    }
+  ]
+}

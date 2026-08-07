@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "url": "http://127.0.0.1:38871/?token=e4c206f408584258f29276ea155d9f2b4076f44e3b7e556b",
+  "host": "127.0.0.1",
+  "port": 38871,
+  "session_token": "e4c206f408584258f29276ea155d9f2b4076f44e3b7e556b",
+  "scope": "local-inspector"
+}

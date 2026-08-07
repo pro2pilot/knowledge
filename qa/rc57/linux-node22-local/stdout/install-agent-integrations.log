@@ -1,0 +1,1417 @@
+{
+  "status": "ok",
+  "mode": "all",
+  "runtimes": [
+    "codex",
+    "claude",
+    "opencode",
+    "openclaw",
+    "hermes",
+    "gemini",
+    "copilot",
+    "devin",
+    "windsurf",
+    "continue",
+    "roo",
+    "aider"
+  ],
+  "source": "flag:--all --confirm-all",
+  "installed": {
+    "codex": {
+      "agents_md": "created",
+      "codex_skills": 19,
+      "codex_skills_source_only_rejections": [],
+      "codex_release_preparation_cleanup": "absent"
+    },
+    "claude": {
+      "claude_md": "created",
+      "claude_skills": 19,
+      "claude_skills_source_only_rejections": []
+    },
+    "opencode": {
+      "opencode_commands": 19,
+      "opencode_commands_source_only_rejections": []
+    },
+    "openclaw": {
+      "agents_md": "updated",
+      "openclaw_skills": 19,
+      "openclaw_skills_source_only_rejections": []
+    },
+    "hermes": {
+      "agents_md": "updated"
+    },
+    "gemini": {
+      "gemini_md": "created"
+    },
+    "copilot": {
+      "copilot_instructions": "created"
+    },
+    "devin": {
+      "legacy_devin_rule": {
+        "status": "absent",
+        "path": ".devin/rules/knowledge.md",
+        "runtime": "devin",
+        "removed_blocks": 0
+      },
+      "agents_md": "updated",
+      "devin_rules": "created",
+      "devin_vendor_contract": "specialized_rules_bridge",
+      "devin_primary_contract": "AGENTS.md"
+    },
+    "windsurf": {
+      "legacy_windsurf_rule": {
+        "status": "absent",
+        "path": ".devin/rules/knowledge.md",
+        "runtime": "windsurf",
+        "removed_blocks": 0
+      },
+      "windsurf_rules": "created"
+    },
+    "continue": {
+      "continue_rules": "created"
+    },
+    "roo": {
+      "roo_rules": "created"
+    },
+    "aider": {
+      "conventions_md": "created",
+      "aider_config": "created"
+    }
+  },
+  "preflight": {
+    "status": "pass",
+    "schema_version": "knowledge-integration-write-plan.v1",
+    "runtimes": [
+      "codex",
+      "claude",
+      "opencode",
+      "openclaw",
+      "hermes",
+      "gemini",
+      "copilot",
+      "devin",
+      "windsurf",
+      "continue",
+      "roo",
+      "aider"
+    ],
+    "targets_total": 70,
+    "sources_total": 69,
+    "targets": [
+      {
+        "rel_path": "AGENTS.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-audit/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-concurrent-safe/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-doctor/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-evaluate/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-field-report/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-handoff/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-ingest/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-inspector/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-lint-wiki/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-metrics/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-pr-summary/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-repair-trust/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-routing/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-search/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-sync/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-templates/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-visual/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-wiki/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/kb-wikigraph/SKILL.md",
+        "operation": "write",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": ".agents/skills/release-preparation-workflow.md",
+        "operation": "inspect_or_remove",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "CLAUDE.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-audit/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-concurrent-safe/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-doctor/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-evaluate/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-field-report/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-handoff/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-ingest/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-inspector/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-lint-wiki/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-metrics/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-pr-summary/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-repair-trust/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-routing/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-search/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-sync/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-templates/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-visual/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-wiki/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".claude/skills/kb-wikigraph/SKILL.md",
+        "operation": "write",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-audit.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-concurrent-safe.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-doctor.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-evaluate.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-handoff.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-index.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-ingest.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-inspector.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-lint-wiki.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-metrics.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-pr-summary.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-routing.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-scan.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-search.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-sync.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-templates.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-visual.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-wiki.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": ".opencode/commands/kb-wikigraph.md",
+        "operation": "write",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "GEMINI.md",
+        "operation": "write",
+        "runtime": "gemini"
+      },
+      {
+        "rel_path": ".github/copilot-instructions.md",
+        "operation": "write",
+        "runtime": "copilot"
+      },
+      {
+        "rel_path": ".devin/rules/knowledge.rules",
+        "operation": "write",
+        "runtime": "devin"
+      },
+      {
+        "rel_path": ".devin/rules/knowledge.md",
+        "operation": "inspect_or_remove",
+        "runtime": "devin"
+      },
+      {
+        "rel_path": ".windsurf/rules/knowledge.md",
+        "operation": "write",
+        "runtime": "windsurf"
+      },
+      {
+        "rel_path": ".continue/rules/knowledge.md",
+        "operation": "write",
+        "runtime": "continue"
+      },
+      {
+        "rel_path": ".roo/rules/knowledge.md",
+        "operation": "write",
+        "runtime": "roo"
+      },
+      {
+        "rel_path": "CONVENTIONS.md",
+        "operation": "write",
+        "runtime": "aider"
+      },
+      {
+        "rel_path": ".aider.conf.yml",
+        "operation": "write",
+        "runtime": "aider"
+      },
+      {
+        "rel_path": ".gitattributes",
+        "operation": "write",
+        "runtime": "system"
+      }
+    ],
+    "sources": [
+      {
+        "rel_path": "install-manifest.json",
+        "runtime": "system"
+      },
+      {
+        "rel_path": "agent-integrations/_shared/AGENTS.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/_shared/trust-routing.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/_shared/final-report-contract.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-audit/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-concurrent-safe/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-doctor/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-evaluate/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-field-report/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-handoff/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-ingest/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-inspector/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-lint-wiki/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-metrics/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-pr-summary/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-repair-trust/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-routing/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-search/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-sync/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-templates/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-visual/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-wiki/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/codex/skills/kb-wikigraph/SKILL.md",
+        "runtime": "codex"
+      },
+      {
+        "rel_path": "agent-integrations/claude/CLAUDE.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-audit/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-concurrent-safe/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-doctor/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-evaluate/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-field-report/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-handoff/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-ingest/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-inspector/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-lint-wiki/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-metrics/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-pr-summary/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-repair-trust/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-routing/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-search/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-sync/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-templates/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-visual/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-wiki/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/claude/skills/kb-wikigraph/SKILL.md",
+        "runtime": "claude"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-audit.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-concurrent-safe.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-doctor.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-evaluate.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-handoff.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-index.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-ingest.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-inspector.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-lint-wiki.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-metrics.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-pr-summary.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-routing.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-scan.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-search.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-sync.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-templates.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-visual.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-wiki.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/opencode/commands/kb-wikigraph.md",
+        "runtime": "opencode"
+      },
+      {
+        "rel_path": "agent-integrations/gemini/GEMINI.md",
+        "runtime": "gemini"
+      },
+      {
+        "rel_path": "agent-integrations/copilot/copilot-instructions.md",
+        "runtime": "copilot"
+      },
+      {
+        "rel_path": "agent-integrations/devin/rules/knowledge.rules",
+        "runtime": "devin"
+      },
+      {
+        "rel_path": "agent-integrations/windsurf/rules/knowledge.md",
+        "runtime": "windsurf"
+      },
+      {
+        "rel_path": "agent-integrations/continue/rules/knowledge.md",
+        "runtime": "continue"
+      },
+      {
+        "rel_path": "agent-integrations/roo/rules/knowledge.md",
+        "runtime": "roo"
+      },
+      {
+        "rel_path": "agent-integrations/aider/CONVENTIONS.md",
+        "runtime": "aider"
+      }
+    ]
+  },
+  "gitattributes": "created",
+  "transaction": {
+    "schema_version": "knowledge-integration-transaction.v1",
+    "transaction_id": "cf537641-e1d8-42c4-878e-ee160e82fc60",
+    "created_at": "2026-08-07T00:21:11.472Z",
+    "status": "committed",
+    "runtimes": [
+      "codex",
+      "claude",
+      "opencode",
+      "openclaw",
+      "hermes",
+      "gemini",
+      "copilot",
+      "devin",
+      "windsurf",
+      "continue",
+      "roo",
+      "aider"
+    ],
+    "targets_total": 70,
+    "files_created": [
+      "AGENTS.md",
+      ".agents/skills/kb-audit/SKILL.md",
+      ".agents/skills/kb-concurrent-safe/SKILL.md",
+      ".agents/skills/kb-doctor/SKILL.md",
+      ".agents/skills/kb-evaluate/SKILL.md",
+      ".agents/skills/kb-field-report/SKILL.md",
+      ".agents/skills/kb-handoff/SKILL.md",
+      ".agents/skills/kb-ingest/SKILL.md",
+      ".agents/skills/kb-inspector/SKILL.md",
+      ".agents/skills/kb-lint-wiki/SKILL.md",
+      ".agents/skills/kb-metrics/SKILL.md",
+      ".agents/skills/kb-pr-summary/SKILL.md",
+      ".agents/skills/kb-repair-trust/SKILL.md",
+      ".agents/skills/kb-routing/SKILL.md",
+      ".agents/skills/kb-search/SKILL.md",
+      ".agents/skills/kb-sync/SKILL.md",
+      ".agents/skills/kb-templates/SKILL.md",
+      ".agents/skills/kb-visual/SKILL.md",
+      ".agents/skills/kb-wiki/SKILL.md",
+      ".agents/skills/kb-wikigraph/SKILL.md",
+      "CLAUDE.md",
+      ".claude/skills/kb-audit/SKILL.md",
+      ".claude/skills/kb-concurrent-safe/SKILL.md",
+      ".claude/skills/kb-doctor/SKILL.md",
+      ".claude/skills/kb-evaluate/SKILL.md",
+      ".claude/skills/kb-field-report/SKILL.md",
+      ".claude/skills/kb-handoff/SKILL.md",
+      ".claude/skills/kb-ingest/SKILL.md",
+      ".claude/skills/kb-inspector/SKILL.md",
+      ".claude/skills/kb-lint-wiki/SKILL.md",
+      ".claude/skills/kb-metrics/SKILL.md",
+      ".claude/skills/kb-pr-summary/SKILL.md",
+      ".claude/skills/kb-repair-trust/SKILL.md",
+      ".claude/skills/kb-routing/SKILL.md",
+      ".claude/skills/kb-search/SKILL.md",
+      ".claude/skills/kb-sync/SKILL.md",
+      ".claude/skills/kb-templates/SKILL.md",
+      ".claude/skills/kb-visual/SKILL.md",
+      ".claude/skills/kb-wiki/SKILL.md",
+      ".claude/skills/kb-wikigraph/SKILL.md",
+      ".opencode/commands/kb-audit.md",
+      ".opencode/commands/kb-concurrent-safe.md",
+      ".opencode/commands/kb-doctor.md",
+      ".opencode/commands/kb-evaluate.md",
+      ".opencode/commands/kb-handoff.md",
+      ".opencode/commands/kb-index.md",
+      ".opencode/commands/kb-ingest.md",
+      ".opencode/commands/kb-inspector.md",
+      ".opencode/commands/kb-lint-wiki.md",
+      ".opencode/commands/kb-metrics.md",
+      ".opencode/commands/kb-pr-summary.md",
+      ".opencode/commands/kb-routing.md",
+      ".opencode/commands/kb-scan.md",
+      ".opencode/commands/kb-search.md",
+      ".opencode/commands/kb-sync.md",
+      ".opencode/commands/kb-templates.md",
+      ".opencode/commands/kb-visual.md",
+      ".opencode/commands/kb-wiki.md",
+      ".opencode/commands/kb-wikigraph.md",
+      "GEMINI.md",
+      ".github/copilot-instructions.md",
+      ".devin/rules/knowledge.rules",
+      ".windsurf/rules/knowledge.md",
+      ".continue/rules/knowledge.md",
+      ".roo/rules/knowledge.md",
+      "CONVENTIONS.md",
+      ".aider.conf.yml",
+      ".gitattributes"
+    ],
+    "files_modified": [],
+    "files_deleted": [],
+    "rollback": {
+      "status": "not_required",
+      "restored": [],
+      "failed": []
+    },
+    "preflight": {
+      "status": "pass",
+      "targets_total": 70,
+      "sources_total": 69
+    },
+    "changes_total": 68,
+    "completed_at": "2026-08-07T00:21:11.690Z"
+  },
+  "install_check": {
+    "command": "node .knowledge/tools/install-check.js --json",
+    "exit": 0,
+    "status": "ok",
+    "result": {
+      "status": "ok",
+      "mode": "fresh",
+      "repo_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+      "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+      "lock_safety": {
+        "schema_version": "knowledge-context-lock-safety.v1",
+        "status": "safe",
+        "roots": [
+          {
+            "root_kind": "shared",
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "lexical_paths": [
+              {
+                "root_kind": "state",
+                "path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge"
+              },
+              {
+                "root_kind": "project",
+                "path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge"
+              }
+            ],
+            "canonical_path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339",
+            "definitions": [
+              "agent-integrations",
+              "apply-template",
+              "doctor",
+              "external-memory-status",
+              "field-report",
+              "git-hooks",
+              "ingest",
+              "memory-provider",
+              "recertify",
+              "repair-on-touch",
+              "routing-bundle",
+              "search-index",
+              "secret-scan",
+              "sync",
+              "task-routing",
+              "team-flow",
+              "visual-inspector",
+              "watch-maintenance",
+              "wiki-graph",
+              "wiki-lint"
+            ],
+            "status": "safe",
+            "findings": [],
+            "legacy": {
+              "present": false,
+              "status": "safe",
+              "owner": null
+            },
+            "locks": [
+              {
+                "lock_name": "agent-integrations",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "apply-template",
+                "resource_id": null,
+                "root_kind": "project",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "doctor",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "external-memory-status",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "field-report",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "git-hooks",
+                "resource_id": null,
+                "root_kind": "project",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "ingest",
+                "resource_id": null,
+                "root_kind": "project",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "memory-provider",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "recertify",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "repair-on-touch",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "routing-bundle",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "search-index",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "secret-scan",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "sync",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "team-flow",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "visual-inspector",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "watch-maintenance",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "wiki-graph",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              },
+              {
+                "lock_name": "wiki-lint",
+                "resource_id": null,
+                "root_kind": "state",
+                "status": "safe",
+                "current": {
+                  "status": "safe",
+                  "owner": null
+                }
+              }
+            ],
+            "summary": {
+              "definitions_checked": 20,
+              "physical_locks_checked": 19
+            }
+          }
+        ],
+        "findings": [],
+        "summary": {
+          "roots_checked": 1,
+          "definitions_checked": 20,
+          "physical_locks_checked": 19,
+          "duplicates_avoided": 1
+        },
+        "layout_version": 1,
+        "locks": [
+          {
+            "lock_name": "agent-integrations",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "apply-template",
+            "resource_id": null,
+            "root_kind": "project",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "doctor",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "external-memory-status",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "field-report",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "git-hooks",
+            "resource_id": null,
+            "root_kind": "project",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "ingest",
+            "resource_id": null,
+            "root_kind": "project",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "memory-provider",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "recertify",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "repair-on-touch",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "routing-bundle",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "search-index",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "secret-scan",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "sync",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "team-flow",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "visual-inspector",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "watch-maintenance",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "wiki-graph",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          },
+          {
+            "lock_name": "wiki-lint",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            },
+            "root_kinds": [
+              "state",
+              "project"
+            ],
+            "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+          }
+        ]
+      },
+      "issues": [
+        {
+          "severity": "info",
+          "code": "fresh_runtime_missing",
+          "message": "maintenance/routing_bundle.json is absent. This is normal before first flow import.",
+          "artifact": ".knowledge/maintenance/routing_bundle.json"
+        }
+      ],
+      "fixes_available": [],
+      "fixes_applied": [],
+      "next_commands": [
+        "node .knowledge/tools/install-agent-integrations.js --runtime codex",
+        "node .knowledge/tools/install-agent-integrations.js --runtime claude",
+        "node .knowledge/tools/install-agent-integrations.js --runtime opencode",
+        "node .knowledge/tools/install-agent-integrations.js --runtime gemini",
+        "node .knowledge/tools/install-agent-integrations.js --runtime copilot",
+        "node .knowledge/tools/install-agent-integrations.js --runtime devin",
+        "node .knowledge/tools/install-agent-integrations.js --runtime windsurf",
+        "node .knowledge/tools/install-agent-integrations.js --runtime continue",
+        "node .knowledge/tools/install-agent-integrations.js --runtime roo",
+        "node .knowledge/tools/install-agent-integrations.js --runtime aider",
+        "node .knowledge/tools/flow.js import"
+      ]
+    }
+  }
+}

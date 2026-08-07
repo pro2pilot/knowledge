@@ -1,0 +1,210 @@
+{
+  "status": "ok",
+  "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+  "snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+  "routing_snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+  "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+  "metrics_comparison_hash": "56cc9cb88cd912d0df24724b31e2d6f17bdacd3bd0e48b04083965a94e576314",
+  "transaction_id": "354f2ac4972674df0764b559089faf8a17fff5bf4f3eba3e5adecbf9cb325cff",
+  "index_reconciled": true,
+  "manifest_reconciled": true,
+  "scope": {
+    "schema_version": "knowledge-routing-scope.v2",
+    "repository_id": "local-repo-d44174edfe",
+    "task": "RC57 OS/Node compatibility matrix",
+    "task_class": "general",
+    "modules": [],
+    "paths": [
+      ".knowledge/tools/field-report.js"
+    ],
+    "exclude_modules": [],
+    "exclude_paths": [],
+    "scope_source": "explicit",
+    "constraints": [],
+    "created_at": "2026-08-07T00:21:16.432Z",
+    "created_by": "unknown",
+    "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419"
+  },
+  "metrics": {
+    "schema_version": "knowledge-workspace-narrowing-comparison.v1",
+    "comparison_kind": "workspace_to_task_first_read_narrowing",
+    "measurement_kind": "estimated_local_first_read_context",
+    "comparison_contract_valid": true,
+    "workspace_baseline_complete": true,
+    "task_scope_explicit": true,
+    "task_route_current": true,
+    "scope_comparable": false,
+    "scope_comparable_deprecated": true,
+    "baseline_complete": true,
+    "baseline_incomplete_reason": null,
+    "claim_eligible": false,
+    "claim_ineligible_reason": "task_readiness_needs_explicit_scope",
+    "claim_ineligible_reasons": [
+      "task_readiness_needs_explicit_scope"
+    ],
+    "claim_requires_current_pointer": true,
+    "estimator_method": "workspace_to_task_first_read_bytes_divided_by_four",
+    "estimator_version": "v1",
+    "comparison_policy_version": "workspace_narrowing_claim_policy.v1",
+    "estimator_limits": "Local byte-based estimate only; not tokenizer or provider telemetry.",
+    "estimator_interpretation": "Estimated workspace-to-task first-read narrowing. This is a deterministic local context estimate, not actual provider-reported model-token usage.",
+    "scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+    "snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+    "routing_snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+    "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+    "metrics_comparison_hash": "56cc9cb88cd912d0df24724b31e2d6f17bdacd3bd0e48b04083965a94e576314",
+    "comparison_receipt": {
+      "schema_version": "knowledge-workspace-narrowing-comparison-receipt.v1",
+      "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+      "baseline_complete": true,
+      "baseline_incomplete_reason": null,
+      "baseline_inputs": [
+        {
+          "role": "workspace_project_index",
+          "path": ".knowledge/project_index.json",
+          "sha256": "798246ac290b98b7f5465ae690b50b15be29f487e20f60bbef0001ed44a3b07d",
+          "bytes": 510,
+          "estimated_tokens": 128,
+          "required": true
+        },
+        {
+          "role": "workspace_module_registry",
+          "path": ".knowledge/modules/module_registry.json",
+          "sha256": "9c0cf5caf4fe7b8f93fab80363ee6c5822ff259fb5b89d62e2f6873890cb2afc",
+          "bytes": 745,
+          "estimated_tokens": 187,
+          "required": true
+        },
+        {
+          "role": "workspace_trust_summary",
+          "path": ".knowledge/maintenance/trust_report.json",
+          "sha256": "2d734094bf238f7f90457f022e31979db3ce07b7a67b088f6cba3eadda418fb2",
+          "bytes": 487,
+          "estimated_tokens": 122,
+          "required": true
+        },
+        {
+          "role": "workspace_repair_summary",
+          "path": ".knowledge/maintenance/repair_queue.json",
+          "sha256": "5e015bfa1ae60c351185edbb1aacb20d0ad8f0254e299f451fdb08d31f1f0e72",
+          "bytes": 784,
+          "estimated_tokens": 196,
+          "required": true
+        },
+        {
+          "role": "workspace_handoff_summary",
+          "path": ".knowledge/maintenance/handoff_summary.json",
+          "sha256": "ab6139dbd19117cd4a29d8b3c84d99691c9a6f7e31bc11de2dce3db9a652b59e",
+          "bytes": 536,
+          "estimated_tokens": 134,
+          "required": true
+        },
+        {
+          "role": "workspace_critical_paths_summary",
+          "path": ".knowledge/maps/critical_paths.json",
+          "sha256": "4ce95370e221ea0a3ef42ee0992d28ac44cbae9b311b7e310061d35b819bb093",
+          "bytes": 12,
+          "estimated_tokens": 3,
+          "required": true
+        },
+        {
+          "role": "source_of_truth_policy_summary",
+          "path": ".knowledge/project_index.json",
+          "sha256": "f64a28fc678ac009c2ae63ed21c94f84e5b8423b2f79ad5e73f45e1998f647fc",
+          "bytes": 89,
+          "estimated_tokens": 23,
+          "required": true
+        },
+        {
+          "role": "concurrency_policy_summary",
+          "path": ".knowledge/maintenance/concurrency_policy.json",
+          "sha256": "b4b44c84c5832f4df8e8c0a5209a49e7783ce6fe5d90011bb15e7247b3469d1c",
+          "bytes": 170,
+          "estimated_tokens": 43,
+          "required": true
+        }
+      ],
+      "routing_inputs": [
+        {
+          "path": "first-read.md",
+          "sha256": "5629a5832f3b32d5a77d789cfc7f36c57fa75ac75fa8bde2aaeb46be16e1a329",
+          "bytes": 546
+        },
+        {
+          "path": "continuation.json",
+          "sha256": "f1b6dcb3621298ee7d6998efd9ae7c59ee4a699290be57baa37e7137d16b5379",
+          "bytes": 322
+        },
+        {
+          "path": ".knowledge/tools/field-report.js",
+          "sha256": "e9d5264ffb8d81862ad816bd2a482cea38f13175b09177a70fc5ff3e438810bd",
+          "bytes": 82214
+        }
+      ],
+      "metrics_comparison_hash": "56cc9cb88cd912d0df24724b31e2d6f17bdacd3bd0e48b04083965a94e576314",
+      "required_source_states": []
+    },
+    "workspace_baseline": {
+      "recipe_id": "knowledge-workspace-first-read-recipe",
+      "recipe_version": "v1",
+      "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+      "complete": true,
+      "estimated_tokens": 836
+    },
+    "task_context": {
+      "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+      "routing_snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+      "estimated_tokens": 20772
+    },
+    "baseline": {
+      "method": "pro2pilot.workspace-baseline.canonical-generator:knowledge-workspace-first-read-recipe.v1",
+      "recipe_id": "knowledge-workspace-first-read-recipe",
+      "recipe_version": "v1",
+      "schema_version": "knowledge-workspace-first-read-baseline.v1",
+      "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+      "canonical_payload_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+      "estimated_tokens": 836
+    },
+    "routing": {
+      "method": "task_scoped_first_read.v1",
+      "estimated_tokens": 20772
+    },
+    "inline_estimated_tokens": 20772,
+    "mandatory_continuation_estimated_tokens": 0,
+    "routing_total_estimated_tokens": 20772,
+    "mandatory_continuations_complete": true,
+    "mandatory_continuation_payloads": [],
+    "required_sources_complete": true,
+    "required_source_issues": [],
+    "relevant_git_diff_accounted": true,
+    "signed_delta_tokens": -19936,
+    "signed_delta_percent": -2384.69,
+    "estimated_tokens_saved": 0,
+    "estimated_percent_saved": 0,
+    "estimated_tokens_overhead": 19936,
+    "estimated_percent_overhead": 2384.69,
+    "assessment": "estimated_overhead",
+    "actual_model_usage": {
+      "available": false,
+      "reason": "no_provider_telemetry"
+    },
+    "workspace_narrowing": {
+      "modules_total": 2,
+      "modules_selected": 0,
+      "modules_excluded": 2,
+      "workspace_candidate_paths_total": 74,
+      "task_paths_selected": 1,
+      "unrelated_paths_excluded": 74,
+      "relevant_high_risk_paths_inline": 0,
+      "relevant_high_risk_paths_continued": 0,
+      "inaccessible_relevant_high_risk_paths": 0,
+      "relevant_high_risk_paths_omitted": 0,
+      "paths_total": 74,
+      "paths_relevant": 1,
+      "paths_selected": 1,
+      "relevant_paths_omitted_by_budget": 0,
+      "relevant_high_risk_paths_in_continuation": 0
+    },
+    "live_input_digest": "2d91b5625efca4d586a6791a9029de9d45ca9d9756d8ee22c365b1c643eda5bf"
+  }
+}

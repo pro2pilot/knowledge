@@ -1,0 +1,458 @@
+{
+  "schema_version": "3.3.0",
+  "generated_at": "2026-08-07T00:21:15.954Z",
+  "generated_by": "86148408c8aa-28910",
+  "mode": "repo",
+  "target_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+  "project_knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+  "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+  "quality_score": 86,
+  "status": "usable_with_warnings",
+  "structural_status": "healthy",
+  "summary": "2 issue(s), 0 critical, score 86/100.",
+  "checks": [
+    {
+      "check": "legacy_project_root_knowledge_backups",
+      "status": "pass",
+      "count": 0,
+      "paths": []
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/project_index.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/modules/module_registry.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/maintenance/concurrency_policy.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/maps/critical_paths.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/evidence/file_facts.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/wiki/index.md",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/external_memory/registry.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/external_memory/retrieval_policy.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/models/memory-provider.schema.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/models/external-memory-report.schema.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/memory-providers/mem0/manifest.json",
+      "status": "pass"
+    },
+    {
+      "check": "required_file",
+      "artifact": ".knowledge/memory-providers/pinecone/manifest.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/freshness.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/maintenance/trust_report.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/maintenance/handoff_summary.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/maintenance/routing_bundle.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/maps/file_criticality.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/maps/wiki_graph.json",
+      "status": "pass"
+    },
+    {
+      "check": "runtime_file",
+      "artifact": ".knowledge/maintenance/wiki_lint_report.json",
+      "status": "pass"
+    },
+    {
+      "check": "json_parse",
+      "status": "pass",
+      "files_checked": 71
+    },
+    {
+      "check": "module_registry_non_empty",
+      "status": "pass",
+      "modules": 2
+    },
+    {
+      "check": "tracked_files_exist",
+      "status": "pass",
+      "tracked_files": 11,
+      "missing": 0
+    },
+    {
+      "check": "trust_report_present",
+      "status": "pass",
+      "generated_at": "2026-08-07T00:21:13.598Z",
+      "suspect_or_low_modules": 2
+    },
+    {
+      "check": "wiki_lint_report",
+      "status": "pass",
+      "aggregate_status": "healthy",
+      "reported_status": "healthy",
+      "quality_score": 100,
+      "structural_status": "healthy",
+      "reported_structural_status": "healthy"
+    },
+    {
+      "check": "wiki_graph",
+      "status": "pass",
+      "nodes": 12,
+      "edges": 17,
+      "broken_edges": 0,
+      "structural_status": "healthy"
+    },
+    {
+      "check": "external_memory_status",
+      "status": "pass",
+      "providers": [
+        {
+          "provider_id": "mem0-oss",
+          "provider": "mem0-oss",
+          "provider_name": "Mem0 OSS",
+          "type": "local",
+          "layer": "free_core",
+          "status": "runtime_not_installed",
+          "runtime_health": "not_available",
+          "enabled": false,
+          "installed": false,
+          "receipt_present": false,
+          "runtime_available": false,
+          "package_installed": false,
+          "configured": false,
+          "detected": false,
+          "mode": "manual",
+          "scope": "repo",
+          "provider_scope": null,
+          "shared_provider_root": null,
+          "project_storage_key": null,
+          "metadata_provider_scope": null,
+          "path_inferred_provider_scope": null,
+          "metadata_scope_mismatch": false,
+          "stale_shared_provider_root": null,
+          "stale_shared_qdrant_path": null,
+          "stale_shared_lock_path": null,
+          "data_path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/external_memory/mem0",
+          "path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/external_memory/mem0",
+          "license_spdx": "Apache-2.0",
+          "version": "mem0ai==2.0.4",
+          "version_pin": "mem0ai==2.0.4",
+          "source_url": "https://docs.mem0.ai/open-source/overview",
+          "adapter_contract": "knowledge.memory_adapter.v1",
+          "adapter_command": "node .knowledge/tools/memory-mem0.js health --json",
+          "setup_command": "node .knowledge/tools/memory-provider.js setup mem0-oss --live --json",
+          "live_health_command": "node .knowledge/tools/memory-mem0.js health --adapter live --json",
+          "live_add_command": "node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text \"Release note: Mem0 is advisory-only external memory\" --scope repo --json",
+          "live_search_command": "node .knowledge/tools/memory-mem0.js search \"advisory memory\" --adapter live --yes-live-memory --json",
+          "live_recall_command": "node .knowledge/tools/memory-mem0.js recall \"advisory memory\" --adapter live --yes-live-memory --json",
+          "live_list_command": "node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json",
+          "llm_provider": null,
+          "llm_model": null,
+          "embedding_provider": null,
+          "embedding_model": null,
+          "embedding_dimensions": null,
+          "vector_store_provider": null,
+          "vector_collection_name": null,
+          "qdrant_path": null,
+          "history_store_provider": null,
+          "history_db_path": null,
+          "install_receipt_path": ".knowledge/external_memory/mem0/install_receipt.json",
+          "runtime_status_path": ".knowledge/external_memory/mem0/runtime_status.json",
+          "config_path": null,
+          "runtime_status_checked_at": null,
+          "last_live_health_check": null,
+          "diagnostic_code": null,
+          "runtime_version": null,
+          "expected_runtime_version": "2.0.4",
+          "runtime_version_matches_pin": null,
+          "selected_python": null,
+          "python_runtime": null,
+          "live_operations_require_explicit_consent": true,
+          "records_count": 0,
+          "last_retrieval_count": 0,
+          "last_retrieval_query": null,
+          "adapter_records_count": 0,
+          "override_attempts_blocked": 0,
+          "source_of_truth": false,
+          "trust_effect": "advisory_only",
+          "trust_role": "advisory_only",
+          "warnings": [
+            "Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.",
+            "Install/update requires explicit user action and may use network outside status/report mode."
+          ],
+          "errors": []
+        },
+        {
+          "provider_id": "pinecone",
+          "provider": "pinecone",
+          "provider_name": "Pinecone",
+          "type": "cloud",
+          "layer": "free_core",
+          "status": "disabled",
+          "runtime_health": "not_available",
+          "enabled": false,
+          "installed": false,
+          "configured": false,
+          "detected": false,
+          "mode": "disabled",
+          "scope": "repo",
+          "data_path": null,
+          "path": null,
+          "api_key_required": false,
+          "index": null,
+          "namespace": null,
+          "adapter_contract": "knowledge.memory_adapter.v1",
+          "adapter_command": "node .knowledge/tools/memory-pinecone.js health --json",
+          "license_spdx": "Service-TOS",
+          "version": null,
+          "records_count": 0,
+          "last_retrieval_count": 0,
+          "source_of_truth": false,
+          "trust_effect": "advisory_only",
+          "trust_role": "advisory_only",
+          "warnings": [],
+          "errors": []
+        }
+      ]
+    },
+    {
+      "check": "memory_provider_manifest_mem0",
+      "status": "pass",
+      "artifact": ".knowledge/memory-providers/mem0/manifest.json"
+    },
+    {
+      "check": "memory_source_of_truth_policy",
+      "status": "pass",
+      "source_of_truth_policy": {
+        "external_memory_source_of_truth": false,
+        "external_memory_can_raise_trust": false,
+        "external_memory_can_overwrite_curated_knowledge": false,
+        "external_memory_can_execute_actions": false,
+        "retrieved_memory_requires_code_or_evidence_verification": true
+      }
+    },
+    {
+      "check": "legacy_claude_mem",
+      "status": "pass",
+      "detected": 0
+    },
+    {
+      "check": "mem0_status",
+      "status": "pass",
+      "provider_status": "runtime_not_installed",
+      "installed": false,
+      "receipt_present": false
+    },
+    {
+      "check": "pinecone_provider_status",
+      "status": "pass",
+      "provider_status": "disabled",
+      "mode": "disabled"
+    },
+    {
+      "check": "provider_runtime_state_not_staged",
+      "status": "pass",
+      "staged": []
+    },
+    {
+      "check": "update_check",
+      "status": "pass",
+      "update_status": "not_due",
+      "current_version": "3.3.0",
+      "latest_version": null
+    },
+    {
+      "check": "search_index",
+      "status": "pass",
+      "artifact": ".knowledge/search/index.json"
+    },
+    {
+      "check": "append_only_events_dir",
+      "status": "pass",
+      "artifact": ".knowledge/maintenance/events/"
+    },
+    {
+      "check": "secret_scan",
+      "status": "pass",
+      "findings_total": 0,
+      "secret_scan_status": "clean",
+      "generated_at": "2026-08-07T00:21:14.204Z"
+    }
+  ],
+  "issues": [
+    {
+      "lifecycle_id": "LC-2949d69ab7c80e92",
+      "code": "suspect_module",
+      "module_id": "root",
+      "artifact": ".aider.conf.yml",
+      "affected_artifacts": [
+        ".aider.conf.yml",
+        ".gitattributes",
+        ".knowledge/modules/root.json",
+        "AGENTS.md"
+      ],
+      "message": "Module root is suspect; current source and relevant tests must be verified before behavior claims.",
+      "severity": "medium",
+      "score_cost": 7,
+      "repair_class": "verify_on_touch",
+      "required_checks": [
+        "read_current_source",
+        "run_relevant_tests",
+        "compare_existing_claims"
+      ],
+      "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+      "safe_during_current_task": true,
+      "critical_path": false,
+      "security_sensitive": false,
+      "status": "open",
+      "estimated_additional_work": {
+        "minutes": 2,
+        "context_percent": 4
+      }
+    },
+    {
+      "lifecycle_id": "LC-dc70da6baa45eba2",
+      "code": "low_confidence_module",
+      "module_id": "github",
+      "artifact": ".github/copilot-instructions.md",
+      "affected_artifacts": [
+        ".github/copilot-instructions.md",
+        ".knowledge/modules/github.json"
+      ],
+      "message": "Module github is low_confidence; current source and relevant tests must be verified before behavior claims.",
+      "severity": "medium",
+      "score_cost": 7,
+      "repair_class": "verify_on_touch",
+      "required_checks": [
+        "read_current_source",
+        "run_relevant_tests",
+        "compare_existing_claims"
+      ],
+      "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+      "safe_during_current_task": true,
+      "critical_path": false,
+      "security_sensitive": false,
+      "status": "open",
+      "estimated_additional_work": {
+        "minutes": 2,
+        "context_percent": 4
+      }
+    }
+  ],
+  "findings": [
+    {
+      "lifecycle_id": "LC-2949d69ab7c80e92",
+      "code": "suspect_module",
+      "module_id": "root",
+      "artifact": ".aider.conf.yml",
+      "affected_artifacts": [
+        ".aider.conf.yml",
+        ".gitattributes",
+        ".knowledge/modules/root.json",
+        "AGENTS.md"
+      ],
+      "message": "Module root is suspect; current source and relevant tests must be verified before behavior claims.",
+      "severity": "medium",
+      "score_cost": 7,
+      "repair_class": "verify_on_touch",
+      "required_checks": [
+        "read_current_source",
+        "run_relevant_tests",
+        "compare_existing_claims"
+      ],
+      "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+      "safe_during_current_task": true,
+      "critical_path": false,
+      "security_sensitive": false,
+      "status": "open",
+      "estimated_additional_work": {
+        "minutes": 2,
+        "context_percent": 4
+      }
+    },
+    {
+      "lifecycle_id": "LC-dc70da6baa45eba2",
+      "code": "low_confidence_module",
+      "module_id": "github",
+      "artifact": ".github/copilot-instructions.md",
+      "affected_artifacts": [
+        ".github/copilot-instructions.md",
+        ".knowledge/modules/github.json"
+      ],
+      "message": "Module github is low_confidence; current source and relevant tests must be verified before behavior claims.",
+      "severity": "medium",
+      "score_cost": 7,
+      "repair_class": "verify_on_touch",
+      "required_checks": [
+        "read_current_source",
+        "run_relevant_tests",
+        "compare_existing_claims"
+      ],
+      "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+      "safe_during_current_task": true,
+      "critical_path": false,
+      "security_sensitive": false,
+      "status": "open",
+      "estimated_additional_work": {
+        "minutes": 2,
+        "context_percent": 4
+      }
+    }
+  ],
+  "global": {
+    "score": 86,
+    "status": "usable_with_warnings",
+    "findings_open": 2
+  },
+  "pending_trust_closures_observed": [],
+  "queue_transitions": []
+}
