@@ -1,6 +1,6 @@
 {
   "schema_version": "knowledge-field-report.v2",
-  "contract_version": "2.2.0",
+  "contract_version": "2.3.0",
   "product_version": "3.3.0",
   "title": "Field Report contract",
   "github_form": {
@@ -36,7 +36,11 @@
       "repository_source_files",
       "repository_source_bytes",
       "repository_profile_basis",
-      "repository_profile_excluded_files"
+      "repository_profile_excluded_files",
+      "repository_profile_dirty",
+      "knowledge_release_channel",
+      "knowledge_candidate_label",
+      "knowledge_candidate_name"
     ],
     "public_outcomes": [
       "doctor_score",
@@ -62,7 +66,9 @@
       "answers.translated.json",
       "translation-provenance.json",
       "translation-review.json"
-    ]
+    ],
+    "source_language_default": "auto",
+    "claim_safety": "Publication is blocked when free-text assertions conflict with observed candidate identity or make routing, token, speed, or accuracy claims without the required evidence."
   },
   "fields": [
     {

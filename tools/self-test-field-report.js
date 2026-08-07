@@ -35,8 +35,10 @@ const {
   scanPublication
 } = require('./lib/field-report/redactor');
 const {
+  claimSafetyFindings,
   publicAnswerLanguageFindings,
   relationshipDisclosure,
+  releaseIdentity,
   render,
   renderEvidence,
   repositoryProfileRows,
@@ -218,9 +220,7 @@ function setupArtifacts(stateRoot) {
     generated_at: '2026-07-29T00:00:00.000Z',
     task_id: taskScope.task_id,
     session_id: taskScope.session_id,
-    task_scope_sha256: crypto.createHash('sha256')
-      .update(JSON.stringify(taskScope))
-      .digest('hex'),
+    task_scope_sha256: taskScope.scope_hash,
     repair_on_touch_enabled: true,
     repair_mode: 'scoped',
     repair_findings_considered: 2,
@@ -754,6 +754,15 @@ function main() {
       assert(facts.values.knowledge_version.source === '.knowledge/package.json', 'version path');
     });
 
+
+    check('collector: producer-compatible repair telemetry remains observable', () => {
+      assert(facts.values.repair_on_touch_enabled.value === true, JSON.stringify(facts.values.repair_on_touch_enabled));
+      assert(facts.values.repair_mode.value === 'scoped', JSON.stringify(facts.values.repair_mode));
+      assert(facts.values.repair_findings_considered.value === 2, JSON.stringify(facts.values.repair_findings_considered));
+      assert(facts.values.repair_findings_closed.value === 1, JSON.stringify(facts.values.repair_findings_closed));
+      assert(!facts.warnings.some((warning) => warning.includes('repair_on_touch_telemetry.json')), facts.warnings.join('; '));
+    });
+
     check('collector: stale and suspect paths use current trust schema', () => {
       assert(facts.values.stale_artifacts_total.value === 3, 'stale count');
       assert(facts.values.modules_suspect.value === 2, 'suspect count');
@@ -1226,6 +1235,53 @@ function main() {
       assert(warnings.some((warning) => warning.includes('filtered filesystem fallback')), warnings.join('; '));
     });
 
+
+    check('collector: an untracked file marks a Git repository profile dirty without entering size totals', () => {
+      const root = path.join(temporaryRoot, 'repository-profile-untracked');
+      ensureDir(path.join(root, 'src'));
+      fs.writeFileSync(path.join(root, 'src', 'index.js'), 'module.exports = 1;\n');
+      for (const args of [
+        ['init'],
+        ['config', 'user.name', 'Field Report Test'],
+        ['config', 'user.email', 'field-report@example.invalid'],
+        ['add', '.'],
+        ['commit', '-m', 'profile fixture']
+      ]) {
+        const result = childProcess.spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+        assert(result.status === 0, `${args.join(' ')}: ${result.stderr}`);
+      }
+      const before = collectRepositoryProfile(root, []);
+      fs.writeFileSync(path.join(root, 'untracked-note.txt'), 'not part of the tracked profile\n');
+      const after = collectRepositoryProfile(root, []);
+      assert(before.dirty === false, JSON.stringify(before));
+      assert(after.dirty === true, JSON.stringify(after));
+      assert(after.tracked_files === before.tracked_files, JSON.stringify(after));
+      assert(after.tracked_bytes === before.tracked_bytes, JSON.stringify(after));
+    });
+
+    check('renderer: non-Git profile labels do not claim that fallback files are Git tracked', () => {
+      const rows = repositoryProfileRows({ values: {
+        repository_profile_basis: { value: 'filtered_worktree_fallback', kind: 'derived' },
+        repository_tracked_files: { value: 7, kind: 'derived' },
+        repository_tracked_bytes: { value: 2048, kind: 'derived' },
+        repository_source_files: { value: 3, kind: 'derived' },
+        repository_source_bytes: { value: 1024, kind: 'derived' }
+      }});
+      const text = JSON.stringify(rows);
+      assert(text.includes('Filtered repository files'), text);
+      assert(!text.includes('Tracked repository files'), text);
+      assert(text.includes('not Git-tracked files'), text);
+    });
+
+    check('collector and renderer: installed release-candidate identity is observed from package metadata', () => {
+      const collected = collect(context);
+      assert(collected.values.knowledge_release_channel.value === 'release_candidate', JSON.stringify(collected.values.knowledge_release_channel));
+      assert(collected.values.knowledge_candidate_label.value === 'RC57', JSON.stringify(collected.values.knowledge_candidate_label));
+      assert(collected.values.knowledge_candidate_name.value === 'knowledge-v3.3.0-step1-rc4-r57.zip', JSON.stringify(collected.values.knowledge_candidate_name));
+      const identity = releaseIdentity(collected);
+      assert(identity.display === '3.3.0 RC57', JSON.stringify(identity));
+    });
+
     let primaryReport;
 
     check('collector: standalone repository scope is explicit and independent of module count', () => {
@@ -1317,7 +1373,14 @@ function main() {
         fieldReportState.paths(context, primaryReport).manifest,
         'utf8'
       ));
-      assert(manifest.language === manifest.public_language, 'default source language');
+      assert(manifest.language === 'auto', 'default source language must remain unresolved until answers are complete');
+      assert(manifest.public_language === 'en', 'public language default');
+      const questions = JSON.parse(fs.readFileSync(
+        fieldReportState.paths(context, primaryReport).questions,
+        'utf8'
+      ));
+      assert(Array.isArray(questions.question_catalog), 'question audit catalog missing');
+      assert(questions.question_catalog.every((item) => item.status === 'missing'), 'initial question statuses');
     });
 
     check('workflow: partial ingest resumes without inventing answers', () => {
@@ -1336,6 +1399,17 @@ function main() {
         context,
         answers: validAnswers()
       });
+      const completedStatus = run(['status', `--report-id=${primaryReport}`], { context });
+      const completedManifest = fieldReportState.load(context, primaryReport);
+      assert(completedManifest.language === 'en', JSON.stringify(completedManifest));
+      assert(completedStatus.translation_status === 'translation_not_required', JSON.stringify(completedStatus));
+      const questionAudit = JSON.parse(fs.readFileSync(
+        fieldReportState.paths(context, primaryReport).questions,
+        'utf8'
+      ));
+      assert(questionAudit.questions.length === 0, JSON.stringify(questionAudit));
+      assert(questionAudit.question_catalog.length > 0, JSON.stringify(questionAudit));
+      assert(questionAudit.question_catalog.every((item) => item.status === 'answered'), JSON.stringify(questionAudit));
       primaryRendered = run(['render', `--report-id=${primaryReport}`], { context });
       assert(primaryRendered.status === 'draft_ready', primaryRendered.status);
       const draft = fs.readFileSync(primaryRendered.draft_path, 'utf8');
@@ -1343,6 +1417,37 @@ function main() {
       assert(draft !== publicBody, 'draft and public must differ');
       assert(draft.includes('Collected fact provenance'), 'draft provenance');
       assert(!publicBody.includes('Collected fact provenance'), 'public debug leak');
+    });
+
+    check('workflow: default auto language keeps substantial Russian answers on the translation path and rejects a false English override', () => {
+      const started = run(['start', '--new'], { context });
+      const answers = validAnswers({
+        'project-context': 'Это отдельный репозиторий сайта, проверенный в реальной задаче переноса и обновления.',
+        'quick-summary': 'Главным результатом стал проверяемый проект с понятными границами и сохранёнными доказательствами.',
+        'workflow-notes': 'Потребовались дополнительные шаги проверки и ручное подтверждение итогового текста.',
+        'main-scenario': 'Проект был перенесён в отдельный репозиторий, после чего были выполнены сборка и проверка ссылок.',
+        'accuracy-example': 'Контролируемого сравнения точности не проводилось, поэтому вывод о росте точности не делается.',
+        'useful-parts': 'Полезными были проверка состояния, готовность задачи и сохранение доказательств.',
+        'what-did-not-work': 'Процесс добавил накладные расходы на настройку и сбор доказательств.',
+        'previous-workflow-comparison': 'Предыдущий процесс был проще для маленькой изолированной правки.',
+        'final-assessment': 'Система полезна для проверяемых миграций, но может быть избыточной для тривиальных изменений.'
+      });
+      run(['ingest', `--report-id=${started.report_id}`], { context, answers });
+      const status = run(['status', `--report-id=${started.report_id}`], { context });
+      const manifest = fieldReportState.load(context, started.report_id);
+      assert(manifest.language === 'auto', JSON.stringify(manifest));
+      assert(status.translation_status === 'translation_required', JSON.stringify(status));
+      expectThrow(() => run([
+        'translation-export',
+        `--report-id=${started.report_id}`,
+        '--language=en'
+      ], { context }), /conflicts|non-English/, 'false English source language');
+      const exported = run([
+        'translation-export',
+        `--report-id=${started.report_id}`,
+        '--language=ru'
+      ], { context });
+      assert(exported.status === 'translation_required' && exported.source_language === 'ru', JSON.stringify(exported));
     });
 
     check('renderer: public outcome tables explain metrics without leaking internal paths', () => {
@@ -1485,6 +1590,14 @@ function main() {
           'The site was separated from a larger local multi-project workspace for an internal client organization. The stack uses JavaScript.',
         'adjacent workspace/client labels produced duplicated or broken prose'
       );
+
+      assert(
+        generalizeInternalOrganization(
+          'Any workspace-to-task context number is a deterministic local estimate. This workspace contained one repository.'
+        ).text ===
+          'Any workspace-to-task context number is a deterministic local estimate. This workspace contained one repository.',
+        'generic workspace prose was mistaken for an internal label'
+      );
       const report = createRendered(context, validAnswers({
         'project-context': 'The project moved from workspace Design and client Acme Corp.'
       }));
@@ -1515,6 +1628,69 @@ function main() {
         output.redaction.answer_language_scan.findings.some((finding) => finding.field === 'quick-summary'),
         JSON.stringify(output.redaction)
       );
+    });
+
+
+    check('claim safety: unsupported routing effectiveness and routing-use claims are blocked without a bound snapshot', () => {
+      const baseFacts = collect(context);
+      const effectiveness = claimSafetyFindings(baseFacts, validAnswers({
+        'main-scenario': '.knowledge limited the scope and selected the correct files.'
+      }));
+      assert(effectiveness.some((finding) => finding.rule === 'unsupported_routing_claim'), JSON.stringify(effectiveness));
+      const usage = claimSafetyFindings(baseFacts, validAnswers({
+        'previous-workflow-comparison': '.knowledge added routing, trust checks, and an audit trail.'
+      }));
+      assert(usage.some((finding) => finding.rule === 'unsupported_routing_claim'), JSON.stringify(usage));
+      const safe = claimSafetyFindings(baseFacts, validAnswers({
+        'main-scenario': '.knowledge helped make the repository and task boundaries explicit.'
+      }));
+      assert(!safe.some((finding) => /routing/.test(finding.rule)), JSON.stringify(safe));
+    });
+
+    check('claim safety: a bound but ineligible routing comparison cannot support narrowing claims', () => {
+      const routedFacts = collect(context);
+      routedFacts.values.routing_task_bound_to_report = { value: true, kind: 'observed', source: 'fixture' };
+      routedFacts.values.routing_claim_eligible = { value: false, kind: 'observed', source: 'fixture' };
+      const findings = claimSafetyFindings(routedFacts, validAnswers({
+        'main-scenario': 'The workflow narrowed the context and excluded unrelated paths.'
+      }));
+      assert(findings.some((finding) => finding.rule === 'ineligible_routing_effect_claim'), JSON.stringify(findings));
+      const usageOnly = claimSafetyFindings(routedFacts, validAnswers({
+        'main-scenario': 'The workflow used routing and recorded the selected task scope.'
+      }));
+      assert(!usageOnly.some((finding) => finding.rule === 'ineligible_routing_effect_claim'), JSON.stringify(usageOnly));
+    });
+
+    check('claim safety: unsupported provider usage, accuracy, and speed claims fail closed while explicit uncertainty remains allowed', () => {
+      const baseFacts = collect(context);
+      const unsafe = claimSafetyFindings(baseFacts, validAnswers({
+        'accuracy-change': 'not_enough_evidence',
+        'response-speed-change': 'not_enough_data',
+        'quick-summary': 'The system saved 25% of model tokens, improved accuracy, and made the agent faster.'
+      }));
+      for (const rule of [
+        'unsupported_provider_usage_claim',
+        'unsupported_accuracy_claim',
+        'unsupported_speed_claim'
+      ]) assert(unsafe.some((finding) => finding.rule === rule), `${rule}: ${JSON.stringify(unsafe)}`);
+      const safe = claimSafetyFindings(baseFacts, validAnswers({
+        'accuracy-change': 'not_enough_evidence',
+        'response-speed-change': 'not_enough_data',
+        'quick-summary': 'No token savings were measured. Improvements in accuracy or speed remain unconfirmed.'
+      }));
+      assert(safe.length === 0, JSON.stringify(safe));
+    });
+
+    check('claim safety: current candidate identity mismatches are blocked and explicit historical baselines are allowed', () => {
+      const baseFacts = collect(context);
+      const mismatch = claimSafetyFindings(baseFacts, validAnswers({
+        'project-context': 'This report was produced with .knowledge 3.3.0 RC56.'
+      }));
+      assert(mismatch.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(mismatch));
+      const historical = claimSafetyFindings(baseFacts, validAnswers({
+        'project-context': 'The project was upgraded from RC56 to RC57 before this report was collected.'
+      }));
+      assert(!historical.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(historical));
     });
 
     check('renderer: raw enum IDs are absent and human labels are present', () => {

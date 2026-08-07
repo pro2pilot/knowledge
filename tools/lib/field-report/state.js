@@ -174,7 +174,7 @@ function create(context, flags = {}) {
   const publicLanguage = normalizePublicLanguage(flags.publicLanguage || 'en');
   const language = normalizeLanguageTag(
     flags.language === undefined || flags.language === null || flags.language === ''
-      ? publicLanguage
+      ? 'auto'
       : flags.language,
     { allowAuto: true }
   );

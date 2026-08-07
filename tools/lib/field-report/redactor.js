@@ -66,11 +66,12 @@ const GENERIC_WORKSPACE_DESCRIPTION = 'a larger local multi-project workspace';
 const GENERIC_ORGANIZATION_DESCRIPTION = 'an internal organization';
 const GENERIC_CLIENT_DESCRIPTION = 'an internal client organization';
 const PUBLIC_WORKSPACE_LABEL_ALLOWLIST = new Set([
-  'actions', 'after', 'before', 'contained', 'contains', 'covered',
-  'current', 'during', 'for', 'from', 'github', 'github actions', 'had', 'has',
+  'actions', 'after', 'any', 'before', 'contained', 'contains', 'covered',
+  'current', 'during', 'each', 'every', 'for', 'from', 'github', 'github actions', 'had', 'has',
   'held', 'included', 'includes', 'inside', 'is', 'local', 'outside', 'over',
-  'project', 'registered', 'remained', 'reported', 'repository', 'spanned',
-  'standalone', 'supported', 'supports', 'team', 'to', 'under', 'used', 'uses',
+  'multiple', 'one', 'our', 'project', 'registered', 'remained', 'reported',
+  'repository', 'same', 'single', 'spanned', 'standalone', 'supported', 'supports',
+  'team', 'that', 'their', 'this', 'to', 'under', 'used', 'uses', 'your',
   'visual', 'visual studio code', 'vscode', 'was', 'when', 'where', 'with',
   'without', 'workspace'
 ]);

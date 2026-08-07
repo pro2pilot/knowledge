@@ -20,6 +20,7 @@ const state = require('./lib/field-report/state');
 const { collect } = require('./lib/field-report/collector');
 const {
   CONTRACT_VERSION,
+  FIELDS,
   PUBLIC_LANGUAGE,
   SCHEMA_VERSION,
   canonicalHash,
@@ -35,7 +36,7 @@ const {
   validateTranslationPayload
 } = require('./lib/field-report/contract');
 const { render } = require('./lib/field-report/renderer');
-const { redactAnswers, scanPublication } = require('./lib/field-report/redactor');
+const { redactAnswers, scanEnglishLanguage, scanPublication } = require('./lib/field-report/redactor');
 const publisher = require('./lib/field-report/publisher');
 
 function fail(message, exitCode = 2, code = 'field_report_error') {
@@ -113,6 +114,67 @@ function answerTemplate(manifest, questions) {
   };
 }
 
+function questionCatalog(answers = {}) {
+  const missing = new Set(missingQuestions(answers).map((question) => question.id));
+  return missingQuestions({}).map((question) => ({
+    ...question,
+    status: missing.has(question.id) ? 'missing' : 'answered'
+  }));
+}
+
+function questionDocument(manifest, answers = {}) {
+  const questions = missingQuestions(answers);
+  return {
+    schema_version: SCHEMA_VERSION,
+    contract_version: CONTRACT_VERSION,
+    report_id: manifest.report_id,
+    questions,
+    question_catalog: questionCatalog(answers)
+  };
+}
+
+const FREE_TEXT_FIELD_IDS = new Set(
+  FIELDS
+    .filter((field) => field.type === 'string' && !(field.allowed_values || []).length)
+    .map((field) => field.id)
+);
+
+function answerTextEntries(answers = {}) {
+  return Object.entries(answers)
+    .filter(([id]) => FREE_TEXT_FIELD_IDS.has(id))
+    .map(([id, raw]) => [id, unwrap(raw)])
+    .filter(([, value]) => typeof value === 'string' && value.trim());
+}
+
+function answerText(answers = {}) {
+  return answerTextEntries(answers).map(([, value]) => value).join('\n');
+}
+
+function inferEnglishSourceLanguage(answers = {}) {
+  const entries = answerTextEntries(answers);
+  const text = entries.map(([, value]) => value).join('\n');
+  if (!text) return null;
+  if (entries.some(([, value]) => scanEnglishLanguage(value).status !== 'pass')) return null;
+  const scan = scanEnglishLanguage(text);
+  if (scan.status !== 'pass') return null;
+  const source = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/[a-f0-9]{32,}/gi, ' ');
+  if (/[Ͱ-ԯ֐-ۿऀ-ॿ぀-ヿ㐀-鿿가-힯]/.test(source)) {
+    return null;
+  }
+  const words = source.toLowerCase().match(/[a-z]+/g) || [];
+  const signals = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'because', 'but', 'by', 'for',
+    'from', 'has', 'have', 'in', 'is', 'it', 'not', 'of', 'on', 'or', 'that',
+    'the', 'this', 'to', 'was', 'were', 'with', 'without'
+  ]);
+  const signalCount = words.filter((word) => signals.has(word)).length;
+  return words.length >= 20 && signalCount >= 5 ? 'en' : null;
+}
+
 function initialise(context, manifest) {
   const reportPaths = state.paths(context, manifest.report_id);
   const facts = collect(context, { routingTaskId: manifest.routing_task_id });
@@ -127,11 +189,7 @@ function initialise(context, manifest) {
     answer_kinds: ['tester', 'agent_assisted'],
     ordinary_workflow_telemetry: false
   });
-  writeJsonAtomic(reportPaths.questions, {
-    schema_version: SCHEMA_VERSION,
-    report_id: manifest.report_id,
-    questions
-  });
+  writeJsonAtomic(reportPaths.questions, questionDocument(manifest, {}));
   writeJsonAtomic(reportPaths.answers_template, answerTemplate(manifest, questions));
   state.transition(manifest, 'needs_user_input');
   manifest.warnings = facts.warnings;
@@ -188,11 +246,7 @@ function questionResult(context, manifest) {
     facts_with_warnings: 0,
     warnings: []
   });
-  writeJsonAtomic(reportPaths.questions, {
-    schema_version: SCHEMA_VERSION,
-    report_id: manifest.report_id,
-    questions
-  });
+  writeJsonAtomic(reportPaths.questions, questionDocument(manifest, answers));
   writeJsonAtomic(reportPaths.answers_template, answerTemplate(manifest, questions));
   return {
     schema_version: SCHEMA_VERSION,
@@ -320,9 +374,13 @@ function ingestValues(context, manifest, input) {
   if (!validation.valid) fail(validation.errors.join('; '), 2, 'answers_invalid');
   const wrapped = wrapAnswers(validation.answers);
   writeJsonAtomic(reportPaths.answers_original, wrapped);
+  const questions = missingQuestions(wrapped);
+  if (!questions.length && manifest.language === 'auto') {
+    const inferred = inferEnglishSourceLanguage(wrapped);
+    if (inferred) manifest.language = inferred;
+  }
   resetTranslation(manifest, reportPaths, wrapped);
   state.invalidateApproval(manifest);
-  const questions = missingQuestions(wrapped);
   const nextStatus = questions.length
     ? 'needs_user_input'
     : manifest.translation.status === 'translation_required'
@@ -382,7 +440,18 @@ function translationExport(context, flags, manifest) {
         'language_unresolved'
       );
     }
-    manifest.language = normalizeLanguageTag(flags.language);
+    const resolvedLanguage = normalizeLanguageTag(flags.language);
+    if (resolvedLanguage.toLowerCase().startsWith('en')) {
+      const sourceLanguageScan = scanEnglishLanguage(answerText(original));
+      if (sourceLanguageScan.status === 'blocked') {
+        fail(
+          'The supplied English source language conflicts with substantial non-English answer text.',
+          2,
+          'source_language_mismatch'
+        );
+      }
+    }
+    manifest.language = resolvedLanguage;
     manifest.translation.source_language = manifest.language;
     manifest.translation.status = translationRequired(
       manifest.language,

@@ -96,5 +96,10 @@
     "openclaw",
     "hermes"
   ],
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "knowledge_release": {
+    "channel": "release_candidate",
+    "candidate_label": "RC57",
+    "candidate_name": "knowledge-v3.3.0-step1-rc4-r57.zip"
+  }
 }

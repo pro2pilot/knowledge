@@ -163,7 +163,7 @@ function profileFromGit(root) {
       sourceBytes += bytes;
     }
   }
-  const status = gitResult(root, ['status', '--porcelain=v1', '--untracked-files=no']);
+  const status = gitResult(root, ['status', '--porcelain=v1', '--untracked-files=normal']);
   return {
     available: true,
     basis: 'git_index_worktree',
@@ -588,13 +588,12 @@ function validateRepairTelemetryArtifact(artifact, warnings, opportunitiesArtifa
     const taskScope = opportunitiesArtifact?.available
       ? opportunitiesArtifact.value?.task_scope
       : null;
-    const scopeHash = taskScope
-      ? crypto.createHash('sha256').update(JSON.stringify(taskScope)).digest('hex')
-      : null;
+    const scopeHash = taskScope ? taskScopeHash(taskScope) : null;
     invalid = !plainObject(taskScope) ||
       value.task_id !== taskScope.task_id ||
       value.session_id !== taskScope.session_id ||
-      value.task_scope_sha256 !== scopeHash;
+      value.task_scope_sha256 !== scopeHash ||
+      (taskScope.scope_hash !== undefined && taskScope.scope_hash !== scopeHash);
   }
   if (!invalid) {
     const snapshot = opportunitiesArtifact.value;
@@ -708,9 +707,20 @@ function validateRepairOpportunitiesArtifact(artifact, warnings) {
 
 function validatePackageArtifact(artifact, warnings) {
   if (!artifact.available) return artifact;
-  return plainObject(artifact.value) &&
-    typeof artifact.value.version === 'string' &&
-    /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(artifact.value.version)
+  const value = artifact.value;
+  const release = value?.knowledge_release;
+  const releaseValid = release === undefined || (
+    plainObject(release) &&
+    ['stable', 'release_candidate', 'development'].includes(String(release.channel || '')) &&
+    (release.candidate_label === null || release.candidate_label === undefined ||
+      /^RC[1-9][0-9]*$/.test(String(release.candidate_label))) &&
+    (release.candidate_name === null || release.candidate_name === undefined ||
+      /^knowledge-v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.zip$/.test(String(release.candidate_name)))
+  );
+  return plainObject(value) &&
+    typeof value.version === 'string' &&
+    /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value.version) &&
+    releaseValid
     ? artifact
     : semanticInvalid(artifact, warnings);
 }
@@ -1000,6 +1010,24 @@ function collect(context, options = {}) {
       packageArtifact,
       packageArtifact.value?.version,
       '$.version',
+      collectedAt
+    ),
+    knowledge_release_channel: fromArtifact(
+      packageArtifact,
+      packageArtifact.value?.knowledge_release?.channel,
+      '$.knowledge_release.channel',
+      collectedAt
+    ),
+    knowledge_candidate_label: fromArtifact(
+      packageArtifact,
+      packageArtifact.value?.knowledge_release?.candidate_label,
+      '$.knowledge_release.candidate_label',
+      collectedAt
+    ),
+    knowledge_candidate_name: fromArtifact(
+      packageArtifact,
+      packageArtifact.value?.knowledge_release?.candidate_name,
+      '$.knowledge_release.candidate_name',
       collectedAt
     ),
     mode: fact(context.mode, 'observed', 'runtime/context', '$.mode', collectedAt),

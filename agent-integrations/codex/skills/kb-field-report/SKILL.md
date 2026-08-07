@@ -5,11 +5,7 @@ description: Prepare an English, tester-approved Field Report from real .knowled
 
 Use the Field Report CLI as a progressive-disclosure interview.
 
-1. Start with explicit `--language=<source-bcp47>`, or resume with
-   `node .knowledge/tools/field-report.js questions --json`. Public output is
-   fixed to English; do not select another public language. If the source was
-   deliberately set to `auto`, resolve it once through
-   `translation-export --language=<source-bcp47>`.
+1. Start with `node .knowledge/tools/field-report.js start --new --json`, or resume with `questions --json`. Public output is fixed to English. The source language defaults to `auto`; complete English prose resolves automatically, while other or ambiguous prose requires `translation-export --language=<source-bcp47>`.
 2. Ask only the returned questions, including the report relationship
    (independent user, first-party maintainer dogfooding, internal QA, or
    controlled comparison). Preserve negative and uncertain answers; ask at most

@@ -7,7 +7,7 @@ remain the tester's judgments.
 
 ## Public-output contract
 
-- The tester may answer in any explicit BCP47 source language.
+- The tester may answer in any language. The source language defaults to `auto` and is resolved only after complete answers are available.
 - The publication-ready report is always English.
 - Non-English answers require an identity-attributed, agent-assisted
   translation and approval by an independent tester/reviewer.
@@ -27,7 +27,7 @@ A non-English `--public-language` is rejected. The canonical public language is
 ## Safe workflow
 
 ```bash
-node .knowledge/tools/field-report.js start --new --language=<source-bcp47> --json
+node .knowledge/tools/field-report.js start --new --json
 node .knowledge/tools/field-report.js questions --report-id=<id> --json
 node .knowledge/tools/field-report.js ingest --report-id=<id> --answers=<path>
 node .knowledge/tools/field-report.js render --report-id=<id>
@@ -42,7 +42,7 @@ comparison, live-input digest, readiness, continuation, translation, and
 redaction identities. A semantic edit invalidates approval; collection
 timestamps and other excluded runtime metadata do not.
 
-If `--language=auto` is used, resolve it once with:
+English free-text answers are resolved to `en` conservatively after complete ingest. If the source remains `auto`, resolve it once with:
 
 ```bash
 node .knowledge/tools/field-report.js translation-export --report-id=<id> --language=<source-bcp47> --json
@@ -88,7 +88,8 @@ The facts file uses `knowledge-field-report-facts.v2`. Each fact carries its
 value, kind (`observed`, `derived`, or `unavailable`), source, schema path,
 collection time, confidence, and warning.
 
-The public report contains these deterministic sections:
+The public report contains these deterministic sections. `questions.json` retains an audit catalog of every required prompt and whether it was answered, even after no follow-up questions remain.
+
 
 1. **Disclosure** — the tester's relationship to `.knowledge`.
 2. **Project context** — generalized context plus standalone/team repository
@@ -102,7 +103,7 @@ The public report contains these deterministic sections:
 
 ### Repository profile
 
-The collector prefers a Git-index snapshot and current working-tree file sizes.
+The collector prefers a Git-index snapshot and current working-tree file sizes. It records whether tracked or untracked changes made the snapshot dirty; untracked files affect the cleanliness label but are not added to the size totals.
 If Git inventory is unavailable, it uses a filtered filesystem fallback. The
 profile excludes `.git`, `.knowledge`, dependencies, builds, caches, coverage,
 temporary/release/QA directories, `.env` files other than examples, and
@@ -122,6 +123,7 @@ artifacts in the main outcome table without interpretation. Examples:
 - Functional module count is not repository/project count.
 - A routing estimate is a deterministic local first-read estimate, not
   provider-reported token usage, cost, accuracy, or speed.
+- Embedded package metadata may identify a release-candidate build such as `3.3.0 RC57`; it is not the artifact SHA.
 
 When exactly one task snapshot is bound to the report, Field Report records its
 scope and source, workspace/task module and path counts, unrelated-path
@@ -135,6 +137,8 @@ workspace-wide first read versus the task-scoped first read for the selected
 task. It is intentionally not a same-scope, release-version, provider-token,
 speed, accuracy, or error-rate comparison. The formatter exposes exactly one
 state: narrowing, overhead, neutral, or unavailable/not comparable.
+
+Before publication, a deterministic claim-safety gate blocks free-text assertions that conflict with observed candidate identity or claim routing effects, provider-token/cost savings, accuracy improvement, or speed improvement without the required supporting facts. Explicit uncertainty and negative statements remain allowed.
 
 Enum identifiers are converted to labels only while rendering typed fields.
 Free-form tester text otherwise remains semantically unchanged, except for

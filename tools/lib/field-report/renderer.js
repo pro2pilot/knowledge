@@ -247,21 +247,192 @@ function relationshipDisclosure(answers) {
   return relationshipDefinition(answers).disclosure;
 }
 
+function releaseIdentity(facts) {
+  const version = factValue(facts, 'knowledge_version');
+  const channel = factValue(facts, 'knowledge_release_channel');
+  const candidateLabel = factValue(facts, 'knowledge_candidate_label');
+  const candidateName = factValue(facts, 'knowledge_candidate_name');
+  const parts = [];
+  if (version !== null) parts.push(String(version));
+  if (candidateLabel !== null) parts.push(String(candidateLabel));
+  const display = parts.length ? parts.join(' ') : 'Unavailable';
+  return { version, channel, candidateLabel, candidateName, display };
+}
+
+const CLAIM_TEXT_FIELDS = Object.freeze([
+  'project-context', 'quick-summary', 'workflow-notes', 'main-scenario',
+  'accuracy-example', 'response-speed-notes', 'useful-parts', 'observed-results',
+  'what-did-not-work', 'previous-workflow-comparison', 'final-assessment'
+]);
+
+function claimTextEntries(answers) {
+  return CLAIM_TEXT_FIELDS
+    .map((field) => [field, unwrap(answers[field])])
+    .filter(([, value]) => typeof value === 'string' && value.trim());
+}
+
+function negatedClaim(text, index) {
+  const prefix = text.slice(Math.max(0, index - 64), index).toLowerCase();
+  return /(?:\bno\b|\bnot\b|without|unconfirmed|unavailable|not enough|did not|does not|cannot|can't|wasn't|isn't|never)\s*$/.test(prefix) ||
+    /(?:no|not|without|unconfirmed|unavailable|not enough|did not|does not|cannot|can't|wasn't|isn't|never)[^.!?]{0,42}$/.test(prefix);
+}
+
+function findPositiveClaims(field, text, patterns, rule, reason) {
+  const findings = [];
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      if (!negatedClaim(text, match.index)) {
+        findings.push({
+          field,
+          rule,
+          severity: 'high',
+          reason,
+          excerpt: match[0].slice(0, 180)
+        });
+      }
+      if (!pattern.global) break;
+    }
+  }
+  return findings;
+}
+
+function claimSafetyFindings(facts, answers) {
+  const findings = [];
+  const entries = claimTextEntries(answers);
+  const routingBound = factValue(facts, 'routing_task_bound_to_report') === true;
+  const routingClaimEligible = factValue(facts, 'routing_claim_eligible') === true;
+  const accuracyChange = String(unwrap(answers['accuracy-change']) || '');
+  const speedChange = String(unwrap(answers['response-speed-change']) || '');
+  const identity = releaseIdentity(facts);
+
+  const routingEffectPatterns = [
+    /(?:\.knowledge|\bthe system\b|\bthe workflow\b)\s+(?:limited|constrained|reduced|narrowed|restricted)\s+(?:the\s+)?(?:scope|context|files?|paths?)\b/gi,
+    /\brouting\s+(?:limited|constrained|reduced|narrowed|selected|excluded)\b/gi
+  ];
+  const routingUsagePatterns = [
+    /(?:\.knowledge|\bthe system\b|\bthe workflow\b)\s+(?:added|provided|used)\s+routing\b/gi
+  ];
+  if (!routingBound) {
+    for (const [field, text] of entries) {
+      findings.push(...findPositiveClaims(
+        field,
+        text,
+        [...routingEffectPatterns, ...routingUsagePatterns],
+        'unsupported_routing_claim',
+        'No explicit task-routing snapshot was bound to this report.'
+      ));
+    }
+  } else if (!routingClaimEligible) {
+    for (const [field, text] of entries) {
+      findings.push(...findPositiveClaims(
+        field,
+        text,
+        routingEffectPatterns,
+        'ineligible_routing_effect_claim',
+        'A task-routing snapshot was bound, but its workspace comparison was not claim-eligible.'
+      ));
+    }
+  }
+
+  const tokenPatterns = [
+    /\b(?:saved|reduced|cut|lowered)\s+(?:about\s+|approximately\s+)?(?:\d+(?:\.\d+)?%?\s+)?(?:of\s+)?(?:input\s+|model\s+)?tokens?\b/gi,
+    /\btoken\s+savings?\b/gi,
+    /\b(?:reduced|lower|lowered|cut)\s+(?:api\s+)?costs?\b/gi,
+    /\bcost\s+savings?\b/gi
+  ];
+  for (const [field, text] of entries) {
+    findings.push(...findPositiveClaims(
+      field,
+      text,
+      tokenPatterns,
+      'unsupported_provider_usage_claim',
+      'No provider-reported usage receipt is bound to the Field Report.'
+    ));
+  }
+
+  if (['not_enough_evidence', 'no_clear_change', 'became_worse'].includes(accuracyChange)) {
+    const patterns = [
+      /\b(?:improved|increased|raised)\s+(?:model\s+|task\s+)?(?:accuracy|precision|correctness)\b/gi,
+      /\b(?:made|was|became|is)\s+[^.!?]{0,36}\b(?:more accurate|more precise|more correct)\b/gi,
+      /\b(?:reduced|lowered|prevented)\s+(?:agent\s+)?(?:errors?|mistakes?|hallucinations?)\b/gi
+    ];
+    for (const [field, text] of entries) {
+      findings.push(...findPositiveClaims(
+        field,
+        text,
+        patterns,
+        'unsupported_accuracy_claim',
+        `The selected accuracy result is ${accuracyChange || 'unavailable'}.`
+      ));
+    }
+  }
+
+  if (['not_enough_data', 'no_clear_change', 'slightly_slower', 'much_slower'].includes(speedChange)) {
+    const patterns = [
+      /\b(?:made|was|became|is)\s+[^.!?]{0,36}\b(?:faster|quicker)\b/gi,
+      /\b(?:improved|increased)\s+(?:agent\s+|task\s+)?speed\b/gi,
+      /\b(?:reduced|lowered|cut)\s+(?:completion\s+time|latency|response\s+time)\b/gi
+    ];
+    for (const [field, text] of entries) {
+      findings.push(...findPositiveClaims(
+        field,
+        text,
+        patterns,
+        'unsupported_speed_claim',
+        `The selected speed result is ${speedChange || 'unavailable'}.`
+      ));
+    }
+  }
+
+  if (identity.candidateLabel) {
+    for (const [field, text] of entries) {
+      const pattern = /\bRC\s*([1-9][0-9]*)\b/gi;
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const mentioned = `RC${match[1]}`;
+        if (mentioned === identity.candidateLabel) continue;
+        const prefix = text.slice(Math.max(0, match.index - 36), match.index).toLowerCase();
+        if (/(?:from|previous|prior|baseline|historical|before|upgraded\s+from)\s*$/.test(prefix)) continue;
+        findings.push({
+          field,
+          rule: 'candidate_identity_mismatch',
+          severity: 'high',
+          reason: `Installed build metadata identifies ${identity.candidateLabel}, not ${mentioned}.`,
+          excerpt: match[0]
+        });
+      }
+    }
+  }
+
+  const seen = new Set();
+  return findings.filter((finding) => {
+    const key = `${finding.field}|${finding.rule}|${finding.excerpt}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function repositoryProfileRows(facts) {
   const basis = factValue(facts, 'repository_profile_basis');
   const trackedFiles = normalizeCount(factValue(facts, 'repository_tracked_files'));
   const trackedBytes = normalizeNumber(factValue(facts, 'repository_tracked_bytes'));
   const sourceFiles = normalizeCount(factValue(facts, 'repository_source_files'));
   const sourceBytes = normalizeNumber(factValue(facts, 'repository_source_bytes'));
-  const evidence = basis === 'git_index_worktree'
+  const dirty = factValue(facts, 'repository_profile_dirty');
+  const gitBasis = basis === 'git_index_worktree';
+  const fallbackBasis = basis === 'filtered_worktree_fallback';
+  const evidence = gitBasis
     ? 'Git tracked snapshot'
-    : basis === 'filtered_worktree_fallback'
+    : fallbackBasis
       ? 'Filtered repository snapshot'
       : 'Repository profile collector';
-  const basisExplanation = basis === 'git_index_worktree'
-    ? 'Tracked files were measured from the Git index and current working-tree file sizes.'
-    : basis === 'filtered_worktree_fallback'
-      ? 'Git inventory was unavailable, so a filtered working-tree snapshot was used.'
+  const basisExplanation = gitBasis
+    ? 'Tracked paths were measured from the Git index using current working-tree file sizes when available.'
+    : fallbackBasis
+      ? 'Git inventory was unavailable, so a filtered working-tree snapshot was used; these are repository files, not Git-tracked files.'
       : 'A repository-size profile could not be collected; no size claim is made.';
   if (trackedFiles === null && trackedBytes === null && sourceFiles === null && sourceBytes === null) {
     return [{
@@ -273,17 +444,17 @@ function repositoryProfileRows(facts) {
   }
   const exclusionText =
     'System state, dependencies, build output, caches, generated evidence, and secret-like paths are excluded.';
-  return [
+  const rows = [
     {
-      metric: 'Tracked repository files',
+      metric: gitBasis ? 'Tracked repository files' : 'Filtered repository files',
       value: trackedFiles === null ? 'Unavailable' : String(trackedFiles),
       interpretation: `${basisExplanation} ${exclusionText}`,
       evidence
     },
     {
-      metric: 'Tracked repository content',
+      metric: gitBasis ? 'Tracked repository content' : 'Filtered repository content',
       value: trackedBytes === null ? 'Unavailable' : formatBytes(trackedBytes),
-      interpretation: 'Approximate content size for the same filtered repository snapshot; this is not full disk usage.',
+      interpretation: 'Approximate content size for the same filtered snapshot; this is not full disk usage.',
       evidence
     },
     {
@@ -299,6 +470,19 @@ function repositoryProfileRows(facts) {
       evidence
     }
   ];
+  if (gitBasis) {
+    rows.push({
+      metric: 'Snapshot state',
+      value: dirty === true ? 'Dirty working tree' : dirty === false ? 'Clean working tree' : 'Unavailable',
+      interpretation: dirty === true
+        ? 'Tracked paths use current working-tree sizes. Tracked or untracked changes were present; untracked files are not counted in the profile.'
+        : dirty === false
+          ? 'The Git working tree was clean when the repository profile was collected.'
+          : 'Working-tree cleanliness could not be determined.',
+      evidence
+    });
+  }
+  return rows;
 }
 
 function routingEstimateRow(facts) {
@@ -355,6 +539,18 @@ function verifiedOutcomeRows(facts, answers) {
     interpretation:
       'Functional modules and repositories are counted separately; multiple modules do not imply a multi-project workspace.',
     evidence: 'Repository context'
+  });
+
+  const build = releaseIdentity(facts);
+  rows.push({
+    check: '.knowledge build',
+    result: build.display,
+    interpretation: build.channel === 'release_candidate'
+      ? 'Embedded package metadata identifies this release-candidate build. It is not the ZIP artifact SHA.'
+      : build.channel === 'stable'
+        ? 'Embedded package metadata identifies a stable build. It is not the ZIP artifact SHA.'
+        : 'Embedded package metadata identifies the installed product version; release-channel detail was unavailable.',
+    evidence: 'Installed package metadata'
   });
 
   const readiness = firstAvailableFact(facts, [
@@ -523,6 +719,13 @@ function systemObservations(facts) {
     );
   }
 
+  const profileDirty = factValue(facts, 'repository_profile_dirty');
+  if (profileBasis === 'git_index_worktree' && profileDirty === true) {
+    observations.push(
+      'The repository profile was collected from a dirty working tree. Tracked-path sizes reflect the current working tree, while untracked files are not included in the size totals.'
+    );
+  }
+
   if (factValue(facts, 'routing_task_bound_to_report') === true) {
     observations.push(
       'Any workspace-to-task context number is a deterministic local first-read estimate, ' +
@@ -630,7 +833,7 @@ function publicSections(answers, schema = DEFAULT_SCHEMA) {
 function renderPublicBody(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
   const sections = publicSections(answers, schema);
   const relationship = relationshipDefinition(answers);
-  const version = factValue(facts, 'knowledge_version');
+  const build = releaseIdentity(facts);
   let body = '# Field Report\n\n';
   body += `> **Disclosure:** ${relationship.disclosure}\n\n`;
 
@@ -638,7 +841,7 @@ function renderPublicBody(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
   body += answerLine('Main result', humanValue('quick-summary', unwrap(answers['quick-summary']), schema));
 
   body += '## Project context\n\n';
-  if (version !== null) body += answerLine('.knowledge version', version);
+  if (build.display !== 'Unavailable') body += answerLine('.knowledge build', build.display);
   body += answerLine('Project context', unwrap(answers['project-context']));
   body += answerLine('Repository scope', scopeDisclosure(facts));
 
@@ -773,8 +976,10 @@ function render(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
     generated_links: []
   }, manifest.anonymized, { requireEnglish: true });
   const answerLanguageFindings = publicAnswerLanguageFindings(publicAnswers, schema);
+  const claimFindings = claimSafetyFindings(facts, publicAnswers);
   const blocked = answerScan.report.status === 'blocked' ||
-    finalScan.report.status === 'blocked' || answerLanguageFindings.length > 0;
+    finalScan.report.status === 'blocked' || answerLanguageFindings.length > 0 ||
+    claimFindings.length > 0;
   const warned = answerScan.report.status === 'warning' ||
     finalScan.report.status === 'warning';
   const redaction = {
@@ -785,8 +990,14 @@ function render(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
     unresolved_findings: [
       ...(answerScan.report.unresolved_findings || []),
       ...(finalScan.report.unresolved_findings || []),
-      ...answerLanguageFindings
+      ...answerLanguageFindings,
+      ...claimFindings
     ],
+    claim_safety_scan: {
+      status: claimFindings.length ? 'blocked' : 'pass',
+      findings: claimFindings,
+      policy: 'knowledge-field-report-claim-safety.v1'
+    },
     answer_language_scan: {
       status: answerLanguageFindings.length ? 'blocked' : 'pass',
       findings: answerLanguageFindings,
@@ -808,10 +1019,12 @@ function render(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
 module.exports = {
   SECTION_ORDER,
   REPORT_RELATIONSHIPS,
+  claimSafetyFindings,
   evidenceRows,
   formatBytes,
   publicAnswerLanguageFindings,
   relationshipDisclosure,
+  releaseIdentity,
   render,
   renderDraft,
   renderEvidence,

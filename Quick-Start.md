@@ -144,11 +144,10 @@ maintenance separately. See `docs/repair-on-touch.md`.
 ## Prepare a real-use Field Report
 
 When the user wants a publishable account of real `.knowledge` use, start the
-progressive interview. Answers may use any explicit source language; the
-publication-ready report is always English.
+progressive interview. Answers may use any source language; the source defaults to `auto`, while the publication-ready report is always English.
 
 ```bash
-node .knowledge/tools/field-report.js start --new --language=<source-bcp47> --json
+node .knowledge/tools/field-report.js start --new --json
 node .knowledge/tools/field-report.js questions --report-id=<id> --json
 ```
 
