@@ -7,8 +7,43 @@ permissions:
   contents: read
 
 jobs:
+  verify-retry:
+    name: Frozen input retry ${{ matrix.attempt }}/3
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify frozen RC57 inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @{
+            'knowledge-v3.3.0-step1-rc4-r57.zip' = '49bb9054512fdfab05fe8c30a5ff591bdff6c0f206cfde18fea224434802f5c5'
+            'knowledge-v3.2.11.zip' = 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79'
+          }
+          foreach ($name in $expected.Keys) {
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "qa/rc57/$name")).Hash.ToLowerInvariant()
+            if ($actual -ne $expected[$name]) { throw "SHA-256 mismatch for ${name}: $actual" }
+          }
+          Push-Location (Join-Path $env:GITHUB_WORKSPACE 'qa/rc57')
+          try {
+            foreach ($line in Get-Content -LiteralPath 'CHECKSUMS.sha256') {
+              if (-not $line.Trim()) { continue }
+              $parts = $line -split '\s+', 2
+              $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $parts[1]).Hash.ToLowerInvariant()
+              if ($actual -ne $parts[0]) { throw "CHECKSUMS.sha256 mismatch: $($parts[1])" }
+            }
+          } finally {
+            Pop-Location
+          }
+
   matrix:
     name: macOS x64 / Node ${{ matrix.major }}
+    needs: verify-retry
     runs-on: macos-15-intel
     timeout-minutes: 30
     strategy:
