@@ -84,12 +84,20 @@ const {
   'json-transaction.js'
 ));
 const {
-  withLock
+  withContainedLock
 } = require(path.join(
   knowledgeRoot,
   'tools',
   'lib',
-  'json-store.js'
+  'contained-lock-manager.js'
+));
+const {
+  LOCKS
+} = require(path.join(
+  knowledgeRoot,
+  'tools',
+  'lib',
+  'lock-policy.js'
 ));
 const {
   canonicalFullEvidencePlan,
@@ -2020,7 +2028,17 @@ function withEvidencePublicationLock(
   lockPath = evidencePublicationLockPath,
   options = {}
 ) {
-  return withLock(lockPath, fn, options);
+  const rootPath = path.resolve(path.dirname(lockPath));
+  return withContainedLock({
+    context: { systemRoot: rootPath },
+    rootKind: 'system',
+    rootPath,
+    lockName: 'evidence-publication',
+    purpose: LOCKS['evidence-publication'].purpose,
+    maintainer: true,
+    timeoutMs: options.timeoutMs,
+    staleMs: options.staleMs
+  }, fn);
 }
 
 function finalizeEvidencePackUnlocked() {
