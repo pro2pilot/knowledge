@@ -1,0 +1,7 @@
+# Devin .knowledge bridge
+
+Use the repository-root `AGENTS.md` as the primary `.knowledge` instruction contract. This separate Devin rule is only a concise vendor-specific discovery bridge; it must not duplicate or override the shared managed block.
+
+Start with `.knowledge/maintenance/routing_bundle.json`, then follow `.knowledge/Quick-Start.md` and `.knowledge/agent-integrations/_shared/metrics-reporting.md`. Never describe the deterministic local context estimate as provider-reported model-token usage.
+
+For concurrent work, set a stable `KNOWLEDGE_AGENT_ID` and use a separate worktree or branch.

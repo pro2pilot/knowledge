@@ -1,0 +1,11 @@
+{
+  "task_id": "",
+  "agent_id": null,
+  "status": "template_seed",
+  "started_at": null,
+  "updated_at": null,
+  "goal": "",
+  "relevant_modules": [],
+  "files_read": [],
+  "notes": []
+}

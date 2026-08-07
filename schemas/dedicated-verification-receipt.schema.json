@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.dev/schemas/knowledge-dedicated-verification-receipt.v1.json",
+  "title": ".knowledge dedicated verification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_id",
+    "content_sha256",
+    "verification_receipt_id",
+    "verification_receipt_sha256",
+    "lifecycle_id",
+    "finding_identity_sha256",
+    "finding_occurrence_sha256",
+    "module_id",
+    "code",
+    "artifact",
+    "affected_artifacts",
+    "resolution_predicate",
+    "resolution_result",
+    "dedicated_verifier_type",
+    "dedicated_verifier_id",
+    "dedicated_predicate",
+    "dedicated_result",
+    "confirmed_lifecycle_id",
+    "reviewed_at",
+    "reviewed_by"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "knowledge-dedicated-verification-receipt.v1"
+    },
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^KDVR-[a-f0-9]{64}$"
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "verification_receipt_id": {
+      "type": "string",
+      "pattern": "^KVR-[a-f0-9]{64}$"
+    },
+    "verification_receipt_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "lifecycle_id": {
+      "type": "string",
+      "pattern": "^LC-[a-f0-9]{16}$"
+    },
+    "finding_identity_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "finding_occurrence_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "module_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "affected_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "resolution_predicate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resolution_result": {
+      "const": "pass"
+    },
+    "dedicated_verifier_type": {
+      "enum": [
+        "dedicated_finding_verifier",
+        "security_review",
+        "policy_review",
+        "incident_resolution",
+        "manual_review",
+        "architecture_conflict_resolution"
+      ]
+    },
+    "dedicated_verifier_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$"
+    },
+    "dedicated_predicate": {
+      "enum": [
+        "dedicated_contradiction_review_passed",
+        "dedicated_security_review_passed",
+        "dedicated_policy_review_passed",
+        "dedicated_incident_resolution_passed",
+        "dedicated_manual_review_passed",
+        "dedicated_architecture_conflict_resolution_passed"
+      ]
+    },
+    "dedicated_result": {
+      "const": "pass"
+    },
+    "confirmed_lifecycle_id": {
+      "type": "string",
+      "pattern": "^LC-[a-f0-9]{16}$"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$"
+    }
+  }
+}

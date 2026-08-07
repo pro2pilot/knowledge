@@ -1,0 +1,157 @@
+# Memory Providers
+
+`.knowledge` is the repo-local source-of-truth, trust, freshness and repair layer. Memory providers are optional advisory context only.
+
+Provider split:
+
+```txt
+Mem0 OSS = recommended optional universal local memory backend
+Pinecone = optional vector/cloud retrieval bridge
+Graphiti = not included in free/core
+Zep = not included in free/core
+External memory = advisory only
+```
+
+External memory can help search, retrieval, reports, repair hints and team-mode status. It cannot raise trust, overwrite curated `.knowledge` artifacts, become a required core dependency, enable itself silently, make hidden network calls, or outrank current code/tests/evidence.
+
+## Adapter contract
+
+All memory adapters use the same free/core safety contract:
+
+- every result is `source_of_truth: false` and `trust_effect: advisory_only`;
+- status/report commands are offline and make no provider network calls;
+- live writes/searches require an explicit live command and user-controlled environment;
+- adapter output redacts secrets and does not include memory text unless explicitly requested in local test mode;
+- retrieved memories must be verified against current code, tests, evidence, or decisions before they influence implementation;
+- memory providers can suggest repair/search context, but they cannot change `.knowledge` trust, curated artifacts, or agent routing by themselves.
+
+## CLI
+
+```bash
+node .knowledge/tools/memory-provider.js list --json
+node .knowledge/tools/memory-provider.js preview mem0-oss --json
+node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
+node .knowledge/tools/memory-provider.js write-recipe mem0-oss --json
+node .knowledge/tools/memory-provider.js validate-recipe mem0-oss --json
+node .knowledge/tools/memory-provider.js install mem0-oss --version mem0ai==2.0.4 --yes-i-reviewed-license --json
+node .knowledge/tools/memory-provider.js update mem0-oss --to mem0ai==2.0.4 --yes-i-reviewed-license --json
+node .knowledge/tools/memory-provider.js uninstall mem0-oss --json
+node .knowledge/tools/memory-provider.js status mem0-oss --json
+node .knowledge/tools/memory-provider.js status-all --json
+node .knowledge/tools/memory-provider.js migrate-legacy --json
+node .knowledge/tools/memory-mem0.js health --json
+node .knowledge/tools/memory-mem0.js health --adapter live --json
+node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text "Release note: Mem0 is advisory-only external memory" --scope repo --json
+node .knowledge/tools/memory-mem0.js search "advisory memory" --adapter live --yes-live-memory --json
+node .knowledge/tools/memory-mem0.js recall "advisory memory" --adapter live --yes-live-memory --json
+node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json
+node .knowledge/tools/memory-mem0.js delete --id <id> --json
+node .knowledge/tools/memory-mem0.js sync-report --json
+node .knowledge/tools/memory-mem0.js export-redacted --json
+node .knowledge/tools/memory-pinecone.js health --json
+node .knowledge/tools/memory-pinecone.js add --text "..." --json
+node .knowledge/tools/memory-pinecone.js search "query" --json
+node .knowledge/tools/memory-pinecone.js sync-sources --json
+node .knowledge/tools/memory-pinecone.js export-redacted --json
+```
+
+The Mem0 CLIs expose machine-readable `help --json` metadata. `validate-recipe` uses that help/dispatch surface to verify generated recipe commands instead of relying on agents to invent command shapes.
+
+`preview`, `list`, `status`, `status-all`, `doctor`, and `build-visual-inspector` are offline/report commands. They do not install packages, import Python packages, or call external providers. Real Mem0 probing is only done by explicit commands such as `memory-provider.js setup mem0-oss --live --json` and `memory-mem0.js health --adapter live --json`.
+
+`install` and `update` require `--yes-i-reviewed-license` and a pinned version. In free core they record approval receipts only; they do not run `pip`, `npm`, Docker, or any hidden network call.
+
+## Mem0 OSS
+
+Mem0 OSS is the recommended optional memory backend for free/core. The recommended onboarding path is one command:
+
+```bash
+node .knowledge/tools/memory-provider.js setup mem0-oss --live --json
+```
+
+That command records or reuses the install receipt, regenerates `docs/cookbook/09-mem0-live-memory.md` from the bundled template, and requires an explicit embedding backend choice when config is missing. It must not silently choose OpenAI API or Local FastEmbed. After `configure-embeddings` writes config under `.knowledge/external_memory/mem0`, setup can run explicit live health and update `runtime_status.json`.
+
+Embedding backend selection is a separate guided step:
+
+```bash
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json
+node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json
+```
+
+The config keeps LLM provider, embedding provider, Qdrant vector store, and SQLite history store distinct. Shared per-user provider storage is the default, with project-keyed Qdrant/history/runtime directories under that shared root. Project-local provider storage is available only by explicit `--provider-scope project`. Local FastEmbed is a normal onboarding choice, not only a quota fallback. When provider, model, or dimensions change, use a new Qdrant collection name.
+
+The shared provider root is only provider data storage. It is not a Python
+virtualenv and does not need to contain `python.exe`. Live Mem0 commands select
+Python from the current shell, active venvs, bounded runtime discovery, or an
+explicit `--python` flag.
+
+For Local FastEmbed on Windows, prefer Python 3.12 for the pinned
+`fastembed==0.5.1` runtime. Python 3.14 can force dependency source builds for
+`mmh3` or `Pillow`; use a Python 3.12 venv if the default `python` is 3.14.
+
+For the install-focused page, see [`mem0-install.md`](mem0-install.md).
+
+Official references checked on 2026-06-06:
+
+- Docs: https://docs.mem0.ai/open-source/overview
+- Python quickstart: https://docs.mem0.ai/open-source/python-quickstart
+- Package: https://pypi.org/project/mem0ai/
+- License: https://github.com/mem0ai/mem0/blob/main/LICENSE
+
+Pinned package in the provider manifest:
+
+```bash
+python -m pip install mem0ai==2.0.4
+```
+
+Do not claim Mem0 is installed unless the package install was actually run in the user's environment or explicit live health found an importable runtime. The `.knowledge` receipt only records approval and provenance. Status separates `receipt_present`, `runtime_available`, and `package_installed`.
+
+After explicit live health, status also reports the cached `runtime_version`, `expected_runtime_version`, and `runtime_version_matches_pin` fields so agents can see whether the importable Mem0 runtime matched the pinned package.
+
+`memory-mem0.js` exposes an explicit adapter command surface. By default it runs in dry-run mode and reports `status: runtime_not_installed`; with `--adapter test` it can store local advisory JSONL records for QA without pretending a production Mem0 runtime is installed.
+
+`--adapter live` uses bounded Python discovery before importing Mem0. Discovery checks, in order: explicit `--python`, `KNOWLEDGE_MEM0_PYTHON`/`MEM0_PYTHON`, `VIRTUAL_ENV`/`CONDA_PREFIX`, PATH commands, Windows `py`/`pymanager` runtime listings, and standard Python install directories. It does not scan the whole disk. Live Mem0 operations use a 30000 ms default timeout for import, health, and local Qdrant startup, because the first `import mem0` or local store initialization on Windows can be noticeably slower than warm checks; short Python discovery/probe checks stay short. If that wait is exceeded, JSON reports `diagnostic_code: live_operation_timeout`, and `--timeout-ms <ms>` can override the live operation wait. Python probe/import timeout overrides accept `--python-timeout-ms <ms>` and the compatibility alias `--pythonTimeMs <ms>`. If Python is found but `mem0` is not importable, the JSON output reports `diagnostic_code: mem0_runtime_missing` and includes one exact pinned install command for that interpreter. If Mem0 is importable but its `__version__` is missing or does not match the pinned `mem0ai==2.0.4`, JSON reports `diagnostic_code: mem0_version_mismatch` and returns that same single pinned install command. If live writes/searches hit a qdrant lock or storage permission failure, JSON reports `qdrant_lock_busy` or `qdrant_path_permission_denied` instead of a raw stack trace. Embedding-provider failures during live add/search/recall are reported as `embedding_provider_missing_credentials`, `embedding_provider_quota_exceeded`, or `embedding_provider_network_error`; they do not downgrade cached Mem0 runtime availability when the runtime imported successfully. Local FastEmbed ONNX model-cache failures are reported as `fastembed_onnx_external_data_path_error`; that diagnostic means health may still be OK, but a full live operation could not load the configured local model. Safe Qdrant shutdown and optional spaCy warnings are filtered so they do not distract from the real diagnostic. Live writes/searches still require explicit live consent such as `--yes-live-memory`.
+
+Live operation network classification is explicit: health does not call network
+by itself; local list reads Qdrant but may still initialize the configured local
+embedder/model runtime; add, search, and recall may call the configured
+embedding provider. Adapter subprocesses set `MEM0_TELEMETRY=False`,
+`MEM0_TELEMETRY_SAMPLE_RATE=0`, and a `MEM0_DIR` runtime directory beside the
+selected provider storage without changing the user's global environment.
+
+## Pinecone
+
+Pinecone remains supported as an optional vector/cloud retrieval bridge. It is useful for teams already using Pinecone or needing managed vector search.
+
+Status/report mode reads environment and local registry only. Retrieval tools are explicit separate actions and remain advisory-only.
+
+Adapter examples:
+
+```bash
+node .knowledge/tools/memory-pinecone.js health --json
+node .knowledge/tools/memory-pinecone.js sync-sources --json
+node .knowledge/tools/memory-pinecone.js search "routing bundle" --json
+```
+
+Those commands dry-run by default. Pass `--live` only when `PINECONE_MODE`, `PINECONE_HOST`, and any required API key are intentionally configured.
+
+## Graphiti and Zep
+
+Graphiti and Zep are not bundled in the free/core install asset:
+
+- Graphiti-style temporal graph memory is out of scope for this free/core release.
+- Zep-style managed or BYOC memory is out of scope for this free/core release.
+
+Free core may mention these future provider categories, but it does not ship their adapters, manifests, runtime code, or provider-specific rules. They are excluded from `dist/knowledge-v<package.version>.zip`.
+
+## Migrating from Claude MEM
+
+Claude MEM is no longer a first-class provider. Existing artifacts are legacy advisory data.
+
+Run:
+
+```bash
+node .knowledge/tools/memory-provider.js migrate-legacy --json
+```
+
+If a legacy state directory exists under `stateRoot`, the command writes `DEPRECATED.md`. It never deletes user memory by default and never uses legacy memory to raise trust.
