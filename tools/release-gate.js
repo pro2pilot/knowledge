@@ -1011,6 +1011,11 @@ function runCommand(spec, context) {
     String(result.stderr || result.error?.message || ''),
     'utf8'
   );
+  // A source-only self-test can legitimately replace or clean the durable
+  // evidence subtree while it is running. Recreate the per-run log directory
+  // after the child exits so the gate retains stdout/stderr instead of
+  // crashing with ENOENT and losing the actual step decision.
+  ensureDir(context.logDir);
   fs.writeFileSync(stdoutPath, stdoutBody);
   fs.writeFileSync(stderrPath, stderrBody);
 
@@ -2052,6 +2057,11 @@ function sourceBootstrapStep(context, options = {}) {
     String(result.stderr || result.error?.message || ''),
     'utf8'
   );
+  // A source-only self-test can legitimately replace or clean the durable
+  // evidence subtree while it is running. Recreate the per-run log directory
+  // after the child exits so the gate retains stdout/stderr instead of
+  // crashing with ENOENT and losing the actual step decision.
+  ensureDir(context.logDir);
   fs.writeFileSync(stdoutPath, stdoutBody);
   fs.writeFileSync(stderrPath, stderrBody);
   let parsed = null;

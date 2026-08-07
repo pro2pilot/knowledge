@@ -9,6 +9,7 @@ const { spawnSync } = require('child_process');
 const {
   bindStepDecision,
   canonicalReleaseEnv,
+  runCommand,
   sourceBootstrapStep,
   validateFlowLogEvidence,
   satisfiedImpactGatesForMode
@@ -1955,6 +1956,31 @@ function main() {
       'utf8'
     );
 
+    const recreatedLogRoot = path.join(fixtureRoot, 'recreated-release-gate-logs');
+    fs.mkdirSync(recreatedLogRoot, { recursive: true });
+    const recreatedLogStep = runCommand({
+      id: 'recreate-removed-log-directory',
+      command: process.execPath,
+      args: [
+        '-e',
+        [
+          "const fs = require('fs');",
+          "fs.rmSync(process.env.RELEASE_GATE_TEST_LOG_DIR, { recursive: true, force: true });",
+          "process.stdout.write(JSON.stringify({ status: 'pass' }));"
+        ].join('')
+      ],
+      env: { RELEASE_GATE_TEST_LOG_DIR: recreatedLogRoot },
+      expectJson: true,
+      allowedStatuses: ['pass'],
+      requiredFields: ['status']
+    }, { logDir: recreatedLogRoot });
+    assert(
+      recreatedLogStep.status === 'pass' &&
+        fs.existsSync(path.join(recreatedLogRoot, 'recreate-removed-log-directory.stdout.txt')) &&
+        fs.existsSync(path.join(recreatedLogRoot, 'recreate-removed-log-directory.stderr.txt')),
+      'release gate did not recreate a removed durable log directory after the child exited'
+    );
+
     const copiedReleaseNote = path.join(knowledgeRoot, '.release-notes', 'v3.3.0.md');
     fs.appendFileSync(copiedReleaseNote, '\nPreparation only.\n', 'utf8');
     const provisionalConsistency = evaluatePublicConsistency(knowledgeRoot);
@@ -1994,6 +2020,7 @@ function main() {
         { id: 'gate-00-canonical-pass-status', status: 'pass' },
         { id: 'conformance-expected-failure-exit-exact', status: 'pass' },
         { id: 'release-step-log-binding-fail-closed', status: 'pass' },
+        { id: 'release-step-log-directory-recreated', status: 'pass' },
         { id: 'accepted-envelope-schema-exact', status: 'pass' },
         { id: 'clean-source-real-ingest', status: 'pass' },
         { id: 'strict-doctor-project-index-check-after-bootstrap', status: 'pass' },
