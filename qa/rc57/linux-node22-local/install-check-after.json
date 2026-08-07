@@ -1,0 +1,575 @@
+{
+  "status": "ok",
+  "mode": "fresh",
+  "repo_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+  "knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+  "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+  "lock_safety": {
+    "schema_version": "knowledge-context-lock-safety.v1",
+    "status": "safe",
+    "roots": [
+      {
+        "root_kind": "shared",
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "lexical_paths": [
+          {
+            "root_kind": "state",
+            "path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge"
+          },
+          {
+            "root_kind": "project",
+            "path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge"
+          }
+        ],
+        "canonical_path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339",
+        "definitions": [
+          "agent-integrations",
+          "apply-template",
+          "doctor",
+          "external-memory-status",
+          "field-report",
+          "git-hooks",
+          "ingest",
+          "memory-provider",
+          "recertify",
+          "repair-on-touch",
+          "routing-bundle",
+          "search-index",
+          "secret-scan",
+          "sync",
+          "task-routing",
+          "team-flow",
+          "visual-inspector",
+          "watch-maintenance",
+          "wiki-graph",
+          "wiki-lint"
+        ],
+        "status": "safe",
+        "findings": [],
+        "legacy": {
+          "present": false,
+          "status": "safe",
+          "owner": null
+        },
+        "locks": [
+          {
+            "lock_name": "agent-integrations",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "apply-template",
+            "resource_id": null,
+            "root_kind": "project",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "doctor",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "external-memory-status",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "field-report",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "git-hooks",
+            "resource_id": null,
+            "root_kind": "project",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "ingest",
+            "resource_id": null,
+            "root_kind": "project",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "memory-provider",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "recertify",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "repair-on-touch",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "routing-bundle",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "search-index",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "secret-scan",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "sync",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "team-flow",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "visual-inspector",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "watch-maintenance",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "wiki-graph",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          },
+          {
+            "lock_name": "wiki-lint",
+            "resource_id": null,
+            "root_kind": "state",
+            "status": "safe",
+            "current": {
+              "status": "safe",
+              "owner": null
+            }
+          }
+        ],
+        "summary": {
+          "definitions_checked": 20,
+          "physical_locks_checked": 19
+        }
+      }
+    ],
+    "findings": [],
+    "summary": {
+      "roots_checked": 1,
+      "definitions_checked": 20,
+      "physical_locks_checked": 19,
+      "duplicates_avoided": 1
+    },
+    "layout_version": 1,
+    "locks": [
+      {
+        "lock_name": "agent-integrations",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "apply-template",
+        "resource_id": null,
+        "root_kind": "project",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "doctor",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "external-memory-status",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "field-report",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "git-hooks",
+        "resource_id": null,
+        "root_kind": "project",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "ingest",
+        "resource_id": null,
+        "root_kind": "project",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "memory-provider",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "recertify",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "repair-on-touch",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "routing-bundle",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "search-index",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "secret-scan",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "sync",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "team-flow",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "visual-inspector",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "watch-maintenance",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "wiki-graph",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      },
+      {
+        "lock_name": "wiki-lint",
+        "resource_id": null,
+        "root_kind": "state",
+        "status": "safe",
+        "current": {
+          "status": "safe",
+          "owner": null
+        },
+        "root_kinds": [
+          "state",
+          "project"
+        ],
+        "physical_root_id": "b1276b6f0781e5e660e27c85fade7282f7df108bb71dbf8007241b69b131a339"
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "info",
+      "code": "fresh_runtime_missing",
+      "message": "maintenance/routing_bundle.json is absent. This is normal before first flow import.",
+      "artifact": ".knowledge/maintenance/routing_bundle.json"
+    }
+  ],
+  "fixes_available": [],
+  "fixes_applied": [],
+  "next_commands": [
+    "node .knowledge/tools/install-agent-integrations.js --runtime codex",
+    "node .knowledge/tools/install-agent-integrations.js --runtime claude",
+    "node .knowledge/tools/install-agent-integrations.js --runtime opencode",
+    "node .knowledge/tools/install-agent-integrations.js --runtime gemini",
+    "node .knowledge/tools/install-agent-integrations.js --runtime copilot",
+    "node .knowledge/tools/install-agent-integrations.js --runtime devin",
+    "node .knowledge/tools/install-agent-integrations.js --runtime windsurf",
+    "node .knowledge/tools/install-agent-integrations.js --runtime continue",
+    "node .knowledge/tools/install-agent-integrations.js --runtime roo",
+    "node .knowledge/tools/install-agent-integrations.js --runtime aider",
+    "node .knowledge/tools/flow.js import"
+  ]
+}

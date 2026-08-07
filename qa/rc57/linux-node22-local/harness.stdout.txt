@@ -1,0 +1,13 @@
+{
+  "schema_version": "rc57-os-node-cell.v1",
+  "status": "pass",
+  "classification": "candidate",
+  "candidate_sha256": "49bb9054512fdfab05fe8c30a5ff591bdff6c0f206cfde18fea224434802f5c5",
+  "tests": {
+    "shipped_self_tests": "26/26",
+    "integrations": "12/12",
+    "upgrade": "pass"
+  },
+  "command_count": 18,
+  "active_locks": 0
+}

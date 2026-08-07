@@ -1,0 +1,1497 @@
+{
+  "status": "pass",
+  "flow_import": {
+    "flow": "import",
+    "mode": "repo",
+    "repo_id": "local-repo-d44174edfe",
+    "workspace_id": null,
+    "agent_id": null,
+    "target_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+    "project_knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+    "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+    "branch": "master",
+    "head_sha": "7644d810cf21c8e26bca0f8a8ae90910f31bf9bc",
+    "started_at": "2026-08-07T00:21:11.961Z",
+    "duration_total_ms": 1526,
+    "steps_total": 12,
+    "steps_ok": 12,
+    "checks_status": "ok",
+    "status": "ok",
+    "overall_status": "ok",
+    "warnings": [
+      "agent is on main",
+      "dirty workspace"
+    ],
+    "flow_log": ".knowledge/maintenance/flow-logs/import-2026-08-07T00-21-11-961Z-27930-25fb98d3.json",
+    "flow_log_bytes": 83130,
+    "flow_log_sha256": "f2ee650c6dcfd4ecf3ac0a35a520a311a540e75b48039770ccff4cb43fdabb62",
+    "flow_log_status": "written",
+    "flow_log_error": null,
+    "failure_code": null,
+    "onboarding_follow_up": {
+      "required": true,
+      "reason": "upgrade_missing_completion_marker",
+      "command": "node .knowledge/inspector.js",
+      "note": "The system is ready. Complete First-run setup in the live Inspector for full behavior and autonomy controls.",
+      "chat_message": ".knowledge is installed and already working. I opened the local Inspector for First-run setup so you can tune agent behavior, autonomy rules, and chat/report preferences for full capabilities.",
+      "auto_launch": true,
+      "auto_launch_disable_env": "KNOWLEDGE_FLOW_NO_OPEN=1"
+    },
+    "steps": [
+      {
+        "step": "install-check",
+        "command": "install-check.js --json",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "ok",
+        "semantic_errors": [],
+        "duration_ms": 106,
+        "summary": ""
+      },
+      {
+        "step": "ingest",
+        "command": "ingest-existing-project.js --merge",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 435,
+        "summary": ""
+      },
+      {
+        "step": "sync",
+        "command": "sync-tracked.js --scan --discover",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "ok",
+        "semantic_errors": [],
+        "duration_ms": 143,
+        "summary": ""
+      },
+      {
+        "step": "wiki-graph",
+        "command": "build-wiki-graph.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 64,
+        "summary": "12 nodes / 17 edges"
+      },
+      {
+        "step": "lint",
+        "command": "lint-wiki.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "healthy",
+        "semantic_errors": [],
+        "duration_ms": 96,
+        "summary": "100 /100 healthy"
+      },
+      {
+        "step": "ext-memory",
+        "command": "external-memory-status.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 76,
+        "summary": "manual"
+      },
+      {
+        "step": "routing",
+        "command": "build-routing-bundle.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 105,
+        "summary": "- modules"
+      },
+      {
+        "step": "search-idx",
+        "command": "build-search-index.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 94,
+        "summary": "44 docs"
+      },
+      {
+        "step": "inspector",
+        "command": "build-visual-inspector.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 108,
+        "summary": "index.html"
+      },
+      {
+        "step": "secret-scan",
+        "command": "scan-secrets.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "clean",
+        "semantic_errors": [],
+        "duration_ms": 101,
+        "summary": "clean / 0 findings"
+      },
+      {
+        "step": "updates",
+        "command": "check-updates.js --auto --json",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "not_due",
+        "semantic_errors": [],
+        "duration_ms": 19,
+        "summary": "not_due"
+      },
+      {
+        "step": "doctor",
+        "command": "doctor.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "usable_with_warnings",
+        "semantic_errors": [],
+        "duration_ms": 174,
+        "summary": "86 /100 usable_with_warnings"
+      }
+    ]
+  },
+  "flow_release": {
+    "flow": "release",
+    "mode": "repo",
+    "repo_id": "local-repo-d44174edfe",
+    "workspace_id": null,
+    "agent_id": null,
+    "target_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+    "project_knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+    "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+    "branch": "master",
+    "head_sha": "7644d810cf21c8e26bca0f8a8ae90910f31bf9bc",
+    "started_at": "2026-08-07T00:21:13.544Z",
+    "duration_total_ms": 2299,
+    "steps_total": 15,
+    "steps_ok": 15,
+    "checks_status": "ok",
+    "status": "ok",
+    "overall_status": "ok",
+    "warnings": [
+      "agent is on main",
+      "dirty workspace"
+    ],
+    "flow_log": ".knowledge/maintenance/flow-logs/release-2026-08-07T00-21-13-544Z-28289-a14de5e6.json",
+    "flow_log_bytes": 78318,
+    "flow_log_sha256": "60e8e7641fde0f542c86b61faf69c07fcf25f0a4300cbd197656383bc4eff46c",
+    "flow_log_status": "written",
+    "flow_log_error": null,
+    "failure_code": null,
+    "onboarding_follow_up": {
+      "required": true,
+      "reason": "upgrade_missing_completion_marker",
+      "command": "node .knowledge/inspector.js",
+      "note": "The system is ready. Complete First-run setup in the live Inspector for full behavior and autonomy controls.",
+      "chat_message": ".knowledge is installed and already working. I opened the local Inspector for First-run setup so you can tune agent behavior, autonomy rules, and chat/report preferences for full capabilities.",
+      "auto_launch": true,
+      "auto_launch_disable_env": "KNOWLEDGE_FLOW_NO_OPEN=1"
+    },
+    "steps": [
+      {
+        "step": "sync",
+        "command": "sync-tracked.js --scan",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "ok",
+        "semantic_errors": [],
+        "duration_ms": 134,
+        "summary": ""
+      },
+      {
+        "step": "wiki-graph",
+        "command": "build-wiki-graph.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 63,
+        "summary": "12 nodes / 17 edges"
+      },
+      {
+        "step": "lint",
+        "command": "lint-wiki.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "healthy",
+        "semantic_errors": [],
+        "duration_ms": 96,
+        "summary": "100 /100 healthy"
+      },
+      {
+        "step": "ext-memory",
+        "command": "external-memory-status.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 74,
+        "summary": "manual"
+      },
+      {
+        "step": "routing",
+        "command": "build-routing-bundle.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 113,
+        "summary": "- modules"
+      },
+      {
+        "step": "search-idx",
+        "command": "build-search-index.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 96,
+        "summary": "44 docs"
+      },
+      {
+        "step": "secret-scan",
+        "command": "scan-secrets.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "clean",
+        "semantic_errors": [],
+        "duration_ms": 88,
+        "summary": "clean / 0 findings"
+      },
+      {
+        "step": "updates",
+        "command": "check-updates.js --auto --json",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "not_due",
+        "semantic_errors": [],
+        "duration_ms": 19,
+        "summary": "not_due"
+      },
+      {
+        "step": "doctor",
+        "command": "doctor.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "usable_with_warnings",
+        "semantic_errors": [],
+        "duration_ms": 179,
+        "summary": "86 /100 usable_with_warnings"
+      },
+      {
+        "step": "task-routing",
+        "command": "task-routing.js refresh --all --quiet",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 64,
+        "summary": ""
+      },
+      {
+        "step": "inspector",
+        "command": "build-visual-inspector.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 104,
+        "summary": "index.html"
+      },
+      {
+        "step": "metrics",
+        "command": "collect-metrics.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 63,
+        "summary": "routing scopes not comparable"
+      },
+      {
+        "step": "pr-summary",
+        "command": "generate-pr-summary.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 89,
+        "summary": ""
+      },
+      {
+        "step": "graphs",
+        "command": "render-graph-execution.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": null,
+        "semantic_errors": [],
+        "duration_ms": 51,
+        "summary": ""
+      },
+      {
+        "step": "harness",
+        "command": "evaluation-harness.js",
+        "exit": 0,
+        "success": true,
+        "status": "pass",
+        "json_status": "release_candidate",
+        "semantic_errors": [],
+        "duration_ms": 1059,
+        "summary": ""
+      }
+    ]
+  },
+  "doctor": {
+    "schema_version": "3.3.0",
+    "generated_at": "2026-08-07T00:21:15.954Z",
+    "generated_by": "86148408c8aa-28910",
+    "mode": "repo",
+    "target_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+    "project_knowledge_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+    "state_root": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge",
+    "quality_score": 86,
+    "status": "usable_with_warnings",
+    "structural_status": "healthy",
+    "summary": "2 issue(s), 0 critical, score 86/100.",
+    "checks": [
+      {
+        "check": "legacy_project_root_knowledge_backups",
+        "status": "pass",
+        "count": 0,
+        "paths": []
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/project_index.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/modules/module_registry.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/maintenance/concurrency_policy.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/maps/critical_paths.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/evidence/file_facts.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/wiki/index.md",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/external_memory/registry.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/external_memory/retrieval_policy.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/models/memory-provider.schema.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/models/external-memory-report.schema.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/memory-providers/mem0/manifest.json",
+        "status": "pass"
+      },
+      {
+        "check": "required_file",
+        "artifact": ".knowledge/memory-providers/pinecone/manifest.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/freshness.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/maintenance/trust_report.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/maintenance/handoff_summary.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/maintenance/routing_bundle.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/maps/file_criticality.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/maps/wiki_graph.json",
+        "status": "pass"
+      },
+      {
+        "check": "runtime_file",
+        "artifact": ".knowledge/maintenance/wiki_lint_report.json",
+        "status": "pass"
+      },
+      {
+        "check": "json_parse",
+        "status": "pass",
+        "files_checked": 71
+      },
+      {
+        "check": "module_registry_non_empty",
+        "status": "pass",
+        "modules": 2
+      },
+      {
+        "check": "tracked_files_exist",
+        "status": "pass",
+        "tracked_files": 11,
+        "missing": 0
+      },
+      {
+        "check": "trust_report_present",
+        "status": "pass",
+        "generated_at": "2026-08-07T00:21:13.598Z",
+        "suspect_or_low_modules": 2
+      },
+      {
+        "check": "wiki_lint_report",
+        "status": "pass",
+        "aggregate_status": "healthy",
+        "reported_status": "healthy",
+        "quality_score": 100,
+        "structural_status": "healthy",
+        "reported_structural_status": "healthy"
+      },
+      {
+        "check": "wiki_graph",
+        "status": "pass",
+        "nodes": 12,
+        "edges": 17,
+        "broken_edges": 0,
+        "structural_status": "healthy"
+      },
+      {
+        "check": "external_memory_status",
+        "status": "pass",
+        "providers": [
+          {
+            "provider_id": "mem0-oss",
+            "provider": "mem0-oss",
+            "provider_name": "Mem0 OSS",
+            "type": "local",
+            "layer": "free_core",
+            "status": "runtime_not_installed",
+            "runtime_health": "not_available",
+            "enabled": false,
+            "installed": false,
+            "receipt_present": false,
+            "runtime_available": false,
+            "package_installed": false,
+            "configured": false,
+            "detected": false,
+            "mode": "manual",
+            "scope": "repo",
+            "provider_scope": null,
+            "shared_provider_root": null,
+            "project_storage_key": null,
+            "metadata_provider_scope": null,
+            "path_inferred_provider_scope": null,
+            "metadata_scope_mismatch": false,
+            "stale_shared_provider_root": null,
+            "stale_shared_qdrant_path": null,
+            "stale_shared_lock_path": null,
+            "data_path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/external_memory/mem0",
+            "path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/external_memory/mem0",
+            "license_spdx": "Apache-2.0",
+            "version": "mem0ai==2.0.4",
+            "version_pin": "mem0ai==2.0.4",
+            "source_url": "https://docs.mem0.ai/open-source/overview",
+            "adapter_contract": "knowledge.memory_adapter.v1",
+            "adapter_command": "node .knowledge/tools/memory-mem0.js health --json",
+            "setup_command": "node .knowledge/tools/memory-provider.js setup mem0-oss --live --json",
+            "live_health_command": "node .knowledge/tools/memory-mem0.js health --adapter live --json",
+            "live_add_command": "node .knowledge/tools/memory-mem0.js add --adapter live --yes-live-memory --text \"Release note: Mem0 is advisory-only external memory\" --scope repo --json",
+            "live_search_command": "node .knowledge/tools/memory-mem0.js search \"advisory memory\" --adapter live --yes-live-memory --json",
+            "live_recall_command": "node .knowledge/tools/memory-mem0.js recall \"advisory memory\" --adapter live --yes-live-memory --json",
+            "live_list_command": "node .knowledge/tools/memory-mem0.js list --adapter live --yes-live-memory --json",
+            "llm_provider": null,
+            "llm_model": null,
+            "embedding_provider": null,
+            "embedding_model": null,
+            "embedding_dimensions": null,
+            "vector_store_provider": null,
+            "vector_collection_name": null,
+            "qdrant_path": null,
+            "history_store_provider": null,
+            "history_db_path": null,
+            "install_receipt_path": ".knowledge/external_memory/mem0/install_receipt.json",
+            "runtime_status_path": ".knowledge/external_memory/mem0/runtime_status.json",
+            "config_path": null,
+            "runtime_status_checked_at": null,
+            "last_live_health_check": null,
+            "diagnostic_code": null,
+            "runtime_version": null,
+            "expected_runtime_version": "2.0.4",
+            "runtime_version_matches_pin": null,
+            "selected_python": null,
+            "python_runtime": null,
+            "live_operations_require_explicit_consent": true,
+            "records_count": 0,
+            "last_retrieval_count": 0,
+            "last_retrieval_query": null,
+            "adapter_records_count": 0,
+            "override_attempts_blocked": 0,
+            "source_of_truth": false,
+            "trust_effect": "advisory_only",
+            "trust_role": "advisory_only",
+            "warnings": [
+              "Mem0 runtime is optional; status/report mode does not import Python packages or run network installs.",
+              "Install/update requires explicit user action and may use network outside status/report mode."
+            ],
+            "errors": []
+          },
+          {
+            "provider_id": "pinecone",
+            "provider": "pinecone",
+            "provider_name": "Pinecone",
+            "type": "cloud",
+            "layer": "free_core",
+            "status": "disabled",
+            "runtime_health": "not_available",
+            "enabled": false,
+            "installed": false,
+            "configured": false,
+            "detected": false,
+            "mode": "disabled",
+            "scope": "repo",
+            "data_path": null,
+            "path": null,
+            "api_key_required": false,
+            "index": null,
+            "namespace": null,
+            "adapter_contract": "knowledge.memory_adapter.v1",
+            "adapter_command": "node .knowledge/tools/memory-pinecone.js health --json",
+            "license_spdx": "Service-TOS",
+            "version": null,
+            "records_count": 0,
+            "last_retrieval_count": 0,
+            "source_of_truth": false,
+            "trust_effect": "advisory_only",
+            "trust_role": "advisory_only",
+            "warnings": [],
+            "errors": []
+          }
+        ]
+      },
+      {
+        "check": "memory_provider_manifest_mem0",
+        "status": "pass",
+        "artifact": ".knowledge/memory-providers/mem0/manifest.json"
+      },
+      {
+        "check": "memory_source_of_truth_policy",
+        "status": "pass",
+        "source_of_truth_policy": {
+          "external_memory_source_of_truth": false,
+          "external_memory_can_raise_trust": false,
+          "external_memory_can_overwrite_curated_knowledge": false,
+          "external_memory_can_execute_actions": false,
+          "retrieved_memory_requires_code_or_evidence_verification": true
+        }
+      },
+      {
+        "check": "legacy_claude_mem",
+        "status": "pass",
+        "detected": 0
+      },
+      {
+        "check": "mem0_status",
+        "status": "pass",
+        "provider_status": "runtime_not_installed",
+        "installed": false,
+        "receipt_present": false
+      },
+      {
+        "check": "pinecone_provider_status",
+        "status": "pass",
+        "provider_status": "disabled",
+        "mode": "disabled"
+      },
+      {
+        "check": "provider_runtime_state_not_staged",
+        "status": "pass",
+        "staged": []
+      },
+      {
+        "check": "update_check",
+        "status": "pass",
+        "update_status": "not_due",
+        "current_version": "3.3.0",
+        "latest_version": null
+      },
+      {
+        "check": "search_index",
+        "status": "pass",
+        "artifact": ".knowledge/search/index.json"
+      },
+      {
+        "check": "append_only_events_dir",
+        "status": "pass",
+        "artifact": ".knowledge/maintenance/events/"
+      },
+      {
+        "check": "secret_scan",
+        "status": "pass",
+        "findings_total": 0,
+        "secret_scan_status": "clean",
+        "generated_at": "2026-08-07T00:21:14.204Z"
+      }
+    ],
+    "issues": [
+      {
+        "lifecycle_id": "LC-2949d69ab7c80e92",
+        "code": "suspect_module",
+        "module_id": "root",
+        "artifact": ".aider.conf.yml",
+        "affected_artifacts": [
+          ".aider.conf.yml",
+          ".gitattributes",
+          ".knowledge/modules/root.json",
+          "AGENTS.md"
+        ],
+        "message": "Module root is suspect; current source and relevant tests must be verified before behavior claims.",
+        "severity": "medium",
+        "score_cost": 7,
+        "repair_class": "verify_on_touch",
+        "required_checks": [
+          "read_current_source",
+          "run_relevant_tests",
+          "compare_existing_claims"
+        ],
+        "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+        "safe_during_current_task": true,
+        "critical_path": false,
+        "security_sensitive": false,
+        "status": "open",
+        "estimated_additional_work": {
+          "minutes": 2,
+          "context_percent": 4
+        }
+      },
+      {
+        "lifecycle_id": "LC-dc70da6baa45eba2",
+        "code": "low_confidence_module",
+        "module_id": "github",
+        "artifact": ".github/copilot-instructions.md",
+        "affected_artifacts": [
+          ".github/copilot-instructions.md",
+          ".knowledge/modules/github.json"
+        ],
+        "message": "Module github is low_confidence; current source and relevant tests must be verified before behavior claims.",
+        "severity": "medium",
+        "score_cost": 7,
+        "repair_class": "verify_on_touch",
+        "required_checks": [
+          "read_current_source",
+          "run_relevant_tests",
+          "compare_existing_claims"
+        ],
+        "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+        "safe_during_current_task": true,
+        "critical_path": false,
+        "security_sensitive": false,
+        "status": "open",
+        "estimated_additional_work": {
+          "minutes": 2,
+          "context_percent": 4
+        }
+      }
+    ],
+    "findings": [
+      {
+        "lifecycle_id": "LC-2949d69ab7c80e92",
+        "code": "suspect_module",
+        "module_id": "root",
+        "artifact": ".aider.conf.yml",
+        "affected_artifacts": [
+          ".aider.conf.yml",
+          ".gitattributes",
+          ".knowledge/modules/root.json",
+          "AGENTS.md"
+        ],
+        "message": "Module root is suspect; current source and relevant tests must be verified before behavior claims.",
+        "severity": "medium",
+        "score_cost": 7,
+        "repair_class": "verify_on_touch",
+        "required_checks": [
+          "read_current_source",
+          "run_relevant_tests",
+          "compare_existing_claims"
+        ],
+        "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+        "safe_during_current_task": true,
+        "critical_path": false,
+        "security_sensitive": false,
+        "status": "open",
+        "estimated_additional_work": {
+          "minutes": 2,
+          "context_percent": 4
+        }
+      },
+      {
+        "lifecycle_id": "LC-dc70da6baa45eba2",
+        "code": "low_confidence_module",
+        "module_id": "github",
+        "artifact": ".github/copilot-instructions.md",
+        "affected_artifacts": [
+          ".github/copilot-instructions.md",
+          ".knowledge/modules/github.json"
+        ],
+        "message": "Module github is low_confidence; current source and relevant tests must be verified before behavior claims.",
+        "severity": "medium",
+        "score_cost": 7,
+        "repair_class": "verify_on_touch",
+        "required_checks": [
+          "read_current_source",
+          "run_relevant_tests",
+          "compare_existing_claims"
+        ],
+        "resolution_predicate": "source_and_relevant_tests_confirm_claim",
+        "safe_during_current_task": true,
+        "critical_path": false,
+        "security_sensitive": false,
+        "status": "open",
+        "estimated_additional_work": {
+          "minutes": 2,
+          "context_percent": 4
+        }
+      }
+    ],
+    "global": {
+      "score": 86,
+      "status": "usable_with_warnings",
+      "findings_open": 2
+    },
+    "pending_trust_closures_observed": [],
+    "queue_transitions": []
+  },
+  "task_routing": {
+    "status": "ok",
+    "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+    "snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+    "routing_snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+    "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+    "metrics_comparison_hash": "56cc9cb88cd912d0df24724b31e2d6f17bdacd3bd0e48b04083965a94e576314",
+    "transaction_id": "354f2ac4972674df0764b559089faf8a17fff5bf4f3eba3e5adecbf9cb325cff",
+    "index_reconciled": true,
+    "manifest_reconciled": true,
+    "scope": {
+      "schema_version": "knowledge-routing-scope.v2",
+      "repository_id": "local-repo-d44174edfe",
+      "task": "RC57 OS/Node compatibility matrix",
+      "task_class": "general",
+      "modules": [],
+      "paths": [
+        ".knowledge/tools/field-report.js"
+      ],
+      "exclude_modules": [],
+      "exclude_paths": [],
+      "scope_source": "explicit",
+      "constraints": [],
+      "created_at": "2026-08-07T00:21:16.432Z",
+      "created_by": "unknown",
+      "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419"
+    },
+    "metrics": {
+      "schema_version": "knowledge-workspace-narrowing-comparison.v1",
+      "comparison_kind": "workspace_to_task_first_read_narrowing",
+      "measurement_kind": "estimated_local_first_read_context",
+      "comparison_contract_valid": true,
+      "workspace_baseline_complete": true,
+      "task_scope_explicit": true,
+      "task_route_current": true,
+      "scope_comparable": false,
+      "scope_comparable_deprecated": true,
+      "baseline_complete": true,
+      "baseline_incomplete_reason": null,
+      "claim_eligible": false,
+      "claim_ineligible_reason": "task_readiness_needs_explicit_scope",
+      "claim_ineligible_reasons": [
+        "task_readiness_needs_explicit_scope"
+      ],
+      "claim_requires_current_pointer": true,
+      "estimator_method": "workspace_to_task_first_read_bytes_divided_by_four",
+      "estimator_version": "v1",
+      "comparison_policy_version": "workspace_narrowing_claim_policy.v1",
+      "estimator_limits": "Local byte-based estimate only; not tokenizer or provider telemetry.",
+      "estimator_interpretation": "Estimated workspace-to-task first-read narrowing. This is a deterministic local context estimate, not actual provider-reported model-token usage.",
+      "scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+      "snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+      "routing_snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+      "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+      "metrics_comparison_hash": "56cc9cb88cd912d0df24724b31e2d6f17bdacd3bd0e48b04083965a94e576314",
+      "comparison_receipt": {
+        "schema_version": "knowledge-workspace-narrowing-comparison-receipt.v1",
+        "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+        "baseline_complete": true,
+        "baseline_incomplete_reason": null,
+        "baseline_inputs": [
+          {
+            "role": "workspace_project_index",
+            "path": ".knowledge/project_index.json",
+            "sha256": "798246ac290b98b7f5465ae690b50b15be29f487e20f60bbef0001ed44a3b07d",
+            "bytes": 510,
+            "estimated_tokens": 128,
+            "required": true
+          },
+          {
+            "role": "workspace_module_registry",
+            "path": ".knowledge/modules/module_registry.json",
+            "sha256": "9c0cf5caf4fe7b8f93fab80363ee6c5822ff259fb5b89d62e2f6873890cb2afc",
+            "bytes": 745,
+            "estimated_tokens": 187,
+            "required": true
+          },
+          {
+            "role": "workspace_trust_summary",
+            "path": ".knowledge/maintenance/trust_report.json",
+            "sha256": "2d734094bf238f7f90457f022e31979db3ce07b7a67b088f6cba3eadda418fb2",
+            "bytes": 487,
+            "estimated_tokens": 122,
+            "required": true
+          },
+          {
+            "role": "workspace_repair_summary",
+            "path": ".knowledge/maintenance/repair_queue.json",
+            "sha256": "5e015bfa1ae60c351185edbb1aacb20d0ad8f0254e299f451fdb08d31f1f0e72",
+            "bytes": 784,
+            "estimated_tokens": 196,
+            "required": true
+          },
+          {
+            "role": "workspace_handoff_summary",
+            "path": ".knowledge/maintenance/handoff_summary.json",
+            "sha256": "ab6139dbd19117cd4a29d8b3c84d99691c9a6f7e31bc11de2dce3db9a652b59e",
+            "bytes": 536,
+            "estimated_tokens": 134,
+            "required": true
+          },
+          {
+            "role": "workspace_critical_paths_summary",
+            "path": ".knowledge/maps/critical_paths.json",
+            "sha256": "4ce95370e221ea0a3ef42ee0992d28ac44cbae9b311b7e310061d35b819bb093",
+            "bytes": 12,
+            "estimated_tokens": 3,
+            "required": true
+          },
+          {
+            "role": "source_of_truth_policy_summary",
+            "path": ".knowledge/project_index.json",
+            "sha256": "f64a28fc678ac009c2ae63ed21c94f84e5b8423b2f79ad5e73f45e1998f647fc",
+            "bytes": 89,
+            "estimated_tokens": 23,
+            "required": true
+          },
+          {
+            "role": "concurrency_policy_summary",
+            "path": ".knowledge/maintenance/concurrency_policy.json",
+            "sha256": "b4b44c84c5832f4df8e8c0a5209a49e7783ce6fe5d90011bb15e7247b3469d1c",
+            "bytes": 170,
+            "estimated_tokens": 43,
+            "required": true
+          }
+        ],
+        "routing_inputs": [
+          {
+            "path": "first-read.md",
+            "sha256": "5629a5832f3b32d5a77d789cfc7f36c57fa75ac75fa8bde2aaeb46be16e1a329",
+            "bytes": 546
+          },
+          {
+            "path": "continuation.json",
+            "sha256": "f1b6dcb3621298ee7d6998efd9ae7c59ee4a699290be57baa37e7137d16b5379",
+            "bytes": 322
+          },
+          {
+            "path": ".knowledge/tools/field-report.js",
+            "sha256": "e9d5264ffb8d81862ad816bd2a482cea38f13175b09177a70fc5ff3e438810bd",
+            "bytes": 82214
+          }
+        ],
+        "metrics_comparison_hash": "56cc9cb88cd912d0df24724b31e2d6f17bdacd3bd0e48b04083965a94e576314",
+        "required_source_states": []
+      },
+      "workspace_baseline": {
+        "recipe_id": "knowledge-workspace-first-read-recipe",
+        "recipe_version": "v1",
+        "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+        "complete": true,
+        "estimated_tokens": 836
+      },
+      "task_context": {
+        "task_scope_hash": "c4b4ea0559bce4a255d7867b2aecfab71c426b2281c62e8b71aa60df29fdb419",
+        "routing_snapshot_hash": "d0007575d66b009023182ad71cafa6ae93b0661423d91311a348af5537dc903b",
+        "estimated_tokens": 20772
+      },
+      "baseline": {
+        "method": "pro2pilot.workspace-baseline.canonical-generator:knowledge-workspace-first-read-recipe.v1",
+        "recipe_id": "knowledge-workspace-first-read-recipe",
+        "recipe_version": "v1",
+        "schema_version": "knowledge-workspace-first-read-baseline.v1",
+        "baseline_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+        "canonical_payload_hash": "b88808f8d107c31ffb8d625d1611d98984ab24000cabb38291ad7f2efb7849f3",
+        "estimated_tokens": 836
+      },
+      "routing": {
+        "method": "task_scoped_first_read.v1",
+        "estimated_tokens": 20772
+      },
+      "inline_estimated_tokens": 20772,
+      "mandatory_continuation_estimated_tokens": 0,
+      "routing_total_estimated_tokens": 20772,
+      "mandatory_continuations_complete": true,
+      "mandatory_continuation_payloads": [],
+      "required_sources_complete": true,
+      "required_source_issues": [],
+      "relevant_git_diff_accounted": true,
+      "signed_delta_tokens": -19936,
+      "signed_delta_percent": -2384.69,
+      "estimated_tokens_saved": 0,
+      "estimated_percent_saved": 0,
+      "estimated_tokens_overhead": 19936,
+      "estimated_percent_overhead": 2384.69,
+      "assessment": "estimated_overhead",
+      "actual_model_usage": {
+        "available": false,
+        "reason": "no_provider_telemetry"
+      },
+      "workspace_narrowing": {
+        "modules_total": 2,
+        "modules_selected": 0,
+        "modules_excluded": 2,
+        "workspace_candidate_paths_total": 74,
+        "task_paths_selected": 1,
+        "unrelated_paths_excluded": 74,
+        "relevant_high_risk_paths_inline": 0,
+        "relevant_high_risk_paths_continued": 0,
+        "inaccessible_relevant_high_risk_paths": 0,
+        "relevant_high_risk_paths_omitted": 0,
+        "paths_total": 74,
+        "paths_relevant": 1,
+        "paths_selected": 1,
+        "relevant_paths_omitted_by_budget": 0,
+        "relevant_high_risk_paths_in_continuation": 0
+      },
+      "live_input_digest": "2d91b5625efca4d586a6791a9029de9d45ca9d9756d8ee22c365b1c643eda5bf"
+    }
+  },
+  "field_report": {
+    "schema_version": "knowledge-field-report.v2",
+    "contract_version": "2.3.0",
+    "status": "needs_user_input",
+    "report_id": "fr_20260807_05ad8986",
+    "facts_observed": 45,
+    "facts_derived": 18,
+    "facts_unavailable": 32,
+    "facts_with_warnings": 24,
+    "collector_warnings": [
+      "missing artifact: .knowledge/sessions/agent-registry.json",
+      "missing artifact: .knowledge/maintenance/repair_opportunities.json",
+      "missing artifact: .knowledge/maintenance/verification_receipts/index.json",
+      "missing artifact: .knowledge/maintenance/repair_on_touch_telemetry.json"
+    ],
+    "missing_required_fields": 20,
+    "questions": [
+      {
+        "id": "project-context",
+        "type": "string",
+        "required": true,
+        "prompt": "Describe the repository or an anonymized equivalent, stack, agents, testing period, and previous context setup. Do not include internal workspace, department, or client names; repository size is collected automatically.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "report-relationship",
+        "type": "enum",
+        "required": true,
+        "prompt": "What is the tester’s relationship to .knowledge for this report?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "first_party_maintainer",
+            "label": "First-party maintainer dogfooding"
+          },
+          {
+            "value": "independent_user",
+            "label": "Independent user report"
+          },
+          {
+            "value": "internal_qa",
+            "label": "Internal QA report"
+          },
+          {
+            "value": "controlled_comparison",
+            "label": "Controlled comparison"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "keep-using",
+        "type": "enum",
+        "required": true,
+        "prompt": "Would you keep using .knowledge in this repository?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "yes",
+            "label": "Yes"
+          },
+          {
+            "value": "maybe",
+            "label": "Maybe, after specific changes"
+          },
+          {
+            "value": "no",
+            "label": "No"
+          },
+          {
+            "value": "not_enough_evidence",
+            "label": "I do not have enough evidence yet"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "quick-summary",
+        "type": "string",
+        "required": true,
+        "prompt": "In a few sentences, give the main result, most useful part, and biggest obstacle.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "workflow-fit",
+        "type": "enum",
+        "required": true,
+        "prompt": "How naturally did .knowledge fit into the normal workflow?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "natural",
+            "label": "It fit in without noticeably changing the workflow"
+          },
+          {
+            "value": "few_extra_steps",
+            "label": "It required a few extra steps"
+          },
+          {
+            "value": "regular_attention",
+            "label": "It required regular manual attention"
+          },
+          {
+            "value": "significantly_complicated",
+            "label": "It made the workflow significantly more complicated"
+          },
+          {
+            "value": "not_integrated",
+            "label": "I could not integrate it into normal work"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "agent-intervention",
+        "type": "enum",
+        "required": true,
+        "prompt": "Did the agent need extra guidance or intervention?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "none",
+            "label": "No"
+          },
+          {
+            "value": "once_or_twice",
+            "label": "Once or twice"
+          },
+          {
+            "value": "regularly",
+            "label": "Regularly"
+          },
+          {
+            "value": "blocker",
+            "label": "It became a blocker"
+          },
+          {
+            "value": "not_enough_evidence",
+            "label": "Not enough evidence"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "workflow-notes",
+        "type": "string",
+        "required": true,
+        "prompt": "Where did intervention happen, and did .knowledge change the next action or engineering decision? Give one example.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "main-scenario",
+        "type": "string",
+        "required": true,
+        "prompt": "Describe one real engineering task, the agent, how .knowledge was used, the result, decision impact, and evidence.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "accuracy-change",
+        "type": "enum",
+        "required": true,
+        "prompt": "Did .knowledge change task accuracy?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "clearly_improved",
+            "label": "Clearly improved"
+          },
+          {
+            "value": "slightly_improved",
+            "label": "Slightly improved"
+          },
+          {
+            "value": "no_clear_change",
+            "label": "No clear change"
+          },
+          {
+            "value": "became_worse",
+            "label": "Accuracy became worse"
+          },
+          {
+            "value": "not_enough_evidence",
+            "label": "Not enough evidence to judge"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "accuracy-example",
+        "type": "string",
+        "required": true,
+        "prompt": "Give one concrete example supporting the accuracy assessment.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "accuracy-basis",
+        "type": "enum",
+        "required": true,
+        "prompt": "What is the basis of the accuracy assessment?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "measured",
+            "label": "Measured"
+          },
+          {
+            "value": "objective_test_result",
+            "label": "Objective test result"
+          },
+          {
+            "value": "comparable_tasks",
+            "label": "Comparable tasks"
+          },
+          {
+            "value": "general_observation",
+            "label": "General observation"
+          },
+          {
+            "value": "not_enough_data",
+            "label": "Not enough data"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "speed-scope",
+        "type": "enum",
+        "required": true,
+        "prompt": "Which part of the workflow does the speed assessment cover?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "repository_orientation",
+            "label": "Repository orientation"
+          },
+          {
+            "value": "first_useful_response",
+            "label": "First useful response"
+          },
+          {
+            "value": "full_task_completion",
+            "label": "Full task completion"
+          },
+          {
+            "value": "pull_request_review",
+            "label": "Pull request review"
+          },
+          {
+            "value": "other",
+            "label": "Other"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "response-speed-change",
+        "type": "enum",
+        "required": true,
+        "prompt": "How did speed change for the selected scope?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "much_slower",
+            "label": "Much slower"
+          },
+          {
+            "value": "slightly_slower",
+            "label": "Slightly slower"
+          },
+          {
+            "value": "no_clear_change",
+            "label": "No clear change"
+          },
+          {
+            "value": "slightly_faster",
+            "label": "Slightly faster"
+          },
+          {
+            "value": "much_faster",
+            "label": "Much faster"
+          },
+          {
+            "value": "not_enough_data",
+            "label": "Not enough data"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "response-speed-basis",
+        "type": "enum",
+        "required": true,
+        "prompt": "How was the speed impact determined?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "measured",
+            "label": "Measured"
+          },
+          {
+            "value": "estimated_from_comparable_tasks",
+            "label": "Estimated from comparable tasks"
+          },
+          {
+            "value": "general_observation",
+            "label": "General observation"
+          },
+          {
+            "value": "not_enough_data",
+            "label": "Not enough data"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "useful-parts",
+        "type": "string",
+        "required": true,
+        "prompt": "Which parts were useful, and why?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "what-did-not-work",
+        "type": "string",
+        "required": true,
+        "prompt": "Describe the main limitation, failures, false positives/negatives, or maintenance overhead.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "previous-workflow-comparison",
+        "type": "string",
+        "required": true,
+        "prompt": "What did .knowledge add, what did the previous workflow do better, and could the result be simpler?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "final-assessment",
+        "type": "string",
+        "required": true,
+        "prompt": "Give the best fit, when it is unnecessary, top improvements, and final verdict.",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": null,
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "github-publication-permission",
+        "type": "enum",
+        "required": true,
+        "prompt": "May this report be published to GitHub Discussions?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "github_publication_allowed",
+            "label": "Allowed to publish on GitHub"
+          },
+          {
+            "value": "local_draft_only",
+            "label": "Keep as a local draft"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      },
+      {
+        "id": "publication-permission",
+        "type": "enum",
+        "required": true,
+        "prompt": "What external reuse is allowed?",
+        "reason": "This judgment must come from the tester and is not inferred from repository metrics.",
+        "options": [
+          {
+            "value": "link_and_quote_with_attribution",
+            "label": "The project may link and quote with attribution"
+          },
+          {
+            "value": "link_only",
+            "label": "The project may link; quotes require separate permission"
+          },
+          {
+            "value": "github_only",
+            "label": "Keep this report on GitHub only"
+          },
+          {
+            "value": "undecided",
+            "label": "Permission not decided yet"
+          }
+        ],
+        "minimum": null,
+        "maximum": null,
+        "follow_up": "Ask at most one concrete follow-up when the answer is vague or lacks evidence."
+      }
+    ],
+    "answer_template_path": "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/reports/field-reports/fr_20260807_05ad8986/answers.template.json",
+    "next_command": "node .knowledge/tools/field-report.js ingest --report-id=fr_20260807_05ad8986 --answers=/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/reports/field-reports/fr_20260807_05ad8986/answers.template.json"
+  },
+  "inspector_live": "pass"
+}

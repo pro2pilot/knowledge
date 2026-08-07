@@ -1,0 +1,313 @@
+{
+  "schema_version": "rc57-matrix-commands.v1",
+  "commands": [
+    {
+      "id": "git-init",
+      "command": [
+        "git",
+        "init"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 6,
+      "stdout": "stdout/git-init.log",
+      "stderr": "stderr/git-init.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "git-config-email",
+      "command": [
+        "git",
+        "config",
+        "user.email",
+        "matrix@example.invalid"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 2,
+      "stdout": "stdout/git-config-email.log",
+      "stderr": "stderr/git-config-email.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "git-config-name",
+      "command": [
+        "git",
+        "config",
+        "user.name",
+        "RC57 Matrix"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 2,
+      "stdout": "stdout/git-config-name.log",
+      "stderr": "stderr/git-config-name.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "git-add",
+      "command": [
+        "git",
+        "add",
+        "."
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 60,
+      "stdout": "stdout/git-add.log",
+      "stderr": "stderr/git-add.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "git-commit",
+      "command": [
+        "git",
+        "commit",
+        "-m",
+        "fixture baseline"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 54,
+      "stdout": "stdout/git-commit.log",
+      "stderr": "stderr/git-commit.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "install-check-before",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/install-check.js",
+        "--json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 127,
+      "stdout": "stdout/install-check-before.log",
+      "stderr": "stderr/install-check-before.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "shipped-self-tests",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/rc57-replay/tools/run-shipped-self-tests.js",
+        "--artifact",
+        "/mnt/data/knowledge-v3.3.0-step1-rc4-r57.zip",
+        "--out",
+        "/mnt/data/rc57-work/linux-node22-matrix/self-tests.json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/external-cwd",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 28609,
+      "stdout": "stdout/shipped-self-tests.log",
+      "stderr": "stderr/shipped-self-tests.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "install-agent-integrations",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/install-agent-integrations.js",
+        "--all",
+        "--confirm-all",
+        "--no-package-scripts"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 430,
+      "stdout": "stdout/install-agent-integrations.log",
+      "stderr": "stderr/install-agent-integrations.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "install-check-after",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/install-check.js",
+        "--json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 104,
+      "stdout": "stdout/install-check-after.log",
+      "stderr": "stderr/install-check-after.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "flow-import",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/flow.js",
+        "import",
+        "--json",
+        "--no-color"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 1586,
+      "stdout": "stdout/flow-import.log",
+      "stderr": "stderr/flow-import.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "flow-release",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/flow.js",
+        "release",
+        "--json",
+        "--no-color"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 2356,
+      "stdout": "stdout/flow-release.log",
+      "stderr": "stderr/flow-release.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "doctor",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/doctor.js",
+        "--json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 174,
+      "stdout": "stdout/doctor.log",
+      "stderr": "stderr/doctor.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "inspector-build",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/build-visual-inspector.js"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 99,
+      "stdout": "stdout/inspector-build.log",
+      "stderr": "stderr/inspector-build.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "inspector-live",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        ".knowledge/tools/serve-inspector.js",
+        "--port=38871"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": null,
+      "stdout": "stdout/inspector-live.log",
+      "stderr": "stderr/inspector-live.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "task-routing",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/task-routing.js",
+        "create",
+        "--task",
+        "RC57 OS/Node compatibility matrix",
+        "--scope-path",
+        ".knowledge/tools/field-report.js",
+        "--json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 119,
+      "stdout": "stdout/task-routing.log",
+      "stderr": "stderr/task-routing.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "field-report-start",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/linux-node22-matrix/fixture/.knowledge/tools/field-report.js",
+        "start",
+        "--new",
+        "--json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 151,
+      "stdout": "stdout/field-report-start.log",
+      "stderr": "stderr/field-report-start.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "lock-safety-final",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "-e",
+        "const path=require('path');const m=require(path.resolve('.knowledge/tools/lib/contained-lock-manager.js'));const c=require(path.resolve('.knowledge/tools/lib/path-context.js')).resolveKnowledgeContext([], {cwd:process.cwd()});const r=m.inspectContextLockSafety(c);console.log(JSON.stringify(r));process.exit(r.status==='safe'?0:2);"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/fixture",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 65,
+      "stdout": "stdout/lock-safety-final.log",
+      "stderr": "stderr/lock-safety-final.log",
+      "spawn_error": null,
+      "status": "pass"
+    },
+    {
+      "id": "exact-upgrade",
+      "command": [
+        "/opt/nvm/versions/node/v22.16.0/bin/node",
+        "/mnt/data/rc57-work/rc57-replay/tools/conformance-install-smoke.js",
+        "/mnt/data/knowledge-v3.3.0-step1-rc4-r57.zip",
+        "--previous-artifact",
+        "/mnt/data/rc57-work/kit/knowledge-v3.2.11.zip",
+        "--json"
+      ],
+      "cwd": "/mnt/data/rc57-work/linux-node22-matrix/external-cwd",
+      "exit_code": 0,
+      "signal": null,
+      "duration_ms": 26970,
+      "stdout": "stdout/exact-upgrade.log",
+      "stderr": "stderr/exact-upgrade.log",
+      "spawn_error": null,
+      "status": "pass"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "status": "pass",
+  "runtimes": [
+    "codex",
+    "claude",
+    "opencode",
+    "openclaw",
+    "hermes",
+    "gemini",
+    "copilot",
+    "devin",
+    "windsurf",
+    "continue",
+    "roo",
+    "aider"
+  ],
+  "agents_managed_blocks": 1,
+  "windsurf_path": true,
+  "devin_path": true
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "knowledge-rc57-matrix-plan.v1",
+  "candidate": {
+    "name": "knowledge-v3.3.0-step1-rc4-r57.zip",
+    "sha256": "49bb9054512fdfab05fe8c30a5ff591bdff6c0f206cfde18fea224434802f5c5"
+  },
+  "baseline": {
+    "name": "knowledge-v3.2.11.zip",
+    "sha256": "b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79"
+  },
+  "source_commit": "4472a92dc3b31d6c111fa169a6d5dc37e62cb485",
+  "completed_cells": [
+    {
+      "slug": "linux-node22",
+      "status": "pass",
+      "node": "v22.16.0",
+      "upgrade": "pass"
+    }
+  ],
+  "pending_cells": [
+    "linux-node18",
+    "linux-node20",
+    "windows-node18",
+    "windows-node20",
+    "windows-node22",
+    "macos-node18",
+    "macos-node20",
+    "macos-node22"
+  ],
+  "upgrade_required": [
+    "windows-node22",
+    "macos-node22"
+  ],
+  "full_claim_requires_total_cells": 9
+}

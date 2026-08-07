@@ -1,0 +1,13 @@
+{
+  "schema_version": "rc57-os-node-environment.v1",
+  "os_label": "linux",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "v22.16.0",
+  "requested_node_major": 22,
+  "candidate_sha256": "49bb9054512fdfab05fe8c30a5ff591bdff6c0f206cfde18fea224434802f5c5",
+  "baseline_sha256": "b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79",
+  "external_harness": true,
+  "replay_manifest_sha256": "2d11644973e69c3645cc8940b2c406b4286375607d69259997c46129b5f5cd0e",
+  "source_root_environment_variables_present": []
+}
