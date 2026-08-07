@@ -85,6 +85,12 @@ https://pro2pilot.com/knowledge/
 | Embed `.knowledge` in your app | https://pro2pilot.com/knowledge/docs/embedding/ |
 | Evaluate Inspector Pro | https://pro2pilot.com/inspector/ |
 
+Field Report can attach a versioned, content-addressed task-results manifest so
+its public **Verified engineering outcome** table describes the actual build,
+test, migration, security, UI, or deployment result. `.knowledge` health stays
+in a separate system-state table, and GitHub publication fails closed while the
+final Git snapshot is dirty or the bound evidence has changed.
+
 ## Install
 
 > **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.

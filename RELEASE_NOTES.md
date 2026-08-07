@@ -11,7 +11,7 @@ v3.3.0 is the direct public upgrade from v3.2.11.
 - Task-scoped routing reports a deterministic local first-read estimate as
   narrowing, overhead, neutral, or unavailable/not comparable; it is not
   provider-reported model-token usage.
-- Field Report keeps local collection, translation, claim validation, approval, redaction, and optional publication state separate. Public drafts are English, explain notable metrics, include a filtered repository profile and observed build identity, generalize internal organization labels, and retain an auditable question catalog.
+- Field Report keeps local collection, translation, claim validation, approval, redaction, and optional publication state separate. Public drafts are English, retain an auditable question catalog, and now lead with an evidence-bound engineering-task table rather than internal counters. Task checks are content-addressed, overall outcome is derived from outcome-relevant rows, `.knowledge` health is shown separately, dirty final Git snapshots block GitHub publication, Discussion titles use a structured task title, and Repair-on-touch telemetry is classified as current, stale, invalid, or unavailable before any metrics are shown.
 - Install, update, and release safety checks preserve curated knowledge and
   keep generated runtime state and maintainer material out of installed files.
 - Installed agent integrations use the same four-state local-context estimate contract; maintainer benchmark and release-preparation tooling remain source-only.

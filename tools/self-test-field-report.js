@@ -35,6 +35,7 @@ const {
   scanPublication
 } = require('./lib/field-report/redactor');
 const {
+  buildDiscussionTitle,
   claimSafetyFindings,
   publicAnswerLanguageFindings,
   relationshipDisclosure,
@@ -42,11 +43,19 @@ const {
   render,
   renderEvidence,
   repositoryProfileRows,
+  systemStateRows,
   scopeDisclosure,
   systemObservations,
   truncateDiscussionTitle,
   verifiedOutcomeRows
 } = require('./lib/field-report/renderer');
+const {
+  inspectTaskResults,
+  mergeTaskResultsFacts,
+  snapshotFromFacts,
+  taskResultsTemplate,
+  validateTaskResults
+} = require('./lib/field-report/task-results');
 const fieldReportState = require('./lib/field-report/state');
 const { acquireContainedLock } = require('./lib/contained-lock-manager');
 const { LOCKS } = require('./lib/lock-policy');
@@ -278,6 +287,13 @@ function setupArtifacts(stateRoot) {
       { receipt_id: `KVR-${'2'.repeat(64)}`, content_sha256: 'b'.repeat(64), path: 'maintenance/verification_receipts/receipt-two.json' }
     ]
   });
+  writeJson(path.join(stateRoot, 'maintenance', 'field-report-task-check.json'), {
+    schema_version: 'field-report-self-test-check.v1',
+    status: 'pass',
+    passed: 1,
+    failed: 0,
+    total: 1
+  });
   writeJson(path.join(stateRoot, 'maintenance', 'flow-logs', 'release-one.json'), {
     flow: 'release'
   });
@@ -291,18 +307,50 @@ function setupArtifacts(stateRoot) {
 function makeContext(systemRoot, stateRoot, overrides = {}) {
   return {
     systemRoot,
-    targetRoot: stateRoot,
-    projectKnowledgeRoot: stateRoot,
+    targetRoot: overrides.targetRoot || stateRoot,
+    projectKnowledgeRoot: overrides.projectKnowledgeRoot || stateRoot,
     stateRoot,
     repoId: overrides.repoId || `self-test-${path.basename(stateRoot)}`,
     mode: overrides.mode || 'repo',
-    branch: 'main',
-    headSha: 'abcdef1234567890',
+    branch: overrides.branch || 'main',
+    headSha: overrides.headSha || 'abcdef1234567890',
     workspaceId: overrides.workspaceId || null,
     teamRoot: overrides.teamRoot || null,
     agentId: overrides.agentId || 'field-report-self-test',
     warnings: []
   };
+}
+
+function git(root, args) {
+  const result = childProcess.spawnSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
+  }
+  return String(result.stdout || '').trim();
+}
+
+function initCleanGitProject(root, files = {}) {
+  ensureDir(root);
+  const defaults = {
+    '.gitignore': '.knowledge/\n',
+    'README.md': '# Test project\n',
+    'src/index.js': "module.exports = { ok: true };\n"
+  };
+  for (const [relative, body] of Object.entries({ ...defaults, ...files })) {
+    const file = path.join(root, relative);
+    ensureDir(path.dirname(file));
+    fs.writeFileSync(file, body, 'utf8');
+  }
+  git(root, ['init', '-q']);
+  git(root, ['config', 'user.name', 'Field Report Self Test']);
+  git(root, ['config', 'user.email', 'field-report-self-test@example.invalid']);
+  git(root, ['add', '.']);
+  git(root, ['commit', '-qm', 'baseline']);
+  return git(root, ['rev-parse', 'HEAD']);
 }
 
 function testAdapter(actor = 'tester-a', options = {}) {
@@ -361,9 +409,59 @@ function testAdapter(actor = 'tester-a', options = {}) {
   };
 }
 
+function fileSha256(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function validTaskResults(context, reportId, overrides = {}) {
+  const evidencePath = path.join(context.stateRoot, 'maintenance', 'field-report-task-check.json');
+  const base = {
+    schema_version: 'knowledge-field-report-task-results.v1',
+    report_id: reportId,
+    task: {
+      title: 'Verify a scoped repository change',
+      outcome: 'pass',
+      summary: 'The requested change and its evidence-backed verification completed successfully.'
+    },
+    results: [
+      {
+        id: 'objective-tests',
+        label: 'Objective tests',
+        category: 'tests',
+        status: 'pass',
+        public_summary: 'The attached test report completed without failures.',
+        interpretation: 'This verifies the stated test result; it does not prove model accuracy or speed.',
+        public: true,
+        metrics: { passed: 1, failed: 0, total: 1 },
+        evidence: {
+          kind: 'automated_report',
+          label: 'Objective test report',
+          root_kind: 'state',
+          path: 'maintenance/field-report-task-check.json',
+          sha256: fileSha256(evidencePath)
+        }
+      }
+    ]
+  };
+  return {
+    ...base,
+    ...overrides,
+    task: { ...base.task, ...(overrides.task || {}) },
+    results: overrides.results || base.results
+  };
+}
+
+function attachTaskResults(context, reportId, overrides = {}) {
+  return run(['results-ingest', `--report-id=${reportId}`], {
+    context,
+    taskResults: validTaskResults(context, reportId, overrides)
+  });
+}
+
 function createRendered(context, answers = validAnswers(), startFlags = []) {
   const started = run(['start', '--new', ...startFlags], { context });
   run(['ingest', `--report-id=${started.report_id}`], { context, answers });
+  attachTaskResults(context, started.report_id);
   const rendered = run(['render', `--report-id=${started.report_id}`], { context });
   return { reportId: started.report_id, rendered };
 }
@@ -416,6 +514,7 @@ function createTranslationReady(context, translatorActor = 'translation-transact
       translated_answers: translated
     }
   });
+  attachTaskResults(context, started.report_id);
   return started.report_id;
 }
 
@@ -429,10 +528,11 @@ function copyInstalledFile(systemRoot, installedRoot, relative) {
 function main() {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-field-report-v2-'));
   const systemRoot = path.resolve(__dirname, '..');
-  const stateRoot = path.join(temporaryRoot, 'state');
+  const projectRoot = path.join(temporaryRoot, 'project');
+  const stateRoot = path.join(projectRoot, '.knowledge');
   setupArtifacts(stateRoot);
-  writeJson(path.join(stateRoot, 'package.json'), { name: 'fixture' });
-  const context = makeContext(systemRoot, stateRoot);
+  writeJson(path.join(projectRoot, 'package.json'), { name: 'fixture' });
+  const context = makeContext(systemRoot, stateRoot, { targetRoot: projectRoot });
   const checks = [];
   const check = (name, fn) => {
     fn();
@@ -1276,10 +1376,149 @@ function main() {
     check('collector and renderer: installed release-candidate identity is observed from package metadata', () => {
       const collected = collect(context);
       assert(collected.values.knowledge_release_channel.value === 'release_candidate', JSON.stringify(collected.values.knowledge_release_channel));
-      assert(collected.values.knowledge_candidate_label.value === 'RC57', JSON.stringify(collected.values.knowledge_candidate_label));
-      assert(collected.values.knowledge_candidate_name.value === 'knowledge-v3.3.0-step1-rc4-r57.zip', JSON.stringify(collected.values.knowledge_candidate_name));
+      assert(collected.values.knowledge_candidate_label.value === 'RC58', JSON.stringify(collected.values.knowledge_candidate_label));
+      assert(collected.values.knowledge_candidate_name.value === 'knowledge-v3.3.0-step1-rc4-r58.zip', JSON.stringify(collected.values.knowledge_candidate_name));
       const identity = releaseIdentity(collected);
-      assert(identity.display === '3.3.0 RC57', JSON.stringify(identity));
+      assert(identity.display === '3.3.0 RC58', JSON.stringify(identity));
+    });
+
+    check('task results: content-addressed evidence, metrics, and repository snapshot validate together', () => {
+      const reportId = 'fr_20260807_a1b2c3d4';
+      const liveFacts = collect(context);
+      const validation = validateTaskResults(validTaskResults(context, reportId), {
+        context,
+        reportId,
+        facts: liveFacts,
+        captureSnapshot: true
+      });
+      assert(validation.valid, validation.errors.join('; '));
+      assert(validation.value.snapshot?.snapshot_sha256, JSON.stringify(validation.value.snapshot));
+      assert(validation.value.results[0].evidence.length === 1, JSON.stringify(validation.value.results[0]));
+      assert(validation.value.results[0].metrics.total === 1, JSON.stringify(validation.value.results[0]));
+      const merged = mergeTaskResultsFacts(liveFacts, validation.value);
+      const rows = verifiedOutcomeRows(merged, validAnswers());
+      assert(rows.some((row) => row.check === 'Engineering task'), JSON.stringify(rows));
+      assert(rows.some((row) => row.check === 'Overall outcome' && row.result.includes('Passed')), JSON.stringify(rows));
+      assert(rows.some((row) => row.check === 'Objective tests' && row.result.includes('1/1 passed')), JSON.stringify(rows));
+    });
+
+    check('task results: secret-like paths, changed hashes, and unsupported pass claims fail closed', () => {
+      const reportId = 'fr_20260807_b1b2c3d4';
+      const liveFacts = collect(context);
+      const secretPath = validTaskResults(context, reportId);
+      secretPath.results[0].evidence.path = '.env.local';
+      const secret = validateTaskResults(secretPath, { context, reportId, facts: liveFacts, captureSnapshot: true });
+      assert(!secret.valid && secret.errors.some((error) => /secret-like/.test(error)), JSON.stringify(secret));
+      const wrongHash = validTaskResults(context, reportId);
+      wrongHash.results[0].evidence.sha256 = '0'.repeat(64);
+      const changed = validateTaskResults(wrongHash, { context, reportId, facts: liveFacts, captureSnapshot: true });
+      assert(!changed.valid && changed.errors.some((error) => /sha256 does not match/.test(error)), JSON.stringify(changed));
+      const failingEvidencePath = path.join(context.stateRoot, 'maintenance', 'field-report-failing-check.json');
+      writeJson(failingEvidencePath, { status: 'fail', failed: 1, total: 1 });
+      const unsupportedPass = validTaskResults(context, reportId, {
+        results: [{
+          ...validTaskResults(context, reportId).results[0],
+          evidence: {
+            kind: 'automated_report',
+            label: 'Failing check report',
+            root_kind: 'state',
+            path: 'maintenance/field-report-failing-check.json',
+            sha256: fileSha256(failingEvidencePath)
+          }
+        }]
+      });
+      const unsupported = validateTaskResults(unsupportedPass, { context, reportId, facts: liveFacts, captureSnapshot: true });
+      assert(!unsupported.valid && unsupported.errors.some((error) => /failing evidence/.test(error)), JSON.stringify(unsupported));
+    });
+
+    check('task results: a repository change makes the bound result snapshot stale', () => {
+      const project = path.join(temporaryRoot, 'task-results-stale-project');
+      const state = path.join(project, '.knowledge');
+      setupArtifacts(state);
+      ensureDir(path.join(project, 'src'));
+      fs.writeFileSync(path.join(project, 'package.json'), '{"name":"task-results-stale"}\n');
+      fs.writeFileSync(path.join(project, 'src', 'app.js'), 'module.exports = 1;\n');
+      for (const args of [
+        ['init'],
+        ['config', 'user.name', 'Field Report Test'],
+        ['config', 'user.email', 'field-report@example.invalid'],
+        ['add', '.'],
+        ['commit', '-m', 'clean baseline']
+      ]) {
+        const result = childProcess.spawnSync('git', args, { cwd: project, encoding: 'utf8' });
+        assert(result.status === 0, `${args.join(' ')}: ${result.stderr}`);
+      }
+      const staleContext = makeContext(systemRoot, state, { targetRoot: project, repoId: 'task-results-stale' });
+      const reportId = 'fr_20260807_c1b2c3d4';
+      const captured = validateTaskResults(validTaskResults(staleContext, reportId), {
+        context: staleContext,
+        reportId,
+        facts: collect(staleContext),
+        captureSnapshot: true
+      });
+      assert(captured.valid, captured.errors.join('; '));
+      fs.appendFileSync(path.join(project, 'src', 'app.js'), '// changed after evidence binding\n');
+      const inspection = inspectTaskResults(staleContext, collect(staleContext), captured.value);
+      assert(inspection.status === 'stale' && inspection.reason === 'repository_snapshot_changed', JSON.stringify(inspection));
+    });
+
+    check('repair telemetry: current, stale, invalid, and unavailable states are distinct and fail closed', () => {
+      const current = collect(context);
+      assert(current.values.repair_telemetry_status.value === 'current', JSON.stringify(current.values.repair_telemetry_status));
+      assert(current.values.repair_findings_closed.value === 1, JSON.stringify(current.values.repair_findings_closed));
+
+      const staleState = path.join(temporaryRoot, 'repair-telemetry-stale', '.knowledge');
+      setupArtifacts(staleState);
+      const staleOpportunities = JSON.parse(fs.readFileSync(path.join(staleState, 'maintenance', 'repair_opportunities.json'), 'utf8'));
+      staleOpportunities.task_scope.task_id = 'new-current-task';
+      staleOpportunities.task_scope.scope_hash = canonicalHash({
+        ...staleOpportunities.task_scope,
+        scope_hash: undefined
+      });
+      // canonicalHash omits undefined object values differently from the producer; rewrite through the same helper shape.
+      const scopeForHash = JSON.parse(JSON.stringify(staleOpportunities.task_scope));
+      delete scopeForHash.scope_hash;
+      staleOpportunities.task_scope.scope_hash = canonicalHash(scopeForHash);
+      staleOpportunities.generated_at = '2026-07-30T00:00:00.000Z';
+      writeJson(path.join(staleState, 'maintenance', 'repair_opportunities.json'), staleOpportunities);
+      const staleFacts = collect(makeContext(systemRoot, staleState));
+      assert(staleFacts.values.repair_telemetry_status.value === 'stale', JSON.stringify(staleFacts.values.repair_telemetry_status));
+      assert(staleFacts.values.repair_findings_closed.kind === 'unavailable', JSON.stringify(staleFacts.values.repair_findings_closed));
+
+      const invalidState = path.join(temporaryRoot, 'repair-telemetry-invalid', '.knowledge');
+      setupArtifacts(invalidState);
+      const invalidTelemetry = JSON.parse(fs.readFileSync(path.join(invalidState, 'maintenance', 'repair_on_touch_telemetry.json'), 'utf8'));
+      invalidTelemetry.repair_findings_closed = 99;
+      writeJson(path.join(invalidState, 'maintenance', 'repair_on_touch_telemetry.json'), invalidTelemetry);
+      const invalidFacts = collect(makeContext(systemRoot, invalidState));
+      assert(invalidFacts.values.repair_telemetry_status.value === 'invalid', JSON.stringify(invalidFacts.values.repair_telemetry_status));
+      assert(invalidFacts.values.repair_findings_closed.kind === 'unavailable', JSON.stringify(invalidFacts.values.repair_findings_closed));
+
+      const unavailableState = path.join(temporaryRoot, 'repair-telemetry-unavailable', '.knowledge');
+      setupArtifacts(unavailableState);
+      fs.rmSync(path.join(unavailableState, 'maintenance', 'repair_on_touch_telemetry.json'));
+      const unavailableFacts = collect(makeContext(systemRoot, unavailableState));
+      assert(unavailableFacts.values.repair_telemetry_status.value === 'unavailable', JSON.stringify(unavailableFacts.values.repair_telemetry_status));
+      assert(unavailableFacts.values.repair_findings_closed.kind === 'unavailable', JSON.stringify(unavailableFacts.values.repair_findings_closed));
+    });
+
+    check('renderer: structured task title creates a concise complete Discussion title', () => {
+      const liveFacts = collect(context);
+      const reportId = 'fr_20260807_d1b2c3d4';
+      const validated = validateTaskResults(validTaskResults(context, reportId, {
+        task: {
+          title: 'Migrate the website into a standalone repository',
+          outcome: 'pass',
+          summary: 'The migration and its required checks completed successfully.'
+        }
+      }), { context, reportId, facts: liveFacts, captureSnapshot: true });
+      assert(validated.valid, validated.errors.join('; '));
+      const rendered = render({ anonymized: false }, mergeTaskResultsFacts(liveFacts, validated.value), validAnswers({
+        'github-publication-permission': 'local_draft_only'
+      }));
+      assert(rendered.title === '[Field report] Migrate the website into a standalone repository — maintainer dogfooding', rendered.title);
+      assert(Array.from(rendered.title).length <= 96, rendered.title);
+      assert(!/[,:;\-]$/.test(rendered.title), rendered.title);
     });
 
     let primaryReport;
@@ -1410,6 +1649,7 @@ function main() {
       assert(questionAudit.questions.length === 0, JSON.stringify(questionAudit));
       assert(questionAudit.question_catalog.length > 0, JSON.stringify(questionAudit));
       assert(questionAudit.question_catalog.every((item) => item.status === 'answered'), JSON.stringify(questionAudit));
+      attachTaskResults(context, primaryReport);
       primaryRendered = run(['render', `--report-id=${primaryReport}`], { context });
       assert(primaryRendered.status === 'draft_ready', primaryRendered.status);
       const draft = fs.readFileSync(primaryRendered.draft_path, 'utf8');
@@ -1453,7 +1693,8 @@ function main() {
     check('renderer: public outcome tables explain metrics without leaking internal paths', () => {
       const body = fs.readFileSync(primaryRendered.public_path, 'utf8');
       assert(body.includes('## Repository profile'), 'repository profile heading');
-      assert(body.includes('## Verified outcome'), 'verified outcome heading');
+      assert(body.includes('## Verified engineering outcome'), 'verified outcome heading');
+      assert(body.includes('## System state at collection'), 'system state heading');
       assert(body.includes('## System observations'), 'system observations heading');
       assert(body.includes('| Repository Doctor |'), 'Doctor outcome absent');
       assert(body.includes('| Wiki integrity |'), 'wiki outcome absent');
@@ -1475,7 +1716,7 @@ function main() {
         'utf8'
       ));
       const rows = verifiedOutcomeRows(currentFacts, validAnswers());
-      assert(rows.length >= 5, JSON.stringify(rows));
+      assert(rows.length >= 3, JSON.stringify(rows));
       for (const row of rows) {
         assert(typeof row.check === 'string' && row.check, JSON.stringify(row));
         assert(typeof row.result === 'string' && row.result, JSON.stringify(row));
@@ -1489,7 +1730,7 @@ function main() {
     });
 
     check('renderer: core outcome rows remain explicit when evidence is unavailable', () => {
-      const rows = verifiedOutcomeRows({ values: {} }, validAnswers());
+      const rows = systemStateRows({ values: {} });
       const byName = new Map(rows.map((row) => [row.check, row]));
       for (const name of [
         'Task readiness',
@@ -1542,9 +1783,10 @@ function main() {
             'quick-summary': 'A deterministic English summary.'
           })
         );
-        assert(output.title.startsWith('[Field report] '), output.title);
-        assert(output.title.includes('A localized authorization change'), output.title);
+        assert(output.title.startsWith('[Field report] Verify a scoped repository change — '), output.title);
+        assert(!output.title.includes('A localized authorization change'), output.title);
         assert(!output.title.includes('A deterministic English summary'), output.title);
+        assert(Array.from(output.title).length <= 96, output.title);
         assert(output.public.includes('> **Disclosure:**'), relationship);
         assert(output.redaction.status !== 'blocked', JSON.stringify(output.redaction));
       }
@@ -1597,6 +1839,20 @@ function main() {
         ).text ===
           'Any workspace-to-task context number is a deterministic local estimate. This workspace contained one repository.',
         'generic workspace prose was mistaken for an internal label'
+      );
+      assert(
+        generalizeInternalOrganization(
+          'The project was evaluated in a local non-Git workspace.'
+        ).text ===
+          'The project was evaluated in a local non-Git workspace.',
+        'non-Git workspace terminology was mistaken for an internal label'
+      );
+      assert(
+        generalizeInternalOrganization(
+          'An anonymized product workspace containing a mobile client and a backend service.'
+        ).text ===
+          'An anonymized product workspace containing a mobile client and a backend service.',
+        'ordinary workspace-containing prose was mistaken for an internal label'
       );
       const report = createRendered(context, validAnswers({
         'project-context': 'The project moved from workspace Design and client Acme Corp.'
@@ -1676,7 +1932,8 @@ function main() {
       const safe = claimSafetyFindings(baseFacts, validAnswers({
         'accuracy-change': 'not_enough_evidence',
         'response-speed-change': 'not_enough_data',
-        'quick-summary': 'No token savings were measured. Improvements in accuracy or speed remain unconfirmed.'
+        'quick-summary': 'No token savings were measured. Improvements in accuracy or speed remain unconfirmed.',
+        'github-publication-permission': 'local_draft_only'
       }));
       assert(safe.length === 0, JSON.stringify(safe));
     });
@@ -1688,7 +1945,7 @@ function main() {
       }));
       assert(mismatch.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(mismatch));
       const historical = claimSafetyFindings(baseFacts, validAnswers({
-        'project-context': 'The project was upgraded from RC56 to RC57 before this report was collected.'
+        'project-context': 'The project was upgraded from RC56 to RC58 before this report was collected.'
       }));
       assert(!historical.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(historical));
     });
@@ -1776,7 +2033,8 @@ function main() {
       withOverhead.values.routing_estimated_percent_overhead = {
         value: 4, kind: 'derived', source: 'routing/tasks/example/current.json'
       };
-      const overheadRows = renderEvidence(withOverhead);
+      const overheadRow = systemStateRows(withOverhead).find((row) => row.check === 'Workspace-to-task first-read estimate');
+      const overheadRows = JSON.stringify(overheadRow || {});
       assert(!/saving|reduction/i.test(overheadRows), 'overhead branch must not claim saving');
       assert(overheadRows.includes('Estimated workspace-to-task first-read overhead: 312 estimated tokens'), 'overhead row must remain');
       assert(!overheadRows.includes('estimated_overhead'), 'raw overhead assessment leaked');
@@ -1788,7 +2046,8 @@ function main() {
       withSaving.values.routing_workspace_baseline_estimated_tokens.value = 300;
       withSaving.values.routing_task_estimated_tokens.value = 291;
       withSaving.values.routing_signed_delta_percent.value = 3;
-      const savingRows = renderEvidence(withSaving);
+      const savingRow = systemStateRows(withSaving).find((row) => row.check === 'Workspace-to-task first-read estimate');
+      const savingRows = JSON.stringify(savingRow || {});
       assert(savingRows.includes('Estimated workspace-to-task first-read narrowing: 300 estimated tokens'), 'narrowing row must remain');
       assert(!savingRows.includes('first-read overhead'), 'zero overhead row must be omitted');
       assert(!savingRows.includes('estimated_narrowing'), 'raw narrowing assessment leaked');
@@ -1830,6 +2089,236 @@ function main() {
       const titleWithoutEllipsis = unicodeTitle.slice(0, -1);
       const lastCodeUnit = titleWithoutEllipsis.charCodeAt(titleWithoutEllipsis.length - 1);
       assert(!(lastCodeUnit >= 0xD800 && lastCodeUnit <= 0xDBFF), 'title ended with an unpaired high surrogate');
+    });
+
+
+    check('task results: any failed engineering check yields a failed task outcome', () => {
+      const rows = [
+        { status: 'pass' },
+        { status: 'fail' },
+        { status: 'warning' }
+      ];
+      const { deriveOutcome } = require('./lib/field-report/task-results');
+      assert(deriveOutcome(rows) === 'fail', deriveOutcome(rows));
+      assert(deriveOutcome([{ status: 'warning' }]) === 'incomplete', deriveOutcome([{ status: 'warning' }]));
+      assert(deriveOutcome([{ status: 'not_run' }]) === 'not_verified', deriveOutcome([{ status: 'not_run' }]));
+    });
+
+    check('task results: informational not-run rows stay visible without downgrading a successful task', () => {
+      const { deriveOutcome } = require('./lib/field-report/task-results');
+      const rows = [
+        { status: 'pass', outcome_relevant: true },
+        { status: 'not_run', outcome_relevant: false }
+      ];
+      assert(deriveOutcome(rows) === 'pass', deriveOutcome(rows));
+      assert(deriveOutcome([{ status: 'warning', outcome_relevant: true }]) === 'incomplete');
+    });
+
+    check('task results: numeric failures and warnings cannot hide behind a pass status', () => {
+      const reportId = 'fr_20260807_aa58aa58';
+      const liveFacts = collect(context);
+      const base = validTaskResults(context, reportId);
+      const failedMetrics = JSON.parse(JSON.stringify(base));
+      failedMetrics.results[0].metrics = { passed: 4, failed: 1, total: 5 };
+      const failed = validateTaskResults(failedMetrics, {
+        context, reportId, facts: liveFacts, captureSnapshot: true
+      });
+      assert(!failed.valid && failed.errors.some((error) => /metrics reports failures/.test(error)), JSON.stringify(failed));
+      const warningMetrics = JSON.parse(JSON.stringify(base));
+      warningMetrics.results[0].metrics = { passed: 4, warnings: 1, total: 5 };
+      const warned = validateTaskResults(warningMetrics, {
+        context, reportId, facts: liveFacts, captureSnapshot: true
+      });
+      assert(!warned.valid && warned.errors.some((error) => /metrics reports warnings/.test(error)), JSON.stringify(warned));
+    });
+
+    check('task results: evidence-bound rows derive the task outcome and capture a repository snapshot', () => {
+      const started = run(['start', '--new'], { context });
+      run(['ingest', `--report-id=${started.report_id}`], { context, answers: validAnswers() });
+      const ingested = attachTaskResults(context, started.report_id);
+      assert(ingested.status === 'task_results_ready', JSON.stringify(ingested));
+      const stored = JSON.parse(fs.readFileSync(
+        fieldReportState.paths(context, started.report_id).task_results,
+        'utf8'
+      ));
+      assert(stored.task.outcome === 'pass', JSON.stringify(stored));
+      assert(stored.snapshot?.snapshot_sha256 === snapshotFromFacts(collect(context)).snapshot_sha256, JSON.stringify(stored.snapshot));
+      assert(/^[a-f0-9]{64}$/.test(stored.content_sha256), stored.content_sha256);
+      const inspection = inspectTaskResults(context, collect(context), stored);
+      assert(inspection.status === 'current', JSON.stringify(inspection));
+      const rendered = run(['render', `--report-id=${started.report_id}`], { context });
+      const body = fs.readFileSync(rendered.public_path, 'utf8');
+      assert(body.includes('| Engineering task | Verify a scoped repository change |'), body);
+      assert(body.includes('| Overall outcome | Passed —'), body);
+      assert(body.includes('| Objective tests | Passed —'), body);
+      assert(body.indexOf('## Verified engineering outcome') < body.indexOf('## System state at collection'), body);
+    });
+
+    check('task results: a pass claim cannot conflict with failing or changed evidence', () => {
+      const reportId = 'fr_20260807_abcdef01';
+      const base = validTaskResults(context, reportId);
+      const conflicting = JSON.parse(JSON.stringify(base));
+      conflicting.results[0].status = 'fail';
+      const conflict = validateTaskResults(conflicting, {
+        context,
+        reportId,
+        facts: collect(context),
+        captureSnapshot: true
+      });
+      assert(!conflict.valid && conflict.errors.some((error) => error.includes('does not support a failed row status')), JSON.stringify(conflict));
+      const tampered = JSON.parse(JSON.stringify(base));
+      tampered.results[0].evidence.sha256 = '0'.repeat(64);
+      const tamper = validateTaskResults(tampered, {
+        context,
+        reportId,
+        facts: collect(context),
+        captureSnapshot: true
+      });
+      assert(!tamper.valid && tamper.errors.some((error) => error.includes('sha256 does not match')), JSON.stringify(tamper));
+      const generic = JSON.parse(JSON.stringify(base));
+      generic.task.title = 'Task';
+      const genericResult = validateTaskResults(generic, {
+        context,
+        reportId,
+        facts: collect(context),
+        captureSnapshot: true
+      });
+      assert(!genericResult.valid && genericResult.errors.some((error) => error.includes('concise, specific')), JSON.stringify(genericResult));
+    });
+
+    check('task results: changed evidence blocks rendering as stale', () => {
+      const report = createRendered(context, validAnswers({
+        'github-publication-permission': 'local_draft_only'
+      }));
+      const evidenceFile = path.join(context.stateRoot, 'maintenance', 'field-report-task-check.json');
+      const original = fs.readFileSync(evidenceFile);
+      writeJson(evidenceFile, { status: 'fail', passed: 0, failed: 1, total: 1 });
+      const error = expectThrow(
+        () => run(['render', `--report-id=${report.reportId}`], { context }),
+        /task-result evidence|evidence_changed|sha256 does not match/,
+        'changed evidence did not block render'
+      );
+      assert(error.code === 'task_results_stale', error.code);
+      fs.writeFileSync(evidenceFile, original);
+    });
+
+    check('snapshot: a dirty Git repository blocks GitHub publication but remains available as a local draft', () => {
+      const repo = path.join(temporaryRoot, 'dirty-public-project');
+      const headSha = initCleanGitProject(repo);
+      const state = path.join(repo, '.knowledge');
+      setupArtifacts(state);
+      const dirtyContext = makeContext(systemRoot, state, { targetRoot: repo, headSha });
+      fs.writeFileSync(path.join(repo, 'scratch.txt'), 'untracked evidence\n', 'utf8');
+
+      const publicStarted = run(['start', '--new'], { context: dirtyContext });
+      run(['ingest', `--report-id=${publicStarted.report_id}`], {
+        context: dirtyContext,
+        answers: validAnswers({ 'github-publication-permission': 'github_publication_allowed' })
+      });
+      attachTaskResults(dirtyContext, publicStarted.report_id);
+      const publicRender = run(['render', `--report-id=${publicStarted.report_id}`], { context: dirtyContext });
+      assert(publicRender.status === 'redaction_required', JSON.stringify(publicRender));
+      const publicRedaction = publicRender.redaction;
+      assert(publicRedaction.unresolved_findings.some((finding) => finding.rule === 'dirty_final_snapshot_publication'), JSON.stringify(publicRedaction));
+
+      const localStarted = run(['start', '--new'], { context: dirtyContext });
+      run(['ingest', `--report-id=${localStarted.report_id}`], {
+        context: dirtyContext,
+        answers: validAnswers({ 'github-publication-permission': 'local_draft_only' })
+      });
+      attachTaskResults(dirtyContext, localStarted.report_id);
+      const localRender = run(['render', `--report-id=${localStarted.report_id}`], { context: dirtyContext });
+      assert(localRender.status === 'draft_ready', JSON.stringify(localRender));
+      const body = fs.readFileSync(localRender.public_path, 'utf8');
+      assert(body.includes('Dirty untracked'), body);
+      assert(body.includes('1 untracked file'), body);
+    });
+
+    check('snapshot: a repository mutation after results ingestion invalidates the task-result snapshot', () => {
+      const repo = path.join(temporaryRoot, 'snapshot-drift-project');
+      const headSha = initCleanGitProject(repo);
+      const state = path.join(repo, '.knowledge');
+      setupArtifacts(state);
+      const snapshotContext = makeContext(systemRoot, state, { targetRoot: repo, headSha });
+      const started = run(['start', '--new'], { context: snapshotContext });
+      run(['ingest', `--report-id=${started.report_id}`], {
+        context: snapshotContext,
+        answers: validAnswers({ 'github-publication-permission': 'local_draft_only' })
+      });
+      attachTaskResults(snapshotContext, started.report_id);
+      fs.appendFileSync(path.join(repo, 'src', 'index.js'), '// changed after evidence capture\n');
+      const error = expectThrow(
+        () => run(['render', `--report-id=${started.report_id}`], { context: snapshotContext }),
+        /repository_snapshot_changed|repository snapshot is stale/,
+        'snapshot drift did not block rendering'
+      );
+      assert(error.code === 'task_results_stale', error.code);
+    });
+
+    check('repair telemetry: current, stale, invalid, and unavailable states are rendered without unsupported effects', () => {
+      const currentFacts = collect(context);
+      const currentRow = systemStateRows(currentFacts).find((row) => row.check === 'Repair-on-touch telemetry');
+      assert(currentFacts.values.repair_telemetry_status.value === 'current', JSON.stringify(currentFacts.values.repair_telemetry_status));
+      assert(currentRow.result.includes('Current — validated') && currentRow.result.includes('1 closed'), JSON.stringify(currentRow));
+
+      const staleState = path.join(temporaryRoot, 'stale-repair-telemetry');
+      setupArtifacts(staleState);
+      const staleFile = path.join(staleState, 'maintenance', 'repair_on_touch_telemetry.json');
+      const staleTelemetry = JSON.parse(fs.readFileSync(staleFile, 'utf8'));
+      staleTelemetry.task_scope_sha256 = '0'.repeat(64);
+      writeJson(staleFile, staleTelemetry);
+      const staleFacts = collect(makeContext(systemRoot, staleState));
+      const staleRow = systemStateRows(staleFacts).find((row) => row.check === 'Repair-on-touch telemetry');
+      assert(staleFacts.values.repair_telemetry_status.value === 'stale', JSON.stringify(staleFacts.values.repair_telemetry_status));
+      assert(staleRow.result === 'Stale — metrics withheld', JSON.stringify(staleRow));
+      const repairClaims = claimSafetyFindings(staleFacts, validAnswers({
+        'workflow-notes': 'Repair-on-touch fixed the stale module during the task.',
+        'github-publication-permission': 'local_draft_only'
+      }));
+      assert(repairClaims.some((finding) => finding.rule === 'unsupported_repair_effect_claim'), JSON.stringify(repairClaims));
+
+      const invalidState = path.join(temporaryRoot, 'invalid-repair-telemetry');
+      setupArtifacts(invalidState);
+      const invalidFile = path.join(invalidState, 'maintenance', 'repair_on_touch_telemetry.json');
+      const invalidTelemetry = JSON.parse(fs.readFileSync(invalidFile, 'utf8'));
+      invalidTelemetry.repair_findings_closed = 99;
+      writeJson(invalidFile, invalidTelemetry);
+      const invalidFacts = collect(makeContext(systemRoot, invalidState));
+      const invalidRow = systemStateRows(invalidFacts).find((row) => row.check === 'Repair-on-touch telemetry');
+      assert(invalidFacts.values.repair_telemetry_status.value === 'invalid', JSON.stringify(invalidFacts.values.repair_telemetry_status));
+      assert(invalidRow.result === 'Invalid — metrics withheld', JSON.stringify(invalidRow));
+
+      const absentState = path.join(temporaryRoot, 'absent-repair-telemetry');
+      setupArtifacts(absentState);
+      fs.rmSync(path.join(absentState, 'maintenance', 'repair_on_touch_telemetry.json'));
+      const absentFacts = collect(makeContext(systemRoot, absentState));
+      const absentRow = systemStateRows(absentFacts).find((row) => row.check === 'Repair-on-touch telemetry');
+      assert(absentFacts.values.repair_telemetry_status.value === 'unavailable', JSON.stringify(absentFacts.values.repair_telemetry_status));
+      assert(absentRow.result === 'Unavailable', JSON.stringify(absentRow));
+    });
+
+    check('renderer: task-focused Discussion titles preserve a useful subject and relationship suffix', () => {
+      const cases = [
+        ['Migrate a customer portal to a standalone repository', 'maintainer dogfooding'],
+        ['Validate an API schema migration', 'independent user'],
+        ['Audit a desktop plugin package', 'internal QA'],
+        ['Compare two repository-review workflows', 'controlled comparison']
+      ];
+      for (const [subject, relationship] of cases) {
+        const title = buildDiscussionTitle(subject, relationship, 96);
+        assert(title.startsWith(`[Field report] ${subject}`), title);
+        assert(title.endsWith(`— ${relationship}`), title);
+        assert(Array.from(title).length <= 96, title);
+        assert(!title.includes('The real engineering task was to'), title);
+      }
+      const long = buildDiscussionTitle(
+        'Validate a very long multi-module authorization migration without breaking compatibility or privacy',
+        'maintainer dogfooding',
+        96
+      );
+      assert(Array.from(long).length <= 96, long);
+      assert(long.endsWith('— maintainer dogfooding'), long);
+      assert(!/\s…\s—/.test(long), long);
     });
 
     check('renderer: same-language reports do not claim translation', () => {
@@ -2401,6 +2890,7 @@ function main() {
         '--language=en'
       ], { context });
       assert(resolved.status === 'translation_not_required', resolved.status);
+      attachTaskResults(context, started.report_id);
       const rendered = run(['render', `--report-id=${started.report_id}`], { context });
       assert(rendered.status === 'draft_ready', rendered.status);
       const status = run(['status', `--report-id=${started.report_id}`], { context });
@@ -3484,6 +3974,7 @@ function main() {
       const files = [
         'package.json',
         'schemas/field-report.schema.json',
+        'schemas/field-report-task-results.schema.json',
         'tools/field-report.js',
         'tools/lib/json-store.js',
         'tools/lib/contained-lock-manager.js',
@@ -3499,6 +3990,7 @@ function main() {
         'tools/lib/field-report/contract.js',
         'tools/lib/field-report/collector.js',
         'tools/lib/field-report/state.js',
+        'tools/lib/field-report/task-results.js',
         'tools/lib/field-report/renderer.js',
         'tools/lib/field-report/redactor.js',
         'tools/lib/field-report/publisher.js'

@@ -164,6 +164,28 @@ function profileFromGit(root) {
     }
   }
   const status = gitResult(root, ['status', '--porcelain=v1', '--untracked-files=normal']);
+  let dirty = null;
+  let trackedChanges = null;
+  let untrackedFiles = null;
+  let conflicts = null;
+  let snapshotStatus = 'unavailable';
+  if (status.status === 0) {
+    const rows = String(status.stdout || '').split(/\r?\n/).filter(Boolean);
+    const conflictCodes = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
+    untrackedFiles = rows.filter((row) => row.startsWith('??')).length;
+    conflicts = rows.filter((row) => conflictCodes.has(row.slice(0, 2))).length;
+    trackedChanges = rows.filter((row) => !row.startsWith('??') && !row.startsWith('!!')).length;
+    dirty = rows.length > 0;
+    snapshotStatus = !dirty
+      ? 'clean'
+      : conflicts > 0
+        ? 'dirty_conflicted'
+        : trackedChanges > 0 && untrackedFiles > 0
+          ? 'dirty_mixed'
+          : trackedChanges > 0
+            ? 'dirty_tracked'
+            : 'dirty_untracked';
+  }
   return {
     available: true,
     basis: 'git_index_worktree',
@@ -172,7 +194,11 @@ function profileFromGit(root) {
     source_files: sourceFiles,
     source_bytes: sourceBytes,
     excluded_files: excludedFiles,
-    dirty: status.status === 0 ? Boolean(String(status.stdout || '').trim()) : null,
+    dirty,
+    dirty_tracked_changes: trackedChanges,
+    dirty_untracked_files: untrackedFiles,
+    dirty_conflicts: conflicts,
+    snapshot_status: snapshotStatus,
     warning: null
   };
 }
@@ -226,6 +252,10 @@ function profileFromFilesystem(root) {
     source_bytes: sourceBytes,
     excluded_files: excludedFiles,
     dirty: null,
+    dirty_tracked_changes: null,
+    dirty_untracked_files: null,
+    dirty_conflicts: null,
+    snapshot_status: 'non_git',
     warning: 'Git tracked-file inventory was unavailable; a filtered filesystem fallback was used.'
   };
 }
@@ -508,8 +538,30 @@ function validNullableNumber(value, options = {}) {
   return true;
 }
 
+function repairTelemetryAssessment(artifact, status, reason, warnings, options = {}) {
+  const warning = status === 'current'
+    ? null
+    : status === 'unavailable'
+      ? artifact.warning || `unavailable artifact: ${artifact.source}`
+      : `${status} artifact: ${artifact.source} (${reason})`;
+  if (warning && !warnings.includes(warning)) warnings.push(warning);
+  return {
+    ...artifact,
+    available: status === 'current',
+    value: status === 'current' || options.keepValue === true ? artifact.value : null,
+    warning,
+    telemetry_status: status,
+    telemetry_reason: reason || null
+  };
+}
+
 function validateRepairTelemetryArtifact(artifact, warnings, opportunitiesArtifact = null) {
-  if (!artifact.available) return artifact;
+  if (!artifact.available) {
+    const reason = artifact.warning?.startsWith('missing artifact:')
+      ? 'No Repair-on-touch telemetry artifact was present for this snapshot.'
+      : 'Repair-on-touch telemetry could not be read for this snapshot.';
+    return repairTelemetryAssessment(artifact, 'unavailable', reason, warnings);
+  }
   const value = artifact.value;
   const modes = new Set(['off', 'safe-only', 'dedicated', 'scoped', 'aggressive']);
   const countKeys = [
@@ -532,91 +584,126 @@ function validateRepairTelemetryArtifact(artifact, warnings, opportunitiesArtifa
   const lifecycleIds = (input) => Array.isArray(input) &&
     input.every((id) => /^LC-[a-f0-9]{16}$/.test(String(id))) &&
     new Set(input.map(String)).size === input.length;
-  let invalid = !plainObject(value) ||
-    value.schema_version !== 'knowledge-repair-on-touch-telemetry.v1' ||
-    typeof value.task_id !== 'string' ||
-    !value.task_id ||
-    typeof value.session_id !== 'string' ||
-    !value.session_id ||
-    !/^[a-f0-9]{64}$/.test(String(value.task_scope_sha256 || '')) ||
-    typeof value.repair_on_touch_enabled !== 'boolean' ||
-    !modes.has(value.repair_mode) ||
-    value.token_values !== 'actual_only';
-  if (!invalid) {
-    invalid = countKeys.some((key) =>
-      !validNullableNumber(value[key], { integer: true, minimum: 0 }) ||
-      value[key] === null || value[key] === undefined
-    );
+
+  let structuralReason = null;
+  if (!plainObject(value) ||
+      value.schema_version !== 'knowledge-repair-on-touch-telemetry.v1' ||
+      typeof value.generated_at !== 'string' ||
+      !Number.isFinite(Date.parse(value.generated_at)) ||
+      typeof value.task_id !== 'string' || !value.task_id ||
+      typeof value.session_id !== 'string' || !value.session_id ||
+      !/^[a-f0-9]{64}$/.test(String(value.task_scope_sha256 || '')) ||
+      typeof value.repair_on_touch_enabled !== 'boolean' ||
+      !modes.has(value.repair_mode) ||
+      value.token_values !== 'actual_only') {
+    structuralReason = 'schema_or_identity_invalid';
   }
-  if (!invalid) {
-    const workCount = countKeys.reduce((sum, key) => sum + value[key], 0);
-    const actualWork = actualKeys.some((key) =>
-      value[key] !== null && value[key] !== undefined && Number(value[key]) > 0);
-    invalid = value.repair_on_touch_enabled !== (value.repair_mode !== 'off');
-    if (!invalid && !value.repair_on_touch_enabled) {
-      invalid = workCount !== 0 || actualWork;
-    }
+  if (!structuralReason && countKeys.some((key) =>
+    !validNullableNumber(value[key], { integer: true, minimum: 0 }) ||
+    value[key] === null || value[key] === undefined)) {
+    structuralReason = 'count_fields_invalid';
   }
-  if (!invalid) {
-    invalid = actualKeys.some((key) =>
-      !validNullableNumber(value[key], {
-        integer: key !== 'repair_extra_wall_time_ms',
-        minimum: 0
-      })
-    ) || scoreKeys.some((key) =>
-      !validNullableNumber(value[key], { minimum: 0, maximum: 100 })
-    );
-  }
-  if (!invalid) {
+  if (!structuralReason) {
     const considered = value.repair_findings_considered;
     const selected = value.repair_findings_selected;
     const closed = value.repair_findings_closed;
     const deferred = value.repair_findings_deferred;
-    invalid = closed > selected || selected > considered ||
-      deferred > considered || selected + deferred > considered;
+    const workCount = considered + selected + closed + deferred;
+    const actualWork = actualKeys.some((key) =>
+      value[key] !== null && value[key] !== undefined && Number(value[key]) > 0);
+    if (value.repair_on_touch_enabled !== (value.repair_mode !== 'off')) {
+      structuralReason = 'enabled_mode_mismatch';
+    } else if (!value.repair_on_touch_enabled && (workCount !== 0 || actualWork)) {
+      structuralReason = 'disabled_telemetry_contains_work';
+    } else if (closed > selected || selected > considered || deferred > considered || selected + deferred > considered) {
+      structuralReason = 'count_relationship_invalid';
+    }
   }
-  if (!invalid) {
+  if (!structuralReason && (actualKeys.some((key) =>
+    !validNullableNumber(value[key], {
+      integer: key !== 'repair_extra_wall_time_ms',
+      minimum: 0
+    })) || scoreKeys.some((key) =>
+    !validNullableNumber(value[key], { minimum: 0, maximum: 100 })))) {
+    structuralReason = 'measurement_fields_invalid';
+  }
+  if (!structuralReason) {
     const consideredIds = value.repair_lifecycle_ids_considered;
     const closedIds = value.repair_lifecycle_ids_closed;
-    invalid = !lifecycleIds(consideredIds) ||
-      !lifecycleIds(closedIds) ||
-      consideredIds.length !== value.repair_findings_considered ||
-      closedIds.length !== value.repair_findings_closed ||
-      closedIds.some((id) => !consideredIds.includes(id));
+    if (!lifecycleIds(consideredIds) ||
+        !lifecycleIds(closedIds) ||
+        consideredIds.length !== value.repair_findings_considered ||
+        closedIds.length !== value.repair_findings_closed ||
+        closedIds.some((id) => !consideredIds.includes(id))) {
+      structuralReason = 'lifecycle_ids_invalid';
+    }
   }
-  if (!invalid) {
-    const taskScope = opportunitiesArtifact?.available
-      ? opportunitiesArtifact.value?.task_scope
-      : null;
-    const scopeHash = taskScope ? taskScopeHash(taskScope) : null;
-    invalid = !plainObject(taskScope) ||
+  if (structuralReason) {
+    return repairTelemetryAssessment(
+      artifact,
+      'invalid',
+      `The telemetry artifact failed semantic validation (${structuralReason}); no Repair-on-touch effect is claimed.`,
+      warnings
+    );
+  }
+
+  if (!opportunitiesArtifact?.available || !plainObject(opportunitiesArtifact.value)) {
+    return repairTelemetryAssessment(
+      artifact,
+      'stale',
+      'The telemetry is structurally valid, but the current repair-opportunities snapshot is unavailable, so its task binding cannot be confirmed.',
+      warnings
+    );
+  }
+  const snapshot = opportunitiesArtifact.value;
+  const taskScope = snapshot.task_scope;
+  const scopeHash = plainObject(taskScope) ? taskScopeHash(taskScope) : null;
+  if (!plainObject(taskScope) ||
       value.task_id !== taskScope.task_id ||
       value.session_id !== taskScope.session_id ||
       value.task_scope_sha256 !== scopeHash ||
-      (taskScope.scope_hash !== undefined && taskScope.scope_hash !== scopeHash);
+      (taskScope.scope_hash !== undefined && taskScope.scope_hash !== scopeHash)) {
+    return repairTelemetryAssessment(
+      artifact,
+      'stale',
+      'The telemetry is structurally valid, but it is bound to a different task scope or session.',
+      warnings
+    );
   }
-  if (!invalid) {
-    const snapshot = opportunitiesArtifact.value;
-    const opportunities = snapshot.opportunities;
-    const consideredIds = opportunities.map((item) => String(item.lifecycle_id)).sort();
-    const selected = opportunities.filter((item) =>
-      ['selected', 'repaired'].includes(String(item.status))).length;
-    const closedIds = opportunities
-      .filter((item) => item.status === 'repaired')
-      .map((item) => String(item.lifecycle_id))
-      .sort();
-    const deferred = opportunities.filter((item) => item.status === 'deferred').length;
-    invalid = snapshot.repair_on_touch?.effective_mode !== value.repair_mode ||
-      value.repair_findings_considered !== opportunities.length ||
-      value.repair_findings_selected !== selected ||
-      value.repair_findings_closed !== closedIds.length ||
-      value.repair_findings_deferred !== deferred ||
-      JSON.stringify([...value.repair_lifecycle_ids_considered].sort()) !==
-        JSON.stringify(consideredIds) ||
-      JSON.stringify([...value.repair_lifecycle_ids_closed].sort()) !==
-        JSON.stringify(closedIds);
+  if (Number.isFinite(Date.parse(snapshot.generated_at)) &&
+      Date.parse(value.generated_at) < Date.parse(snapshot.generated_at)) {
+    return repairTelemetryAssessment(
+      artifact,
+      'stale',
+      'The telemetry predates the current repair-opportunities snapshot.',
+      warnings
+    );
   }
-  return invalid ? semanticInvalid(artifact, warnings) : artifact;
+  const opportunities = Array.isArray(snapshot.opportunities) ? snapshot.opportunities : [];
+  const consideredIds = opportunities.map((item) => String(item.lifecycle_id)).sort();
+  const selected = opportunities.filter((item) =>
+    ['selected', 'repaired'].includes(String(item.status))).length;
+  const closedIds = opportunities
+    .filter((item) => item.status === 'repaired')
+    .map((item) => String(item.lifecycle_id))
+    .sort();
+  const deferred = opportunities.filter((item) => item.status === 'deferred').length;
+  const current = snapshot.repair_on_touch?.effective_mode === value.repair_mode &&
+    value.repair_findings_considered === opportunities.length &&
+    value.repair_findings_selected === selected &&
+    value.repair_findings_closed === closedIds.length &&
+    value.repair_findings_deferred === deferred &&
+    JSON.stringify([...value.repair_lifecycle_ids_considered].sort()) === JSON.stringify(consideredIds) &&
+    JSON.stringify([...value.repair_lifecycle_ids_closed].sort()) === JSON.stringify(closedIds);
+  if (!current) {
+    return repairTelemetryAssessment(
+      artifact,
+      'stale',
+      'The telemetry is structurally valid, but its repair counts or lifecycle IDs do not match the current repair-opportunities snapshot.',
+      warnings
+    );
+  }
+  return repairTelemetryAssessment(artifact, 'current', null, warnings);
 }
 
 function validateRepairOpportunitiesArtifact(artifact, warnings) {
@@ -959,11 +1046,15 @@ function collect(context, options = {}) {
     get(path.join('maintenance', 'verification_receipts', 'index.json')),
     warnings
   );
+  const rawRepairTelemetry = get(path.join('maintenance', 'repair_on_touch_telemetry.json'));
   const repairTelemetry = validateRepairTelemetryArtifact(
-    get(path.join('maintenance', 'repair_on_touch_telemetry.json')),
+    rawRepairTelemetry,
     warnings,
     repairOpportunities
   );
+  const repairTelemetryStatus = repairTelemetry.telemetry_status ||
+    (repairTelemetry.available ? 'current' : 'unavailable');
+  const repairTelemetryReason = repairTelemetry.telemetry_reason || null;
   const requestedTaskId = options.routingTaskId ? String(options.routingTaskId) : null;
   const routingIndex = get(path.join('routing', 'index.json'));
   const fallbackTasks = Array.isArray(routingIndex.value?.tasks) ? routingIndex.value.tasks : [];
@@ -1141,6 +1232,36 @@ function collect(context, options = {}) {
       collectedAt,
       'medium',
       repositoryProfile.dirty === null ? 'working-tree change status is unavailable' : null
+    ),
+    repository_snapshot_status: fact(
+      repositoryProfile.snapshot_status || null,
+      repositoryProfile.available && repositoryProfile.snapshot_status ? 'derived' : 'unavailable',
+      'runtime/context',
+      '$.repository_profile.snapshot_status',
+      collectedAt,
+      repositoryProfile.snapshot_status ? 'high' : 'unavailable',
+      repositoryProfile.snapshot_status ? null : 'final snapshot status is unavailable'
+    ),
+    repository_dirty_tracked_changes: fact(
+      repositoryProfile.dirty_tracked_changes,
+      repositoryProfile.available && repositoryProfile.dirty_tracked_changes !== null ? 'derived' : 'unavailable',
+      'runtime/context',
+      '$.repository_profile.dirty_tracked_changes',
+      collectedAt
+    ),
+    repository_dirty_untracked_files: fact(
+      repositoryProfile.dirty_untracked_files,
+      repositoryProfile.available && repositoryProfile.dirty_untracked_files !== null ? 'derived' : 'unavailable',
+      'runtime/context',
+      '$.repository_profile.dirty_untracked_files',
+      collectedAt
+    ),
+    repository_dirty_conflicts: fact(
+      repositoryProfile.dirty_conflicts,
+      repositoryProfile.available && repositoryProfile.dirty_conflicts !== null ? 'derived' : 'unavailable',
+      'runtime/context',
+      '$.repository_profile.dirty_conflicts',
+      collectedAt
     ),
     agent_sessions: fromArtifact(registry, sessions?.length, '$.sessions.length', collectedAt),
     completed_sessions: fromArtifact(
@@ -1366,6 +1487,24 @@ function collect(context, options = {}) {
       '$.task_readiness.relevant_findings_open',
       collectedAt,
       'high'
+    ),
+    repair_telemetry_status: fact(
+      repairTelemetryStatus,
+      'derived',
+      repairTelemetry.source || '.knowledge/maintenance/repair_on_touch_telemetry.json',
+      '$.repair_telemetry_status',
+      collectedAt,
+      repairTelemetry.available ? 'high' : 'medium',
+      repairTelemetry.warning || null
+    ),
+    repair_telemetry_reason: fact(
+      repairTelemetryReason,
+      repairTelemetryReason ? 'derived' : 'unavailable',
+      repairTelemetry.source || '.knowledge/maintenance/repair_on_touch_telemetry.json',
+      '$.repair_telemetry_reason',
+      collectedAt,
+      repairTelemetryReason ? 'high' : 'unavailable',
+      repairTelemetry.warning || null
     ),
     repair_on_touch_enabled: fromArtifact(
       repairTelemetry,

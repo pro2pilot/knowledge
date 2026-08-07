@@ -300,7 +300,18 @@ function findPositiveClaims(field, text, patterns, rule, reason) {
 
 function claimSafetyFindings(facts, answers) {
   const findings = [];
-  const entries = claimTextEntries(answers);
+  const taskRows = factValue(facts, 'task_verification_results');
+  const taskEntries = Array.isArray(taskRows)
+    ? taskRows.flatMap((row) => [
+      [`task-results:${row.id || 'row'}:summary`, row.public_summary],
+      [`task-results:${row.id || 'row'}:interpretation`, row.interpretation]
+    ]).filter(([, value]) => typeof value === 'string' && value.trim())
+    : [];
+  const taskTitle = factValue(facts, 'task_result_title');
+  const taskSummary = factValue(facts, 'task_result_summary');
+  if (typeof taskTitle === 'string' && taskTitle.trim()) taskEntries.push(['task-results:task:title', taskTitle]);
+  if (typeof taskSummary === 'string' && taskSummary.trim()) taskEntries.push(['task-results:task:summary', taskSummary]);
+  const entries = [...claimTextEntries(answers), ...taskEntries];
   const routingBound = factValue(facts, 'routing_task_bound_to_report') === true;
   const routingClaimEligible = factValue(facts, 'routing_claim_eligible') === true;
   const accuracyChange = String(unwrap(answers['accuracy-change']) || '');
@@ -382,6 +393,46 @@ function claimSafetyFindings(facts, answers) {
         patterns,
         'unsupported_speed_claim',
         `The selected speed result is ${speedChange || 'unavailable'}.`
+      ));
+    }
+  }
+
+  const publicationPermission = String(unwrap(answers['github-publication-permission']) || '');
+  const structuredTaskRows = factValue(facts, 'task_verification_results');
+  if (publicationPermission === 'github_publication_allowed' &&
+      (!Array.isArray(structuredTaskRows) || structuredTaskRows.filter((row) => row?.public !== false).length === 0)) {
+    findings.push({
+      field: 'github-publication-permission',
+      rule: 'structured_task_results_required',
+      severity: 'high',
+      reason: 'GitHub publication approval requires a structured task-result summary with content-addressed evidence.',
+      excerpt: 'task-results.json missing or empty'
+    });
+  }
+  const snapshotStatus = String(factValue(facts, 'repository_snapshot_status') || '');
+  if (publicationPermission === 'github_publication_allowed' && snapshotStatus.startsWith('dirty_')) {
+    findings.push({
+      field: 'github-publication-permission',
+      rule: 'dirty_final_snapshot_publication',
+      severity: 'high',
+      reason: 'GitHub publication approval requires facts collected from a clean final Git working tree.',
+      excerpt: snapshotStatus
+    });
+  }
+
+  const repairTelemetryStatus = String(factValue(facts, 'repair_telemetry_status') || '');
+  if (repairTelemetryStatus && repairTelemetryStatus !== 'current') {
+    const patterns = [
+      /(?:repair-on-touch|\.knowledge)\s+(?:fixed|repaired|closed|resolved)\b/gi,
+      /\b(?:repair-on-touch)\s+(?:improved|reduced|eliminated)\b/gi
+    ];
+    for (const [field, text] of entries) {
+      findings.push(...findPositiveClaims(
+        field,
+        text,
+        patterns,
+        'unsupported_repair_effect_claim',
+        `Repair-on-touch telemetry status is ${repairTelemetryStatus}; no repair effect is verified.`
       ));
     }
   }
@@ -471,12 +522,24 @@ function repositoryProfileRows(facts) {
     }
   ];
   if (gitBasis) {
+    const snapshotStatus = factValue(facts, 'repository_snapshot_status');
+    const trackedChanges = normalizeCount(factValue(facts, 'repository_dirty_tracked_changes'));
+    const untrackedFiles = normalizeCount(factValue(facts, 'repository_dirty_untracked_files'));
+    const conflicts = normalizeCount(factValue(facts, 'repository_dirty_conflicts'));
+    const details = [];
+    if (trackedChanges !== null) details.push(countLabel(trackedChanges, 'tracked change'));
+    if (untrackedFiles !== null) details.push(countLabel(untrackedFiles, 'untracked file'));
+    if (conflicts !== null && conflicts > 0) details.push(countLabel(conflicts, 'merge conflict'));
     rows.push({
       metric: 'Snapshot state',
-      value: dirty === true ? 'Dirty working tree' : dirty === false ? 'Clean working tree' : 'Unavailable',
-      interpretation: dirty === true
-        ? 'Tracked paths use current working-tree sizes. Tracked or untracked changes were present; untracked files are not counted in the profile.'
-        : dirty === false
+      value: snapshotStatus === 'clean'
+        ? 'Clean working tree'
+        : snapshotStatus && snapshotStatus.startsWith('dirty_')
+          ? `${humanStatus(snapshotStatus)}${details.length ? ` — ${details.join(', ')}` : ''}`
+          : dirty === true ? 'Dirty working tree' : dirty === false ? 'Clean working tree' : 'Unavailable',
+      interpretation: snapshotStatus && snapshotStatus.startsWith('dirty_')
+        ? 'The repository profile was collected before the final Git snapshot was clean. Untracked files are not included in the size totals.'
+        : snapshotStatus === 'clean' || dirty === false
           ? 'The Git working tree was clean when the repository profile was collected.'
           : 'Working-tree cleanliness could not be determined.',
       evidence
@@ -520,25 +583,133 @@ function routingEstimateRow(facts) {
   };
 }
 
+function taskResultStatusLabel(status) {
+  return ({
+    pass: 'Passed',
+    warning: 'Passed with warnings',
+    fail: 'Failed',
+    not_run: 'Not performed',
+    unavailable: 'Unavailable'
+  })[status] || humanStatus(status);
+}
+
+function formatTaskResultMetrics(metrics) {
+  if (!metrics || typeof metrics !== 'object') return '';
+  const parts = [];
+  const total = normalizeCount(metrics.total);
+  const passed = normalizeCount(metrics.passed);
+  const failed = normalizeCount(metrics.failed);
+  const warnings = normalizeCount(metrics.warnings);
+  if (total !== null) {
+    if (passed !== null) parts.push(`${passed}/${total} passed`);
+    else parts.push(`${total} total`);
+    if (failed !== null && failed > 0) parts.push(`${failed} failed`);
+    if (warnings !== null && warnings > 0) parts.push(`${warnings} with warnings`);
+  } else {
+    if (passed !== null) parts.push(`${passed} passed`);
+    if (failed !== null) parts.push(`${failed} failed`);
+    if (warnings !== null) parts.push(`${warnings} with warnings`);
+  }
+  const value = normalizeNumber(metrics.value);
+  if (value !== null) {
+    const unit = String(metrics.unit || '').trim();
+    parts.push(`${value}${unit ? ` ${unit}` : ''}`);
+  }
+  return parts.join(', ');
+}
+
 function verifiedOutcomeRows(facts, answers) {
   const rows = [];
-  const observed = unwrap(answers['observed-results']) || unwrap(answers['quick-summary']);
-  if (!empty(observed)) {
+  const title = factValue(facts, 'task_result_title');
+  const outcome = factValue(facts, 'task_result_outcome');
+  const summary = factValue(facts, 'task_result_summary');
+  const taskResults = factValue(facts, 'task_verification_results');
+  if (title) {
     rows.push({
-      check: 'Tester-observed task outcome',
-      result: displayValue(observed),
+      check: 'Engineering task',
+      result: title,
       interpretation:
-        'A tester-supplied observation. Automated repository checks are listed separately and no model-performance effect is inferred.',
-      evidence: 'Tester observation'
+        'The report-specific task title supplied through the structured task-results contract.',
+      evidence: 'Task-results manifest'
     });
   }
+  if (outcome || summary) {
+    rows.push({
+      check: 'Overall outcome',
+      result: `${taskResultStatusLabel(outcome || 'unavailable')}${summary ? ` — ${summary}` : ''}`,
+      interpretation:
+        'Derived from the evidence-backed task checks below. It is separate from Doctor, Task Readiness, and other .knowledge system-state metrics.',
+      evidence: 'Task-results manifest'
+    });
+  }
+  if (Array.isArray(taskResults)) {
+    for (const row of taskResults.filter((item) => item && item.public !== false)) {
+      const result = `${taskResultStatusLabel(row.status)}${row.public_summary ? ` — ${row.public_summary}` : ''}`;
+      rows.push({
+        check: row.label || row.id || 'Task check',
+        result,
+        interpretation: row.interpretation || 'Evidence-bound engineering check.',
+        evidence: row.evidence?.label || 'Task-results evidence'
+      });
+    }
+  }
+  if (!rows.length) {
+    const observed = unwrap(answers['observed-results']) || unwrap(answers['quick-summary']);
+    if (!empty(observed)) {
+      rows.push({
+        check: 'Tester-observed task outcome',
+        result: displayValue(observed),
+        interpretation:
+          'Tester-supplied observation. No structured task-results manifest was attached, so this is not presented as an automated pass/fail result.',
+        evidence: 'Tester observation'
+      });
+    }
+    rows.push({
+      check: 'Structured task verification',
+      result: 'Not attached',
+      interpretation:
+        'Attach a report-specific task-results manifest with content-addressed evidence to publish a verified engineering outcome table.',
+      evidence: 'Field Report task-results contract'
+    });
+  }
+  return rows;
+}
 
+function systemStateRows(facts) {
+  const rows = [];
   rows.push({
     check: 'Repository scope',
     result: scopeDisclosure(facts),
     interpretation:
       'Functional modules and repositories are counted separately; multiple modules do not imply a multi-project workspace.',
     evidence: 'Repository context'
+  });
+
+  const snapshotStatus = factValue(facts, 'repository_snapshot_status');
+  const trackedChanges = normalizeCount(factValue(facts, 'repository_dirty_tracked_changes'));
+  const untrackedFiles = normalizeCount(factValue(facts, 'repository_dirty_untracked_files'));
+  const conflicts = normalizeCount(factValue(facts, 'repository_dirty_conflicts'));
+  const snapshotParts = [];
+  if (trackedChanges !== null) snapshotParts.push(countLabel(trackedChanges, 'tracked change'));
+  if (untrackedFiles !== null) snapshotParts.push(countLabel(untrackedFiles, 'untracked file'));
+  if (conflicts !== null && conflicts > 0) snapshotParts.push(countLabel(conflicts, 'merge conflict'));
+  rows.push({
+    check: 'Final repository snapshot',
+    result: snapshotStatus === 'clean'
+      ? 'Clean Git working tree'
+      : snapshotStatus === 'non_git'
+        ? 'Non-Git filtered snapshot'
+        : snapshotStatus && snapshotStatus.startsWith('dirty_')
+          ? `${humanStatus(snapshotStatus)}${snapshotParts.length ? ` — ${snapshotParts.join(', ')}` : ''}`
+          : 'Unavailable',
+    interpretation: snapshotStatus === 'clean'
+      ? 'The public facts were collected from a clean Git working tree.'
+      : snapshotStatus === 'non_git'
+        ? 'Git cleanliness is not applicable; repository size used the filtered filesystem fallback.'
+        : snapshotStatus && snapshotStatus.startsWith('dirty_')
+          ? 'The facts were collected before the final Git snapshot was clean. Public approval is blocked when GitHub publication permission is requested.'
+          : 'Final snapshot cleanliness could not be determined.',
+    evidence: 'Repository profile collector'
   });
 
   const build = releaseIdentity(facts);
@@ -627,27 +798,37 @@ function verifiedOutcomeRows(facts, answers) {
     evidence: 'Verification receipt index'
   });
 
+  const telemetryStatus = factValue(facts, 'repair_telemetry_status');
+  const telemetryReason = factValue(facts, 'repair_telemetry_reason');
   const repairEnabled = factValue(facts, 'repair_on_touch_enabled');
   const repairMode = factValue(facts, 'repair_mode');
   const repairSelected = normalizeCount(factValue(facts, 'repair_findings_selected'));
   const repairClosed = normalizeCount(factValue(facts, 'repair_findings_closed'));
   const repairDeferred = normalizeCount(factValue(facts, 'repair_findings_deferred'));
-  if (repairEnabled !== null || repairMode !== null || repairSelected !== null ||
-      repairClosed !== null || repairDeferred !== null) {
-    const resultParts = [];
-    if (repairEnabled !== null) resultParts.push(repairEnabled ? 'Enabled' : 'Disabled');
+  const resultParts = [];
+  if (telemetryStatus === 'current') {
+    resultParts.push('Current — validated');
+    if (repairEnabled !== null) resultParts.push(repairEnabled ? 'enabled' : 'disabled');
     if (repairMode !== null) resultParts.push(`mode: ${humanStatus(repairMode)}`);
     if (repairSelected !== null) resultParts.push(`${repairSelected} selected`);
     if (repairClosed !== null) resultParts.push(`${repairClosed} closed`);
     if (repairDeferred !== null) resultParts.push(`${repairDeferred} deferred`);
-    rows.push({
-      check: 'Repair-on-touch',
-      result: resultParts.join('; '),
-      interpretation:
-        'Task-scoped repair lifecycle activity. Selected, closed, and deferred records are not model-quality measurements.',
-      evidence: 'Repair-on-touch telemetry'
-    });
+  } else if (telemetryStatus === 'stale') {
+    resultParts.push('Stale — metrics withheld');
+  } else if (telemetryStatus === 'invalid') {
+    resultParts.push('Invalid — metrics withheld');
+  } else {
+    resultParts.push('Unavailable');
   }
+  rows.push({
+    check: 'Repair-on-touch telemetry',
+    result: resultParts.join('; '),
+    interpretation: telemetryStatus === 'current'
+      ? 'Current, semantically validated task-scoped repair lifecycle activity. Closed findings are lifecycle outcomes, not model-quality, speed, or accuracy measurements.'
+      : telemetryReason || 'Repair-on-touch telemetry was unavailable; no repair effect is claimed.',
+    evidence: telemetryStatus === 'current' ? 'Current validated Repair-on-touch telemetry' : 'Telemetry freshness and validity check'
+  });
+
 
   const routing = routingEstimateRow(facts);
   if (routing) rows.push(routing);
@@ -760,9 +941,18 @@ function renderRepositoryProfile(facts) {
 
 function renderVerifiedOutcome(facts, answers) {
   return renderRows(
-    'Verified outcome',
+    'Verified engineering outcome',
     ['Check', 'Result', 'What it means', 'Evidence'],
     verifiedOutcomeRows(facts, answers),
+    ['check', 'result', 'interpretation', 'evidence']
+  );
+}
+
+function renderSystemState(facts) {
+  return renderRows(
+    'System state at collection',
+    ['Check', 'Result', 'What it means', 'Evidence'],
+    systemStateRows(facts),
     ['check', 'result', 'interpretation', 'evidence']
   );
 }
@@ -776,7 +966,7 @@ function renderSystemObservations(facts) {
 // Kept as a compatibility export. The public contract now exposes explained outcomes,
 // not an unlabelled dump of internal counters.
 function evidenceRows(facts, answers = {}) {
-  return verifiedOutcomeRows(facts, answers).map((row) => ({
+  return [...verifiedOutcomeRows(facts, answers), ...systemStateRows(facts)].map((row) => ({
     label: row.check,
     value: row.result,
     source: row.evidence,
@@ -847,6 +1037,7 @@ function renderPublicBody(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
 
   body += renderRepositoryProfile(facts);
   body += renderVerifiedOutcome(facts, answers);
+  body += renderSystemState(facts);
   body += renderSystemObservations(facts);
 
   for (const section of SECTION_ORDER) {
@@ -939,6 +1130,41 @@ function titleSubject(value, fallback) {
   return plain || String(fallback || 'Repository');
 }
 
+function discussionRelationshipLabel(value, fallback) {
+  return ({
+    first_party_maintainer: 'maintainer dogfooding',
+    independent_user: 'independent user',
+    internal_qa: 'internal QA',
+    controlled_comparison: 'controlled comparison'
+  })[value] || String(fallback || 'field report').toLowerCase();
+}
+
+function discussionSubject(value, fallback) {
+  let subject = titleSubject(value, fallback)
+    .replace(/^(?:the\s+)?(?:real\s+)?(?:engineering\s+)?task\s+(?:was\s+)?(?:to\s+)?/i, '')
+    .replace(/^real\s+task\s*:\s*/i, '')
+    .replace(/^task\s*:\s*/i, '')
+    .replace(/^to\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!subject || /^(?:engineering task|repository update|project work|task|work)$/i.test(subject)) {
+    subject = titleSubject(fallback, 'Repository engineering work');
+  }
+  return subject;
+}
+
+function buildDiscussionTitle(subject, relationship, maximum = 96) {
+  const prefix = '[Field report] ';
+  const suffix = ` — ${relationship}`;
+  const subjectBudget = maximum - Array.from(prefix).length - Array.from(suffix).length;
+  if (subjectBudget < 8) throw new Error('Discussion title relationship leaves no useful subject space.');
+  const concise = truncateDiscussionTitle(
+    discussionSubject(subject, 'Repository engineering work'),
+    subjectBudget
+  );
+  return `${prefix}${concise}${suffix}`;
+}
+
 function publicAnswerLanguageFindings(answers, schema = DEFAULT_SCHEMA) {
   const fieldTypes = new Map(schema.fields.map((field) => [field.id, field.type]));
   const findings = [];
@@ -962,11 +1188,16 @@ function render(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
   const publicAnswers = answerScan.answers;
   const project = factValue(facts, 'project_type') || 'Repository';
   const relationship = relationshipDefinition(publicAnswers);
-  const subject = titleSubject(unwrap(publicAnswers['main-scenario']), project);
-  const rawTitle = truncateDiscussionTitle(
-    `[Field report] ${relationship.title} — ${subject}`,
-    96
+  const structuredTitle = factValue(facts, 'task_result_title');
+  const subject = discussionSubject(
+    structuredTitle || unwrap(publicAnswers['main-scenario']),
+    project
   );
+  const shortRelationship = discussionRelationshipLabel(
+    unwrap(publicAnswers['report-relationship']),
+    relationship.title
+  );
+  const rawTitle = buildDiscussionTitle(subject, shortRelationship, 96);
   const rawBody = renderPublicBody(manifest, facts, publicAnswers, schema);
   const supporting = unwrap(publicAnswers['supporting-material']) || '';
   const finalScan = scanPublication({
@@ -1017,10 +1248,13 @@ function render(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
 }
 
 module.exports = {
+  buildDiscussionTitle,
   SECTION_ORDER,
   REPORT_RELATIONSHIPS,
   claimSafetyFindings,
+  discussionSubject,
   evidenceRows,
+  formatTaskResultMetrics,
   formatBytes,
   publicAnswerLanguageFindings,
   relationshipDisclosure,
@@ -1030,11 +1264,13 @@ module.exports = {
   renderEvidence,
   renderRepositoryProfile,
   renderSystemObservations,
+  renderSystemState,
   renderVerifiedOutcome,
   repositoryProfileRows,
   scopeDisclosure,
   speedMetric,
   systemObservations,
+  systemStateRows,
   titleSubject,
   truncateDiscussionTitle,
   verifiedOutcomeRows

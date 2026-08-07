@@ -1,6 +1,6 @@
 {
   "schema_version": "knowledge-field-report.v2",
-  "contract_version": "2.3.0",
+  "contract_version": "2.4.0",
   "product_version": "3.3.0",
   "title": "Field Report contract",
   "github_form": {
@@ -51,8 +51,15 @@
       "wiki_broken_edges",
       "repair_task_readiness_status",
       "routing_task_readiness",
-      "verification_receipts"
-    ]
+      "verification_receipts",
+      "task_result_title",
+      "task_result_outcome",
+      "task_result_summary",
+      "task_verification_results",
+      "repository_snapshot_status",
+      "repair_telemetry_status"
+    ],
+    "task_results_schema_version": "knowledge-field-report-task-results.v1"
   },
   "translation": {
     "states": [

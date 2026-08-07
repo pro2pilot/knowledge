@@ -63,7 +63,9 @@
     "agent-integrations/_shared/metrics-reporting.md",
     "agent-integrations/_shared/AGENTS.md",
     "agent-integrations/windsurf/rules/knowledge.md",
-    "agent-integrations/devin/rules/knowledge.rules"
+    "agent-integrations/devin/rules/knowledge.rules",
+    "tools/lib/field-report/task-results.js",
+    "schemas/field-report-task-results.schema.json"
   ],
   "approved_local_rebuild_tools": [
     "tools/build-routing-bundle.js",

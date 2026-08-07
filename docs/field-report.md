@@ -30,6 +30,7 @@ A non-English `--public-language` is rejected. The canonical public language is
 node .knowledge/tools/field-report.js start --new --json
 node .knowledge/tools/field-report.js questions --report-id=<id> --json
 node .knowledge/tools/field-report.js ingest --report-id=<id> --answers=<path>
+node .knowledge/tools/field-report.js results-ingest --report-id=<id> --results=<path>
 node .knowledge/tools/field-report.js render --report-id=<id>
 node .knowledge/tools/field-report.js approve --report-id=<id> --yes --tester-actor=<github-login>
 node .knowledge/tools/field-report.js publish --report-id=<id> --yes --dry-run --tester-actor=<github-login>
@@ -90,16 +91,75 @@ collection time, confidence, and warning.
 
 The public report contains these deterministic sections. `questions.json` retains an audit catalog of every required prompt and whether it was answered, even after no follow-up questions remain.
 
-
 1. **Disclosure** — the tester's relationship to `.knowledge`.
 2. **Project context** — generalized context plus standalone/team repository
    scope. Functional modules are never treated as separate projects.
 3. **Repository profile** — tracked file/content and source file/content counts.
-4. **Verified outcome** — understandable task, Doctor, wiki, task-readiness,
-   verification, repair, and eligible routing outcomes.
-5. **System observations** — deterministic explanations for noticeable values.
-6. **Tester judgments** — what helped, what added overhead, limitations,
+4. **Verified engineering outcome** — the structured engineering task, its
+   evidence-derived overall outcome, and project-specific build/test/migration/
+   security/UI/deployment rows.
+5. **System state at collection** — Doctor, wiki, Task Readiness, routing,
+   verification inventory, and Repair-on-touch status, kept separate from task
+   success.
+6. **System observations** — deterministic explanations for noticeable values.
+7. **Tester judgments** — what helped, what added overhead, limitations,
    comparison, and final assessment.
+
+### Evidence-bound task results
+
+`start` writes `task-results.template.json`. Fill a separate task-results file
+and ingest it with:
+
+```bash
+node .knowledge/tools/field-report.js results-ingest --report-id=<id> --results=<path>
+```
+
+The file uses `knowledge-field-report-task-results.v1`. It contains a concise
+English task title, one factual outcome summary, and up to 24 result rows. A row
+classifies the check (`build`, `typecheck`, `tests`, `lint`, `security`,
+`migration`, `data_quality`, `ui`, `links_assets`, `package`, `deployment`,
+`documentation`, or `other`) and declares `pass`, `warning`, `fail`, `not_run`,
+or `unavailable`.
+
+Every public `pass`, `warning`, or `fail` row must bind to at least one safe
+regular evidence file under the repository or state root. Evidence paths are
+relative and SHA-256-bound; symlinks, hardlinks, secret-like paths, oversized
+files, path escapes, changed bytes, and conflicting automated status fail
+closed. The overall outcome is derived from rows with
+`outcome_relevant=true`. Use `outcome_relevant=false` only for an explicitly
+informational row such as an intentionally unperformed production deployment;
+the public table says that it does not affect the task outcome. Tester prose is
+never parsed into pass/fail rows.
+
+Task results also bind the repository snapshot. A source or evidence change
+invalidates the result until it is regenerated. The same validation runs before
+render, tester approval, preview, and final publication.
+
+### Final snapshot and publication
+
+The collector distinguishes clean, conflicted, tracked-dirty, untracked-dirty,
+mixed-dirty, non-Git, and unavailable snapshots. Counts are public; file paths
+are not. A local draft may document a dirty snapshot, but
+`github_publication_allowed` fails closed until the Git worktree is clean, live
+facts are recollected, and the task-results snapshot is current. Non-Git
+projects are labelled not applicable rather than clean.
+
+### Repair telemetry
+
+Repair-on-touch telemetry is classified as `current`, `stale`, `invalid`, or
+`unavailable`. Current telemetry is structurally validated and cross-checked
+against the current repair-opportunities task scope. Stale or invalid telemetry
+never contributes selected/closed/deferred counts, time, or token figures to
+public output. The report explains that Repair-on-touch is task-scoped lifecycle
+evidence, not model quality, accuracy, or speed.
+
+### Discussion title
+
+When structured task results are present, the Discussion title is derived from
+the task title and report relationship. It is English, privacy-safe,
+Unicode-safe, word-safe, and limited to 96 code points. The fallback uses a
+concise generalized project type and never parses the tester's scenario prose
+for a title.
 
 ### Repository profile
 
@@ -123,7 +183,7 @@ artifacts in the main outcome table without interpretation. Examples:
 - Functional module count is not repository/project count.
 - A routing estimate is a deterministic local first-read estimate, not
   provider-reported token usage, cost, accuracy, or speed.
-- Embedded package metadata may identify a release-candidate build such as `3.3.0 RC57`; it is not the artifact SHA.
+- Embedded package metadata may identify a release-candidate build such as `3.3.0 RC58`; it is not the artifact SHA.
 
 When exactly one task snapshot is bound to the report, Field Report records its
 scope and source, workspace/task module and path counts, unrelated-path

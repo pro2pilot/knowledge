@@ -19,14 +19,24 @@ Use the Field Report CLI as a progressive-disclosure interview.
    attestations, then use `translation-ingest`.
 4. Run `translation-approve --yes --tester-actor=<independent-reviewer>` only
    after that tester reviews the English translation. The reviewer must not be
-   the translator. Then render.
-5. Check that `public.md` contains the disclosure, repository profile, verified
-   outcome table, metric explanations, English prose, and no internal
-   organization labels. Show the tester `public.md` and the redaction status.
-   Do not approve on the tester's behalf.
-6. Run `approve --report-id=<id> --yes --tester-actor=<github-login>` only after
+   the translator.
+5. Use the generated `task-results.template.json` to prepare a separate
+   `knowledge-field-report-task-results.v1` file. Bind every public
+   pass/warning/fail row to repository- or state-local evidence and ingest it
+   with `results-ingest --report-id=<id> --results=<path>`. Do not derive task
+   checks by parsing tester prose. Mark an intentionally informational row,
+   such as deployment outside scope, with `outcome_relevant=false`. Then render.
+6. Check that `public.md` contains the disclosure, repository profile, an
+   evidence-bound engineering outcome table, a separate `.knowledge` system
+   state table, metric explanations, English prose, and no internal organization
+   labels or evidence paths. A local draft may describe a dirty snapshot, but
+   do not request GitHub publication until the final Git worktree is clean and
+   the task-results snapshot has been regenerated. Stale or invalid repair
+   telemetry must show metrics withheld. Show the tester `public.md` and the
+   redaction status. Do not approve on the tester's behalf.
+7. Run `approve --report-id=<id> --yes --tester-actor=<github-login>` only after
    the tester explicitly approves that exact draft.
-7. On a separate request, create an actor-bound preview with
+8. On a separate request, create an actor-bound preview with
    `publish --dry-run --yes --tester-actor=<github-login>`. Actual publication
    requires another explicit request and
    `--confirm-preview=<exact-preview-hash>`.

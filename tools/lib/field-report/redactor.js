@@ -73,7 +73,8 @@ const PUBLIC_WORKSPACE_LABEL_ALLOWLIST = new Set([
   'repository', 'same', 'single', 'spanned', 'standalone', 'supported', 'supports',
   'team', 'that', 'their', 'this', 'to', 'under', 'used', 'uses', 'your',
   'visual', 'visual studio code', 'vscode', 'was', 'when', 'where', 'with',
-  'without', 'workspace'
+  'without', 'workspace', 'git', 'non-git', 'containing', 'comprising', 'consisting',
+  'hosting', 'covering', 'including', 'spanning', 'running'
 ]);
 const ENGLISH_SIGNAL_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'because', 'but', 'by', 'for',
@@ -142,11 +143,18 @@ function generalizeInternalOrganization(value) {
   // Common prose verbs/adjectives are allowlisted so phrases such as
   // `the workspace contained one repository` remain unchanged.
   text = text.replace(
-    /\b(?:The\s+|the\s+)?workspace\s+(?:named\s+|called\s+)?([a-z][a-z0-9._-]{1,39})\b/g,
+    /\b(?:The\s+|the\s+)?workspace\s+(?:named\s+|called\s+)([a-z][a-z0-9._-]{1,39})\b/g,
+    (match, label) => replaceLabel(match, label, GENERIC_WORKSPACE_DESCRIPTION)
+  );
+  // Implicit lowercase labels are accepted only at a clear phrase boundary. This
+  // preserves ordinary prose such as `workspace containing two services` while
+  // still generalizing `from workspace design.` or `workspace design and client ...`.
+  text = text.replace(
+    /\b(?:The\s+|the\s+)?workspace\s+([a-z][a-z0-9._-]{1,39})\b(?=\s*(?:[.,;:!?)]|$|(?:and|for|with|without|before|after|during|where|that|which)\b))/g,
     (match, label) => replaceLabel(match, label, GENERIC_WORKSPACE_DESCRIPTION)
   );
   text = text.replace(
-    /\b(?:The\s+|the\s+)?([A-Z][\p{L}\p{N}_-]*(?:\s+[A-Z][\p{L}\p{N}_-]*){0,2})\s+workspace\b/gu,
+    /(?<![\p{L}\p{N}_-])\b(?:The\s+|the\s+)?([A-Z][\p{L}\p{N}_-]*(?:\s+[A-Z][\p{L}\p{N}_-]*){0,2})\s+workspace\b/gu,
     (match, label) => replaceLabel(match, label, GENERIC_WORKSPACE_DESCRIPTION)
   );
   text = text.replace(

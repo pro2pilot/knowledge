@@ -36,6 +36,12 @@ const {
   validateTranslationPayload
 } = require('./lib/field-report/contract');
 const { render } = require('./lib/field-report/renderer');
+const {
+  inspectTaskResults,
+  mergeTaskResultsFacts,
+  taskResultsTemplate,
+  validateTaskResults
+} = require('./lib/field-report/task-results');
 const { redactAnswers, scanEnglishLanguage, scanPublication } = require('./lib/field-report/redactor');
 const publisher = require('./lib/field-report/publisher');
 
@@ -49,7 +55,7 @@ function fail(message, exitCode = 2, code = 'field_report_error') {
 const FIELD_REPORT_FLAGS = new Set([
   'help', 'anonymize', 'answers', 'confirm-preview', 'discussion-category',
   'discussion-repo', 'dry-run', 'json', 'language', 'new', 'no-color',
-  'project-knowledge-root', 'public-language', 'quiet', 'reason', 'report-id',
+  'project-knowledge-root', 'public-language', 'quiet', 'reason', 'report-id', 'results',
   'resume', 'routing-task-id', 'state-root', 'system-root', 'target-root',
   'tester-actor', 'verify-remote', 'yes', 'mode', 'team-root', 'workspace-id',
   'agent-id'
@@ -65,7 +71,7 @@ function helpResult() {
   return {
     schema_version: SCHEMA_VERSION,
     status: 'ok',
-    usage: 'field-report <start|questions|ingest|render|approve|publish|status|cancel|copy|open> [options]',
+    usage: 'field-report <start|questions|ingest|results-ingest|render|approve|publish|status|cancel|copy|open> [options]',
     side_effects: 'none'
   };
 }
@@ -191,6 +197,7 @@ function initialise(context, manifest) {
   });
   writeJsonAtomic(reportPaths.questions, questionDocument(manifest, {}));
   writeJsonAtomic(reportPaths.answers_template, answerTemplate(manifest, questions));
+  writeJsonAtomic(reportPaths.task_results_template, taskResultsTemplate(manifest.report_id));
   state.transition(manifest, 'needs_user_input');
   manifest.warnings = facts.warnings;
   state.save(context, manifest);
@@ -213,6 +220,9 @@ function nextAction(manifest, questions, reportPaths) {
   }
   if (manifest.status === 'redaction_required') {
     return `${prefix} ingest ${report} --answers=<corrected-answers.json>`;
+  }
+  if (!fs.existsSync(reportPaths.task_results)) {
+    return `${prefix} results-ingest ${report} --results=${reportPaths.task_results_template}`;
   }
   if (manifest.status === 'draft_ready') {
     return `${prefix} approve ${report} --yes --tester-actor=` +
@@ -261,6 +271,8 @@ function questionResult(context, manifest) {
     missing_required_fields: questions.length,
     questions,
     answer_template_path: reportPaths.answers_template,
+    task_results_template_path: reportPaths.task_results_template,
+    task_results_path: fs.existsSync(reportPaths.task_results) ? reportPaths.task_results : null,
     next_command: nextAction(manifest, questions, reportPaths)
   };
 }
@@ -396,6 +408,52 @@ function ingest(context, flags, manifest, injected) {
   const input = injected.answers || (flags.answers ? readJsonInput(flags.answers) : null);
   if (!input) fail('--answers=<path> is required for ingest.');
   return ingestValues(context, manifest, input);
+}
+
+function taskResultsIngest(context, flags, manifest, injected = {}) {
+  if (['published', 'cancelled'].includes(manifest.status)) {
+    fail(`Cannot edit a ${manifest.status} Field Report.`);
+  }
+  assertReportMutable(manifest, 'attach task results');
+  const input = injected.taskResults || (flags.results ? readJsonInput(flags.results) : null);
+  if (!input) fail('--results=<path> is required for results-ingest.');
+  const reportPaths = state.paths(context, manifest.report_id);
+  const liveFacts = collect(context, { routingTaskId: manifest.routing_task_id || null });
+  const validation = validateTaskResults(input, {
+    context,
+    reportId: manifest.report_id,
+    facts: liveFacts,
+    captureSnapshot: true
+  });
+  if (!validation.valid) fail(validation.errors.join('; '), 2, validation.code || 'task_results_invalid');
+  writeJsonAtomic(reportPaths.task_results, validation.value);
+  writeJsonAtomic(
+    reportPaths.facts,
+    mergeTaskResultsFacts(
+      liveFacts,
+      validation.value,
+      `reports/field-reports/${manifest.report_id}/task-results.json`
+    )
+  );
+  manifest.task_results = {
+    status: 'ready',
+    hash: validation.hash,
+    rows_total: validation.value.results.length,
+    updated_at: new Date().toISOString()
+  };
+  state.invalidateApproval(manifest);
+  if (manifest.status === 'redaction_required') state.transition(manifest, 'draft_ready');
+  state.save(context, manifest);
+  return {
+    schema_version: SCHEMA_VERSION,
+    contract_version: CONTRACT_VERSION,
+    status: 'task_results_ready',
+    report_id: manifest.report_id,
+    task_results_hash: validation.hash,
+    rows_total: validation.value.results.length,
+    task_results_path: reportPaths.task_results,
+    next_command: `node .knowledge/tools/field-report.js render --report-id=${manifest.report_id}`
+  };
 }
 
 function requireCompleteOriginal(reportPaths) {
@@ -960,14 +1018,28 @@ function invalidateRoutingApproval(context, manifest) {
 }
 
 function refreshLiveRouting(context, manifest, reportPaths, action) {
-  if (!manifest.routing_task_id) {
-    return {
-      facts: readJson(reportPaths.facts, { values: {}, warnings: [], mode: context.mode }),
-      attestation: null
-    };
+  let facts = collect(context, { routingTaskId: manifest.routing_task_id || null });
+  const taskResults = readJson(reportPaths.task_results, null);
+  if (taskResults) {
+    const inspection = inspectTaskResults(context, facts, taskResults);
+    if (inspection.status !== 'current') {
+      state.invalidateApproval(manifest);
+      state.save(context, manifest);
+      fail(
+        `Field Report ${action} is blocked by task-result evidence: ${inspection.reason}; ` +
+          `${inspection.errors.join('; ')}.`,
+        2,
+        inspection.status === 'stale' ? 'task_results_stale' : 'task_results_invalid'
+      );
+    }
+    facts = mergeTaskResultsFacts(
+      facts,
+      inspection.value,
+      `reports/field-reports/${manifest.report_id}/task-results.json`
+    );
   }
-  const facts = collect(context, { routingTaskId: manifest.routing_task_id });
   writeJsonAtomic(reportPaths.facts, facts);
+  if (!manifest.routing_task_id) return { facts, attestation: null };
   const attestation = routingAttestation(manifest, facts, reportPaths);
   const reasons = [];
   if (attestation.routing_task_bound_to_report !== true) reasons.push('routing_task_not_bound');
@@ -2007,6 +2079,9 @@ function run(argv = process.argv.slice(2), injected = {}) {
     }
     if (command === 'status') return statusResult(context, manifest);
     if (command === 'ingest') return ingest(context, flags, manifest, injected);
+    if (command === 'results-ingest' || command === 'results') {
+      return taskResultsIngest(context, flags, manifest, injected);
+    }
     if (command === 'translation-export' || command === 'translate') {
       return translationExport(context, flags, manifest);
     }
@@ -2124,6 +2199,7 @@ module.exports = {
   ingestValues,
   renderReport,
   run,
+  taskResultsIngest,
   translationApprove,
   translationExport,
   translationIngest,

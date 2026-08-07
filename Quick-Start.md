@@ -157,17 +157,29 @@ before rendering.
 
 ```bash
 node .knowledge/tools/field-report.js ingest --report-id=<id> --answers=<path>
+# Attach evidence-bound engineering results from task-results.template.json:
+node .knowledge/tools/field-report.js results-ingest --report-id=<id> --results=<path>
 # When translation is required: translation-export -> translation-ingest -> translation-approve
 node .knowledge/tools/field-report.js render --report-id=<id>
 ```
 
-The public draft includes a report-type disclosure, a filtered repository-size
-profile, an explained outcome table, and deterministic explanations for notable
-Doctor/wiki/repair values. Internal workspace and organization labels are
-generalized. Do not infer usefulness, accuracy, speed, or provider-token effects
-from health scores or local estimates, and do not approve or publish on the
-tester's behalf. Approval and GitHub publication are two separate explicit
-actions. See `docs/field-report.md`.
+The task-results file supplies the engineering task title and project-specific
+checks such as build, tests, migrations, security, UI, or deployment. Each
+public pass/warning/fail row is content-addressed to repository- or state-local
+evidence. Informational rows may use `outcome_relevant=false`, for example when
+deployment was intentionally outside scope. Evidence and the repository
+snapshot are revalidated before render, approval, preview, and publication.
+
+The public draft starts with an evidence-bound **Verified engineering outcome**
+table. Doctor, wiki, Task Readiness, routing, and Repair-on-touch remain in a
+separate system-state table. A local draft may describe a dirty snapshot, but
+GitHub publication is blocked until the final Git worktree is clean and facts
+are recollected. Repair telemetry is reported as current, stale, invalid, or
+unavailable; stale/invalid metrics are withheld. Internal workspace and
+organization labels are generalized. Do not infer usefulness, accuracy, speed,
+or provider-token effects from health scores or local estimates, and do not
+approve or publish on the tester's behalf. Approval and GitHub publication are
+two separate explicit actions. See `docs/field-report.md`.
 
 If this is an existing configured `.knowledge` installation, read the routing
 bundle first. If it is missing or stale, choose the correct setup path below.
