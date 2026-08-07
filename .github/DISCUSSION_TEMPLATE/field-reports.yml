@@ -1,0 +1,268 @@
+name: "Field report"
+description: "Share evidence from real .knowledge use."
+title: "[Field report] "
+labels:
+  - "field-report"
+body:
+  - type: markdown
+    attributes:
+      value: "Starting with `.knowledge` 3.3.0, you can prepare this report semi-automatically with the `field-report` command. Only include things you actually observed. Review the final title and body before publishing, and never include secrets, private source code, personal data, or internal addresses."
+  - type: input
+    id: knowledge-version
+    attributes:
+      label: ".knowledge version"
+      description: "Release version or commit SHA used during the test."
+      placeholder: "Example: 3.3.0"
+    validations:
+      required: false
+  - type: textarea
+    id: project-context
+    attributes:
+      label: "Project context"
+      description: "Describe the repository or an anonymized equivalent, project type and size, stack, agents, testing period, and previous context setup."
+      placeholder: "Repository or anonymized description:\nProject type and approximate size:\nStack:\nCoding agents:\nTesting period:\nPrevious context setup:"
+    validations:
+      required: true
+  - type: dropdown
+    id: keep-using
+    attributes:
+      label: "Would you keep using .knowledge in this repository?"
+      options:
+        - "Yes"
+        - "Maybe, after specific changes"
+        - "No"
+        - "I do not have enough evidence yet"
+    validations:
+      required: true
+  - type: textarea
+    id: quick-summary
+    attributes:
+      label: "Quick summary"
+      description: "Give the main result, most useful part, and biggest obstacle."
+      placeholder: "Main result:\nMost useful part:\nMain obstacle:"
+    validations:
+      required: true
+  - type: input
+    id: installation-method
+    attributes:
+      label: "Installation method"
+      description: "How was .knowledge installed?"
+      placeholder: "Release asset, update command, or manual setup"
+    validations:
+      required: false
+  - type: dropdown
+    id: workflow-fit
+    attributes:
+      label: "How naturally did .knowledge fit into your normal workflow?"
+      options:
+        - "It fit in without noticeably changing the workflow"
+        - "It required a few extra steps"
+        - "It required regular manual attention"
+        - "It made the workflow significantly more complicated"
+        - "I could not integrate it into normal work"
+    validations:
+      required: true
+  - type: dropdown
+    id: agent-intervention
+    attributes:
+      label: "Did the agent need extra guidance or intervention to use .knowledge?"
+      options:
+        - "No"
+        - "Once or twice"
+        - "Regularly"
+        - "It became a blocker"
+        - "Not enough evidence"
+    validations:
+      required: true
+  - type: textarea
+    id: workflow-notes
+    attributes:
+      label: "Workflow notes"
+      description: "Describe interventions, what felt natural or awkward, and one decision impact."
+      placeholder: "Intervention:\nWhat felt natural:\nWhat felt awkward:\nDecision impact:\nSuggested improvement:"
+    validations:
+      required: true
+  - type: textarea
+    id: main-scenario
+    attributes:
+      label: "Main test scenario"
+      description: "Describe one real engineering task; installation alone is not enough."
+      placeholder: "Task:\nAgent:\nHow .knowledge was used:\nResult:\nWhat changed:\nSupporting evidence:"
+    validations:
+      required: true
+  - type: textarea
+    id: additional-scenario
+    attributes:
+      label: "Additional scenario"
+      description: "Optional second real task."
+      placeholder: "Task:\nResult:\nWhat differed:"
+    validations:
+      required: false
+  - type: dropdown
+    id: accuracy-change
+    attributes:
+      label: "Did .knowledge improve the accuracy of the agent's work?"
+      options:
+        - "Clearly improved"
+        - "Slightly improved"
+        - "No clear change"
+        - "Accuracy became worse"
+        - "Not enough evidence to judge"
+    validations:
+      required: true
+  - type: textarea
+    id: accuracy-example
+    attributes:
+      label: "Accuracy example"
+      description: "Give one concrete example, including errors or uncertainty when applicable."
+      placeholder: "Concrete example:"
+    validations:
+      required: true
+  - type: dropdown
+    id: accuracy-basis
+    attributes:
+      label: "What is the basis for the accuracy assessment?"
+      options:
+        - "Measured"
+        - "Objective test result"
+        - "Comparable tasks"
+        - "General observation"
+        - "Not enough data"
+    validations:
+      required: true
+  - type: input
+    id: accuracy-sample-count
+    attributes:
+      label: "Accuracy sample count"
+      description: "Optional number of observed examples."
+      placeholder: "Example: 5"
+    validations:
+      required: false
+  - type: dropdown
+    id: speed-scope
+    attributes:
+      label: "What does the speed assessment cover?"
+      options:
+        - "Repository orientation"
+        - "First useful response"
+        - "Full task completion"
+        - "Pull request review"
+        - "Other"
+    validations:
+      required: true
+  - type: dropdown
+    id: response-speed-change
+    attributes:
+      label: "How did .knowledge affect speed for that scope?"
+      options:
+        - "Much slower"
+        - "Slightly slower"
+        - "No clear change"
+        - "Slightly faster"
+        - "Much faster"
+        - "Not enough data"
+    validations:
+      required: true
+  - type: input
+    id: response-speed-percent
+    attributes:
+      label: "Optional signed speed estimate"
+      description: "Use -100% to +100%. Positive means faster; negative means slower."
+      placeholder: "Example: +20% or -15%"
+    validations:
+      required: false
+  - type: dropdown
+    id: response-speed-basis
+    attributes:
+      label: "How was the speed impact determined?"
+      options:
+        - "Measured"
+        - "Estimated from comparable tasks"
+        - "General observation"
+        - "Not enough data"
+    validations:
+      required: true
+  - type: input
+    id: response-speed-sample-count
+    attributes:
+      label: "Speed sample count"
+      description: "Optional number of measured or comparable samples."
+      placeholder: "Example: 6"
+    validations:
+      required: false
+  - type: input
+    id: baseline-duration-ms
+    attributes:
+      label: "Baseline duration in milliseconds"
+      description: "Required when speed basis is measured."
+      placeholder: "Example: 12500"
+    validations:
+      required: false
+  - type: input
+    id: knowledge-duration-ms
+    attributes:
+      label: ".knowledge duration in milliseconds"
+      description: "Required when speed basis is measured."
+      placeholder: "Example: 9300"
+    validations:
+      required: false
+  - type: textarea
+    id: response-speed-notes
+    attributes:
+      label: "What affected speed?"
+      description: "Mention exploration, validation, loading context, retries, or intervention."
+    validations:
+      required: false
+  - type: textarea
+    id: useful-parts
+    attributes:
+      label: "Which parts were useful?"
+      description: "Name only parts you actually used and explain why."
+    validations:
+      required: true
+  - type: textarea
+    id: observed-results
+    attributes:
+      label: "Observed results"
+      description: "Add concrete outcomes and only metrics actually observed."
+    validations:
+      required: false
+  - type: textarea
+    id: what-did-not-work
+    attributes:
+      label: "What did not work?"
+      description: "Describe failures, false positives/negatives, confusing steps, or overhead."
+    validations:
+      required: true
+  - type: textarea
+    id: previous-workflow-comparison
+    attributes:
+      label: "Comparison with your previous workflow"
+      description: "Compare with AGENTS.md, normal docs, and code search."
+    validations:
+      required: true
+  - type: textarea
+    id: final-assessment
+    attributes:
+      label: "Final assessment"
+      description: "Give the best fit, when it is unnecessary, top improvements, and final verdict."
+    validations:
+      required: true
+  - type: textarea
+    id: supporting-material
+    attributes:
+      label: "Supporting material"
+      description: "Optional public links or anonymized material."
+    validations:
+      required: false
+  - type: dropdown
+    id: publication-permission
+    attributes:
+      label: "Permission to reference this report"
+      options:
+        - "The project may link and quote with attribution"
+        - "The project may link; quotes require separate permission"
+        - "Keep this report on GitHub only"
+        - "Permission not decided yet"
+    validations:
+      required: true
