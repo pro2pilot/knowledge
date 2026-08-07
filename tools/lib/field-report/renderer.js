@@ -978,7 +978,23 @@ function renderEvidence(facts, answers = {}) {
   return renderVerifiedOutcome(facts, answers);
 }
 
-function publicSections(answers, schema = DEFAULT_SCHEMA) {
+function publicationPermissionDisplay(facts, answers, schema = DEFAULT_SCHEMA) {
+  const selected = String(unwrap(answers['github-publication-permission']) || '');
+  if (selected !== 'github_publication_allowed') {
+    return humanValue('github-publication-permission', selected, schema);
+  }
+  const taskRows = factValue(facts, 'task_verification_results');
+  if (!Array.isArray(taskRows) || taskRows.filter((row) => row?.public !== false).length === 0) {
+    return 'Requested by the tester, but blocked until structured, content-addressed task results are attached.';
+  }
+  const snapshotStatus = String(factValue(facts, 'repository_snapshot_status') || '');
+  if (snapshotStatus.startsWith('dirty_')) {
+    return 'Requested by the tester, but blocked until the final Git working tree is clean and the report facts are recollected.';
+  }
+  return humanValue('github-publication-permission', selected, schema);
+}
+
+function publicSections(answers, schema = DEFAULT_SCHEMA, facts = null) {
   const sections = new Map();
   const skipped = new Set([
     'knowledge-version',
@@ -994,9 +1010,12 @@ function publicSections(answers, schema = DEFAULT_SCHEMA) {
     if (empty(value) && field.omission_policy !== 'never') continue;
     const section = field.public_section;
     if (!sections.has(section)) sections.set(section, []);
+    const renderedValue = field.id === 'github-publication-permission'
+      ? publicationPermissionDisplay(facts, answers, schema)
+      : humanValue(field.id, value, schema);
     sections.get(section).push({
       order: field.renderer.order,
-      text: answerLine(field.renderer.label, humanValue(field.id, value, schema))
+      text: answerLine(field.renderer.label, renderedValue)
     });
   }
   const metric = speedMetric(answers);
@@ -1021,7 +1040,7 @@ function publicSections(answers, schema = DEFAULT_SCHEMA) {
 }
 
 function renderPublicBody(manifest, facts, answers, schema = DEFAULT_SCHEMA) {
-  const sections = publicSections(answers, schema);
+  const sections = publicSections(answers, schema, facts);
   const relationship = relationshipDefinition(answers);
   const build = releaseIdentity(facts);
   let body = '# Field Report\n\n';

@@ -2059,6 +2059,7 @@ function main() {
       assert(body.includes('Publication requires explicit tester review and approval.'), 'approval requirement absent');
       assert(!body.includes('reviewed by the tester before publication'), 'unperformed tester review was claimed');
       assert(!body.includes('explicitly approved by the tester for this exact public draft'), 'unperformed exact-draft approval was claimed');
+      assert(body.includes('**GitHub publication:** Allowed to publish on GitHub'), body);
 
       const reportPaths = fieldReportState.paths(context, primaryReport);
       const approvedManifest = JSON.parse(JSON.stringify(fieldReportState.load(context, primaryReport)));
@@ -2220,6 +2221,9 @@ function main() {
       assert(publicRender.status === 'redaction_required', JSON.stringify(publicRender));
       const publicRedaction = publicRender.redaction;
       assert(publicRedaction.unresolved_findings.some((finding) => finding.rule === 'dirty_final_snapshot_publication'), JSON.stringify(publicRedaction));
+      const publicBody = fs.readFileSync(publicRender.public_path, 'utf8');
+      assert(publicBody.includes('Requested by the tester, but blocked until the final Git working tree is clean'), publicBody);
+      assert(!publicBody.includes('**GitHub publication:** Allowed to publish on GitHub'), publicBody);
 
       const localStarted = run(['start', '--new'], { context: dirtyContext });
       run(['ingest', `--report-id=${localStarted.report_id}`], {
