@@ -1683,7 +1683,17 @@ function main() {
     const projectRoot = path.join(fixtureRoot, 'project');
     const knowledgeRoot = path.join(projectRoot, '.knowledge');
     const logDir = path.join(fixtureRoot, 'logs');
-    fs.mkdirSync(projectRoot, { recursive: true });
+    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectRoot, 'package.json'),
+      `${JSON.stringify({ name: 'release-gate-p0-fixture', private: true }, null, 2)}\n`,
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(projectRoot, 'src', 'app.js'),
+      'module.exports = 1;\n',
+      'utf8'
+    );
     fs.cpSync(sourceKnowledgeRoot, knowledgeRoot, {
       recursive: true,
       filter: (sourcePath) => {
