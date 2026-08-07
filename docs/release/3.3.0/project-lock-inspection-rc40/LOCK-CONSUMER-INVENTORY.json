@@ -1,0 +1,259 @@
+{
+  "schema_version": "knowledge-lock-consumer-inventory.v1",
+  "generated_at": "2026-08-03T10:46:17.931Z",
+  "source": "tools/lib/lock-policy.js",
+  "locks": [
+    {
+      "lock_name": "agent-integrations",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "install-agent-integrations"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "apply-template",
+      "root_kinds": [
+        "project"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "apply-template"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "doctor",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "doctor"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "evidence-publication",
+      "root_kinds": [
+        "system"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [],
+      "installed_runtime": false,
+      "inspected_by_install_check": false
+    },
+    {
+      "lock_name": "external-memory-status",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "external-memory-status"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "field-report",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "field-report"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "git-hooks",
+      "root_kinds": [
+        "project"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "install-git-hooks"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "ingest",
+      "root_kinds": [
+        "project"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "ingest-existing-project"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "memory-provider",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "memory-mem0",
+        "memory-pinecone",
+        "memory-provider"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "recertify",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "recertify"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "repair-on-touch",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "repair-on-touch"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "routing-bundle",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "build-routing-bundle"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "search-index",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "build-search-index"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "secret-scan",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "scan-secrets"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "sync",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "sync-tracked"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "task-routing",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "task_hash_or_index",
+      "consumers": [
+        "task-routing"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "team-flow",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "team-store"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "visual-inspector",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "build-visual-inspector"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "watch-maintenance",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "watch-maintenance"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "wiki-graph",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "build-wiki-graph"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    },
+    {
+      "lock_name": "wiki-lint",
+      "root_kinds": [
+        "state"
+      ],
+      "resource_mode": "fixed",
+      "consumers": [
+        "lint-wiki"
+      ],
+      "installed_runtime": true,
+      "inspected_by_install_check": true
+    }
+  ]
+}
