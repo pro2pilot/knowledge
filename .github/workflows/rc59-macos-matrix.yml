@@ -1,0 +1,45 @@
+name: RC59 macOS exact-candidate matrix
+
+on:
+  push:
+    branches:
+      - codex/rc59-macos-matrix-20260808
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: macOS / Node ${{ matrix.node }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run exact-candidate matrix cell
+        shell: bash
+        run: |
+          set -euo pipefail
+          replay="$RUNNER_TEMP/rc59-replay"
+          cp -R .rc59-matrix/replay "$replay"
+          if [ "${{ matrix.node }}" = "22" ]; then upgrade=true; else upgrade=false; fi
+          node .rc59-matrix/run-matrix-cell.js \
+            --candidate .rc59-matrix/knowledge-v3.3.0.zip \
+            --baseline .rc59-matrix/knowledge-v3.2.11.zip \
+            --replay "$replay" \
+            --out "$RUNNER_TEMP/result" \
+            --os macos \
+            --node-major "${{ matrix.node }}" \
+            --upgrade "$upgrade" \
+            --expected-candidate fc410cb7f785a0a181eb65b7e86e7ef230ececa5ff454a50e9ad14b4e1756099 \
+            --expected-baseline b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc59-macos-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/result
