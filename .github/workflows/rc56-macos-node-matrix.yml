@@ -1,0 +1,111 @@
+name: RC57 macOS Node matrix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: macOS x64 / Node ${{ matrix.major }}
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slug: macos-node18
+            major: '18.20.8'
+            node_major: '18'
+            upgrade: 'false'
+          - slug: macos-node20
+            major: '20.20.2'
+            node_major: '20'
+            upgrade: 'false'
+          - slug: macos-node22
+            major: '22.16.0'
+            node_major: '22'
+            upgrade: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.major }}
+          check-latest: false
+
+      - name: Verify frozen RC57 inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @{
+            'knowledge-v3.3.0-step1-rc4-r57.zip' = '49bb9054512fdfab05fe8c30a5ff591bdff6c0f206cfde18fea224434802f5c5'
+            'knowledge-v3.2.11.zip' = 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79'
+          }
+          foreach ($name in $expected.Keys) {
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "qa/rc57/$name")).Hash.ToLowerInvariant()
+            if ($actual -ne $expected[$name]) { throw "SHA-256 mismatch for ${name}: $actual" }
+          }
+          Push-Location (Join-Path $env:GITHUB_WORKSPACE 'qa/rc57')
+          try {
+            foreach ($line in Get-Content -LiteralPath 'CHECKSUMS.sha256') {
+              if (-not $line.Trim()) { continue }
+              $parts = $line -split '\s+', 2
+              $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $parts[1]).Hash.ToLowerInvariant()
+              if ($actual -ne $parts[0]) { throw "CHECKSUMS.sha256 mismatch: $($parts[1])" }
+            }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Run matrix cell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cellRoot = Join-Path $env:RUNNER_TEMP "rc57-${{ matrix.slug }}"
+          $replayRun = Join-Path $cellRoot 'replay'
+          $out = Join-Path $cellRoot 'out'
+          New-Item -ItemType Directory -Force -Path $cellRoot | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'qa/rc57/replay') -Destination $replayRun -Recurse
+          node (Join-Path $env:GITHUB_WORKSPACE 'qa/rc57/run-matrix-cell.js') `
+            --candidate (Join-Path $env:GITHUB_WORKSPACE 'qa/rc57/knowledge-v3.3.0-step1-rc4-r57.zip') `
+            --replay $replayRun `
+            --baseline (Join-Path $env:GITHUB_WORKSPACE 'qa/rc57/knowledge-v3.2.11.zip') `
+            --out $out `
+            --os macos `
+            --node-major ${{ matrix.node_major }} `
+            --upgrade=${{ matrix.upgrade }} `
+            --expected-candidate 49bb9054512fdfab05fe8c30a5ff591bdff6c0f206cfde18fea224434802f5c5 `
+            --expected-baseline b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79 `
+            --source-commit 4472a92dc3b31d6c111fa169a6d5dc37e62cb485
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:GITHUB_WORKSPACE 'qa-results') | Out-Null
+          Copy-Item -LiteralPath $out -Destination (Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}") -Recurse
+
+      - name: Enforce cell verdict
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resultPath = Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}/result.json"
+          if (-not (Test-Path -LiteralPath $resultPath)) { throw 'Cell did not produce result.json' }
+          $result = Get-Content -Raw -LiteralPath $resultPath | ConvertFrom-Json
+          if ($result.status -ne 'pass') { throw "Cell status: $($result.status)" }
+          $validation = Get-Content -Raw -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}/candidate-validation.json") | ConvertFrom-Json
+          if ($validation.status -ne 'ok') { throw "Candidate validation: $($validation.status)" }
+          if ($result.tests.shipped_self_tests -ne '26/26') { throw 'Shipped self-tests were not 26/26' }
+          if ($result.tests.integrations -ne '12/12') { throw 'Agent integrations were not 12/12' }
+          if ($result.active_locks -ne 0) { throw "Active locks: $($result.active_locks)" }
+          $locks = Get-Content -Raw -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}/lock-report.json") | ConvertFrom-Json
+          if ($locks.status -ne 'safe' -or @($locks.findings).Count -ne 0 -or @($locks.locks | Where-Object { $_.status -ne 'safe' }).Count -ne 0) { throw 'Stale or unsafe lock state' }
+          if ('${{ matrix.upgrade }}' -eq 'true' -and $result.tests.upgrade -ne 'pass') { throw "Required exact upgrade failed: $($result.tests.upgrade)" }
+
+      - name: Upload complete cell evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc57-${{ matrix.slug }}
+          path: qa-results/${{ matrix.slug }}
+          if-no-files-found: warn
+          include-hidden-files: true
