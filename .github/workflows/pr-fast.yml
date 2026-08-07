@@ -1,0 +1,49 @@
+name: PR Fast
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    outputs:
+      mode: ${{ steps.impact.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - id: impact
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/classify-release-impact.js --json > impact.json
+          node -e "const r=require('./impact.json'); if(!r.mode) process.exit(2); console.log('mode='+r.mode)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-impact-classification
+          path: impact.json
+
+  routed-release-gate:
+    needs: classify
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_GATE_MODE: ${{ needs.classify.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Run classified release gate
+        shell: bash
+        run: node tools/release-gate.js --mode "$RELEASE_GATE_MODE" --json

@@ -1,0 +1,46 @@
+name: Compatibility Gate
+
+on:
+  pull_request:
+    paths:
+      - 'tools/**'
+      - 'schemas/**'
+      - 'benchmarks/**'
+      - 'docs/release/**'
+      - '.github/workflows/**'
+      - 'internal/**'
+      - 'package.json'
+      - 'install-manifest.json'
+      - 'release-policy.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            node: 18
+          - runner: ubuntu-24.04
+            node: 20
+          - runner: ubuntu-24.04
+            node: 22
+          - runner: windows-2022
+            node: 22
+          - runner: macos-15-intel
+            node: 22
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Field Report and public contract checks
+        run: node tools/self-test-field-report.js
