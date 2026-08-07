@@ -6,7 +6,7 @@ labels:
 body:
   - type: markdown
     attributes:
-      value: "Starting with `.knowledge` 3.3.0, you can prepare this report semi-automatically with the `field-report` command. Only include things you actually observed. Review the final title and body before publishing, and never include secrets, private source code, personal data, or internal addresses."
+      value: "Starting with `.knowledge` 3.3.0, you can prepare this report semi-automatically with the `field-report` command. Answer in any language; the publication-ready draft is always English and requires tester-approved translation when needed. Only include things you actually observed. Review the final title and body before publishing, and never include secrets, private source code, personal data, internal workspace names, or internal addresses."
   - type: input
     id: knowledge-version
     attributes:
@@ -19,8 +19,8 @@ body:
     id: project-context
     attributes:
       label: "Project context"
-      description: "Describe the repository or an anonymized equivalent, project type and size, stack, agents, testing period, and previous context setup."
-      placeholder: "Repository or anonymized description:\nProject type and approximate size:\nStack:\nCoding agents:\nTesting period:\nPrevious context setup:"
+      description: "Describe the repository or an anonymized equivalent, stack, agents, testing period, and previous context setup. Repository size is collected automatically."
+      placeholder: "Repository or anonymized description:\nStack:\nCoding agents:\nTesting period:\nPrevious context setup (generalized):"
     validations:
       required: true
   - type: dropdown
