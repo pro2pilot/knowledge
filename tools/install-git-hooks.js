@@ -3,13 +3,22 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureDir, readJson, writeJsonAtomic, writeFileAtomic, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, writeFileAtomic } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const knowledgeRoot = path.join(repoRoot, '.knowledge');
 const gitHooksDir = path.join(repoRoot, '.git', 'hooks');
 const automationStatusPath = path.join(knowledgeRoot, 'maintenance', 'automation_status.json');
 const hookErrorsPath = path.join(knowledgeRoot, 'maintenance', 'hook_errors.log');
+const GIT_HOOKS_LOCK = Object.freeze({
+  context: { projectKnowledgeRoot: knowledgeRoot },
+  rootKind: 'project',
+  rootPath: knowledgeRoot,
+  lockName: 'git-hooks',
+  purpose: LOCKS['git-hooks'].purpose
+});
 const blockStart = '# BEGIN DOT-KNOWLEDGE MANAGED BLOCK';
 const blockEnd = '# END DOT-KNOWLEDGE MANAGED BLOCK';
 
@@ -36,7 +45,7 @@ function installGitHooks() {
   if (!fs.existsSync(gitHooksDir)) {
     throw new Error('No .git/hooks directory found. Run `git init` or use `node .knowledge/tools/init-git-repo.js` first.');
   }
-  return withLock(path.join(knowledgeRoot, '.lock'), () => {
+  return withContainedLock(GIT_HOOKS_LOCK, () => {
     ensureDir(path.dirname(hookErrorsPath));
     if (!fs.existsSync(hookErrorsPath)) fs.writeFileSync(hookErrorsPath, '', 'utf8');
     const installed = ['post-commit', 'post-merge', 'post-checkout'].map(upsertHook);

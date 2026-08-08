@@ -2,13 +2,21 @@
 'use strict';
 
 const path = require('path');
-const { ensureDir, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { appendTeamEvent } = require('./lib/team-store');
 const { buildExternalMemoryReport } = require('./lib/memory-providers');
 
 const context = resolveKnowledgeContext();
-const lockDir = path.join(context.stateRoot, '.lock');
+const EXTERNAL_MEMORY_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: context.stateRoot,
+  lockName: 'external-memory-status',
+  purpose: LOCKS['external-memory-status'].purpose
+});
 
 function statusUnlocked(options = {}) {
   ensureDir(path.join(context.stateRoot, 'maintenance'));
@@ -31,7 +39,7 @@ function statusUnlocked(options = {}) {
 }
 
 function main(options = {}) {
-  return options.skipLock ? statusUnlocked(options) : withLock(lockDir, () => statusUnlocked(options));
+  return options.skipLock ? statusUnlocked(options) : withContainedLock(EXTERNAL_MEMORY_LOCK, () => statusUnlocked(options));
 }
 
 module.exports = main;

@@ -4,14 +4,28 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const {
+  readJson,
+  writeJsonAtomicContained,
+  getAgentId,
+  assertSafeContainmentRoot,
+  assertSafeContainedPath
+} = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 
 const context = resolveKnowledgeContext();
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const wikiRoot = path.join(knowledgeRoot, 'wiki');
-const lockDir = path.join(stateRoot, '.lock');
+const WIKI_GRAPH_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: stateRoot,
+  lockName: 'wiki-graph',
+  purpose: LOCKS['wiki-graph'].purpose
+});
 
 const allowedTypes = [
   'supports',
@@ -111,17 +125,38 @@ function projectPath(relPath) { return path.join(knowledgeRoot, relPath); }
 function safeReadJson(relPath, fallback) {
   const state = statePath(relPath);
   const project = projectPath(relPath);
-  if (fs.existsSync(state)) return readJson(state, fallback);
-  if (fs.existsSync(project)) return readJson(project, fallback);
+  if (fs.existsSync(state)) {
+    assertSafeContainedPath(stateRoot, state);
+    return readJson(state, fallback);
+  }
+  if (fs.existsSync(project)) {
+    assertSafeContainedPath(knowledgeRoot, project);
+    return readJson(project, fallback);
+  }
   return fallback;
 }
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
+  assertSafeContainedPath(knowledgeRoot, dir);
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const abs = path.join(dir, entry.name);
-    if (entry.isDirectory()) walk(abs, out);
-    else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) out.push(abs);
+    if (entry.isSymbolicLink()) {
+      const error = new Error(
+        `Wiki graph input contains a symlink or junction: ${abs}`
+      );
+      error.code = 'wiki_graph_input_reparse_path';
+      throw error;
+    }
+    assertSafeContainedPath(knowledgeRoot, abs);
+    if (entry.isDirectory()) {
+      walk(abs, out);
+    } else if (
+      entry.isFile() &&
+      entry.name.toLowerCase().endsWith('.md')
+    ) {
+      out.push(abs);
+    }
   }
   return out;
 }
@@ -359,8 +394,27 @@ function incomingCounts(edges) {
   return incoming;
 }
 
+function duplicateTitles(wikiNodes) {
+  const byTitle = new Map();
+  for (const node of wikiNodes) {
+    const key = String(node.title || '').trim().toLowerCase();
+    if (!key) continue;
+    byTitle.set(key, [...(byTitle.get(key) || []), node.id]);
+  }
+  return Array.from(byTitle.entries())
+    .filter(([, pages]) => pages.length > 1)
+    .map(([title, pages]) => ({ title, pages }));
+}
+
+function structuralStatus({ brokenEdges, duplicateTitleGroups, orphanPages }) {
+  // A typed link pointing to nowhere invalidates the graph as a navigable
+  // structure, independently of any aggregate quality score.
+  if (brokenEdges.length > 0) return 'structurally_broken';
+  if (duplicateTitleGroups.length > 0 || orphanPages.length > 0) return 'usable_with_warnings';
+  return 'healthy';
+}
+
 function buildUnlocked(options = {}) {
-  ensureDir(path.join(stateRoot, 'maps'));
   const pages = walk(wikiRoot);
   const pageSet = new Set(pages.map((abs) => rel(abs, wikiRoot)));
   const nodes = [];
@@ -373,8 +427,10 @@ function buildUnlocked(options = {}) {
   for (const edge of sourceTruthEdges()) addEdge(edges, edgeSeen, edge);
 
   for (const abs of pages) {
+    assertSafeContainedPath(knowledgeRoot, abs);
     const page = rel(abs, wikiRoot);
     const raw = fs.readFileSync(abs, 'utf8');
+    assertSafeContainedPath(knowledgeRoot, abs);
     const fm = parseFrontmatter(raw);
     const title = titleFrom(fm.body, page);
     const node = {
@@ -437,10 +493,16 @@ function buildUnlocked(options = {}) {
   const orphan_pages = wikiNodes
     .filter((node) => !['index.md', 'log.md'].includes(node.id) && !node.id.endsWith('/README.md') && !(incoming.get(node.id) || 0))
     .map((node) => node.id);
+  const duplicate_title_groups = duplicateTitles(wikiNodes);
+  const structural_status = structuralStatus({
+    brokenEdges: broken_edges,
+    duplicateTitleGroups: duplicate_title_groups,
+    orphanPages: orphan_pages
+  });
   const relation_counts = relationCounts(edges);
 
   const graph = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -453,12 +515,21 @@ function buildUnlocked(options = {}) {
     source_truth_node_count: SOURCE_TRUTH.length,
     broken_edge_count: broken_edges.length,
     orphan_page_count: orphan_pages.length,
+    duplicate_title_count: duplicate_title_groups.length,
+    structural_status,
+    structural_issues: {
+      broken_typed_edges: broken_edges.length,
+      duplicate_title_groups,
+      orphan_pages
+    },
     allowed_edge_types: allowedTypes,
     summary: {
       source_truth_order: SOURCE_TRUTH.map((item) => item.title),
       relation_counts,
       orphan_pages,
       broken_edges: broken_edges.length,
+      duplicate_title_groups,
+      structural_status,
       actionable_checks: [
         'Keep source-of-truth order visible.',
         'Add typed wiki links for durable project-specific relations.',
@@ -470,7 +541,11 @@ function buildUnlocked(options = {}) {
     edges,
     broken_edges
   };
-  writeJsonAtomic(path.join(stateRoot, 'maps', 'wiki_graph.json'), graph);
+  writeJsonAtomicContained(
+    path.join(stateRoot, 'maps', 'wiki_graph.json'),
+    graph,
+    stateRoot
+  );
   if (!options.quiet) {
     console.log(JSON.stringify({
       written: context.mode === 'repo' ? '.knowledge/maps/wiki_graph.json' : path.join(stateRoot, 'maps', 'wiki_graph.json'),
@@ -479,13 +554,20 @@ function buildUnlocked(options = {}) {
       nodes: nodes.length,
       edges: edges.length,
       broken_edges: broken_edges.length,
-      orphan_pages: orphan_pages.length
+      orphan_pages: orphan_pages.length,
+      structural_status
     }, null, 2));
   }
   return graph;
 }
 
-function main(options = {}) { return options.skipLock ? buildUnlocked(options) : withLock(lockDir, () => buildUnlocked(options)); }
+function main(options = {}) {
+  assertSafeContainmentRoot(stateRoot);
+  assertSafeContainmentRoot(knowledgeRoot);
+  return options.skipLock
+    ? buildUnlocked(options)
+    : withContainedLock(WIKI_GRAPH_LOCK, () => buildUnlocked(options));
+}
 module.exports = main;
 if (require.main === module) {
   try { main({ quiet: process.argv.includes('--quiet') }); }

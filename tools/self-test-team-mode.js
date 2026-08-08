@@ -6,6 +6,14 @@ const path = require('path');
 const os = require('os');
 const { spawnSync, spawn } = require('child_process');
 const { systemVersion } = require('./lib/system-version');
+const { canonicalOwnerText } = require('./lib/lock-owner-schema');
+const { LOCKS } = require('./lib/lock-policy');
+let packageShouldExclude = null;
+try {
+  packageShouldExclude = require('./package-release').shouldExclude;
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND') throw error;
+}
 
 const sourceKnowledgeRoot = path.resolve(__dirname, '..');
 const keepTemp = process.argv.includes('--keep-temp');
@@ -17,10 +25,37 @@ process.on('exit', () => {
   }
 });
 
+function isolatedChildEnv(overrides = {}) {
+  const env = { ...process.env };
+  const controlledKeys = new Set([
+    'KNOWLEDGE_MODE',
+    'KNOWLEDGE_SYSTEM_ROOT',
+    'KNOWLEDGE_TARGET_ROOT',
+    'KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT',
+    'KNOWLEDGE_STATE_ROOT',
+    'KNOWLEDGE_AGENT_ID',
+    'KNOWLEDGE_DISABLE_GIT_DISCOVERY',
+    'KNOWLEDGE_FLOW_NO_OPEN',
+    'KNOWLEDGE_INSPECTOR_NO_OPEN',
+    'KNOWLEDGE_TEAM_ROOT',
+    'KNOWLEDGE_WORKSPACE_ID',
+    'KNOWLEDGE_REPO_ID'
+  ]);
+  for (const key of Object.keys(env)) {
+    if (controlledKeys.has(key.toUpperCase())) delete env[key];
+  }
+  return {
+    ...env,
+    KNOWLEDGE_FLOW_NO_OPEN: '1',
+    KNOWLEDGE_INSPECTOR_NO_OPEN: '1',
+    ...overrides
+  };
+}
+
 function run(cmd, args, options = {}) {
   const result = spawnSync(cmd, args, {
     cwd: options.cwd,
-    env: { ...process.env, ...(options.env || {}) },
+    env: isolatedChildEnv(options.env || {}),
     encoding: 'utf8',
     windowsHide: true,
     timeout: options.timeoutMs || 120000
@@ -54,26 +89,37 @@ function parseJson(result) {
   }
 }
 
-function copyKnowledge(targetRoot) {
+function shouldExcludeFromInstalledFixture(rel, entry) {
+  if (packageShouldExclude) return packageShouldExclude(rel, entry).exclude;
+  const segments = rel.split('/');
+  if (rel === '.gitignore' || rel === 'project_index.json' || rel === 'freshness.json') return true;
+  if (['.git', '.github', '.qa-tmp', '.self-test-tmp', 'benchmark-runs', 'dist', 'exports', 'inspector', 'modules', 'node_modules', 'pro', 'search'].includes(segments[0])) return true;
+  if (segments.includes('.lock') || segments.includes('.runtime')) return true;
+  if (rel.startsWith('maintenance/') && !['maintenance/concurrency_policy.json', 'maintenance/restore-trust-report.md'].includes(rel)) return true;
+  if (rel.startsWith('maps/') && rel !== 'maps/critical_paths.json') return true;
+  if (rel === 'sessions/active_task.json' || rel.startsWith('sessions/active_tasks/')) return true;
+  if (/^metrics\/(baseline|external_memory)\.json$/i.test(rel)) return true;
+  if (/^external_memory\/(mem0|legacy|claude_mem|claude|claude-auto-memory)(\/|$)/i.test(rel)) return true;
+  return /\.tmp-|\.bak-|\.zip$|\.log$|\.cache$/i.test(rel);
+}
+
+function copyInstalledKnowledge(targetRoot) {
   const dest = path.join(targetRoot, '.knowledge');
   fs.cpSync(sourceKnowledgeRoot, dest, {
     recursive: true,
     force: true,
     filter: (src) => {
       const rel = path.relative(sourceKnowledgeRoot, src).replace(/\\/g, '/');
-      return rel !== '.git' &&
-        !rel.startsWith('.git/') &&
-        !rel.startsWith('dist/') &&
-        !rel.startsWith('node_modules/') &&
-        !rel.startsWith('.qa-tmp/') &&
-        !rel.startsWith('.self-test-tmp/') &&
-        !rel.startsWith('maintenance/install-backups/') &&
-        !rel.startsWith('maintenance/update-downloads/') &&
-        !rel.startsWith('.lock') &&
-        !rel.includes('/.lock/') &&
-        !rel.includes('.tmp-');
+      if (!rel) return true;
+      let entry;
+      try { entry = fs.statSync(src); } catch { return false; }
+      return !shouldExcludeFromInstalledFixture(rel, entry);
     }
   });
+  fs.copyFileSync(
+    path.join(sourceKnowledgeRoot, 'templates', 'git-policy', '.knowledge.gitignore'),
+    path.join(dest, '.gitignore')
+  );
 }
 
 function walkJson(dir, out = []) {
@@ -98,7 +144,7 @@ function spawnNode(script, args, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [script, ...args], {
       cwd: options.cwd,
-      env: { ...process.env, ...(options.env || {}) },
+      env: isolatedChildEnv(options.env || {}),
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -126,7 +172,13 @@ async function main() {
   must('git', ['config', 'user.name', 'Knowledge Test'], { cwd: repo });
   fs.writeFileSync(path.join(repo, 'package.json'), '{"name":"fixture","version":"1.0.0"}\n', 'utf8');
   fs.writeFileSync(path.join(repo, 'index.js'), 'module.exports = 1;\n', 'utf8');
-  copyKnowledge(repo);
+  copyInstalledKnowledge(repo);
+  const importFlow = parseJson(nodeTool(repo, 'flow.js', ['import', '--json', '--no-color'], {
+    cwd: repo,
+    env: { KNOWLEDGE_FLOW_NO_OPEN: '1', KNOWLEDGE_AGENT_ID: 'team-self-test-import' }
+  }));
+  assert(importFlow.status === 'ok', `fresh installed fixture import failed: ${JSON.stringify(importFlow)}`);
+  assert(fs.existsSync(path.join(repo, '.knowledge', 'project_index.json')), 'fresh installed fixture import did not create project_index.json');
   must('git', ['add', 'package.json', 'index.js'], { cwd: repo });
   must('git', ['add', '-f', '.knowledge'], { cwd: repo });
   must('git', ['commit', '-m', 'initial fixture'], { cwd: repo });
@@ -149,9 +201,23 @@ async function main() {
   const duplicateAgent = parseJson(nodeTool(w2, 'workspace-register.js', ['--team-root', teamRoot, '--target-root', w2, '--workspace-id', 'claude-duplicate-agent', '--agent-id', 'claude-01', '--json'], { cwd: w2 }));
   assert((duplicateAgent.workspace.warnings || []).some((warning) => /agentId duplicate/i.test(warning)), 'duplicate agentId warning missing');
 
-  const staleLockPath = path.join(teamRoot, 'repos', reg1.context.repoId, 'locks', 'flow.lock');
-  fs.mkdirSync(path.dirname(staleLockPath), { recursive: true });
-  fs.writeFileSync(staleLockPath, JSON.stringify({ pid: 99999999, agentId: 'stale', started_at: '2000-01-01T00:00:00.000Z' }, null, 2), 'utf8');
+  const staleLockPath = path.join(teamRoot, 'repos', reg1.context.repoId, 'locks', 'v1', 'team-flow.lock');
+  fs.mkdirSync(staleLockPath, { recursive: true });
+  fs.writeFileSync(path.join(staleLockPath, 'owner.json'), canonicalOwnerText({
+    schema_version: 'knowledge-lock-owner.v1',
+    lock_id: '123e4567-e89b-42d3-a456-426614174000',
+    lock_name: 'team-flow',
+    purpose: LOCKS['team-flow'].purpose,
+    pid: 2147483647,
+    hostname: os.hostname(),
+    agent_id: 'stale',
+    workspace_id: 'codex-task-1',
+    process_started_at: '2000-01-01T00:00:00.000Z',
+    acquired_at: '2000-01-01T00:00:00.000Z',
+    nonce: 'a'.repeat(64)
+  }), 'utf8');
+  const oldLockTime = new Date('2000-01-01T00:00:00.000Z');
+  fs.utimesSync(staleLockPath, oldLockTime, oldLockTime);
 
   const flow1 = spawnNode(path.join(w1, '.knowledge', 'tools', 'flow.js'), ['doctor', '--team-root', teamRoot, '--target-root', w1, '--workspace-id', 'codex-task-1', '--agent-id', 'codex-01', '--json'], { cwd: w1, env: { CLAUDE_MEMORY_PATH: sharedMemory } });
   const flow2 = spawnNode(path.join(w2, '.knowledge', 'tools', 'flow.js'), ['release', '--team-root', teamRoot, '--target-root', w2, '--workspace-id', 'claude-task-2', '--agent-id', 'claude-01', '--exclusive', '--json'], { cwd: w2, env: { CLAUDE_MEMORY_PATH: sharedMemory } });
@@ -162,6 +228,50 @@ async function main() {
   const doctorStep = (doctorFlow.steps || []).find((step) => step.step === 'doctor');
   assert(doctorStep?.status === 'pass', 'team doctor did not report a semantic pass');
   assert((doctorStep.semantic_errors || []).length === 0, 'team doctor exposed semantic errors');
+
+  const projectIndexPath = path.join(w1, '.knowledge', 'project_index.json');
+  const projectIndexBackup = `${projectIndexPath}.self-test-backup`;
+  let failedExclusive = null;
+  let failedExclusiveFlow = null;
+  let failedExclusiveLog = null;
+  try {
+    fs.renameSync(projectIndexPath, projectIndexBackup);
+    failedExclusive = run(process.execPath, [
+      path.join(w1, '.knowledge', 'tools', 'flow.js'),
+      'doctor',
+      '--team-root', teamRoot,
+      '--target-root', w1,
+      '--workspace-id', 'codex-task-1',
+      '--agent-id', 'codex-01',
+      '--exclusive',
+      '--json',
+      '--no-color'
+    ], { cwd: w1, env: { CLAUDE_MEMORY_PATH: sharedMemory } });
+    assert(!fs.existsSync(staleLockPath), 'failed exclusive flow did not release flow.lock immediately');
+    failedExclusiveFlow = parseJson(failedExclusive);
+    const flowLogPath = path.isAbsolute(failedExclusiveFlow.flow_log)
+      ? failedExclusiveFlow.flow_log
+      : path.resolve(w1, failedExclusiveFlow.flow_log);
+    failedExclusiveLog = JSON.parse(fs.readFileSync(flowLogPath, 'utf8'));
+  } finally {
+    if (fs.existsSync(projectIndexBackup)) fs.renameSync(projectIndexBackup, projectIndexPath);
+  }
+  assert(failedExclusive && !failedExclusive.ok, 'exclusive doctor should fail when project_index.json is missing');
+  assert(failedExclusiveFlow?.status === 'failed', 'failed exclusive doctor did not report failed flow status');
+  const failedDoctorStep = (failedExclusiveLog?.steps || []).find((step) => step.step === 'doctor');
+  assert(failedDoctorStep?.success === false, 'failed exclusive doctor did not preserve semantic failure');
+  assert(
+    (failedDoctorStep?.parsed?.issues || []).some((item) =>
+      item.code === 'missing_required_file' &&
+      /project_index\.json/i.test(`${item.artifact || ''} ${item.message || ''}`)
+    ),
+    'failed exclusive doctor log did not preserve missing project_index.json evidence'
+  );
+  const failedWorkspace = JSON.parse(fs.readFileSync(
+    path.join(teamRoot, 'repos', reg1.context.repoId, 'workspaces', 'codex-task-1', 'workspace.json'),
+    'utf8'
+  ));
+  assert(failedWorkspace.last_status === 'failed', 'failed exclusive doctor did not set workspace last_status to failed');
 
   const requiredWorkspaceRuntime = [
     'freshness.json',
@@ -238,6 +348,7 @@ async function main() {
       'duplicate agentId warning',
       'parallel doctor/release exclusive flows',
       'team doctor semantic health and runtime regeneration',
+      'failed exclusive doctor releases lock and records semantic failure',
       'stale lock cleanup',
       'JSON corruption scan',
       'lock released',

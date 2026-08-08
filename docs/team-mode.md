@@ -789,3 +789,16 @@ team mode is done when:
 - Windows/PowerShell paths, spaces and Cyrillic paths pass tests;
 - Inspector has Team Mode panel;
 - Inspector Pro can build on top of the same registry without changing free core semantics.
+
+## Repair-on-touch in team and worktree mode
+
+Repair planning, executions, receipts, transactions, and telemetry use the
+resolved workspace `stateRoot`; curated module metadata uses that workspace's
+`projectKnowledgeRoot`. Agents must use stable IDs and separate worktrees.
+
+The same lifecycle cannot be closed twice: the platform-neutral lock and atomic
+transaction serialize the exact close operation. A team policy may cap an
+agent's requested mode (for example, `aggressive` to `scoped`) but cannot relax
+hard safety, source containment, required verification, or protected-finding
+confirmation. Receipts from one workspace are not accepted as evidence for a
+different task/session/source snapshot.

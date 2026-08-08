@@ -3,12 +3,13 @@
 
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const os = require('os');
 const path = require('path');
 const { spawnSync, spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.11';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.3.0';
 const keepTemp = process.argv.includes('--keep-temp');
 const teamModeFixtureRequested = process.argv.includes('--team-mode-fixture');
 let rootForCleanup = null;
@@ -76,10 +77,14 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForServer(port, child) {
+async function waitForServer(port, child, diagnostics) {
   let lastError = null;
   for (let i = 0; i < 50; i += 1) {
-    if (child.exitCode !== null) throw new Error(`Inspector server exited early with ${child.exitCode}`);
+    if (child.exitCode !== null) {
+      throw new Error(
+        `Inspector server exited early with ${child.exitCode}\n${diagnostics()}`
+      );
+    }
     try {
       const res = await requestJson(port, 'GET', '/api/session');
       if (res.status === 200 && res.json?.token) return res;
@@ -88,7 +93,20 @@ async function waitForServer(port, child) {
     }
     await delay(100);
   }
-  throw lastError || new Error('Inspector server did not become ready.');
+  throw new Error(
+    `${lastError?.message || 'Inspector server did not become ready.'}\n${diagnostics()}`
+  );
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 async function main() {
@@ -296,22 +314,43 @@ async function main() {
     module_statuses: [{ module_id: 'fixture', trust_status: 'routing_trusted', confidence: 'medium', path: 'README.md' }]
   }, null, 2) + '\n', 'utf8');
 
-  const port = 18000 + Math.floor(Math.random() * 20000);
-  const server = spawn(process.execPath, [
-    path.join(systemRoot, 'tools', 'serve-inspector.js'),
-    '--port', String(port),
-    '--system-root', systemRoot,
-    '--project-knowledge-root', project,
-    '--target-root', project,
-    '--state-root', state
-  ], {
-    cwd: systemRoot,
-    env: { ...process.env, KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH: '1' },
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  let port = null;
+  let server = null;
+  let sessionRes = null;
+  let serverStdout = '';
+  let serverStderr = '';
+  let launchAttempts = 0;
+  const diagnostics = () =>
+    `STDOUT:\n${serverStdout}\nSTDERR:\n${serverStderr}`;
+  for (launchAttempts = 1; launchAttempts <= 3; launchAttempts += 1) {
+    port = await getFreePort();
+    serverStdout = '';
+    serverStderr = '';
+    server = spawn(process.execPath, [
+      path.join(systemRoot, 'tools', 'serve-inspector.js'),
+      '--port', String(port),
+      '--system-root', systemRoot,
+      '--project-knowledge-root', project,
+      '--target-root', project,
+      '--state-root', state
+    ], {
+      cwd: systemRoot,
+      env: { ...process.env, KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH: '1' },
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    server.stdout.on('data', (chunk) => { serverStdout += chunk.toString(); });
+    server.stderr.on('data', (chunk) => { serverStderr += chunk.toString(); });
+    try {
+      sessionRes = await waitForServer(port, server, diagnostics);
+      break;
+    } catch (error) {
+      server.kill();
+      if (launchAttempts === 3) throw error;
+      await delay(100);
+    }
+  }
   try {
-    const sessionRes = await waitForServer(port, server);
     const denied = await requestJson(port, 'GET', '/api/state');
     assert(denied.status === 401, 'Inspector API state must require token.');
     const stateRes = await requestJson(port, 'GET', '/api/state', null, sessionRes.json.token);
@@ -326,6 +365,15 @@ async function main() {
     assert(pageRes.body.includes('data-onboarding-agent-select="true"'), 'live onboarding missing connected agent dropdown.');
     assert(pageRes.body.includes('Codex Agent') && pageRes.body.includes('Claude Agent'), 'live onboarding should list connected agents.');
     assert(pageRes.body.includes('data-table-search="modules"'), 'live Inspector should render shared Knowledge Trust table filters.');
+    assert(pageRes.body.includes('data-table-search="modules" aria-label="Filter modules"'), 'module filter input needs a programmatic label.');
+    assert(pageRes.body.includes('data-table-filter="modules" aria-label="Filter modules by trust level"'), 'module trust filter needs a programmatic label.');
+    const builderSource = fs.readFileSync(path.join(systemRoot, 'tools', 'build-visual-inspector.js'), 'utf8');
+    assert(builderSource.includes('data-table-search="repair" aria-label="Filter repair queue"'), 'repair filter input needs a programmatic label.');
+    assert(builderSource.includes('data-table-filter="repair" aria-label="Filter repair queue by priority"'), 'repair priority filter needs a programmatic label.');
+    assert(builderSource.includes('data-table-search="critical" aria-label="Filter critical files"'), 'critical file filter input needs a programmatic label.');
+    assert(builderSource.includes('data-table-filter="critical" aria-label="Filter files by criticality"'), 'criticality filter needs a programmatic label.');
+    assert(builderSource.includes('data-table-search="stale" aria-label="Filter stale items"'), 'stale filter input needs a programmatic label.');
+    assert(builderSource.includes('data-table-filter="stale" aria-label="Filter stale items by status"'), 'stale status filter needs a programmatic label.');
     assert(pageRes.body.includes('Trust repair prompt for agent'), 'live Inspector missing trust repair prompt copy action.');
     assert(pageRes.body.includes('metric-card'), 'live Inspector missing metric card styling.');
     assert(pageRes.body.includes('data-shutdown="true"'), 'live Inspector missing Turn off button.');
@@ -400,7 +448,10 @@ async function main() {
     const deniedAutoCheck = await requestJson(port, 'POST', '/api/update/auto-check', { enabled: false });
     assert(deniedAutoCheck.status === 401, 'auto-check toggle must require token.');
     const autoCheckOff = await requestJson(port, 'POST', '/api/update/auto-check', { enabled: false }, sessionRes.json.token);
-    assert(autoCheckOff.status === 200 && autoCheckOff.json?.status?.auto_check_on_inspector_open === false, 'auto-check toggle should turn off start-up checks.');
+    assert(
+      autoCheckOff.status === 200 && autoCheckOff.json?.status?.auto_check_on_inspector_open === false,
+      `auto-check toggle should turn off start-up checks: ${JSON.stringify(autoCheckOff)}`
+    );
     const autoCheckOn = await requestJson(port, 'POST', '/api/update/auto-check', { enabled: true }, sessionRes.json.token);
     assert(autoCheckOn.status === 200 && autoCheckOn.json?.status?.auto_check_on_inspector_open === true, 'auto-check toggle should turn start-up checks back on.');
   } finally {
@@ -446,6 +497,7 @@ async function main() {
     team_mode_fixture_requested: teamModeFixtureRequested,
     temp_root: keepTemp ? root : null,
     temp_root_cleaned: !keepTemp,
+    inspector_server_launch_attempts: launchAttempts,
     checks: [
       'all canonical tabs render',
       'forbidden top-level tabs are absent',

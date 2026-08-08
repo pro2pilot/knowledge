@@ -6,7 +6,9 @@ const fs = require('fs');
 const { spawnSync } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
 const { providerStateDir, findManifest, buildExternalMemoryReport } = require('./lib/memory-providers');
-const { ensureDir, readJson, writeJsonAtomic, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const {
   checkPythonModule,
   collectPythonCandidates,
@@ -468,9 +470,20 @@ function filterSafeStderr(value) {
   return kept.join('\n').trim();
 }
 
-function liveLockDir(context) {
-  const manifest = findManifest(context, 'mem0-oss');
-  return path.join(providerStateDir(context, manifest), '.runtime', 'live-qdrant.lock');
+function liveLockRequest(context, timeoutMs) {
+  return {
+    context,
+    rootKind: 'state',
+    rootPath: context.stateRoot,
+    lockName: 'memory-provider',
+    purpose: LOCKS['memory-provider'].purpose,
+    timeoutMs
+  };
+}
+
+function isContainedLockBusyError(error) {
+  return error?.code === 'lock_timeout' ||
+    /Timed out waiting for knowledge lock|Lock "[^"]+" is held by pid/i.test(String(error?.message || ''));
 }
 
 function runLivePythonProcess(selectedPython, flags, payload, context, script) {
@@ -686,19 +699,21 @@ except Exception as exc:
   let res;
   try {
     res = liveOperationUsesLocalQdrant(payload)
-      ? withLock(liveLockDir(context), () => runLivePythonProcess(selectedPython, flags, payload, context, script), {
-        timeoutMs: numericTimeout(flags.lockTimeoutMs, 10000)
-      })
+      ? withContainedLock(
+        liveLockRequest(context, numericTimeout(flags.lockTimeoutMs, 10000)),
+        () => runLivePythonProcess(selectedPython, flags, payload, context, script)
+      )
       : runLivePythonProcess(selectedPython, flags, payload, context, script);
   } catch (error) {
     restoreCanonicalLiveConfig(flags, context);
+    const lockBusy = isContainedLockBusyError(error);
     return redactSecrets({
       ok: false,
-      diagnostic_code: /Timed out waiting for knowledge lock/.test(error.message) ? 'qdrant_lock_busy' : 'unknown_live_adapter_error',
+      diagnostic_code: lockBusy ? 'qdrant_lock_busy' : 'unknown_live_adapter_error',
       error: error.message,
       python_discovery: discovery,
       selected_python: selectedPython,
-      next_commands: liveFailureNextCommands(/Timed out waiting for knowledge lock/.test(error.message) ? 'qdrant_lock_busy' : 'unknown_live_adapter_error', selectedPython, payload?.op),
+      next_commands: liveFailureNextCommands(lockBusy ? 'qdrant_lock_busy' : 'unknown_live_adapter_error', selectedPython, payload?.op),
       version: moduleCheck.version || null
     });
   }
@@ -1043,7 +1058,7 @@ function runtimeStatusSnapshot(result, context, previous = null) {
     ? resultCount
     : previousRetrievalCount;
   return {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     provider_id: 'mem0-oss',
     adapter_id: 'live',
     checked_at: checkedAt,
@@ -1076,7 +1091,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     tool: 'memory-mem0.js',
     usage: 'node .knowledge/tools/memory-mem0.js <command> [query] [options] --json',
     commands: [
@@ -1150,6 +1165,7 @@ module.exports.__test = {
   liveProcessEnv,
   encodeLivePythonPayload,
   hasExplicitLiveConfig,
+  isContainedLockBusyError,
   livePublicRecords,
   mem0RuntimeDirForConfig,
   normalizeDiagnosticCode,

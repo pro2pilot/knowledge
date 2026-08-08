@@ -4,12 +4,21 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { ensureDir, readJson, writeJsonAtomic, normalizeRelative, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, normalizeRelative, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { autoTrackFromCriticality } = require('./lib/freshness');
 
 const repoRoot = process.cwd();
 const kitRoot = path.resolve(__dirname, '..');
 const knowledgeRoot = path.join(repoRoot, '.knowledge');
+const INGEST_LOCK = Object.freeze({
+  context: { projectKnowledgeRoot: knowledgeRoot },
+  rootKind: 'project',
+  rootPath: knowledgeRoot,
+  lockName: 'ingest',
+  purpose: LOCKS.ingest.purpose
+});
 const agentId = getAgentId();
 const GENERATED_WORKSPACE_DIR_PATTERNS = [
   /^\.knowledge[_-]backup(?:[_-].*)?$/i,
@@ -325,7 +334,7 @@ function getCriticality(pathStr) {
 function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   runBootstrapIfNeeded();
-  return withLock(path.join(knowledgeRoot, '.lock'), () => {
+  return withContainedLock(INGEST_LOCK, () => {
     ensureDir(path.join(knowledgeRoot, 'modules'));
     ensureDir(path.join(knowledgeRoot, 'maps'));
     ensureDir(path.join(knowledgeRoot, 'invariants'));
@@ -505,7 +514,7 @@ if (require.main === module) {
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     console.error(error.stack || error.message);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 

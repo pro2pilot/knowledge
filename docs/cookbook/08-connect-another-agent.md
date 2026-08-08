@@ -29,3 +29,7 @@ Then the new agent reads:
 
 If another agent has active unmerged work, use separate branches or worktrees
 and set a stable `KNOWLEDGE_AGENT_ID`.
+
+## Integration coexistence
+
+AGENTS.md-compatible runtimes (`codex`, `openclaw`, `hermes`, and `devin`) share one neutral managed block, so installing a new runtime does not replace another runtime-specific block. Devin and Windsurf are additionally isolated in `.devin/rules/knowledge.rules` and `.windsurf/rules/knowledge.md`. Re-running an installer is idempotent and preserves text outside `.knowledge` managed blocks.

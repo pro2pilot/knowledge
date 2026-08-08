@@ -5,11 +5,19 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const knowledgeRoot = path.resolve(__dirname, '..');
-const lockDir = path.join(knowledgeRoot, '.lock');
+const WATCH_LOCK = Object.freeze({
+  context: { stateRoot: knowledgeRoot },
+  rootKind: 'state',
+  rootPath: knowledgeRoot,
+  lockName: 'watch-maintenance',
+  purpose: LOCKS['watch-maintenance'].purpose
+});
 const automationStatusPath = path.join(knowledgeRoot, 'maintenance', 'automation_status.json');
 const runtimeRoot = path.join(knowledgeRoot, '.runtime');
 const watchersDir = path.join(runtimeRoot, 'watchers');
@@ -42,7 +50,7 @@ function isWatcherStale(watcher) {
 }
 
 function updateAutomationStatus(extra = {}) {
-  return withLock(lockDir, () => {
+  return withContainedLock(WATCH_LOCK, () => {
     const current = readJson(automationStatusPath, { mode: 'event-driven' });
     const activeWatchers = current.active_watchers || {};
     for (const [id, watcher] of Object.entries(activeWatchers)) {

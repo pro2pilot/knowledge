@@ -22,15 +22,15 @@ The free/core graph must be useful without Pro Inspector. It explains local trus
 | Data usefulness | 9/10 | Fresh graph has source-truth, module, wiki nodes, and inferred relations even before custom links exist. |
 | Visual usefulness | 9/10 | Inspector shows lanes, colored relation legend, metrics, diagnostics, and rebuild command. |
 | Canon alignment | 9/10 | Free graph stays local/static and explains trust; Pro-only interactive/history/provider fleet behavior remains out of scope. |
-| QA coverage | 9/10 | `tools/self-test-free-core-graph.js` blocks zero-edge or missing-source-truth regressions. |
+| QA coverage | 9/10 | Public verification rebuilds the graph, runs strict wiki lint, and checks Doctor. Deeper release regression tests stay in the maintainer source tree. |
 
 ## Commands
 
 ```bash
 node .knowledge/tools/build-wiki-graph.js
-node .knowledge/tools/lint-wiki.js
+node .knowledge/tools/lint-wiki.js --strict
+node .knowledge/tools/doctor.js
 node .knowledge/tools/build-visual-inspector.js
-node .knowledge/tools/self-test-free-core-graph.js
 ```
 
 ## What The Free Graph Is Not

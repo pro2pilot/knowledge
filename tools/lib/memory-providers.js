@@ -577,7 +577,7 @@ function buildExternalMemoryReport(context, options = {}) {
   ]));
   const providerStatuses = Object.fromEntries(providers.map((provider) => [provider.provider_id.replace(/-/g, '_'), provider]));
   const metrics = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -591,7 +591,7 @@ function buildExternalMemoryReport(context, options = {}) {
     unknown_license_count: providers.filter((provider) => !provider.license_spdx || provider.license_spdx === 'unknown').length
   };
   const report = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -686,7 +686,7 @@ function recordInstall(context, providerId, flags = {}, options = {}) {
   }
   const dir = providerStateDir(context, manifest);
   const receipt = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     installed_at: null,
@@ -756,7 +756,7 @@ function recordUpdate(context, providerId, flags = {}, options = {}) {
   requireConfirmation(flags, 'update');
   const toVersion = requireVersion(flags.to || flags.version, 'update');
   const receipt = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     provider_id: manifest.id,
     recorded_at: nowIso(),
     updated_at: null,
@@ -1352,7 +1352,7 @@ function writeMem0EmbeddingConfig(context, manifest, spec, flags = {}) {
 
   writeJsonAtomic(configPath, nextConfig);
   const meta = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     provider_id: manifest.id,
     generated_at: nowIso(),
     generated_by: getAgentId(),
@@ -1460,7 +1460,7 @@ function ensureMem0RepoConfig(context, manifest, flags = {}) {
   }
   writeJsonAtomic(configPath, nextConfig);
   writeJsonAtomic(metaPath, {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     provider_id: manifest.id,
     generated_at: nowIso(),
     config_path: configPath,
@@ -1891,10 +1891,10 @@ function setupMem0Provider(context, providerId, flags = {}, options = {}) {
     recordInstall(context, manifest.id, { ...flags, version, yesIReviewedLicense: true }, options);
     receipt = safeReadJson(receiptFile, null);
     receiptAction = 'created';
-  } else if (receipt.schema_version !== '3.2.11') {
+  } else if (receipt.schema_version !== '3.3.0') {
     receipt = {
       ...receipt,
-      schema_version: '3.2.11',
+      schema_version: '3.3.0',
       migrated_at: nowIso(),
       migration_note: 'Mem0 install receipt schema migrated by setup; no install or network action was executed.'
     };
@@ -2012,7 +2012,7 @@ function uninstallProvider(context, providerId, flags = {}, options = {}) {
   const dir = providerStateDir(context, manifest);
   const receipt = safeReadJson(receiptPath(context, manifest), {});
   const uninstall = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     provider_id: manifest.id,
     uninstalled_at: nowIso(),
     uninstall_mode: 'manual_receipt',
@@ -2087,7 +2087,7 @@ function listProviders(context, options = {}) {
   const manifests = loadProviderManifests(context, options);
   return {
     ok: true,
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     generated_at: nowIso(),
     mode: context.mode,
     providers: manifests.map((manifest) => ({

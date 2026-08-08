@@ -17,7 +17,7 @@ Outputs:
 
 ## Token estimator
 
-All bundled smoke-test token numbers use one local estimator:
+All installed local context estimates use one deterministic estimator:
 
 ```txt
 words = text.match(/\S+/g).length
@@ -55,7 +55,7 @@ Replaces code review.
 - Visual Inspector availability.
 - Maintenance flow latency.
 
-## Recommended demo command
+## Recommended local evidence command
 
 ```bash
 node .knowledge/tools/flow.js release --no-color

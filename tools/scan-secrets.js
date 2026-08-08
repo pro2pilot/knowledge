@@ -8,7 +8,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { systemVersion } = require('./lib/system-version');
 
@@ -16,7 +18,13 @@ const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
-const lockDir = path.join(stateRoot, '.lock');
+const SECRET_SCAN_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: stateRoot,
+  lockName: 'secret-scan',
+  purpose: LOCKS['secret-scan'].purpose
+});
 const reportPath = path.join(stateRoot, 'maintenance', 'secret_scan_report.json');
 
 // positive rates. Tuned not to fire on placeholders like "xxx" or "<...>".
@@ -35,7 +43,7 @@ const RULES = [
 
 // Files we never scan (binaries, large artefacts).
 const SKIP_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf', '.zip', '.tar', '.gz', '.bz2', '.7z', '.exe', '.dll', '.so', '.dylib', '.bin', '.mp4', '.mp3', '.wav', '.woff', '.woff2', '.ttf', '.eot']);
-const SKIP_DIR = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.cache', '.qa-tmp', '.self-test-tmp', '.knowledge/.lock', '.knowledge/inspector']);
+const SKIP_DIR = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.cache', '.qa-tmp', '.self-test-tmp', '.knowledge/.lock', '.knowledge/locks', '.knowledge/inspector']);
 
 function nowIso() { return new Date().toISOString(); }
 function rel(abs) { return path.relative(repoRoot, abs).replace(/\\/g, '/'); }
@@ -180,7 +188,7 @@ function main(argv = process.argv.slice(2)) {
 }
 
 if (require.main === module) {
-  try { withLock(lockDir, () => main()); }
+  try { withContainedLock(SECRET_SCAN_LOCK, () => main()); }
   catch (error) { console.error(error.stack || error.message); process.exit(1); }
 }
 

@@ -1,47 +1,40 @@
+name: "Field report"
+description: "Share evidence from real .knowledge use."
 title: "[Field report] "
+labels:
+  - "field-report"
 body:
   - type: markdown
     attributes:
-      value: |
-        # Field Report: Testing Pro2Pilot .knowledge
-
-        This report describes hands-on experience with Pro2Pilot .knowledge.
-
-        The goal is to record what was tested, what proved useful, what did not work, and whether adding this extra layer to a repository was worth it.
-
-        **Starting with `.knowledge` 3.2.12**, you can prepare this report semi-automatically with the `field-report` command. It gathers available repository metrics, asks follow-up questions, and creates a draft for you to review before posting.
-
-        **Only include things you actually observed. A formal benchmark is not required.** Optional fields may be left blank. One concrete example with evidence is more useful than a complete but vague report.
-
-        Do not publish secrets, credentials, private source code, personal data, or internal addresses.
-
-        Complete the title as: `[Field report] <project or stack> + <agent> — <main result>`.
-
+      value: "Starting with `.knowledge` 3.3.0, you can prepare this report semi-automatically with the `field-report` command. Answer in any language; the publication-ready draft is always English and requires tester-approved translation when needed. Only include things you actually observed. Review the final title and body before publishing, and never include secrets, private source code, personal data, internal workspace names, or internal addresses."
   - type: input
     id: knowledge-version
     attributes:
       label: ".knowledge version"
-      description: "Enter the release version or commit SHA used during the test."
-      placeholder: "Example: 3.2.12"
+      description: "Release version or commit SHA used during the test."
+      placeholder: "Example: 3.3.0"
     validations:
-      required: true
-
+      required: false
   - type: textarea
     id: project-context
     attributes:
       label: "Project context"
-      description: "Briefly describe your role, the repository (public link or anonymized description), project type and approximate size, technology stack, coding agents used, testing period, and what you used for repository context before .knowledge."
-      placeholder: |
-        Role:
-        Repository:
-        Project type and approximate size:
-        Stack:
-        Coding agent(s):
-        Testing period:
-        Previous context setup:
+      description: "Describe the repository or an anonymized equivalent, stack, agents, testing period, and previous context setup. Repository size is collected automatically."
+      placeholder: "Repository or anonymized description:\nStack:\nCoding agents:\nTesting period:\nPrevious context setup (generalized):"
     validations:
       required: true
-
+  - type: dropdown
+    id: report-relationship
+    attributes:
+      label: "What type of report is this?"
+      description: "Choose the relationship that should be disclosed publicly."
+      options:
+        - "First-party maintainer dogfooding"
+        - "Independent user report"
+        - "Internal QA report"
+        - "Controlled comparison"
+    validations:
+      required: true
   - type: dropdown
     id: keep-using
     attributes:
@@ -53,31 +46,22 @@ body:
         - "I do not have enough evidence yet"
     validations:
       required: true
-
   - type: textarea
     id: quick-summary
     attributes:
       label: "Quick summary"
-      description: "In a few sentences, describe the main result, the most useful part, and the biggest obstacle."
-      placeholder: |
-        Main result:
-        Most useful part:
-        Main obstacle:
+      description: "Give the main result, most useful part, and biggest obstacle."
+      placeholder: "Main result:\nMost useful part:\nMain obstacle:"
     validations:
       required: true
-
-  - type: markdown
-    attributes:
-      value: |
-        ## Setup and workflow fit
-
   - type: input
     id: installation-method
     attributes:
       label: "Installation method"
       description: "How was .knowledge installed?"
-      placeholder: "Example: release asset, installation command, or manual setup"
-
+      placeholder: "Release asset, update command, or manual setup"
+    validations:
+      required: false
   - type: dropdown
     id: workflow-fit
     attributes:
@@ -90,7 +74,6 @@ body:
         - "I could not integrate it into normal work"
     validations:
       required: true
-
   - type: dropdown
     id: agent-intervention
     attributes:
@@ -103,58 +86,30 @@ body:
         - "Not enough evidence"
     validations:
       required: true
-
   - type: textarea
     id: workflow-notes
     attributes:
       label: "Workflow notes"
-      description: "Where did you or the agent have to intervene? What felt convenient, awkward, unnecessary, or too complicated? What would make setup or day-to-day use easier?"
-      placeholder: |
-        Intervention:
-        What felt natural:
-        What felt awkward or unnecessary:
-        Suggested improvement:
-
-  - type: markdown
-    attributes:
-      value: |
-        ## Real test scenario
-
-        Describe at least one real engineering task. Installing the system or running a prepared demo alone is not enough.
-
+      description: "Describe interventions, what felt natural or awkward, and one decision impact."
+      placeholder: "Intervention:\nWhat felt natural:\nWhat felt awkward:\nDecision impact:\nSuggested improvement:"
+    validations:
+      required: true
   - type: textarea
     id: main-scenario
     attributes:
       label: "Main test scenario"
-      description: "Describe the task, the agent used, how .knowledge was involved, the result, whether it changed the next action or engineering decision, and the supporting evidence."
-      placeholder: |
-        Task:
-        Agent:
-        How .knowledge was used:
-        Result:
-        What changed:
-        Supporting evidence:
+      description: "Describe one real engineering task; installation alone is not enough."
+      placeholder: "Task:\nAgent:\nHow .knowledge was used:\nResult:\nWhat changed:\nSupporting evidence:"
     validations:
       required: true
-
   - type: textarea
     id: additional-scenario
     attributes:
       label: "Additional scenario"
-      description: "Optional. Add another real task if it revealed something different."
-      placeholder: |
-        Task:
-        Agent:
-        How .knowledge was used:
-        Result:
-        What changed:
-        Supporting evidence:
-
-  - type: markdown
-    attributes:
-      value: |
-        ## Accuracy and response speed
-
+      description: "Optional second real task."
+      placeholder: "Task:\nResult:\nWhat differed:"
+    validations:
+      required: false
   - type: dropdown
     id: accuracy-change
     attributes:
@@ -167,167 +122,159 @@ body:
         - "Not enough evidence to judge"
     validations:
       required: true
-
   - type: textarea
-    id: accuracy-evidence
+    id: accuracy-example
     attributes:
-      label: "Accuracy evidence"
-      description: "What changed, how did you judge it, and what concrete example supports the assessment? General observation is acceptable when clearly identified as such."
-      placeholder: "Example: fewer wrong-file edits, fewer incorrect assumptions, a better first attempt, or fewer manual corrections."
+      label: "Accuracy example"
+      description: "Give one concrete example, including errors or uncertainty when applicable."
+      placeholder: "Concrete example:"
     validations:
       required: true
-
   - type: dropdown
-    id: response-speed
+    id: accuracy-basis
     attributes:
-      label: "How did .knowledge affect response speed?"
-      description: "Include both acceleration and added delay."
+      label: "What is the basis for the accuracy assessment?"
       options:
-        - "Much slower (more than 25% slower)"
-        - "Slightly slower (1–25% slower)"
-        - "No clear change"
-        - "Slightly faster (1–25% faster)"
-        - "Much faster (more than 25% faster)"
+        - "Measured"
+        - "Objective test result"
+        - "Comparable tasks"
+        - "General observation"
         - "Not enough data"
     validations:
       required: true
-
+  - type: input
+    id: accuracy-sample-count
+    attributes:
+      label: "Accuracy sample count"
+      description: "Optional number of observed examples."
+      placeholder: "Example: 5"
+    validations:
+      required: false
+  - type: dropdown
+    id: speed-scope
+    attributes:
+      label: "What does the speed assessment cover?"
+      options:
+        - "Repository orientation"
+        - "First useful response"
+        - "Full task completion"
+        - "Pull request review"
+        - "Other"
+    validations:
+      required: true
+  - type: dropdown
+    id: response-speed-change
+    attributes:
+      label: "How did .knowledge affect speed for that scope?"
+      options:
+        - "Much slower"
+        - "Slightly slower"
+        - "No clear change"
+        - "Slightly faster"
+        - "Much faster"
+        - "Not enough data"
+    validations:
+      required: true
   - type: input
     id: response-speed-percent
     attributes:
       label: "Optional signed speed estimate"
-      description: "Use a value from -100% to +100%. Negative means slower; positive means faster."
+      description: "Use -100% to +100%. Positive means faster; negative means slower."
       placeholder: "Example: +20% or -15%"
-
+    validations:
+      required: false
   - type: dropdown
     id: response-speed-basis
     attributes:
       label: "How was the speed impact determined?"
       options:
         - "Measured"
-        - "Estimated from several comparable tasks"
-        - "Based on general experience"
+        - "Estimated from comparable tasks"
+        - "General observation"
         - "Not enough data"
     validations:
       required: true
-
+  - type: input
+    id: response-speed-sample-count
+    attributes:
+      label: "Speed sample count"
+      description: "Optional number of measured or comparable samples."
+      placeholder: "Example: 6"
+    validations:
+      required: false
+  - type: input
+    id: baseline-duration-ms
+    attributes:
+      label: "Baseline duration in milliseconds"
+      description: "Required when speed basis is measured."
+      placeholder: "Example: 12500"
+    validations:
+      required: false
+  - type: input
+    id: knowledge-duration-ms
+    attributes:
+      label: ".knowledge duration in milliseconds"
+      description: "Required when speed basis is measured."
+      placeholder: "Example: 9300"
+    validations:
+      required: false
   - type: textarea
     id: response-speed-notes
     attributes:
-      label: "What affected response speed?"
-      description: "For example: less repository exploration, extra validation steps, loading generated context, retries, or manual intervention."
-
-  - type: markdown
-    attributes:
-      value: |
-        ## Observed results and limitations
-
-  - type: dropdown
+      label: "What affected speed?"
+      description: "Mention exploration, validation, loading context, retries, or intervention."
+    validations:
+      required: false
+  - type: textarea
     id: useful-parts
     attributes:
       label: "Which parts were useful?"
-      description: "Select all that apply."
-      multiple: true
-      options:
-        - "Routing bundle"
-        - "Evidence records"
-        - "Trust and freshness states"
-        - "Repair queue"
-        - "PR summary or PR impact"
-        - "Visual Inspector"
-        - "Scoped search"
-        - "Handoff between agents"
-        - "None of the above"
-        - "Other"
-
+      description: "Name only parts you actually used and explain why."
+    validations:
+      required: true
   - type: textarea
     id: observed-results
     attributes:
       label: "Observed results"
-      description: "Describe the most useful concrete result and whether it affected final code or review. Add only metrics you actually observed."
-      placeholder: |
-        Most useful concrete result:
-        Effect on final code or review:
-        Working sessions:
-        Real tasks:
-        Coding agents used:
-        Stale or suspect items found:
-        Contradictions or unsupported claims found:
-        False positives:
-        False negatives:
-        Incorrect or off-target first attempts:
-        Manual corrections requested:
-        Used more than once: Yes / No
-        Used in a real pull request: Yes / No
-
+      description: "Add concrete outcomes and only metrics actually observed."
+    validations:
+      required: false
   - type: textarea
     id: what-did-not-work
     attributes:
       label: "What did not work?"
-      description: "Cover the main problem, bugs, false positives or negatives, unnecessary maintenance, confusing steps, and features you did not use."
-      placeholder: |
-        Main problem:
-        Bugs or errors:
-        False positives:
-        False negatives:
-        Manual work or maintenance overhead:
-        Confusing terms or steps:
-        Unused features and why:
-
-  - type: markdown
-    attributes:
-      value: |
-        ## Comparison and final assessment
-
+      description: "Describe failures, false positives/negatives, confusing steps, or overhead."
+    validations:
+      required: true
   - type: textarea
     id: previous-workflow-comparison
     attributes:
       label: "Comparison with your previous workflow"
-      description: "What did .knowledge add beyond AGENTS.md, CLAUDE.md, code search, or regular documentation? What did the previous workflow do better? Could the same result have been achieved more simply?"
+      description: "Compare with AGENTS.md, normal docs, and code search."
     validations:
       required: true
-
   - type: textarea
     id: final-assessment
     attributes:
       label: "Final assessment"
-      description: "Explain the best fit, when .knowledge would be unnecessary, the three most important improvements, and your final verdict."
-      placeholder: |
-        Best fit:
-        When it is unnecessary:
-        Three most important improvements:
-        1.
-        2.
-        3.
-        Final verdict: Does it solve a real problem, justify the extra repository layer, and would you use it again?
+      description: "Give the best fit, when it is unnecessary, top improvements, and final verdict."
     validations:
       required: true
-
   - type: textarea
     id: supporting-material
     attributes:
       label: "Supporting material"
-      description: "Optional. Add repository, PR, Issue, screenshots, or anonymized artifact excerpts. You can drag and drop files into this field."
-      placeholder: |
-        Repository:
-        Pull request:
-        Issue:
-        Screenshots:
-        Anonymized artifacts:
-
+      description: "Optional public links or anonymized material."
+    validations:
+      required: false
   - type: dropdown
     id: publication-permission
     attributes:
       label: "Permission to reference this report"
       options:
-        - "The project may link to this report and quote short excerpts with attribution"
-        - "The project may link to this report; quotes require separate permission"
-        - "Keep this report on GitHub only; no external use without separate permission"
+        - "The project may link and quote with attribution"
+        - "The project may link; quotes require separate permission"
+        - "Keep this report on GitHub only"
         - "Permission not decided yet"
     validations:
       required: true
-
-  - type: markdown
-    attributes:
-      value: |
-        Before publishing, review the generated discussion body and remove anything private or inaccurate. The tester's final conclusion should remain in the tester's own words.

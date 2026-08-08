@@ -9,7 +9,7 @@ const { spawn, spawnSync } = require('child_process');
 const systemRoot = path.resolve(__dirname, '..');
 const packageJsonPath = path.join(systemRoot, 'package.json');
 const packageJson = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) : {};
-const schemaVersion = packageJson.version || '3.2.11';
+const schemaVersion = packageJson.version || '3.3.0';
 const keepTemp = process.argv.includes('--keep-temp');
 
 function rmWithRetry(targetPath, attempts = 8) {
@@ -137,6 +137,23 @@ async function main() {
       '# Inspector link smoke target\n\nThis file is opened through /api/files/open.\n',
       'utf8'
     );
+    const outsideRoot = path.join(tempRoot, 'outside-workspace');
+    fs.mkdirSync(outsideRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(outsideRoot, 'inspector-secret.txt'),
+      'must-not-cross-inspector-containment',
+      'utf8'
+    );
+    fs.symlinkSync(
+      outsideRoot,
+      path.join(projectRoot, 'linked-outside'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+    fs.symlinkSync(
+      path.join(outsideRoot, 'inspector-secret.txt'),
+      path.join(projectRoot, 'linked-secret.txt'),
+      'file'
+    );
 
     const webModule = {
       module_id: 'web',
@@ -166,6 +183,8 @@ async function main() {
     runNode(knowledgeRoot, [
       path.join(knowledgeRoot, 'tools', 'build-wiki-graph.js'),
       '--quiet',
+      '--system-root',
+      knowledgeRoot,
       '--target-root',
       projectRoot,
       '--project-knowledge-root',
@@ -176,6 +195,8 @@ async function main() {
     runNode(knowledgeRoot, [
       path.join(knowledgeRoot, 'tools', 'build-visual-inspector.js'),
       '--quiet',
+      '--system-root',
+      knowledgeRoot,
       '--target-root',
       projectRoot,
       '--project-knowledge-root',
@@ -192,6 +213,8 @@ async function main() {
       '127.0.0.1',
       '--port',
       String(port),
+      '--system-root',
+      knowledgeRoot,
       '--target-root',
       projectRoot,
       '--project-knowledge-root',
@@ -236,6 +259,20 @@ async function main() {
     const traversalOpen = await fetchText(`${baseUrl}/api/files/open?path=${encodeURIComponent('../../AGENTS.md')}&token=${encodeURIComponent(token)}`);
     assert(traversalOpen.status !== 200, `Traversal open should not succeed, got ${traversalOpen.status}`);
 
+    const junctionOpen = await fetchText(`${baseUrl}/api/files/open?path=${encodeURIComponent('linked-outside/inspector-secret.txt')}&token=${encodeURIComponent(token)}`);
+    assert(
+      junctionOpen.status !== 200 &&
+      !junctionOpen.body.includes('must-not-cross-inspector-containment'),
+      `Junction escape should not succeed, got ${junctionOpen.status}`
+    );
+
+    const symlinkOpen = await fetchText(`${baseUrl}/api/files/open?path=${encodeURIComponent('linked-secret.txt')}&token=${encodeURIComponent(token)}`);
+    assert(
+      symlinkOpen.status !== 200 &&
+      !symlinkOpen.body.includes('must-not-cross-inspector-containment'),
+      `File symlink escape should not succeed, got ${symlinkOpen.status}`
+    );
+
     console.log(JSON.stringify({
       schema_version: schemaVersion,
       status: 'pass',
@@ -249,7 +286,9 @@ async function main() {
         'module card opened through /api/files/open',
         'project spec opened through /api/files/open',
         'unauthenticated file open rejected',
-        'path traversal rejected'
+        'path traversal rejected',
+        'junction escape rejected',
+        'file symlink escape rejected'
       ]
     }, null, 2));
   } catch (error) {

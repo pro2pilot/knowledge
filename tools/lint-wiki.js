@@ -3,7 +3,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, appendNdjson, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
+const { reconcile: reconcileQueue } = require('./lib/queue-lifecycle');
 const buildWikiGraph = require('./build-wiki-graph');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { systemVersion } = require('./lib/system-version');
@@ -12,7 +15,13 @@ const context = resolveKnowledgeContext();
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const wikiRoot = path.join(knowledgeRoot, 'wiki');
-const lockDir = path.join(stateRoot, '.lock');
+const WIKI_LINT_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: stateRoot,
+  lockName: 'wiki-lint',
+  purpose: LOCKS['wiki-lint'].purpose
+});
 
 function nowIso() { return new Date().toISOString(); }
 function rel(abs, base = wikiRoot) { return path.relative(base, abs).replace(/\\/g, '/'); }
@@ -33,6 +42,11 @@ function qualityScore(issues) {
   let score = 100;
   for (const issue of issues) score -= issue.severity === 'high' ? 12 : issue.severity === 'medium' ? 6 : 2;
   return Math.max(0, score);
+}
+function aggregateStatus(score, structuralStatus) {
+  if (structuralStatus === 'structurally_broken') return 'structurally_broken';
+  if (structuralStatus === 'usable_with_warnings') return 'usable_with_warnings';
+  return score >= 90 ? 'healthy' : 'usable_with_warnings';
 }
 function lintUnlocked(options = {}) {
   ensureDir(path.join(stateRoot, 'maintenance'));
@@ -75,14 +89,51 @@ function lintUnlocked(options = {}) {
     if (!['index.md', 'log.md'].includes(id) && !id.endsWith('/README.md') && !(incoming.get(id) || 0)) add(issues, 'low', 'orphan_wiki_page', 'Wiki page has no incoming wiki links.', node.path);
   }
   const score = qualityScore(issues);
-  const report = { schema_version: systemVersion(), generated_at: nowIso(), generated_by: getAgentId(), mode: context.mode, status: score >= 90 ? 'healthy' : score >= 75 ? 'usable_with_warnings' : 'degraded', quality_score: score, pages: pages.length, graph: { nodes: graph.node_count, edges: graph.edge_count, broken_edges: graph.broken_edge_count, view: graph.view || 'wiki_graph' }, issues };
+  const structuralStatus = graph.structural_status || (graph.broken_edge_count > 0 ? 'structurally_broken' : 'healthy');
+  const report = {
+    schema_version: systemVersion(),
+    generated_at: nowIso(),
+    generated_by: getAgentId(),
+    mode: context.mode,
+    status: aggregateStatus(score, structuralStatus),
+    structural_status: structuralStatus,
+    quality_score: score,
+    pages: pages.length,
+    graph: {
+      nodes: graph.node_count,
+      edges: graph.edge_count,
+      broken_edges: graph.broken_edge_count,
+      duplicate_titles: graph.duplicate_title_count || 0,
+      orphan_pages: graph.orphan_page_count || 0,
+      structural_status: structuralStatus,
+      view: graph.view || 'wiki_graph'
+    },
+    issues
+  };
+  const staleItems = readJson(path.join(stateRoot, 'maintenance', 'stale_items.json'), { items: [] });
+  const repairQueue = readJson(path.join(stateRoot, 'maintenance', 'repair_queue.json'), { queue: [] });
+  const queueProjection = reconcileQueue({
+    staleItems,
+    repairQueue,
+    findings: issues.map((item) => ({ module_id: 'wiki', code: `wiki_${item.code}`, artifact: item.artifact, reason: item.message, severity: item.severity, affected_artifacts: item.artifacts || [item.artifact] })),
+    source: 'wiki_lint',
+    agentId: getAgentId(),
+    timestamp: report.generated_at
+  });
+  report.queue_transitions = queueProjection.events;
+  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'stale_items.json'), staleItems);
+  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'repair_queue.json'), repairQueue);
   writeJsonAtomic(path.join(stateRoot, 'maintenance', 'wiki_lint_report.json'), report);
+  if (queueProjection.events.length) appendNdjson(path.join(stateRoot, 'maintenance', 'events', `${report.generated_at.slice(0, 10)}.ndjson`), { type: 'queue_lifecycle', source: 'wiki_lint', generated_at: report.generated_at, agent_id: getAgentId(), transitions: queueProjection.events });
   if (!options.quiet) console.log(JSON.stringify(report, null, 2));
   return report;
 }
-function main(options = {}) { return options.skipLock ? lintUnlocked(options) : withLock(lockDir, () => lintUnlocked(options)); }
+function main(options = {}) { return options.skipLock ? lintUnlocked(options) : withContainedLock(WIKI_LINT_LOCK, () => lintUnlocked(options)); }
 module.exports = main;
 if (require.main === module) {
-  try { main({ quiet: process.argv.includes('--quiet') }); }
+  try {
+    const report = main({ quiet: process.argv.includes('--quiet') });
+    if (process.argv.includes('--strict') && report.status === 'structurally_broken') process.exitCode = 2;
+  }
   catch (error) { console.error(error.stack || error.message); process.exit(1); }
 }

@@ -7,6 +7,7 @@ const { parseCliArgs, resolveKnowledgeContext, jsonContext } = require('./lib/pa
 const { readJson, writeJsonAtomic, ensureDir, getAgentId } = require('./lib/json-store');
 const { buildExternalMemoryReport } = require('./lib/memory-providers');
 const { systemVersion } = require('./lib/system-version');
+const { sanitizeExportValue } = require('./lib/export-sanitizer');
 
 function nowIso() {
   return new Date().toISOString();
@@ -14,35 +15,6 @@ function nowIso() {
 
 function safeRead(filePath, fallback) {
   try { return readJson(filePath, fallback); } catch { return fallback; }
-}
-
-function sanitizeString(value) {
-  return String(value)
-    .replace(/[A-Z]:\\(?:Users\\[^\s"',}\\]+|MyProject)[^\s"',}]+/gi, '<local-path>')
-    .replace(/\/mnt\/data[^\s"',}]+/gi, '<local-path>')
-    .replace(/\/tmp\/knowledge[^\s"',}]+/gi, '<local-path>')
-    .replace(/Users\\[^\s"',}\\]+/gi, 'Users\\<local-user>')
-    .replace(/Users\/[^\s"',}/]+/gi, 'Users/<local-user>')
-    .replace(new RegExp(`knowledge${'-'}kit`, 'gi'), 'workspace');
-}
-
-function redact(value) {
-  if (typeof value === 'string') {
-    return sanitizeString(value)
-      .replace(/(api[_-]?key|secret|token|password)(["'\s:=]+)[^"',\s}]+/ig, '$1$2<redacted>')
-      .replace(/\b(pcsk|m0sk|sk|pk|eyJ)[A-Za-z0-9_./+=-]{12,}\b/g, '<redacted-secret>');
-  }
-  if (Array.isArray(value)) return value.map(redact);
-  if (value && typeof value === 'object') {
-    const out = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (/^(content|text|memory_body|memory_content)$/i.test(key)) out[key] = '<redacted>';
-      else if (/(api[_-]?key|secret|token|password)$/i.test(key) && typeof item === 'string' && item) out[key] = '<redacted>';
-      else out[key] = redact(item);
-    }
-    return out;
-  }
-  return value;
 }
 
 function sanitizeContext(context) {
@@ -75,7 +47,7 @@ function buildBundle(context) {
     quality_report: safeRead(path.join(maintenance, 'quality_report.json'), {}),
     routing_bundle: safeRead(path.join(maintenance, 'routing_bundle.json'), {}),
     trust_report: safeRead(path.join(maintenance, 'trust_report.json'), {}),
-    external_memory_status: redact({
+    external_memory_status: {
       ...external,
       providers: (external.providers || []).map((provider) => ({
         provider_id: provider.provider_id,
@@ -90,9 +62,12 @@ function buildBundle(context) {
         warnings: provider.warnings || [],
         errors: provider.errors || []
       }))
-    })
+    }
   };
-  return redact(bundle);
+  return sanitizeExportValue(bundle, {
+    redactContentFields: true,
+    redactWorkspaceName: true
+  });
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -102,7 +77,16 @@ function main(argv = process.argv.slice(2)) {
   ensureDir(path.join(context.stateRoot, 'maintenance'));
   const outPath = path.join(context.stateRoot, 'maintenance', 'debug-bundle.json');
   writeJsonAtomic(outPath, bundle);
-  const result = { ok: true, output: context.mode === 'repo' ? 'maintenance/debug-bundle.json' : outPath, bundle };
+  const result = sanitizeExportValue({
+    ok: true,
+    output: context.mode === 'repo'
+      ? 'maintenance/debug-bundle.json'
+      : '<stateRoot>/maintenance/debug-bundle.json',
+    bundle
+  }, {
+    redactContentFields: true,
+    redactWorkspaceName: true
+  });
   if (parsed.flags.json) console.log(JSON.stringify(result, null, 2));
   else console.log(JSON.stringify(result, null, 2));
   return result;

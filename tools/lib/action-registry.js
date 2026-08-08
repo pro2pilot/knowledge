@@ -92,11 +92,11 @@ const ACTIONS = [
     description: 'Check local worktree and merge-readiness signals.'
   },
   {
-    id: 'benchmark.summary',
-    label: 'Benchmark Summary',
+    id: 'evaluation.summary',
+    label: 'Local Evaluation Summary',
     risk: 'local_write',
-    command: ['benchmarks/run-benchmarks.js', '--suite', 'smoke', '--json'],
-    description: 'Run the local benchmark harness smoke suite and record evidence.'
+    command: ['tools/evaluation-harness.js'],
+    description: 'Run the installed local evaluation harness and record deterministic repository evidence.'
   },
 ];
 

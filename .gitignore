@@ -4,6 +4,7 @@
 *.log
 *.zip
 .lock/
+locks/
 .runtime/
 project_index.json
 freshness.json
@@ -23,6 +24,11 @@ maintenance/watcher_*.log
 # Generated maintenance reports ignored by default.
 # Teams may force-add selected reports if that is their policy.
 maintenance/routing_bundle.json
+maintenance/routing_decision.json
+maintenance/routing_decisions.ndjson
+maintenance/maintenance_debt.json
+maintenance/workspace_health_summary.json
+maintenance/recertifications.json
 maintenance/trust_report.json
 maintenance/quality_report.json
 maintenance/wiki_lint_report.json
@@ -32,8 +38,17 @@ maintenance/pr_summary.md
 maintenance/sync_log.json
 maintenance/stale_items.json
 maintenance/repair_queue.json
+maintenance/repair_opportunities.json
+maintenance/repair_on_touch_telemetry.json
+maintenance/verification_receipts/
+maintenance/verification_executions/
+maintenance/dedicated_verification_receipts/
+maintenance/repair_sessions/
+maintenance/transactions/
+maintenance/integration-transactions/
 maintenance/automation_status.json
 maintenance/handoff_summary.json
+maintenance/restore-trust-report.md
 maintenance/graphs/
 
 # Generated indexes, metrics, inspector output, and sessions
@@ -47,6 +62,8 @@ inspector/status.json
 inspector/
 sessions/active_task.json
 sessions/active_tasks/
+reports/field-reports/
+routing/
 
 # External memory provider runtime state
 external_memory/mem0/
@@ -70,6 +87,8 @@ cache/
 .cache/
 .self-test-tmp/
 .qa-tmp/
+benchmark-runs/
+marketing-proof-packs/
 dist/
 .git/
 .github/

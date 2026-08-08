@@ -7,6 +7,7 @@ const { resolveKnowledgeContext, jsonContext, parseCliArgs } = require('./lib/pa
 const { readJson, writeJsonAtomic, ensureDir, getAgentId } = require('./lib/json-store');
 const { buildExternalMemoryReport } = require('./lib/memory-providers');
 const { systemVersion } = require('./lib/system-version');
+const { sanitizeExportValue } = require('./lib/export-sanitizer');
 
 function nowIso() {
   return new Date().toISOString();
@@ -117,7 +118,10 @@ function buildSnapshot(context) {
       memory_content_included: false
     }
   };
-  return snapshot;
+  return sanitizeExportValue(snapshot, {
+    redactContentFields: true,
+    redactWorkspaceName: true
+  });
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -127,7 +131,16 @@ function main(argv = process.argv.slice(2)) {
   ensureDir(path.join(context.stateRoot, 'maintenance'));
   const outPath = path.join(context.stateRoot, 'maintenance', 'pro-inspector-snapshot.json');
   writeJsonAtomic(outPath, snapshot);
-  const result = { ok: true, output: context.mode === 'repo' ? 'maintenance/pro-inspector-snapshot.json' : outPath, snapshot };
+  const result = sanitizeExportValue({
+    ok: true,
+    output: context.mode === 'repo'
+      ? 'maintenance/pro-inspector-snapshot.json'
+      : '<stateRoot>/maintenance/pro-inspector-snapshot.json',
+    snapshot
+  }, {
+    redactContentFields: true,
+    redactWorkspaceName: true
+  });
   if (parsed.flags.json) console.log(JSON.stringify(result, null, 2));
   else console.log(JSON.stringify(result, null, 2));
   return result;

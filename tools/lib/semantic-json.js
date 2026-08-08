@@ -41,8 +41,24 @@ function isExpectedRow(row) {
 }
 
 function rowSemanticErrors(row, rowPath) {
-  if (!row || typeof row !== 'object' || Array.isArray(row) || isExpectedRow(row)) return [];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
   const errors = [];
+  if (row.expected_nonzero_exit === true) {
+    if (row.expected_failure !== true) {
+      errors.push(
+        `${rowPath}.expected_failure was not confirmed`
+      );
+    }
+    if (
+      !Number.isInteger(row.exit_code) ||
+      row.exit_code === 0
+    ) {
+      errors.push(
+        `${rowPath}.expected_nonzero_exit requires an integer nonzero exit_code`
+      );
+    }
+  }
+  if (isExpectedRow(row)) return errors;
   const status = String(row.status || '').toLowerCase();
   const outcome = String(row.semantic_outcome || '').toLowerCase();
   if (row.ok === false) errors.push(`${rowPath}.ok is false`);

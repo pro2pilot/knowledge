@@ -2,14 +2,20 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const {
   ensureDir,
   readJson,
   writeJsonAtomic,
   appendNdjson,
-  sleepSync
+  assertSafeContainmentRoot,
+  ensureContainedDir
 } = require('./json-store');
+const {
+  acquireContainedLock,
+  inspectLockSafety,
+  lockPaths
+} = require('./contained-lock-manager');
+const { LOCKS } = require('./lock-policy');
 const { systemVersion } = require('./system-version');
 
 function nowIso() {
@@ -33,7 +39,15 @@ function eventPath(teamRoot, repoId, date = nowIso().slice(0, 10)) {
 }
 
 function lockPath(teamRoot, repoId, kind = 'flow') {
-  return path.join(repoDir(teamRoot, repoId), 'locks', `${kind}.lock`);
+  if (kind !== 'flow') {
+    const error = new Error(`Unknown team lock kind: ${kind}`);
+    error.code = 'unknown_lock_name';
+    throw error;
+  }
+  return lockPaths({
+    rootPath: repoDir(teamRoot, repoId),
+    lockName: 'team-flow'
+  }).lockDir;
 }
 
 function appendTeamEvent(context, type, payload = {}) {
@@ -205,80 +219,66 @@ function unregisterWorkspace(teamRoot, workspaceId) {
   return workspace;
 }
 
-function readLock(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  try {
-    return readJson(filePath, null);
-  } catch {
-    return { corrupt: true, path: filePath };
+function teamLockRequest(context, options = {}) {
+  if (!context?.teamRoot || !context?.repoId) {
+    const error = new Error('Team lock requires explicit teamRoot and repoId.');
+    error.code = 'lock_request_invalid';
+    throw error;
   }
-}
-
-function processAlive(pid) {
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function lockOwner(context) {
+  const teamRoot = assertSafeContainmentRoot(context.teamRoot);
+  const rootPath = ensureContainedDir(teamRoot, repoDir(teamRoot, context.repoId));
   return {
-    pid: process.pid,
-    hostname: os.hostname(),
-    agentId: context.agentId || null,
-    workspaceId: context.workspaceId || null,
-    branch: context.branch || null,
-    targetRoot: context.targetRoot || null,
-    started_at: nowIso()
+    context: { ...context, stateRoot: rootPath },
+    rootKind: 'state',
+    rootPath,
+    lockName: 'team-flow',
+    purpose: LOCKS['team-flow'].purpose,
+    timeoutMs: options.timeoutMs,
+    staleMs: options.staleMs,
+    onRecovery: (event) => appendTeamEvent(context, 'lock_timeout', {
+      lock: 'flow',
+      recovery_id: event.recovery_id,
+      reclaimed: true,
+      reclaim_reason: event.reason,
+      stale_owner: event.owner
+    })
   };
 }
 
 function acquireTeamLock(context, kind = 'flow', options = {}) {
-  const filePath = lockPath(context.teamRoot, context.repoId, kind);
-  const timeoutMs = Number(options.timeoutMs || process.env.KNOWLEDGE_LOCK_TIMEOUT_MS || 30000);
-  const staleMs = Number(options.staleMs || process.env.KNOWLEDGE_LOCK_STALE_MS || 120000);
-  const retryMs = Number(options.retryMs || 100);
-  const owner = lockOwner(context);
-  const started = Date.now();
-  ensureDir(path.dirname(filePath));
-
-  while (true) {
-    try {
-      fs.writeFileSync(filePath, JSON.stringify(owner, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
-      appendTeamEvent(context, 'lock_acquired', { lock: kind, lockPath: filePath, owner });
-      return () => {
-        const current = readLock(filePath);
-        if (!current || current.pid === owner.pid) {
-          try { fs.unlinkSync(filePath); } catch {}
-        }
-        appendTeamEvent(context, 'lock_released', { lock: kind, lockPath: filePath, owner });
-      };
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      const current = readLock(filePath);
-      let stale = false;
-      try {
-        const stat = fs.statSync(filePath);
-        stale = Date.now() - stat.mtimeMs > staleMs;
-      } catch {
-        stale = true;
-      }
-      if (current && current.pid && !processAlive(current.pid)) stale = true;
-      if (stale) {
-        try { fs.unlinkSync(filePath); } catch {}
-        appendTeamEvent(context, 'lock_timeout', { lock: kind, lockPath: filePath, stale_owner: current });
-        continue;
-      }
-      if (Date.now() - started > timeoutMs) {
-        appendTeamEvent(context, 'lock_timeout', { lock: kind, lockPath: filePath, owner: current });
-        throw new Error(`Timed out waiting for ${kind} lock at ${filePath}`);
-      }
-      sleepSync(retryMs);
-    }
+  if (kind !== 'flow') {
+    const error = new Error(`Unknown team lock kind: ${kind}`);
+    error.code = 'unknown_lock_name';
+    throw error;
   }
+  let handle;
+  try {
+    handle = acquireContainedLock(teamLockRequest(context, options));
+    appendTeamEvent(context, 'lock_acquired', {
+      lock: kind,
+      lock_id: handle.lock_id,
+      acquired_at: handle.acquired_at
+    });
+  } catch (error) {
+    if (handle) {
+      try { handle.release(); } catch {}
+    }
+    appendTeamEvent(context, 'lock_timeout', { lock: kind, code: error.code || 'lock_acquire_failed' });
+    throw error;
+  }
+  return () => {
+    const result = handle.release();
+    appendTeamEvent(context, 'lock_released', {
+      lock: kind,
+      lock_id: handle.lock_id,
+      released: result.status === 'released'
+    });
+    return result;
+  };
+}
+
+function teamLockStatus(context) {
+  return inspectLockSafety(teamLockRequest(context));
 }
 
 function listTeamStatus(teamRoot) {
@@ -297,11 +297,14 @@ function listTeamStatus(teamRoot) {
           if (ws) workspaces.push(ws);
         }
       }
-      const locks = {};
-      const locksRoot = path.join(base, 'locks');
-      if (fs.existsSync(locksRoot)) {
-        for (const name of fs.readdirSync(locksRoot)) locks[name] = readLock(path.join(locksRoot, name));
-      }
+      const flowLock = inspectLockSafety({
+        context: { stateRoot: base },
+        rootKind: 'state',
+        rootPath: base,
+        lockName: 'team-flow',
+        purpose: LOCKS['team-flow'].purpose
+      });
+      const locks = { flow: flowLock };
       repos.push({ ...repo, workspaces, locks });
     }
   }
@@ -352,7 +355,8 @@ module.exports = {
   findWorkspace,
   unregisterWorkspace,
   acquireTeamLock,
+  teamLockStatus,
   listTeamStatus,
   updateWorkspaceFlow,
-  readLock
+  teamLockRequest
 };

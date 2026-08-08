@@ -4,7 +4,7 @@
 
 Prefer installed skills under `.claude/skills/` for audit, routing bundle refresh, search index, doctor checks, sync, handoff, ingest, concurrent-agent checks, metrics collection, and PR summary generation.
 
-Do not omit routing or metrics outcomes from the final reply. If `.knowledge/metrics/baseline.json` is missing or stale, say so explicitly instead of silently skipping token-savings reporting.
+Do not omit routing or metrics outcomes from the final reply. If `.knowledge/metrics/baseline.json` is missing or stale, say so explicitly instead of silently skipping routing-context estimate reporting.
 
 {{FINAL_REPORT_CONTRACT}}
 

@@ -3,12 +3,13 @@
 
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
 const systemRoot = path.resolve(__dirname, '..');
-const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.2.11';
+const systemVersion = JSON.parse(fs.readFileSync(path.join(systemRoot, 'package.json'), 'utf8')).version || '3.3.0';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -31,16 +32,20 @@ function request(port, method, requestPath, token = null) {
   });
 }
 
-async function wait(port, child) {
+async function wait(port, child, diagnostics) {
   for (let i = 0; i < 60; i += 1) {
-    if (child.exitCode !== null) throw new Error(`launcher exited early: ${child.exitCode}`);
+    if (child.exitCode !== null) {
+      throw new Error(
+        `launcher exited early: ${child.exitCode}\n${diagnostics()}`
+      );
+    }
     try {
       const res = await request(port, 'GET', '/api/session');
       if (res.status === 200 && res.json?.token) return res.json;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error('launcher did not become ready');
+  throw new Error(`launcher did not become ready\n${diagnostics()}`);
 }
 
 async function waitForExit(child) {
@@ -49,6 +54,17 @@ async function waitForExit(child) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error('launcher did not exit after shutdown');
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 async function main() {
@@ -61,7 +77,9 @@ async function main() {
   const state = path.join(root, 'state');
   fs.mkdirSync(project, { recursive: true });
   fs.mkdirSync(state, { recursive: true });
-  const port = 19000 + Math.floor(Math.random() * 20000);
+  const port = await getFreePort();
+  let childStdout = '';
+  let childStderr = '';
   const child = spawn(process.execPath, [
     path.join(systemRoot, 'inspector.js'),
     '--port', String(port),
@@ -75,8 +93,16 @@ async function main() {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe']
   });
+  child.stdout.on('data', (chunk) => {
+    childStdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    childStderr += chunk.toString();
+  });
+  const diagnostics = () =>
+    `STDOUT:\n${childStdout}\nSTDERR:\n${childStderr}`;
   try {
-    const session = await wait(port, child);
+    const session = await wait(port, child, diagnostics);
     const denied = await request(port, 'GET', '/api/state');
     assert(denied.status === 401, 'api state must require session token');
     const stateRes = await request(port, 'GET', '/api/state', session.token);

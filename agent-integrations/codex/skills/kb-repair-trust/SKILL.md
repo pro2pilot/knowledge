@@ -25,8 +25,12 @@ Repair `.knowledge` trust without assuming summaries are true.
    - `node .knowledge/tools/build-search-index.js`
    - `node .knowledge/tools/doctor.js`
    - `node .knowledge/tools/restore-trust.js --safe --json`
-5. For contested knowledge, read current source code, tests, and evidence before changing modules, wiki pages, or decisions.
-6. After repairs, rerun sync/restore/doctor and report before/after quality score, trust status, stale count, and repair queue count.
+5. Recertify a specific module only after its source, evidence, and tests have
+   been rechecked: `node .knowledge/tools/recertify.js <module-id> --json`.
+   Recertification is fail-closed and must never be replaced by a manual trust
+   elevation.
+6. For contested knowledge, read current source code, tests, and evidence before changing modules, wiki pages, or decisions.
+7. After repairs, rerun sync/restore/doctor and report before/after quality score, trust status, stale count, and repair queue count.
 
 Ask for explicit user confirmation before:
 

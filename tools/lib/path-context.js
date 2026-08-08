@@ -100,6 +100,35 @@ function buildStateRoot(teamRoot, repoId, workspaceId) {
   return path.join(teamRoot, 'repos', repoId, 'workspaces', workspaceId, 'state');
 }
 
+function disabledGitContext(targetRoot) {
+  return {
+    is_git_repo: false,
+    target_root: path.resolve(targetRoot),
+    branch: null,
+    head_sha: null,
+    worktree_root: null,
+    git_common_dir: null,
+    dirty: false,
+    dirty_summary: {
+      changed: 0,
+      staged: 0,
+      generated_runtime_staged: 0
+    },
+    changed_files: [],
+    staged_files: [],
+    remote_url: null,
+    is_git_worktree: false,
+    branches: {
+      schema_version: 'knowledge-git-branches.v1',
+      active: null,
+      selected: null,
+      branches: [],
+      warnings: ['git discovery disabled by execution profile']
+    },
+    warnings: ['git discovery disabled by execution profile']
+  };
+}
+
 function resolveKnowledgeContext(options = {}) {
   const cliFlags = options.__skipCli ? {} : parseCliArgs(process.argv.slice(2)).flags;
   options = { ...cliFlags, ...options };
@@ -113,7 +142,9 @@ function resolveKnowledgeContext(options = {}) {
   const mode = requestedMode === 'team' || teamRootRaw || workspaceId ? 'team' : 'repo';
   const warnings = [];
 
-  const git = detectGitContext(targetRoot);
+  const git = process.env.KNOWLEDGE_DISABLE_GIT_DISCOVERY === '1'
+    ? disabledGitContext(targetRoot)
+    : detectGitContext(targetRoot);
   warnings.push(...(git.warnings || []));
   const repoId = stableRepoId(git, targetRoot);
 
@@ -220,5 +251,6 @@ module.exports = {
   jsonContext,
   stableRepoId,
   sanitizeId,
-  normalizeRemote
+  normalizeRemote,
+  disabledGitContext
 };

@@ -7,13 +7,21 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { systemVersion } = require('./lib/system-version');
 
 const knowledgeRoot = path.resolve(__dirname, '..');
 const templatesRoot = path.join(knowledgeRoot, 'templates', 'official');
-const lockDir = path.join(knowledgeRoot, '.lock');
 const wikiRoot = path.join(knowledgeRoot, 'wiki');
+const TEMPLATE_LOCK = Object.freeze({
+  context: { projectKnowledgeRoot: knowledgeRoot },
+  rootKind: 'project',
+  rootPath: knowledgeRoot,
+  lockName: 'apply-template',
+  purpose: LOCKS['apply-template'].purpose
+});
 
 function nowIso() { return new Date().toISOString(); }
 
@@ -316,7 +324,7 @@ if (require.main === module) {
   // Read-only operations (--list, --dry-run, --diff) skip the lock.
   const argv = process.argv.slice(2);
   if (argv.includes('--list') || argv.includes('--dry-run')) main(argv);
-  else withLock(lockDir, () => main(argv));
+  else withContainedLock(TEMPLATE_LOCK, () => main(argv));
 }
 
 module.exports = { listTemplates, applyOne, removeOne };

@@ -5,6 +5,14 @@ const path = require('path');
 const { ensureDir, readJson, writeFileAtomic, getAgentId } = require('./lib/json-store');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { detectGitContext } = require('./lib/git-context');
+const { canonicalWikiStatus } = require('./lib/wiki-status');
+const taskRouting = require('./lib/task-routing');
+const { parseCliArgs } = require('./lib/path-context');
+const {
+  resolveEffectiveTaskRoutingState,
+  resolveTaskRoutingContext,
+  formatTaskRoutingEstimate
+} = require('./lib/task-routing-state');
 
 const context = resolveKnowledgeContext();
 const stateRoot = context.stateRoot;
@@ -14,8 +22,25 @@ function main() {
   const trust = readJson(path.join(stateRoot, 'maintenance', 'trust_report.json'), {});
   const quality = readJson(path.join(stateRoot, 'maintenance', 'quality_report.json'), {});
   const wiki = readJson(path.join(stateRoot, 'maintenance', 'wiki_lint_report.json'), {});
-  const metrics = readJson(path.join(stateRoot, 'metrics', 'baseline.json'), {});
+  const wikiGraph = readJson(path.join(stateRoot, 'maps', 'wiki_graph.json'), {});
+  const wikiStatus = canonicalWikiStatus(wiki, wikiGraph);
+  const flags = parseCliArgs(process.argv.slice(2)).flags;
+  const manifests = taskRouting.listTasks(context);
+  const requestedTaskId = flags.taskId ? String(flags.taskId) : null;
+  const taskResolution = resolveTaskRoutingContext({
+    context,
+    manifests,
+    explicitTaskId: requestedTaskId,
+    sessionId: flags.sessionId ? String(flags.sessionId) : null,
+    prNumber: flags.prNumber ?? flags.pr ?? null
+  });
+  const routingManifest = taskResolution.manifest;
+  const routingState = routingManifest
+    ? resolveEffectiveTaskRoutingState({ context, taskScopeHash: routingManifest.task_scope_hash, verifyLiveInputs: true })
+    : { effective_claim_eligible: false, claim_ineligible_reasons: [taskResolution.reason] };
+  const metrics = routingState.metrics || readJson(path.join(stateRoot, 'metrics', 'baseline.json'), {}).routing || {};
   const repair = readJson(path.join(stateRoot, 'maintenance', 'repair_queue.json'), { queue: [] });
+  const routingLine = formatTaskRoutingEstimate(metrics, routingState);
   const git = detectGitContext(context.targetRoot);
   const changedSource = (git.changed_files || []).filter((file) => !file.startsWith('.knowledge/'));
   const changedKnowledge = (git.changed_files || []).filter((file) => file.startsWith('.knowledge/'));
@@ -29,8 +54,9 @@ Head: ${git.head_sha || 'unknown'}
 ## Health
 
 - Doctor: ${quality.status || 'unknown'} (${quality.quality_score ?? 'n/a'}/100)
-- Wiki lint: ${wiki.status || 'unknown'} (${wiki.quality_score ?? 'n/a'}/100)
-- Routing tokens saved: ${metrics.routing?.estimated_tokens_saved ?? 'n/a'} (${metrics.routing?.estimated_percent_saved ?? 'n/a'}%)
+- Wiki lint: ${wikiStatus} (${wiki.quality_score ?? 'n/a'}/100)
+- Task routing context: ${taskResolution.status === 'resolved' ? `${taskResolution.source} (${taskResolution.task_scope_hash})` : taskResolution.reason}
+- ${routingLine}
 
 ## Changed files
 
@@ -57,11 +83,19 @@ Current code and tests remain source of truth. Re-read source code for any suspe
 `;
   const outPath = path.join(stateRoot, 'maintenance', 'pr_summary.md');
   writeFileAtomic(outPath, md);
-  const out = { written: context.mode === 'repo' ? '.knowledge/maintenance/pr_summary.md' : outPath, mode: context.mode };
+  const out = {
+    written: context.mode === 'repo' ? '.knowledge/maintenance/pr_summary.md' : outPath,
+    mode: context.mode,
+    task_routing_resolution: {
+      status: taskResolution.status,
+      source: taskResolution.source,
+      task_scope_hash: taskResolution.task_scope_hash,
+      reason: taskResolution.reason || null
+    }
+  };
   console.log(JSON.stringify(out, null, 2));
   return out;
 }
 
 if (require.main === module) main();
 module.exports = main;
-

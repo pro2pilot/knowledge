@@ -33,6 +33,28 @@ Code beats summaries. Tests beat prose. Wiki is advisory unless backed by eviden
 - `advisory_only`: context only; never source of truth.
 - `suspect`, `needs_recheck`, `low_confidence`: re-read source code before behavior claims or edits.
 
+## Opportunistic knowledge repair
+
+The built-in default is task-scoped repair. After routing, plan only against the
+current task:
+
+`node .knowledge/tools/repair-on-touch.js plan --task "<current task>" --json`
+
+The plan is a hard scope boundary. Complete the primary task first. If that work
+actually verifies every required source artifact and runs the finding's required
+checks, record those checks through `repair-on-touch.js verify` or
+`repair-on-touch.js receipt --request=<json>`, then apply only the receipt's
+exact lifecycle ID. Never claim an unexecuted test, close a sibling finding,
+edit source code for Doctor score, or auto-close a contradiction, security,
+policy, incident, architecture-conflict, or manual-review finding. Leave
+unrelated debt deferred.
+
+Before the final answer, rerun Doctor and use
+`node .knowledge/tools/repair-on-touch.js summary --request=<json>` to keep the
+primary-task result, maintenance performed, global Doctor, task readiness, and
+deferred work visibly separate. See `.knowledge/docs/repair-on-touch.md` for the
+request contract.
+
 ## Maintenance
 
 After significant changes, run:

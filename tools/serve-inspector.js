@@ -9,10 +9,20 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext, jsonContext } = require('./lib/path-context');
 const { readJson, ensureDir, writeJsonAtomic } = require('./lib/json-store');
+const { commitJsonTransaction } = require('./lib/json-transaction');
 const { listActions, loadEntitlements } = require('./lib/action-registry');
 const { runAction, getRun } = require('./lib/action-runner');
 const { detectGitContext } = require('./lib/git-context');
 const { inspectSemanticJson } = require('./lib/semantic-json');
+const {
+  DEFAULT_REPAIR_POLICY,
+  MODE_RANK,
+  canonicalMode,
+  normalizePolicy,
+  operatorRepairSettings,
+  resolvePolicy,
+  saveOperatorRepairSettings
+} = require('./lib/repair-on-touch');
 const visualInspector = require('./build-visual-inspector');
 const checkUpdates = require('./check-updates');
 
@@ -36,7 +46,7 @@ function safeJson(rel, fallback) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -46,7 +56,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -55,7 +65,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -64,7 +74,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -74,12 +84,14 @@ const DEFAULT_REPORT_FOOTER = {
 };
 
 function loadSettings() {
-  return {
+  const settings = {
     operator_profile: safeJson('settings/operator-profile.json', DEFAULT_OPERATOR_PROFILE),
     autonomy_policy: safeJson('settings/autonomy-policy.json', DEFAULT_AUTONOMY_POLICY),
     agent_policy: safeJson('settings/agent-policy.json', DEFAULT_AGENT_POLICY),
     report_footer: safeJson('settings/report-footer.json', DEFAULT_REPORT_FOOTER)
   };
+  settings.repair_on_touch = resolvePolicy({ context, operator: settings.operator_profile });
+  return settings;
 }
 
 function choose(value, allowed, fallback) {
@@ -101,6 +113,7 @@ function onboardingState(settings) {
       'What can agents do without asking?',
       'Concurrent work policy',
       'Merge policy',
+      'Opportunistic knowledge repair',
       'Agent report footer'
     ]
   };
@@ -134,6 +147,7 @@ function mergeConnectedAgents(existing = [], agent) {
 
 function saveOnboarding(body = {}) {
   const settingsDir = path.join(context.projectKnowledgeRoot, 'settings');
+  ensureDir(settingsDir);
   const current = loadSettings();
   const userMode = choose(String(body.user_mode || current.operator_profile.user_mode || 'simple').toLowerCase(), ['simple', 'advanced'], 'simple');
   const permission = choose(String(body.agents_can_do_without_asking || current.autonomy_policy.agents_can_do_without_asking || DEFAULT_AUTONOMY_POLICY.agents_can_do_without_asking), [
@@ -161,6 +175,36 @@ function saveOnboarding(body = {}) {
     'full',
     'only_when_trust_incomplete'
   ], 'compact');
+  const currentRepair = operatorRepairSettings(current.operator_profile);
+  const requestedRepair = body.repair_on_touch && typeof body.repair_on_touch === 'object'
+    ? body.repair_on_touch
+    : {
+        ...(body.repair_mode !== undefined ? { mode: body.repair_mode } : {}),
+        ...(body.repair_max_findings !== undefined ? { max_findings_per_task: body.repair_max_findings } : {}),
+        ...(body.repair_max_extra_minutes !== undefined ? { max_extra_minutes: body.repair_max_extra_minutes } : {}),
+        ...(body.repair_max_extra_context_percent !== undefined
+          ? { max_extra_context_percent: body.repair_max_extra_context_percent }
+          : {}),
+        ...(body.repair_rebuild_generated_artifacts !== undefined
+          ? { rebuild_generated_artifacts: body.repair_rebuild_generated_artifacts }
+          : {}),
+        ...(body.repair_require_confirmation_for_critical_paths !== undefined
+          ? { require_confirmation_for_critical_paths: body.repair_require_confirmation_for_critical_paths }
+          : {})
+      };
+  const repairPolicy = normalizePolicy(requestedRepair, Object.keys(currentRepair).length ? currentRepair : DEFAULT_REPAIR_POLICY);
+  if (repairPolicy.mode === 'aggressive' && body.repair_confirm_aggressive !== true &&
+      body.repair_on_touch?.confirm_aggressive !== true) {
+    const error = new Error('Extended repair requires explicit confirmation');
+    error.code = 'aggressive_confirmation_required';
+    throw error;
+  }
+  const effectivePreview = resolvePolicy({ context, perRun: { mode: repairPolicy.mode } });
+  if (MODE_RANK[repairPolicy.mode] > MODE_RANK[effectivePreview.effective_mode]) {
+    const error = new Error(`Team/security policy limits repair mode to ${effectivePreview.effective_mode}`);
+    error.code = 'team_policy_cap_exceeded';
+    throw error;
+  }
   const now = new Date().toISOString();
   const selectedAgent = normalizeConnectedAgent(body, current.operator_profile.detected_agent_runtime);
   const agentId = selectedAgent.id;
@@ -177,6 +221,14 @@ function saveOnboarding(body = {}) {
       [agentId]: {
         user_mode: userMode,
         updated_at: now
+      }
+    },
+    maintenance: {
+      ...(current.operator_profile.maintenance || {}),
+      repair_on_touch: {
+        ...repairPolicy,
+        updated_at: now,
+        updated_by: agentId
       }
     },
     onboarding_completed_at: now
@@ -229,11 +281,60 @@ function saveOnboarding(body = {}) {
       }
     }
   };
-  writeJsonAtomic(path.join(settingsDir, 'operator-profile.json'), operator);
-  writeJsonAtomic(path.join(settingsDir, 'autonomy-policy.json'), autonomy);
-  writeJsonAtomic(path.join(settingsDir, 'agent-policy.json'), agent);
-  writeJsonAtomic(path.join(settingsDir, 'report-footer.json'), footer);
-  return { selected_agent: selectedAgent, operator_profile: operator, autonomy_policy: autonomy, agent_policy: agent, report_footer: footer };
+  const transactionDigest = crypto.createHash('sha256')
+    .update(JSON.stringify({ operator, autonomy, agent, footer }))
+    .digest('hex')
+    .slice(0, 16);
+  commitJsonTransaction({
+    stateRoot: context.stateRoot,
+    allowedContainmentRoots: [context.projectKnowledgeRoot],
+    transactionId: `onboarding-${now.replace(/[-:.TZ]/g, '')}-${transactionDigest}`,
+    metadata: {
+      type: 'first_run_onboarding',
+      actor: agentId
+    },
+    writes: [
+      { path: path.join(settingsDir, 'operator-profile.json'), value: operator, containmentRoot: settingsDir },
+      { path: path.join(settingsDir, 'autonomy-policy.json'), value: autonomy, containmentRoot: settingsDir },
+      { path: path.join(settingsDir, 'agent-policy.json'), value: agent, containmentRoot: settingsDir },
+      { path: path.join(settingsDir, 'report-footer.json'), value: footer, containmentRoot: settingsDir }
+    ]
+  });
+  return {
+    selected_agent: selectedAgent,
+    operator_profile: operator,
+    autonomy_policy: autonomy,
+    agent_policy: agent,
+    report_footer: footer,
+    repair_on_touch: resolvePolicy({ context, operator })
+  };
+}
+
+function saveRepairSettings(body = {}, options = {}) {
+  const raw = body.repair_on_touch && typeof body.repair_on_touch === 'object' ? body.repair_on_touch : body;
+  if (Object.prototype.hasOwnProperty.call(raw, 'edit_source_for_health')) {
+    const error = new Error('edit_source_for_health is not configurable');
+    error.code = 'repair_source_health_override_forbidden';
+    throw error;
+  }
+  const requestedMode = canonicalMode(options.reset ? 'scoped' : raw.mode, options.reset ? 'scoped' : null);
+  if (requestedMode === 'aggressive' && body.confirm_aggressive !== true && raw.confirm_aggressive !== true) {
+    const error = new Error('Extended repair requires explicit confirmation');
+    error.code = 'aggressive_confirmation_required';
+    throw error;
+  }
+  if (requestedMode) {
+    const preview = resolvePolicy({ context, perRun: { mode: requestedMode } });
+    if (MODE_RANK[requestedMode] > MODE_RANK[preview.effective_mode]) {
+      const error = new Error(`Team/security policy limits repair mode to ${preview.effective_mode}`);
+      error.code = 'team_policy_cap_exceeded';
+      throw error;
+    }
+  }
+  return saveOperatorRepairSettings(context, options.reset ? DEFAULT_REPAIR_POLICY : raw, {
+    reset: Boolean(options.reset),
+    updatedBy: cleanAgentId(body.updated_by || body.agent_id || 'inspector')
+  });
 }
 
 function currentContext() {
@@ -290,7 +391,7 @@ let server = null;
 let shutdownScheduled = false;
 
 function currentSystemVersion() {
-  return (safeJson('package.json', {}).version || '3.2.11').replace(/^v/i, '').trim();
+  return (safeJson('package.json', {}).version || '3.3.0').replace(/^v/i, '').trim();
 }
 
 function decorateUpdateStatus(status = {}, config = null, configError = null) {
@@ -630,6 +731,15 @@ function state() {
   const routing = safeJson('maintenance/routing_bundle.json', {});
   const stale = safeJson('maintenance/stale_items.json', { items: [] });
   const repair = safeJson('maintenance/repair_queue.json', { queue: [] });
+  const repairOpportunities = safeJson('maintenance/repair_opportunities.json', {
+    schema_version: 'knowledge-repair-opportunities.v1',
+    opportunities: [],
+    status: 'not_generated'
+  });
+  const verificationReceipts = safeJson('maintenance/verification_receipts/index.json', {
+    schema_version: 'knowledge-verification-receipt-index.v1',
+    receipts: []
+  });
   const external = safeJson('maintenance/external_memory_status.json', {});
   const prImpact = safeJson('maintenance/pr_impact.json', { status: 'not_generated', changed_files: [], affected_modules: [], policy_warnings: [] });
   const agentActivity = safeJson('sessions/agent-registry.json', { sessions: [] });
@@ -651,7 +761,7 @@ function state() {
     generated_at: new Date().toISOString(),
     product: {
       name: '.knowledge',
-      version: safeJson('package.json', {}).version || '3.2.11',
+      version: safeJson('package.json', {}).version || '3.3.0',
       formula: 'Repo-local trust, freshness and repair for coding agents.',
       category: 'routing/evidence/trust/freshness/repair/PR-review system',
       no_cloud_required: true,
@@ -681,7 +791,14 @@ function state() {
       policy_warnings: prImpact.policy_warnings || [],
       auto_merge_default: 'disabled'
     },
-    knowledge_trust: { trust, routing, stale, repair },
+    knowledge_trust: {
+      trust,
+      routing,
+      stale,
+      repair,
+      repair_opportunities: repairOpportunities,
+      verification_receipts: verificationReceipts
+    },
     agent_activity: {
       registry: agentActivity,
       active_sessions: activeSessions,
@@ -761,12 +878,39 @@ function resolveInspectorFile(rawPath) {
   const allowedRoots = [context.targetRoot, context.projectKnowledgeRoot, context.stateRoot]
     .filter(Boolean)
     .map((item) => path.resolve(item));
-  if (!allowedRoots.some((root) => isUnder(candidate, root))) throw new Error('file_outside_workspace');
-  if (!fs.existsSync(candidate)) throw new Error('file_not_found');
-  const stats = fs.statSync(candidate);
+  const lexicalRoots = allowedRoots.filter((root) => isUnder(candidate, root));
+  if (!lexicalRoots.length) throw new Error('file_outside_workspace');
+  let candidateLinkStats;
+  try {
+    candidateLinkStats = fs.lstatSync(candidate);
+  } catch {
+    throw new Error('file_not_found');
+  }
+  if (candidateLinkStats.isSymbolicLink()) throw new Error('file_link_not_allowed');
+  let realCandidate;
+  try {
+    realCandidate = fs.realpathSync.native(candidate);
+  } catch {
+    throw new Error('file_not_found');
+  }
+  const realRoots = lexicalRoots.map((root) => {
+    try {
+      return fs.realpathSync.native(root);
+    } catch {
+      throw new Error('workspace_root_unavailable');
+    }
+  });
+  if (!realRoots.some((root) => isUnder(realCandidate, root))) {
+    throw new Error('file_outside_workspace');
+  }
+  const stats = fs.statSync(realCandidate);
   if (!stats.isFile()) throw new Error('not_a_file');
   if (stats.size > Number(process.env.KNOWLEDGE_INSPECTOR_MAX_OPEN_FILE_BYTES || 2_000_000)) throw new Error('file_too_large');
-  return candidate;
+  return {
+    candidate,
+    real_path: realCandidate,
+    real_roots: realRoots
+  };
 }
 
 function fileContentType(filePath) {
@@ -780,10 +924,57 @@ function fileContentType(filePath) {
 }
 
 function sendInspectorFile(res, rawPath) {
-  const filePath = resolveInspectorFile(rawPath);
-  const body = fs.readFileSync(filePath);
+  const resolved = resolveInspectorFile(rawPath);
+  const noFollow = Number(fs.constants.O_NOFOLLOW || 0);
+  let descriptor;
+  let body;
+  let before;
+  let after;
+  try {
+    descriptor = fs.openSync(
+      resolved.real_path,
+      Number(fs.constants.O_RDONLY) | noFollow
+    );
+    before = fs.fstatSync(descriptor);
+    if (!before.isFile()) throw new Error('not_a_file');
+    if (before.size > Number(process.env.KNOWLEDGE_INSPECTOR_MAX_OPEN_FILE_BYTES || 2_000_000)) {
+      throw new Error('file_too_large');
+    }
+    body = fs.readFileSync(descriptor);
+    after = fs.fstatSync(descriptor);
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+  let postLinkStats;
+  let postRealPath;
+  try {
+    postLinkStats = fs.lstatSync(resolved.candidate);
+    postRealPath = fs.realpathSync.native(resolved.candidate);
+  } catch {
+    throw new Error('file_changed_during_read');
+  }
+  const postStats = fs.statSync(resolved.real_path);
+  const sameIdentity =
+    before.dev === after.dev &&
+    before.ino === after.ino &&
+    before.dev === postStats.dev &&
+    before.ino === postStats.ino;
+  const stableSnapshot =
+    sameIdentity &&
+    before.size === after.size &&
+    before.mtimeMs === after.mtimeMs &&
+    before.ctimeMs === after.ctimeMs &&
+    body.length === after.size;
+  if (
+    postLinkStats.isSymbolicLink() ||
+    postRealPath !== resolved.real_path ||
+    !resolved.real_roots.some((root) => isUnder(postRealPath, root)) ||
+    !stableSnapshot
+  ) {
+    throw new Error('file_changed_during_read');
+  }
   res.writeHead(200, {
-    'content-type': fileContentType(filePath),
+    'content-type': fileContentType(resolved.candidate),
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff'
   });
@@ -826,7 +1017,18 @@ async function handle(req, res) {
     return sendJson(res, 200, { ok: true, actions: listActions(), entitlements: loadEntitlements(context.projectKnowledgeRoot) });
   }
   if (req.method === 'GET' && url.pathname === '/api/trust') return sendJson(res, 200, { ok: true, trust: state().knowledge_trust });
-  if (req.method === 'GET' && url.pathname === '/api/repair') return sendJson(res, 200, { ok: true, repair: state().knowledge_trust.repair });
+  if (req.method === 'GET' && url.pathname === '/api/repair') {
+    const trustState = state().knowledge_trust;
+    return sendJson(res, 200, {
+      ok: true,
+      repair: trustState.repair,
+      opportunities: trustState.repair_opportunities,
+      verification_receipts: trustState.verification_receipts
+    });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/settings/repair-on-touch') {
+    return sendJson(res, 200, { ok: true, repair_on_touch: loadSettings().repair_on_touch });
+  }
   if (req.method === 'GET' && url.pathname === '/api/team') return sendJson(res, 200, { ok: true, team: state().agent_activity });
   if (req.method === 'GET' && url.pathname === '/api/git/branches') {
     const current = currentContext();
@@ -904,8 +1106,30 @@ async function handle(req, res) {
 
   if (req.method === 'POST' && url.pathname === '/api/settings/onboarding') {
     const body = await readBody(req);
-    const settings = saveOnboarding(body);
-    return sendJson(res, 200, { ok: true, settings });
+    try {
+      const settings = saveOnboarding(body);
+      return sendJson(res, 200, { ok: true, settings });
+    } catch (error) {
+      return sendJson(res, 400, { ok: false, error: error.code || 'settings_invalid', message: error.message });
+    }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/settings/repair-on-touch') {
+    const body = await readBody(req);
+    try {
+      const saved = saveRepairSettings(body);
+      return sendJson(res, 200, { ok: true, repair_on_touch: saved.policy, saved: true });
+    } catch (error) {
+      return sendJson(res, 400, { ok: false, error: error.code || 'settings_invalid', message: error.message });
+    }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/settings/repair-on-touch/reset') {
+    const body = await readBody(req);
+    try {
+      const saved = saveRepairSettings(body, { reset: true });
+      return sendJson(res, 200, { ok: true, repair_on_touch: saved.policy, reset: true });
+    } catch (error) {
+      return sendJson(res, 400, { ok: false, error: error.code || 'settings_invalid', message: error.message });
+    }
   }
 
   const runMatch = url.pathname.match(/^\/api\/actions\/([^/]+)\/run$/);

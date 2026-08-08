@@ -13,5 +13,7 @@ Then report:
 - routing bundle path;
 - PR summary path;
 - metrics path;
-- estimated tokens saved and percent saved when `.knowledge/metrics/baseline.json` contains routing metrics;
-- an explicit note when metrics are unavailable or were not regenerated in this run.
+- exactly one routing-context estimate state according to `.knowledge/agent-integrations/_shared/metrics-reporting.md`;
+- an explicit note when the estimate is unavailable, not comparable, stale, or was not regenerated in this run.
+
+Never describe the local estimate as provider-reported model-token savings.

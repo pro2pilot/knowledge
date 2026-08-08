@@ -75,6 +75,8 @@ https://pro2pilot.com/knowledge/
 | Need | Go here |
 |---|---|
 | Install `.knowledge` | Use the release asset and Quick Start below |
+| Plan task-scoped Repair-on-touch | `node .knowledge/tools/repair-on-touch.js plan --request=<path>` |
+| Prepare a real-use Field Report | `node .knowledge/tools/field-report.js start --new --json` |
 | Understand the trust model | https://pro2pilot.com/knowledge/docs/trust-model/ |
 | See what ships vs what is generated | https://pro2pilot.com/knowledge/docs/shipped-vs-generated/ |
 | Review benchmark methodology | https://pro2pilot.com/knowledge/technical-notes/benchmarks/ |
@@ -82,6 +84,12 @@ https://pro2pilot.com/knowledge/
 | Verify schemas, CLI behavior, and reproducible checks | This repository |
 | Embed `.knowledge` in your app | https://pro2pilot.com/knowledge/docs/embedding/ |
 | Evaluate Inspector Pro | https://pro2pilot.com/inspector/ |
+
+Field Report can attach a versioned, content-addressed task-results manifest so
+its public **Verified engineering outcome** table describes the actual build,
+test, migration, security, UI, or deployment result. `.knowledge` health stays
+in a separate system-state table, and GitHub publication fails closed while the
+final Git snapshot is dirty or the bound evidence has changed.
 
 ## Install
 
@@ -146,6 +154,8 @@ Generated after import or release:
 - module cards and evidence records
 - freshness and trust reports
 - repair queue
+- task-scoped repair opportunities and actual-only maintenance telemetry
+- content-addressed local verification executions and receipts
 - PR summaries
 - metrics
 - local Inspector output
@@ -163,6 +173,11 @@ install-manifest.json
 
 Maintainer packaging and release QA tools live only in the source checkout; they
 are intentionally excluded from installed user `.knowledge` artifacts.
+
+Repair runtime state is generated locally and is never shipped in the release
+ZIP. Existing opportunities, telemetry, verification executions, receipts,
+transactions, and operator settings are preserved byte-for-byte by system-file
+updates and ignored by Git by default.
 
 ## Trust Model
 
@@ -226,7 +241,7 @@ docs/external-memory.md
 
 ## Benchmarks
 
-The bundled benchmark language is intentionally conservative: synthetic fixtures, local token estimates, no guaranteed speedup, and no guarantee of agent correctness.
+The published benchmark language is intentionally conservative: synthetic fixtures, local context estimates, no guaranteed speedup, and no guarantee of agent correctness.
 
 Reproduce locally:
 
@@ -242,13 +257,14 @@ Privacy boundary:
 
 Real-world benchmark context, when referenced, must follow the published protocol and limitations. Raw data, project names, code, repository paths, and raw logs are not public.
 
-Technical proof:
+Technical reference:
 
 ```txt
 docs/metrics-benchmarks.md
-benchmarks/
 metrics/
 ```
+
+The installed artifact does not include the maintainer benchmark harness. Comparative benchmark protocols and raw evidence remain in the source/evidence layer; installed projects generate only local repository metrics and evaluation outputs.
 
 ## Main Commands
 

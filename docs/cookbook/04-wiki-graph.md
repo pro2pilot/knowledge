@@ -32,8 +32,8 @@ links:
 
 ```bash
 node .knowledge/tools/build-wiki-graph.js
-node .knowledge/tools/lint-wiki.js
-node .knowledge/tools/self-test-free-core-graph.js
+node .knowledge/tools/lint-wiki.js --strict
+node .knowledge/tools/doctor.js
 node .knowledge/tools/build-visual-inspector.js
 ```
 

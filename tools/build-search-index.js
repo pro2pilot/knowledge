@@ -9,7 +9,16 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const {
+  readJson,
+  writeJsonAtomicContained,
+  getAgentId,
+  assertSafeContainmentRoot,
+  assertSafeContainedPath,
+  containedPath
+} = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { estimateTokens } = require('./lib/token-estimate');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { systemVersion } = require('./lib/system-version');
@@ -18,7 +27,13 @@ const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
-const lockDir = path.join(stateRoot, '.lock');
+const SEARCH_INDEX_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: stateRoot,
+  lockName: 'search-index',
+  purpose: LOCKS['search-index'].purpose
+});
 const maxBytes = Number(process.env.KNOWLEDGE_SEARCH_MAX_FILE_BYTES || 250000);
 const SCHEMA_VERSION = systemVersion();
 
@@ -119,14 +134,42 @@ function qualityWeight(text, kind) {
   return 1.0;
 }
 
-function walk(dir, output = []) {
+function sourceRootFor(abs) {
+  if (containedPath(knowledgeRoot, abs)) return knowledgeRoot;
+  if (containedPath(stateRoot, abs)) return stateRoot;
+  return null;
+}
+
+function safeRegularFile(root, file) {
+  if (!fs.existsSync(file)) return false;
+  assertSafeContainedPath(root, file);
+  const stat = fs.lstatSync(file);
+  return stat.isFile() && !stat.isSymbolicLink();
+}
+
+function walk(dir, output = [], containmentRoot = knowledgeRoot) {
   if (!fs.existsSync(dir)) return output;
+  assertSafeContainedPath(containmentRoot, dir);
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const abs = path.join(dir, entry.name);
     const relative = rel(abs);
-    if (relative.includes('/events/') || relative.startsWith('.runtime/') || relative.startsWith('.lock/') || relative.startsWith('tools/') || relative.startsWith('search/')) continue;
-    if (entry.isDirectory()) walk(abs, output);
-    else if (entry.isFile() && /\.(md|json|txt)$/i.test(entry.name)) output.push(abs);
+    if (relative.includes('/events/') || relative.startsWith('.runtime/') || relative.startsWith('.lock/') || relative.startsWith('locks/') || relative.startsWith('tools/') || relative.startsWith('search/')) continue;
+    if (entry.isSymbolicLink()) {
+      const error = new Error(
+        `Search input contains a symlink or junction: ${abs}`
+      );
+      error.code = 'search_input_reparse_path';
+      throw error;
+    }
+    assertSafeContainedPath(containmentRoot, abs);
+    if (entry.isDirectory()) {
+      walk(abs, output, containmentRoot);
+    } else if (
+      entry.isFile() &&
+      /\.(md|json|txt)$/i.test(entry.name)
+    ) {
+      output.push(abs);
+    }
   }
   return output;
 }
@@ -155,14 +198,16 @@ function collectFiles() {
   ];
   const stateFiles = ['maintenance/handoff_summary.json', 'maintenance/trust_report.json', 'maintenance/quality_report.json', 'maintenance/routing_bundle.json'];
   const files = [];
-  for (const rootName of includedRoots) walk(path.join(knowledgeRoot, rootName), files);
+  for (const rootName of includedRoots) {
+    walk(path.join(knowledgeRoot, rootName), files, knowledgeRoot);
+  }
   for (const file of projectFiles) {
     const abs = path.join(knowledgeRoot, file);
-    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) files.push(abs);
+    if (safeRegularFile(knowledgeRoot, abs)) files.push(abs);
   }
   for (const file of stateFiles) {
     const abs = path.join(stateRoot, file);
-    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) files.push(abs);
+    if (safeRegularFile(stateRoot, abs)) files.push(abs);
   }
   return Array.from(new Set(files));
 }
@@ -172,9 +217,26 @@ function makeSnippet(text) {
   return clean.slice(0, 600);
 }
 function readCompact(abs) {
-  const stats = fs.statSync(abs);
+  const containmentRoot = sourceRootFor(abs);
+  if (!containmentRoot) {
+    const error = new Error(
+      `Search input is outside configured roots: ${abs}`
+    );
+    error.code = 'search_input_outside_root';
+    throw error;
+  }
+  assertSafeContainedPath(containmentRoot, abs);
+  const stats = fs.lstatSync(abs);
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    const error = new Error(
+      `Search input is not a physical file: ${abs}`
+    );
+    error.code = 'search_input_reparse_path';
+    throw error;
+  }
   if (stats.size > maxBytes) return null;
   const raw = fs.readFileSync(abs, 'utf8').replace(/^﻿/, '');
+  assertSafeContainedPath(containmentRoot, abs);
   const relative = rel(abs);
   if (relative.endsWith('.json')) {
     try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
@@ -203,7 +265,6 @@ function expandCollectionDocs(relative, parsed) {
 }
 
 function buildUnlocked(options = {}) {
-  ensureDir(path.join(stateRoot, 'search'));
   const generatedAt = nowIso();
   const docs = [];
   const includedCounts = {};
@@ -275,14 +336,20 @@ function buildUnlocked(options = {}) {
     document_count: docs.length,
     documents: docs.sort((a, b) => a.path.localeCompare(b.path))
   };
-  writeJsonAtomic(path.join(stateRoot, 'search', 'index.json'), index);
+  writeJsonAtomicContained(
+    path.join(stateRoot, 'search', 'index.json'),
+    index,
+    stateRoot
+  );
   if (!options.quiet) console.log(JSON.stringify({ written: context.mode === 'repo' ? '.knowledge/search/index.json' : path.join(stateRoot, 'search', 'index.json'), documents: docs.length, kinds: includedCounts }, null, 2));
   return index;
 }
 
 function main(options = {}) {
+  assertSafeContainmentRoot(stateRoot);
+  assertSafeContainmentRoot(knowledgeRoot);
   if (options.skipLock) return buildUnlocked(options);
-  return withLock(lockDir, () => buildUnlocked(options));
+  return withContainedLock(SEARCH_INDEX_LOCK, () => buildUnlocked(options));
 }
 
 module.exports = main;

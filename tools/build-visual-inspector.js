@@ -3,24 +3,41 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 const { resolveKnowledgeContext, jsonContext } = require('./lib/path-context');
-const { listTeamStatus, readLock, lockPath } = require('./lib/team-store');
+const { listTeamStatus, teamLockStatus } = require('./lib/team-store');
+const {
+  DEFAULT_REPAIR_POLICY,
+  MODE_LABELS,
+  operatorRepairSettings,
+  resolvePolicy
+} = require('./lib/repair-on-touch');
+const { canonicalWikiStatus } = require('./lib/wiki-status');
+const taskRoutingState = require('./lib/task-routing');
+const { resolveEffectiveTaskRoutingState, formatTaskRoutingEstimate } = require('./lib/task-routing-state');
 const context = resolveKnowledgeContext();
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
 const repoRoot = context.targetRoot;
-const lockDir = path.join(stateRoot, '.lock');
+const VISUAL_INSPECTOR_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: stateRoot,
+  lockName: 'visual-inspector',
+  purpose: LOCKS['visual-inspector'].purpose
+});
 const systemVersion = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.2.11';
+    return JSON.parse(fs.readFileSync(path.join(knowledgeRoot, 'package.json'), 'utf8')).version || '3.3.0';
   } catch {
-    return '3.2.11';
+    return '3.3.0';
   }
 })();
 
 function isRuntimeRel(rel) {
-  return /^(maintenance|metrics|search|inspector|sessions)\//.test(rel) ||
+  return /^(maintenance|metrics|search|inspector|sessions|routing)\//.test(rel) ||
     rel === 'freshness.json' ||
     rel === 'maps/wiki_graph.json' ||
     rel === 'maps/file_criticality.json';
@@ -110,7 +127,7 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -120,7 +137,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -129,7 +146,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -138,7 +155,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.2.11',
+  schema_version: '3.3.0',
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,
@@ -148,12 +165,14 @@ const DEFAULT_REPORT_FOOTER = {
 };
 
 function loadSettings() {
-  return {
+  const settings = {
     operator_profile: safeJson('settings/operator-profile.json', DEFAULT_OPERATOR_PROFILE),
     autonomy_policy: safeJson('settings/autonomy-policy.json', DEFAULT_AUTONOMY_POLICY),
     agent_policy: safeJson('settings/agent-policy.json', DEFAULT_AGENT_POLICY),
     report_footer: safeJson('settings/report-footer.json', DEFAULT_REPORT_FOOTER)
   };
+  settings.repair_on_touch = resolvePolicy({ context, operator: settings.operator_profile });
+  return settings;
 }
 
 function onboardingState(settings) {
@@ -195,8 +214,71 @@ function collect() {
   const trust = safeJson('maintenance/trust_report.json', {});
   const quality = safeJson('maintenance/quality_report.json', {});
   const routing = safeJson('maintenance/routing_bundle.json', {});
+  const taskRoutingReconciliation = taskRoutingState.reconcileAll(context);
+  const maintenanceDebtForRouting = safeJson('maintenance/maintenance_debt.json', {
+    repair_queue: [], suspect_modules: [], low_confidence_modules: []
+  });
+  const dynamicWorkspaceNotices = [
+    ...(maintenanceDebtForRouting.suspect_modules || []).map((module_id) => ({ module_id, reason: 'workspace_suspect_module' })),
+    ...(maintenanceDebtForRouting.low_confidence_modules || []).map((module_id) => ({ module_id, reason: 'workspace_low_confidence_module' }))
+  ];
+  const taskRoutingIndex = safeJson('routing/index.json', { schema_version: 'knowledge-routing-index.v4', tasks: [] });
+  const taskRouting = {
+    index: taskRoutingIndex,
+    reconciliation: taskRoutingReconciliation,
+    tasks: (taskRoutingIndex.tasks || []).map((task) => {
+      const resolved = task.task_scope_hash ? taskRoutingState.inspectTask(context, task.task_scope_hash) : null;
+      const effective = task.task_scope_hash ? resolveEffectiveTaskRoutingState({ context, taskScopeHash: task.task_scope_hash, verifyLiveInputs: true }) : null;
+      const current = resolved?.status === 'ok' ? resolved.current : null;
+      const base = current?.path || (task.task_scope_hash && task.current_snapshot_hash ? `routing/tasks/${task.task_scope_hash}/snapshots/${task.current_snapshot_hash}` : null);
+      const bundle = base ? safeJson(`${base}/bundle.json`, {}) : {};
+      const decision = base ? safeJson(`${base}/decision.json`, {}) : {};
+      const metrics = current?.metrics || {};
+      return {
+        task_scope_hash: task.task_scope_hash,
+        task: task.task,
+        task_readiness: bundle.task_readiness || task.task_readiness || 'unknown',
+        selected_modules: bundle.selected_modules || [],
+        safety_overrides: bundle.safety?.safety_overrides || [],
+        snapshot_hash: current?.snapshot_hash || task.current_snapshot_hash || null,
+        metrics_comparison_hash: current?.metrics_comparison_hash || metrics.metrics_comparison_hash || null,
+        pointer_consistent: Boolean(effective?.pointer_consistent),
+        current_status: effective?.current_status || current?.status || 'unavailable',
+        scope_comparable: effective?.scope_comparable === true,
+        comparison_kind: metrics.comparison_kind || null,
+        workspace_baseline: metrics.workspace_baseline || {},
+        workspace_baseline_valid: effective?.workspace_baseline_complete === true && effective?.canonical_workspace_baseline === true,
+        claim_eligible: Boolean(effective?.effective_claim_eligible),
+        claim_ineligible_reasons: effective?.claim_ineligible_reasons || metrics.claim_ineligible_reasons || (metrics.claim_ineligible_reason ? [metrics.claim_ineligible_reason] : []),
+        assessment: metrics.assessment || 'not_comparable',
+        estimate_text: formatTaskRoutingEstimate(metrics, effective || { effective_claim_eligible: false, claim_ineligible_reasons: ['task_routing_state_missing'] }),
+        estimated_tokens_saved: effective?.effective_claim_eligible ? metrics.estimated_tokens_saved : null,
+        estimated_tokens_overhead: effective?.effective_claim_eligible ? metrics.estimated_tokens_overhead : null,
+        workspace_narrowing: metrics.workspace_narrowing || {},
+        required_sources: bundle.required_sources || { complete: false, sources: [], issues: [] },
+        git_diff_paths: (bundle.relevant_changed_or_stale_paths || []).filter((item) => item.git_status).map((item) => ({ path: item.path, status: item.git_status })),
+        relevant_paths: bundle.relevant_changed_or_stale_paths || [],
+        omitted_paths: decision.truncation?.omitted_relevant_paths || [],
+        high_risk_continuation: bundle.high_risk_continuation || decision.truncation?.high_risk_continuation || {},
+        selected_reasons: (decision.candidates || []).filter((item) => item.selected).map((item) => ({ module_id: item.module_id, reason: item.inclusion_reason })),
+        excluded_reasons: (decision.candidates || []).filter((item) => !item.selected).map((item) => ({ module_id: item.module_id, reason: item.exclusion_reason })),
+        task_debt: bundle.workspace_debt?.relevant_to_current_task ?? 0,
+        workspace_debt: Array.isArray(maintenanceDebtForRouting.repair_queue) ? maintenanceDebtForRouting.repair_queue.length : 0,
+        workspace_notices: dynamicWorkspaceNotices
+      };
+    })
+  };
   const modules = safeJson('modules/module_registry.json', { modules: [] });
   const repair = safeJson('maintenance/repair_queue.json', { queue: [] });
+  const repairOpportunities = safeJson('maintenance/repair_opportunities.json', {
+    schema_version: 'knowledge-repair-opportunities.v1',
+    opportunities: [],
+    status: 'not_generated'
+  });
+  const verificationReceipts = safeJson('maintenance/verification_receipts/index.json', {
+    schema_version: 'knowledge-verification-receipt-index.v1',
+    receipts: []
+  });
   const stale = safeJson('maintenance/stale_items.json', { items: [] });
   const wikiGraph = safeJson('maps/wiki_graph.json', { nodes: [], edges: [], summary: {} });
   const fileCriticality = safeJson('maps/file_criticality.json', { files: [] });
@@ -206,6 +288,7 @@ function collect() {
   const secretScan = safeJson('maintenance/secret_scan_report.json', {});
   const searchIndex = safeJson('search/index.json', { documents: [] });
   const wikiLint = safeJson('maintenance/wiki_lint_report.json', {});
+  const wikiStatus = canonicalWikiStatus(wikiLint, wikiGraph);
   const prImpact = safeJson('maintenance/pr_impact.json', { status: 'not_generated', changed_files: [], affected_modules: [], policy_warnings: [] });
   const updateStatusRaw = safeJson('maintenance/update_status.json', { status: 'never_checked' });
   const updateStatus = (() => {
@@ -224,7 +307,15 @@ function collect() {
   let lockOwner = null;
   if (context.teamRoot) {
     try { team = listTeamStatus(context.teamRoot); } catch (error) { team = { warnings: [error.message] }; }
-    try { lockOwner = readLock(lockPath(context.teamRoot, context.repoId, 'flow')); } catch { lockOwner = null; }
+    try {
+      const lockStatus = teamLockStatus(context);
+      const safeOwner = lockStatus.current?.owner || lockStatus.legacy?.owner || null;
+      lockOwner = safeOwner ? {
+        ...safeOwner,
+        agentId: safeOwner.agent_id || null,
+        branch: null
+      } : null;
+    } catch { lockOwner = null; }
   }
   return {
     generated_at: new Date().toISOString(),
@@ -233,8 +324,11 @@ function collect() {
     trust,
     quality,
     routing,
+    taskRouting,
     modules,
     repair,
+    repairOpportunities,
+    verificationReceipts,
     stale,
     wikiGraph,
     fileCriticality,
@@ -244,6 +338,7 @@ function collect() {
     secretScan,
     searchIndex,
     wikiLint,
+    wikiStatus,
     prImpact,
     updateStatus,
     agentRegistry,
@@ -466,7 +561,10 @@ function registryModuleFor(data, moduleId) {
 }
 
 function taskRouteFor(data, moduleId) {
-  return (data.routing?.task_routing || []).find((route) => (route.target_modules || []).includes(moduleId)) || {};
+  const routes = Array.isArray(data.routing?.task_routing)
+    ? data.routing.task_routing
+    : [];
+  return routes.find((route) => (route.target_modules || []).includes(moduleId)) || {};
 }
 
 function effectiveGraphTrust(node, data) {
@@ -908,7 +1006,7 @@ function renderModules(data) {
   if (!modules.length) {
     return emptyState('No modules yet', 'Run ingest to create module routing and cards.', 'node .knowledge/tools/ingest-existing-project.js --merge');
   }
-  return `<div class="table-controls"><input data-table-search="modules" placeholder="Filter modules by id, path, trust, reason..."><select data-table-filter="modules"><option value="">All trust levels</option><option value="trusted">trusted</option><option value="near_trusted">near_trusted</option><option value="routing_trusted">routing_trusted</option><option value="advisory_only">advisory_only</option><option value="suspect">suspect</option><option value="low_confidence">low_confidence</option><option value="unknown">unknown</option></select></div><table class="filterable" data-table="modules"><thead><tr><th>Module</th><th>Trust</th><th>Confidence</th><th>Why low / next check</th><th>Path</th><th>Card</th></tr></thead><tbody>${modules.map((module) => {
+  return `<div class="table-controls"><input data-table-search="modules" aria-label="Filter modules" placeholder="Filter modules by id, path, trust, reason..."><select data-table-filter="modules" aria-label="Filter modules by trust level"><option value="">All trust levels</option><option value="trusted">trusted</option><option value="near_trusted">near_trusted</option><option value="routing_trusted">routing_trusted</option><option value="advisory_only">advisory_only</option><option value="suspect">suspect</option><option value="low_confidence">low_confidence</option><option value="unknown">unknown</option></select></div><table class="filterable" data-table="modules"><thead><tr><th>Module</th><th>Trust</th><th>Confidence</th><th>Why low / next check</th><th>Path</th><th>Card</th></tr></thead><tbody>${modules.map((module) => {
     const trust = module.trust_status || 'unknown';
     const reasons = module.reasons || [];
     const search = [module.module_id, trust, module.confidence, module.path, module.card, reasons.join(' ')].join(' ');
@@ -919,17 +1017,64 @@ function renderModules(data) {
 function renderRepair(data) {
   const rows = getRepairItems(data).slice(0, 250);
   if (!rows.length) return emptyState('No repair items', 'Nothing is currently queued. Run doctor or ingest after significant changes.', 'node .knowledge/tools/doctor.js');
-  return `<div class="table-controls"><input data-table-search="repair" placeholder="Filter repair queue..."><select data-table-filter="repair"><option value="">All priorities</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></div><table class="filterable" data-table="repair"><thead><tr><th>Priority</th><th>Status</th><th>Subject</th><th>Artifacts</th><th>Reason</th></tr></thead><tbody>${rows.map((item) => {
+  return `<div class="table-controls"><input data-table-search="repair" aria-label="Filter repair queue" placeholder="Filter repair queue..."><select data-table-filter="repair" aria-label="Filter repair queue by priority"><option value="">All priorities</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></div><table class="filterable" data-table="repair"><thead><tr><th>Priority</th><th>Status</th><th>Subject</th><th>Artifacts</th><th>Reason</th></tr></thead><tbody>${rows.map((item) => {
     const priority = item.priority || 'medium';
     const search = [priority, item.status, item.subject, item.reason, toArray(item.affected_artifacts).join(' ')].join(' ');
     return `<tr${rowAttr(search, priority)}><td><span class="pill ${trustClass(priority)}">${esc(priority)}</span></td><td>${esc(item.status || 'open')}</td><td>${esc(item.subject)}</td><td>${listLinks(item.affected_artifacts)}</td><td>${esc(item.reason || '-')}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
+function renderRepairOpportunities(data) {
+  const artifact = data.repairOpportunities || data.knowledge_trust?.repair_opportunities || {};
+  const rows = Array.isArray(artifact.opportunities) ? artifact.opportunities : [];
+  const before = artifact.global?.score ?? 'not measured';
+  const after = artifact.global_after?.score ?? 'pending';
+  const readinessBefore = artifact.task_readiness?.score ?? 'not measured';
+  const readinessAfter = artifact.task_readiness_after?.score ?? 'pending';
+  const receipts = data.verificationReceipts || data.knowledge_trust?.verification_receipts || { receipts: [] };
+  if (!rows.length) {
+    return `${renderMetricStrip([
+      ['Global Doctor', before, 'Repository-wide health remains separate from task readiness.'],
+      ['Task readiness', readinessBefore, 'Only findings relevant to the current task.']
+    ])}${emptyState('No repair opportunities planned', 'Create a task-scoped plan before maintenance. Unrelated debt never expands the task.', 'node .knowledge/tools/repair-on-touch.js plan --task \"describe the task\" --json')}`;
+  }
+  const relationLabel = {
+    direct_overlap: 'Direct task overlap',
+    dependency_overlap: 'Required dependency',
+    no_overlap: 'Outside current task'
+  };
+  const statusLabel = {
+    selected: 'Selected',
+    deferred: 'Deferred',
+    repaired: 'Repaired',
+    rejected: 'Rejected'
+  };
+  const body = rows.map((item) => `<tr><td><strong>${esc(item.module_id || 'root')}</strong><small>${esc(item.lifecycle_id || '')}</small></td><td>${esc(item.message || item.reason || item.code)}</td><td>${esc(relationLabel[item.relation_to_current_task] || 'Unknown relation')}</td><td>${esc(item.repair_class || 'manual review')}</td><td>${esc(toArray(item.required_checks).join(', ') || '-')}</td><td>${esc(`${item.estimated_additional_work?.minutes ?? 0} min / ${item.estimated_additional_work?.context_percent ?? 0}% context`)}</td><td>${esc(item.requires_confirmation ? 'Yes' : 'No')}</td><td>${esc(statusLabel[item.status] || item.status || 'Open')}</td></tr>`).join('');
+  return `${renderMetricStrip([
+    ['Global Doctor before / after', `${before} → ${after}`, 'Repository-wide score is recalculated by Doctor.'],
+    ['Task readiness before / after', `${readinessBefore} → ${readinessAfter}`, 'Unrelated findings are excluded but remain visible.'],
+    ['Verification receipts', (receipts.receipts || []).length, 'Content-addressed and linked to exact lifecycle findings.']
+  ])}<table><thead><tr><th>Module / lifecycle</th><th>Finding</th><th>Task relation</th><th>Repair class</th><th>Required checks</th><th>Estimated work</th><th>Confirm</th><th>Status</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderRepairSettings(data, options = {}) {
+  const repair = data.settings?.repair_on_touch || resolvePolicy({
+    context,
+    operator: data.settings?.operator_profile || {}
+  });
+  const configured = repair.configured || DEFAULT_REPAIR_POLICY;
+  const cap = repair.policy_cap || {};
+  const controls = `<div class="setting-list"><label class="setting-row"><span><strong>Mode</strong><small>Scoped is the default. Extended is advanced and never bypasses safety rules.</small></span>${selectControl('repair-setting-mode', configured.mode || 'scoped', [['off', 'Off'], ['safe-only', 'Safe generated artifacts only'], ['scoped', 'Scoped repair — Recommended'], ['dedicated', 'Dedicated maintenance only'], ['aggressive', 'Extended repair — Advanced']])}</label><label class="setting-row"><span><strong>Maximum findings per task</strong><small>Default: 2.</small></span><input id="repair-setting-max-findings" type="number" min="0" max="100" value="${esc(configured.max_findings_per_task ?? 2)}"></label><label class="setting-row"><span><strong>Additional time budget</strong><small>Minutes. Budget exhaustion never fails the primary task.</small></span><input id="repair-setting-max-minutes" type="number" min="0" max="1440" value="${esc(configured.max_extra_minutes ?? 5)}"></label><label class="setting-row"><span><strong>Additional context budget</strong><small>Percentage. Actual token values remain actual-only telemetry.</small></span><input id="repair-setting-max-context" type="number" min="0" max="100" value="${esc(configured.max_extra_context_percent ?? 10)}"></label><label class="setting-row"><span><strong>Rebuild generated artifacts</strong><small>Allows deterministic routing, index, graph, and report rebuilds.</small></span><input id="repair-setting-rebuild" type="checkbox"${configured.rebuild_generated_artifacts !== false ? ' checked' : ''}></label><label class="setting-row"><span><strong>Confirm critical paths</strong><small>Required by default.</small></span><input id="repair-setting-confirm-critical" type="checkbox"${configured.require_confirmation_for_critical_paths !== false ? ' checked' : ''}></label><label class="setting-row"><span><strong>Confirm security findings</strong><small>Security findings are never opportunistically auto-closed.</small></span><input id="repair-setting-confirm-security" type="checkbox"${configured.require_confirmation_for_security_findings !== false ? ' checked' : ''}></label></div>`;
+  const actions = options.live
+    ? '<div class="mini-actions"><button class="copy-btn" type="button" data-repair-settings-save="true">Save</button><button class="copy-btn" type="button" data-repair-settings-reset="true">Reset to defaults</button><button class="copy-btn" type="button" data-repair-settings-cancel="true">Cancel</button></div>'
+    : commandBox('node .knowledge/tools/repair-on-touch.js settings show', 'Open settings CLI');
+  return `<div class="card" id="repair-maintenance-settings"><h2>Maintenance → Opportunistic knowledge repair</h2><p class="sub">Configured mode: <strong>${esc(MODE_LABELS[repair.configured_mode] || repair.configured_mode)}</strong>. Effective mode: <strong>${esc(MODE_LABELS[repair.effective_mode] || repair.effective_mode)}</strong>. Source: ${esc(repair.effective_mode_source || 'built-in default')}.</p><p class="sub">Team-policy restriction: ${esc(cap.active ? `maximum ${MODE_LABELS[cap.max_mode] || cap.max_mode}${cap.restricted ? ' (currently limiting this workspace)' : ''}` : 'none')}.</p><div class="warning-box" data-repair-aggressive-warning="true" hidden><strong>Extended repair warning</strong><p>Extended mode may inspect task-adjacent dependencies. It still cannot change source for health, close security or contradiction findings, or exceed budgets.</p></div>${controls}${actions}</div>`;
+}
+
 function renderStale(data) {
   const rows = getStaleItems(data).slice(0, 250);
   if (!rows.length) return emptyState('No stale items', 'Freshness checks have not found stale artifacts.', 'node .knowledge/tools/sync-tracked.js --scan');
-  return `<div class="table-controls"><input data-table-search="stale" placeholder="Filter stale items..."><select data-table-filter="stale"><option value="">All statuses</option><option value="stale">stale</option><option value="missing">missing</option><option value="changed">changed</option><option value="needs_recheck">needs_recheck</option></select></div><table class="filterable" data-table="stale"><thead><tr><th>Status</th><th>Artifact</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows.map((item) => {
+  return `<div class="table-controls"><input data-table-search="stale" aria-label="Filter stale items" placeholder="Filter stale items..."><select data-table-filter="stale" aria-label="Filter stale items by status"><option value="">All statuses</option><option value="stale">stale</option><option value="missing">missing</option><option value="changed">changed</option><option value="needs_recheck">needs_recheck</option></select></div><table class="filterable" data-table="stale"><thead><tr><th>Status</th><th>Artifact</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows.map((item) => {
     const status = item.status || 'stale';
     const search = [status, item.artifact, item.reason, item.action].join(' ');
     return `<tr${rowAttr(search, status)}><td><span class="pill ${trustClass(status)}">${esc(status)}</span></td><td>${fileLink(item.artifact, { short: 70 })}</td><td>${esc(item.reason || '-')}</td><td>${esc(item.action || '-')}</td></tr>`;
@@ -939,7 +1084,7 @@ function renderStale(data) {
 function renderCriticalFiles(data) {
   const rows = getCriticalFiles(data).slice(0, 250);
   if (!rows.length) return emptyState('No critical or important files mapped', 'Run ingest and sync to classify project files.', 'node .knowledge/tools/ingest-existing-project.js --merge');
-  return `<div class="table-controls"><input data-table-search="critical" placeholder="Filter files..."><select data-table-filter="critical"><option value="">All classes</option><option value="critical">critical</option><option value="important">important</option></select></div><table class="filterable" data-table="critical"><thead><tr><th>Class</th><th>Path</th><th>Modules</th><th>Reason</th></tr></thead><tbody>${rows.map((file) => {
+  return `<div class="table-controls"><input data-table-search="critical" aria-label="Filter critical files" placeholder="Filter files..."><select data-table-filter="critical" aria-label="Filter files by criticality"><option value="">All classes</option><option value="critical">critical</option><option value="important">important</option></select></div><table class="filterable" data-table="critical"><thead><tr><th>Class</th><th>Path</th><th>Modules</th><th>Reason</th></tr></thead><tbody>${rows.map((file) => {
     const cls = file.classification || 'important';
     const search = [cls, file.path, toArray(file.modules).join(' '), file.reason].join(' ');
     return `<tr${rowAttr(search, cls)}><td><span class="pill ${trustClass(cls)}">${esc(cls)}</span></td><td>${fileLink(file.path, { short: 82 })}</td><td>${esc(toArray(file.modules).join(', ') || '-')}</td><td>${esc(file.reason || '-')}</td></tr>`;
@@ -1064,9 +1209,14 @@ function renderUpdatesV2(data, options = {}) {
 
 function renderRouting(data) {
   const routing = data.routing || {};
+  const taskRouting = data.taskRouting || { tasks: [] };
   const first = routing.first_read_strategy?.read_first || '.knowledge/maintenance/routing_bundle.json';
   const modules = routing.modules || [];
-  return `<table class="kv"><tr><th>First read</th><td>${esc(first)}</td></tr><tr><th>Mode</th><td>${esc(data.context.mode)}</td></tr><tr><th>Modules</th><td>${esc(modules.length)}</td></tr><tr><th>High risk</th><td>${esc((routing.high_risk_modules || []).join(', ') || '-')}</td></tr><tr><th>Source of truth</th><td>${esc((routing.source_of_truth_order || []).join(' > '))}</td></tr></table><div class="mini-actions">${copyButton('node .knowledge/tools/build-routing-bundle.js --json', 'Copy rebuild command')}</div>`;
+  const tasks = taskRouting.tasks || [];
+  const taskRows = tasks.length
+    ? `<table><thead><tr><th>Task / current</th><th>Readiness / claim</th><th>Workspace comparison</th><th>Modules and paths</th><th>Sources / safety</th></tr></thead><tbody>${tasks.map((task) => `<tr><td><strong>${esc(task.task || task.task_scope_hash?.slice(0, 12) || '-')}</strong><br><small>snapshot ${esc(task.snapshot_hash || 'unavailable')}<br>pointer ${esc(task.pointer_consistent ? 'consistent' : 'unavailable')}</small></td><td>${esc(task.task_readiness)}<br><small>claim ${esc(task.claim_eligible ? 'eligible' : 'ineligible')}${task.claim_ineligible_reasons?.length ? `: ${esc(task.claim_ineligible_reasons.join(', '))}` : ''}</small></td><td><small>kind ${esc(task.comparison_kind || 'unavailable')}<br>baseline ${esc(task.workspace_baseline?.recipe_id || '-')}.${esc(task.workspace_baseline?.recipe_version || '-')} / ${esc(task.workspace_baseline_valid ? 'valid' : 'invalid')}<br>${esc(task.estimate_text)}<br>narrowing ${esc(JSON.stringify(task.workspace_narrowing || {}))}</small></td><td><small>selected: ${esc((task.selected_reasons || []).map((item) => `${item.module_id}:${item.reason}`).join(', ') || '-') }<br>excluded: ${esc((task.excluded_reasons || []).map((item) => `${item.module_id}:${item.reason}`).join(', ') || '-') }<br>paths: ${esc((task.relevant_paths || []).map((item) => `${item.path}:${item.git_status || item.status || '-'}`).join(', ') || '-')}<br>omitted: ${esc((task.omitted_paths || []).map((item) => item.path).join(', ') || '-')}</small></td><td><small>required sources ${esc(task.required_sources?.complete ? 'complete' : 'blocked')}: ${esc((task.required_sources?.issues || []).map((item) => `${item.path}:${item.path_state}`).join(', ') || 'none')}<br>Git: ${esc((task.git_diff_paths || []).map((item) => `${item.path}:${item.status}`).join(', ') || 'none')}<br>blockers: ${esc((task.safety_overrides || []).join(', ') || 'none')}<br>task debt ${esc(task.task_debt)} / workspace debt ${esc(task.workspace_debt)}<br>continuation ${esc(task.high_risk_continuation?.required ? 'required' : 'none')}</small></td></tr>`).join('')}</tbody></table>`
+    : '<p class="sub">No task snapshot is available. Create an explicit task scope before using task routing.</p>';
+  return `<table class="kv"><tr><th>First read</th><td>${esc(first)}</td></tr><tr><th>Mode</th><td>${esc(data.context.mode)}</td></tr><tr><th>Global modules</th><td>${esc(modules.length)}</td></tr><tr><th>Task snapshots</th><td>${esc(tasks.length)}</td></tr><tr><th>High risk</th><td>${esc((routing.high_risk_modules || []).join(', ') || '-')}</td></tr><tr><th>Source of truth</th><td>${esc((routing.source_of_truth_order || []).join(' > '))}</td></tr></table>${taskRows}<div class="mini-actions">${copyButton('node .knowledge/tools/build-routing-bundle.js --json', 'Copy rebuild command')}${copyButton('node .knowledge/tools/task-routing.js list --json', 'List task snapshots')}</div>`;
 }
 
 function renderPrPreview(data) {
@@ -1203,12 +1353,21 @@ function onboardingSettingsForAgent(settings, agentId) {
   const autonomyOverride = autonomy.agent_overrides?.[agentId] || {};
   const agentOverride = agent.agent_overrides?.[agentId] || {};
   const footerOverride = footer.agent_overrides?.[agentId] || {};
+  const repair = settings.repair_on_touch?.configured ||
+    operatorRepairSettings(profile) ||
+    DEFAULT_REPAIR_POLICY;
   return {
     user_mode: profileOverride.user_mode || profile.user_mode || 'simple',
     agents_can_do_without_asking: autonomyOverride.agents_can_do_without_asking || autonomy.agents_can_do_without_asking || DEFAULT_AUTONOMY_POLICY.agents_can_do_without_asking,
     concurrent_work_policy: agentOverride.concurrent_work_policy || agent.concurrent_work_policy || 'Safe Queue',
     merge_policy: agentOverride.merge_policy || agent.merge_policy || 'Manual Only',
-    report_footer_mode: footerOverride.mode || footer.mode || 'compact'
+    report_footer_mode: footerOverride.mode || footer.mode || 'compact',
+    repair_mode: repair.mode || 'scoped',
+    repair_max_findings: repair.max_findings_per_task ?? 2,
+    repair_max_extra_minutes: repair.max_extra_minutes ?? 5,
+    repair_max_extra_context_percent: repair.max_extra_context_percent ?? 10,
+    repair_rebuild_generated_artifacts: repair.rebuild_generated_artifacts !== false,
+    repair_require_confirmation_for_critical_paths: repair.require_confirmation_for_critical_paths !== false
   };
 }
 
@@ -1241,6 +1400,18 @@ function renderOnboarding(data, options = {}) {
     : copyButton('node .knowledge/inspector.js', 'Open live setup');
   const status = onboarding.completed ? `Completed${onboarding.completed_at ? ` at ${onboarding.completed_at}` : ''}` : `Required: ${onboarding.reason || 'not_completed'}`;
   return `<div class="card onboarding-card${expanded ? ' requires-setup' : ''}" id="onboarding-wizard" data-onboarding-wizard="true" data-onboarding-expanded="${expanded ? 'true' : 'false'}" data-onboarding-agents="${esc(JSON.stringify(agents))}" data-onboarding-agent-settings="${esc(JSON.stringify(agentSettings))}"><button class="onboarding-toggle" type="button" data-onboarding-toggle="true"><span>First-run setup</span><small>${esc(status)}</small></button><div class="onboarding-body"${expanded ? '' : ' hidden'}><p class="sub">Use safe defaults or tune each connected agent before local agents write reports.</p><div class="setting-list"><label class="setting-row"><span><strong>Connected agent</strong><small>Select an active or recently connected agent. Settings below apply to that agent.</small></span><div class="agent-picker"><select id="onboarding-agent" data-onboarding-agent-select="true">${agentOptions}</select><small data-onboarding-agent-summary="true">${esc(connectedAgentSummary(selectedAgent))}</small></div></label><label class="setting-row"><span><strong>User mode</strong><small>Simple keeps summaries plain; Advanced shows raw evidence.</small></span>${selectControl('onboarding-user-mode', selectedSettings.user_mode, [['simple', 'Simple'], ['advanced', 'Advanced']])}</label><label class="setting-row"><span><strong>What can agents do without asking?</strong><small>Default is safe local checks and reports.</small></span>${selectControl('onboarding-permission', selectedSettings.agents_can_do_without_asking, [['run checks and reports', 'Run checks and reports'], ['ask before every action', 'Ask before every action'], ['run safe local actions', 'Run safe local actions']])}</label><label class="setting-row"><span><strong>Concurrent work policy</strong><small>Safe Queue avoids overlapping writes by default.</small></span>${selectControl('onboarding-concurrency', selectedSettings.concurrent_work_policy, [['Safe Queue', 'Safe Queue'], ['Observe', 'Observe'], ['Guided', 'Guided'], ['Active Sessions', 'Active Sessions'], ['Parallel Worktrees', 'Parallel Worktrees']])}</label><label class="setting-row"><span><strong>Merge policy</strong><small>Manual Only keeps releases under your control.</small></span>${selectControl('onboarding-merge', selectedSettings.merge_policy, [['Manual Only', 'Never merge automatically'], ['Assisted Merge', 'Assisted Merge'], ['Auto PR', 'Auto PR']])}</label><label class="setting-row"><span><strong>Agent report footer</strong><small>Controls trust footer and restore action in reports.</small></span>${selectControl('onboarding-footer', selectedSettings.report_footer_mode, [['compact', 'Compact + restore action'], ['full', 'Full'], ['only_when_trust_incomplete', 'Only when trust incomplete'], ['off', 'Off']])}</label></div><div class="mini-actions">${saveControl}</div></div></div>`;
+}
+
+function renderRepairFirstRun(data, options = {}) {
+  const settings = data.settings || {};
+  const onboarding = settings.onboarding || onboardingState(settings);
+  const repair = settings.repair_on_touch || resolvePolicy({ context, operator: settings.operator_profile || {} });
+  const configured = repair.configured || DEFAULT_REPAIR_POLICY;
+  const expanded = onboarding.required === true;
+  const saveButton = options.live
+    ? '<button class="copy-btn" type="button" data-onboarding-save="true">Save complete setup</button>'
+    : copyButton('node .knowledge/inspector.js', 'Open live setup');
+  return `<div class="card onboarding-card${expanded ? ' requires-setup' : ''}" id="repair-first-run-step"><button class="onboarding-toggle" type="button" data-repair-setup-toggle="true"><span>Opportunistic knowledge repair</span><small>Scoped repair — Recommended</small></button><div class="onboarding-body"${expanded ? '' : ' hidden'} data-repair-setup-body="true"><p class="sub">When an agent already verifies uncertain repository context during normal work, .knowledge can preserve that verification instead of making the next agent repeat it.</p><p class="sub">This does not chase a perfect Doctor score, expand the task into unrelated modules, or change source code for health. Critical-path and security repair still require confirmation, and the mode remains editable in Inspector.</p><div class="setting-list"><label class="setting-row"><span><strong>Mode</strong><small>Extended repair is advanced and requires an explicit warning confirmation.</small></span>${selectControl('onboarding-repair-mode', configured.mode || 'scoped', [['off', 'Off'], ['safe-only', 'Safe generated artifacts only'], ['scoped', 'Scoped repair — Recommended'], ['dedicated', 'Dedicated maintenance only'], ['aggressive', 'Extended repair — Advanced']])}</label><label class="setting-row"><span><strong>Maximum findings per task</strong><small>Maintenance stops at the limit without failing the primary task.</small></span><input id="onboarding-repair-max-findings" type="number" min="0" max="100" value="${esc(configured.max_findings_per_task ?? 2)}"></label><label class="setting-row"><span><strong>Maximum additional minutes</strong><small>Default: five minutes.</small></span><input id="onboarding-repair-max-minutes" type="number" min="0" max="1440" value="${esc(configured.max_extra_minutes ?? 5)}"></label><label class="setting-row"><span><strong>Maximum additional context</strong><small>Percentage budget; telemetry reports actual tokens separately.</small></span><input id="onboarding-repair-max-context" type="number" min="0" max="100" value="${esc(configured.max_extra_context_percent ?? 10)}"></label><label class="setting-row"><span><strong>Rebuild generated artifacts</strong><small>Routing, indexes, graphs, and derived reports.</small></span><input id="onboarding-repair-rebuild" type="checkbox"${configured.rebuild_generated_artifacts !== false ? ' checked' : ''}></label><label class="setting-row"><span><strong>Require confirmation for critical paths</strong><small>Enabled by default and never bypassed by Extended mode.</small></span><input id="onboarding-repair-confirm-critical" type="checkbox"${configured.require_confirmation_for_critical_paths !== false ? ' checked' : ''}></label></div><div class="mini-actions">${saveButton}</div></div></div>`;
 }
 
 function metricSeverity(label, value) {
@@ -1383,6 +1554,8 @@ function render(data) {
   const qualityScore = data.quality.quality_score ?? data.quality.score ?? '-';
   const secretStatus = data.secretScan.status || 'not_run';
   const wikiLintScore = data.wikiLint.quality_score ?? '-';
+  const wikiLintStatus = data.wikiStatus || canonicalWikiStatus(data.wikiLint, data.wikiGraph);
+  const wikiLintSeverity = metricSeverity('wiki structural status', wikiLintStatus);
   const generated = esc(data.generated_at);
   return `<!doctype html>
 <html lang="en">
@@ -1399,7 +1572,7 @@ function render(data) {
 <header><div class="topbar"><div><h1>.knowledge Visual Inspector</h1><div class="sub">Generated ${generated} / source of truth remains current code and tests.</div></div><div class="mini-stat-row"><div class="mini-stat"><strong>${esc(qualityScore)}</strong>quality</div><div class="mini-stat"><strong>${esc(moduleCount)}</strong>modules</div><div class="mini-stat"><strong>${esc(searchDocs)}</strong>search docs</div><div class="mini-stat"><strong>${esc(secretStatus)}</strong>secret scan</div></div></div><input class="global-filter" id="globalFilter" placeholder="Filter all tables by module, path, trust, command, reason..."></header>
 <main>
 <section>${renderQuickActions()}</section>
-<section class="grid stats">${countsHtml}<div class="stat"><div class="num">${esc(qualityScore)}</div><div class="cap">quality</div></div><div class="stat"><div class="num">${esc(wikiLintScore)}</div><div class="cap">wiki lint</div></div><div class="stat"><div class="num">${esc(repairCount)}</div><div class="cap">repair queue</div></div><div class="stat"><div class="num">${esc(staleCount)}</div><div class="cap">stale items</div></div><div class="stat"><div class="num">${esc(wikiEdges)}</div><div class="cap">wiki edges</div></div></section>
+<section class="grid stats">${countsHtml}<div class="stat"><div class="num">${esc(qualityScore)}</div><div class="cap">quality</div></div><div class="stat metric-card ${wikiLintSeverity}"><div class="severity-dot" aria-hidden="true"></div><div class="num">${esc(wikiLintStatus)}</div><div class="cap">wiki status / score ${esc(wikiLintScore)}</div></div><div class="stat"><div class="num">${esc(repairCount)}</div><div class="cap">repair queue</div></div><div class="stat"><div class="num">${esc(staleCount)}</div><div class="cap">stale items</div></div><div class="stat"><div class="num">${esc(wikiEdges)}</div><div class="cap">wiki edges</div></div></section>
 <section class="grid two"><div class="card"><h2>Routing Bundle View</h2>${renderRouting(data)}</div><div class="card"><h2>Team Mode</h2>${renderTeamMode(data)}</div></section>
 <section>${freeCoreGraphSvg(data)}</section>
 <section class="grid two"><div class="card"><h2>Memory Providers</h2><p class="sub">Optional advisory context, not truth.</p>${renderMemoryProviders(data)}<h2 style="margin-top:24px">Applied Templates</h2>${renderTemplates(data)}</div><div class="card"><h2>Modules <span class="sub">/ with low-confidence explanations</span></h2>${renderModules(data)}</div></section>
@@ -1472,7 +1645,7 @@ function renderTabbed(data, options = {}) {
   const countCards = counts.map((count) => `<div class="stat ${trustClass(count.key)}"><div class="num">${count.count}</div><div class="cap">${esc(count.key)}</div></div>`).join('');
   const searchBody = `<div class="empty-state"><h3>Local search</h3><p>${esc(searchDocs)} indexed documents. Search runs locally from generated index data.</p>${commandBox('node .knowledge/tools/search-knowledge.js "<query>"', 'Copy search command')}</div>`;
   const exportBody = `<div class="quick-actions"><button class="action-card" type="button" data-copy="node .knowledge/tools/install-check.js --json"><span>Run Install Check</span><code>node .knowledge/tools/install-check.js --json</code></button></div><div class="empty-state" style="margin-top:14px"><h3>Release artifact hygiene</h3><p>Use the uploaded release asset for install checks; source snapshots are not install packages.</p></div>`;
-  const onboarding = renderOnboarding(data, options);
+  const onboarding = `${renderOnboarding(data, options)}${renderRepairFirstRun(data, options)}`;
   const updatesPanel = renderUpdatesV2(data, options);
   const updateState = data.updateStatus?.status || 'never_checked';
   const turnOffButton = options.live
@@ -1480,7 +1653,7 @@ function renderTabbed(data, options = {}) {
     : '<button class="copy-btn turn-off-btn" type="button" disabled title="Only available in live Inspector mode">Turn off</button>';
   const actionDrawer = `<div class="panel"><h3>Global action drawer</h3><p class="sub">${options.live ? 'Live buttons run allowlisted local actions with the session token.' : 'Static fallback copies commands only. Run <code>node .knowledge/inspector.js</code> for token-protected local buttons.'}</p>${renderQuickActions({ ...options, data })}</div>`;
   const actionResult = renderActionResultPanel(options);
-  const settingsBody = `<div class="grid two"><div class="card"><h2>User Mode: Simple / Advanced</h2><p class="sub">Simple Mode uses plain-language summaries and safe defaults. Advanced Mode shows raw JSON, locks, routing, evidence and branch policy.</p>${commandBox('node .knowledge/tools/agent-session.js report --json', 'Agent sessions')}</div><div class="card"><h2>Agent Report Footer</h2><p class="sub">Supported modes: off, compact, full, only when trust incomplete. Token metrics must be labelled as estimates.</p>${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div><div class="card"><h2>Concurrent Work Policy</h2><p class="sub">Default multi-agent mode is Safe Queue. Merge policy defaults to Manual Only.</p>${renderTeamModePanel(data)}</div><div class="card"><h2>Local Server</h2><p class="sub">Browser and VS Code shell use the same local API.</p>${commandBox('node .knowledge/inspector.js', 'Open Inspector')}</div></div>`;
+  const settingsBody = `${renderRepairSettings(data, options)}<div class="card"><h2>Repair opportunities</h2><p class="sub">Global Doctor and current-task readiness are intentionally separate. Deferred work stays visible without becoming hidden scope creep.</p>${renderRepairOpportunities(data)}</div><div class="grid two"><div class="card"><h2>User Mode: Simple / Advanced</h2><p class="sub">Simple Mode uses plain-language summaries and safe defaults. Advanced Mode shows raw JSON, locks, routing, evidence and branch policy.</p>${commandBox('node .knowledge/tools/agent-session.js report --json', 'Agent sessions')}</div><div class="card"><h2>Agent Report Footer</h2><p class="sub">Supported modes: off, compact, full, only when trust incomplete. Token metrics must be labelled as estimates.</p>${commandBox('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust')}</div><div class="card"><h2>Concurrent Work Policy</h2><p class="sub">Default multi-agent mode is Safe Queue. Merge policy defaults to Manual Only.</p>${renderTeamModePanel(data)}</div><div class="card"><h2>Local Server</h2><p class="sub">Browser and VS Code shell use the same local API.</p>${commandBox('node .knowledge/inspector.js', 'Open Inspector')}</div></div>`;
   const agentsBody = `<div class="grid two"><div class="card"><h2>Agent Registry / Active Sessions</h2><p class="sub">No manual active-agent switch. Connected agents register sessions, heartbeats, reports and locks.</p>${commandBox('node .knowledge/tools/agent-session.js start --runtime claude-code --json', 'Start session')}${commandBox('node .knowledge/tools/agent-session.js report --json', 'Session report')}</div><div class="card"><h2>Safe Queue / Locks / Parallel Worktrees / Merge Queue</h2>${renderTeamModePanel(data)}</div></div>`;
   const trustPrimary = options.live ? '<button type="button" class="copy-btn" data-action="trust.restore.safe">Restore Trust</button>' : copyButton('node .knowledge/tools/restore-trust.js --safe --json', 'Restore Trust');
   const tabs = [
@@ -1507,7 +1680,7 @@ function renderTabbed(data, options = {}) {
     {
       id: 'reports',
       label: 'Reports',
-      body: `${renderPageHeader({ title: 'Reports', summary: 'Verification results, skipped checks, and generated reports.', chips: [`PR ${prStatus}`, `Impact ${prImpactStatus}`] })}${renderOutcomePanel({ title: 'Verification summary', verdict: 'Only selected local checks are represented here', body: 'This page must say what ran and what did not. Full release gate remains separate unless explicitly requested.', tone: 'info', actions: copyButton('node .knowledge/tools/install-check.js --json', 'Install check') })}<div class="grid two"><div class="card"><h2>Release Checks</h2>${exportBody}</div><div class="card"><h2>Benchmark Smoke</h2>${commandBox('node .knowledge/benchmarks/run-benchmarks.js --suite smoke --json', 'Benchmark smoke')}</div></div>${renderAdvancedShelf('reports-output', 'Command output and skipped checks', `${commandBox('node .knowledge/tools/doctor.js --json', 'Doctor JSON')}${commandBox('node .knowledge/tools/build-visual-inspector.js --json', 'Inspector JSON')}`, 'Exact command output belongs here after checks run.')}`
+      body: `${renderPageHeader({ title: 'Reports', summary: 'Verification results, skipped checks, and generated reports.', chips: [`PR ${prStatus}`, `Impact ${prImpactStatus}`] })}${renderOutcomePanel({ title: 'Verification summary', verdict: 'Only selected local checks are represented here', body: 'This page must say what ran and what did not. Full release gate remains separate unless explicitly requested.', tone: 'info', actions: copyButton('node .knowledge/tools/install-check.js --json', 'Install check') })}<div class="grid two"><div class="card"><h2>Release Checks</h2>${exportBody}</div><div class="card"><h2>Local Evaluation</h2><p class="sub">Runs deterministic installed-repository checks. It is not a comparative model benchmark.</p>${commandBox('node .knowledge/tools/evaluation-harness.js', 'Local evaluation')}</div></div>${renderAdvancedShelf('reports-output', 'Command output and skipped checks', `${commandBox('node .knowledge/tools/doctor.js --json', 'Doctor JSON')}${commandBox('node .knowledge/tools/build-visual-inspector.js --json', 'Inspector JSON')}`, 'Exact command output belongs here after checks run.')}`
     },
     {
       id: 'settings',
@@ -1590,15 +1763,22 @@ function onboardingSettings(){return onboardingAttrJson('data-onboarding-agent-s
 function onboardingSelectedAgent(){const select=document.getElementById('onboarding-agent');const id=select?.value||'';return onboardingAgents().find((agent)=>agent.id===id)||{id:id||'local-agent',label:id||'local-agent',runtime:id||''}}
 function setControlValue(id,value){const el=document.getElementById(id);if(el&&value!=null)el.value=value}
 function onboardingAgentSummary(agent){const bits=[agent.runtime?'runtime '+agent.runtime:'',agent.status?'status '+agent.status:'',agent.branch?'branch '+agent.branch:'',agent.workspace_id?'workspace '+agent.workspace_id:''].filter(Boolean);return bits.join(' / ')||'No active session metadata yet.'}
-function applyOnboardingAgentSettings(agentId){const settings=onboardingSettings()[agentId]||{};setControlValue('onboarding-user-mode',settings.user_mode||'simple');setControlValue('onboarding-permission',settings.agents_can_do_without_asking||'run checks and reports');setControlValue('onboarding-concurrency',settings.concurrent_work_policy||'Safe Queue');setControlValue('onboarding-merge',settings.merge_policy||'Manual Only');setControlValue('onboarding-footer',settings.report_footer_mode||'compact');const agent=onboardingAgents().find((item)=>item.id===agentId)||{};document.querySelectorAll('[data-onboarding-agent-summary]').forEach((el)=>{el.textContent=onboardingAgentSummary(agent)})}
-async function saveOnboarding(){if(!liveMode||!sessionToken){copyText('node .knowledge/inspector.js');return}const out=document.getElementById('result');setResultPanel(true,'Setup response');if(out)out.textContent='Saving first-run setup...';const selectedAgent=onboardingSelectedAgent();const body={agent_id:selectedAgent.id,agent_runtime:selectedAgent.runtime||selectedAgent.id,agent_display_name:selectedAgent.label||selectedAgent.id,user_mode:document.getElementById('onboarding-user-mode')?.value||'simple',agents_can_do_without_asking:document.getElementById('onboarding-permission')?.value||'run checks and reports',concurrent_work_policy:document.getElementById('onboarding-concurrency')?.value||'Safe Queue',merge_policy:document.getElementById('onboarding-merge')?.value||'Manual Only',report_footer_mode:document.getElementById('onboarding-footer')?.value||'compact',detected_agent_runtime:selectedAgent.runtime||selectedAgent.id};const res=await fetch('/api/settings/onboarding',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){const card=document.getElementById('onboarding-wizard');const bodyEl=card?.querySelector('.onboarding-body');if(bodyEl)bodyEl.hidden=true;if(card)card.setAttribute('data-onboarding-expanded','false');showToast('Setup saved')}}
+function applyOnboardingAgentSettings(agentId){const settings=onboardingSettings()[agentId]||{};setControlValue('onboarding-user-mode',settings.user_mode||'simple');setControlValue('onboarding-permission',settings.agents_can_do_without_asking||'run checks and reports');setControlValue('onboarding-concurrency',settings.concurrent_work_policy||'Safe Queue');setControlValue('onboarding-merge',settings.merge_policy||'Manual Only');setControlValue('onboarding-footer',settings.report_footer_mode||'compact');setControlValue('onboarding-repair-mode',settings.repair_mode||'scoped');setControlValue('onboarding-repair-max-findings',settings.repair_max_findings??2);setControlValue('onboarding-repair-max-minutes',settings.repair_max_extra_minutes??5);setControlValue('onboarding-repair-max-context',settings.repair_max_extra_context_percent??10);const rebuild=document.getElementById('onboarding-repair-rebuild');if(rebuild)rebuild.checked=settings.repair_rebuild_generated_artifacts!==false;const critical=document.getElementById('onboarding-repair-confirm-critical');if(critical)critical.checked=settings.repair_require_confirmation_for_critical_paths!==false;const agent=onboardingAgents().find((item)=>item.id===agentId)||{};document.querySelectorAll('[data-onboarding-agent-summary]').forEach((el)=>{el.textContent=onboardingAgentSummary(agent)})}
+async function saveOnboarding(){if(!liveMode||!sessionToken){copyText('node .knowledge/inspector.js');return}const out=document.getElementById('result');setResultPanel(true,'Setup response');if(out)out.textContent='Saving first-run setup...';const selectedAgent=onboardingSelectedAgent();const repairMode=document.getElementById('onboarding-repair-mode')?.value||'scoped';let aggressiveConfirmed=false;if(repairMode==='aggressive'){aggressiveConfirmed=confirm('Extended repair may inspect task-adjacent dependencies. Safety rules, confirmation requirements, and budgets still apply. Enable it?');if(!aggressiveConfirmed){if(out)out.textContent='Extended repair was not enabled.';return}}const body={agent_id:selectedAgent.id,agent_runtime:selectedAgent.runtime||selectedAgent.id,agent_display_name:selectedAgent.label||selectedAgent.id,user_mode:document.getElementById('onboarding-user-mode')?.value||'simple',agents_can_do_without_asking:document.getElementById('onboarding-permission')?.value||'run checks and reports',concurrent_work_policy:document.getElementById('onboarding-concurrency')?.value||'Safe Queue',merge_policy:document.getElementById('onboarding-merge')?.value||'Manual Only',report_footer_mode:document.getElementById('onboarding-footer')?.value||'compact',detected_agent_runtime:selectedAgent.runtime||selectedAgent.id,repair_on_touch:{mode:repairMode,max_findings_per_task:Number(document.getElementById('onboarding-repair-max-findings')?.value??2),max_extra_minutes:Number(document.getElementById('onboarding-repair-max-minutes')?.value??5),max_extra_context_percent:Number(document.getElementById('onboarding-repair-max-context')?.value??10),rebuild_generated_artifacts:document.getElementById('onboarding-repair-rebuild')?.checked!==false,require_confirmation_for_critical_paths:document.getElementById('onboarding-repair-confirm-critical')?.checked!==false},repair_confirm_aggressive:aggressiveConfirmed};const res=await fetch('/api/settings/onboarding',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){const card=document.getElementById('onboarding-wizard');const bodyEl=card?.querySelector('.onboarding-body');if(bodyEl)bodyEl.hidden=true;if(card)card.setAttribute('data-onboarding-expanded','false');const repairBody=document.querySelector('[data-repair-setup-body]');if(repairBody)repairBody.hidden=true;showToast('Setup saved')}}
 async function runLocalAction(id){if(!liveMode||!sessionToken)return;const out=document.getElementById('result');setResultPanel(true,'Latest local action output');if(out)out.textContent='Running '+id+'...';const res=await fetch('/api/actions/'+encodeURIComponent(id)+'/run',{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify({confirmed:true})});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);showToast(json.ok?'Action finished':'Action needs review')}
+function repairSettingsRequestBody(){return{mode:document.getElementById('repair-setting-mode')?.value||'scoped',max_findings_per_task:Number(document.getElementById('repair-setting-max-findings')?.value??2),max_extra_minutes:Number(document.getElementById('repair-setting-max-minutes')?.value??5),max_extra_context_percent:Number(document.getElementById('repair-setting-max-context')?.value??10),rebuild_generated_artifacts:document.getElementById('repair-setting-rebuild')?.checked!==false,require_confirmation_for_critical_paths:document.getElementById('repair-setting-confirm-critical')?.checked!==false,require_confirmation_for_security_findings:document.getElementById('repair-setting-confirm-security')?.checked!==false}}
+function showRepairWarning(){const mode=document.getElementById('repair-setting-mode')?.value;document.querySelectorAll('[data-repair-aggressive-warning]').forEach((el)=>{el.hidden=mode!=='aggressive'})}
+async function saveRepairSettingsUi(reset=false){if(!liveMode||!sessionToken){copyText('node .knowledge/tools/repair-on-touch.js settings show');return}const out=document.getElementById('result');setResultPanel(true,'Repair settings response');const body=reset?{}:repairSettingsRequestBody();if(!reset&&body.mode==='aggressive'){body.confirm_aggressive=confirm('Extended repair may inspect task-adjacent dependencies. It cannot bypass safety invariants or confirmation rules. Continue?');if(!body.confirm_aggressive){if(out)out.textContent='Extended repair was not enabled.';return}}const endpoint=reset?'/api/settings/repair-on-touch/reset':'/api/settings/repair-on-touch';const res=await fetch(endpoint,{method:'POST',headers:authHeaders({'content-type':'application/json'}),body:JSON.stringify(body)});const json=await res.json();if(out)out.textContent=JSON.stringify(json,null,2);if(json.ok){showToast(reset?'Repair settings reset':'Repair settings saved')}else{showToast('Repair settings were not saved')}}
+function cancelRepairSettingsUi(){showToast('Unsaved repair settings discarded');window.location.reload()}
 document.addEventListener('click',(event)=>{const openLink=event.target.closest('[data-open-path]');if(openLink){const pathValue=openLink.getAttribute('data-open-path')||'';if(pathValue){event.preventDefault();openInspectorFile(pathValue,openLink.getAttribute('href')||'#');return}}const closePreview=event.target.closest('[data-file-preview-close]');if(closePreview){closeFilePreview();return}const copyPreviewPath=event.target.closest('[data-file-preview-copy-path]');if(copyPreviewPath){copyText(currentPreviewPath);return}const copyPreviewCode=event.target.closest('[data-file-preview-copy-code]');if(copyPreviewCode){copyText(codeCommandForPath(currentPreviewPath));return}const copy=event.target.closest('[data-copy]');if(copy){copyText(copy.getAttribute('data-copy'));return}const shutdown=event.target.closest('[data-shutdown]');if(shutdown){shutdownInspector();return}const graphToggle=event.target.closest('[data-graph-toggle]');if(graphToggle){const id=graphToggle.getAttribute('data-graph-toggle');const shelf=document.querySelector('[data-graph-shelf="'+id+'"]');setGraphShelf(id,!shelf?.classList.contains('is-collapsed'));return}const graphNode=event.target.closest('[data-graph-node]');if(graphNode){showGraphNodeDetail(graphNode);return}const resultToggle=event.target.closest('[data-result-toggle]');if(resultToggle){const panel=document.querySelector('[data-result-panel="true"]');const open=panel?.classList.contains('is-collapsed');setResultPanel(open,open?'Latest local action output':'Collapsed until an action runs');return}const toggle=event.target.closest('[data-onboarding-toggle]');if(toggle){const card=document.getElementById('onboarding-wizard');const body=card?.querySelector('.onboarding-body');if(body){body.hidden=!body.hidden;if(card)card.setAttribute('data-onboarding-expanded',body.hidden?'false':'true')}return}const save=event.target.closest('[data-onboarding-save]');if(save){saveOnboarding();return}const localAction=event.target.closest('[data-action]');if(localAction){runLocalAction(localAction.getAttribute('data-action'));return}const updateMode=event.target.closest('[data-update-mode="auto-check"]');if(updateMode){toggleUpdateAutoCheck(updateMode);return}const update=event.target.closest('[data-update-action]');if(update){const action=update.getAttribute('data-update-action');setResultPanel(true,'Update action output');if(action==='status')updateApi('/api/update/status?refresh=1');if(action==='dry-run')updateApi('/api/update/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(action==='apply'&&confirm('Apply .knowledge system update now? Project knowledge will be preserved and a backup will be created.')){const latest=document.getElementById('updateBanner')?.getAttribute('data-latest-version')||'';updateApi('/api/update/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,expectedVersion:latest&&latest!=='-'?latest:null})})}return}const tab=event.target.closest('[data-tab]');if(tab){document.querySelectorAll('.tab-btn').forEach((b)=>b.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach((p)=>p.classList.remove('active'));tab.classList.add('active');const panel=document.querySelector('[data-panel="'+tab.getAttribute('data-tab')+'"]');if(panel)panel.classList.add('active')}});
 document.addEventListener('keydown',(event)=>{const graphNode=event.target.closest?.('[data-graph-node]');if(graphNode&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showGraphNodeDetail(graphNode)}});
+document.addEventListener('click',(event)=>{const repairSetup=event.target.closest('[data-repair-setup-toggle]');if(repairSetup){const body=document.querySelector('[data-repair-setup-body]');if(body)body.hidden=!body.hidden;return}if(event.target.closest('[data-repair-settings-save]')){saveRepairSettingsUi(false);return}if(event.target.closest('[data-repair-settings-reset]')){saveRepairSettingsUi(true);return}if(event.target.closest('[data-repair-settings-cancel]')){cancelRepairSettingsUi()}})
 document.addEventListener('change',(event)=>{const agentSelect=event.target.closest('[data-onboarding-agent-select]');if(agentSelect){applyOnboardingAgentSettings(agentSelect.value);return}const select=event.target.closest('[data-branch-select]');if(select)refreshBranchDiagnostics(select.value)});
+document.addEventListener('change',(event)=>{if(event.target.id==='repair-setting-mode')showRepairWarning()});
 async function initInspectorLiveState(){if(location.protocol==='http:'||location.protocol==='https:')await updateApi('/api/update/status')}
 initInspectorLiveState();
 initGraphShelves();
+showRepairWarning();
 function applyFilters(tableName){const searchInput=document.querySelector('[data-table-search="'+tableName+'"]');const select=document.querySelector('[data-table-filter="'+tableName+'"]');const q=((searchInput&&searchInput.value)||'').toLowerCase();const f=((select&&select.value)||'').toLowerCase();document.querySelectorAll('table[data-table="'+tableName+'"] tbody tr').forEach((row)=>{const text=(row.getAttribute('data-search')||row.textContent||'').toLowerCase();const rowFilter=(row.getAttribute('data-filter')||'').toLowerCase();row.style.display=((!q||text.includes(q))&&(!f||rowFilter===f||rowFilter.includes(f)))?'':'none'})}
 document.querySelectorAll('[data-table-search],[data-table-filter]').forEach((el)=>el.addEventListener('input',()=>applyFilters(el.getAttribute('data-table-search')||el.getAttribute('data-table-filter'))));
 </script>
@@ -1700,6 +1880,9 @@ function build(options = {}) {
       ,'app_shell_renderer'
       ,'inspector_update_auto_check_mode'
       ,'inspector_startup_update_check'
+      ,'repair_on_touch_settings'
+      ,'repair_opportunities'
+      ,'global_doctor_and_task_readiness'
     ]
   };
   writeJsonAtomic(path.join(outDir, 'status.json'), status);
@@ -1707,8 +1890,8 @@ function build(options = {}) {
   return status;
 }
 
-if (require.main === module) withLock(lockDir, () => build({ quiet: process.argv.includes('--quiet') }));
-const runBuild = (options = {}) => options.skipLock ? build(options) : withLock(lockDir, () => build(options));
+if (require.main === module) withContainedLock(VISUAL_INSPECTOR_LOCK, () => build({ quiet: process.argv.includes('--quiet') }));
+const runBuild = (options = {}) => options.skipLock ? build(options) : withContainedLock(VISUAL_INSPECTOR_LOCK, () => build(options));
 module.exports = Object.assign(runBuild, {
   collect,
   renderAppShell,

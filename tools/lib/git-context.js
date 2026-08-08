@@ -13,7 +13,9 @@ function runGit(targetRoot, args, options = {}) {
   return {
     ok: result.status === 0,
     status: result.status,
-    stdout: String(result.stdout || '').trim(),
+    stdout: options.preserveStdout
+      ? String(result.stdout || '')
+      : String(result.stdout || '').trim(),
     stderr: String(result.stderr || '').trim()
   };
 }
@@ -28,12 +30,43 @@ function normalizeStatusPath(value) {
 function parsePorcelain(output) {
   const changed = [];
   const staged = [];
-  for (const line of String(output || '').split(/\r?\n/).filter(Boolean)) {
-    const index = line.slice(0, 1);
-    const worktree = line.slice(1, 2);
-    let file = normalizeStatusPath(line.slice(3));
-    if (file.includes(' -> ')) file = normalizeStatusPath(file.split(' -> ').pop());
-    const item = { path: file, index, worktree, raw: line };
+  const records = String(output || '').split('\0');
+  for (let offset = 0; offset < records.length; offset += 1) {
+    const record = records[offset];
+    if (!record) continue;
+    const index = record.slice(0, 1);
+    const worktree = record.slice(1, 2);
+    const statusPair = `${index}${worktree}`;
+    let file = normalizeStatusPath(record.slice(3));
+    let originalPath = null;
+    if (index === 'R' || worktree === 'R' || index === 'C' || worktree === 'C') {
+      originalPath = normalizeStatusPath(records[offset + 1] || '');
+      offset += 1;
+    }
+    const status = index === '?' && worktree === '?'
+      ? 'untracked'
+      : ['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(statusPair) || index === 'U' || worktree === 'U'
+        ? 'conflicted'
+        : index === 'R' || worktree === 'R'
+          ? 'renamed'
+          : index === 'C' || worktree === 'C'
+            ? 'copied'
+            : index === 'D' || worktree === 'D'
+              ? 'deleted'
+              : index === 'A' || worktree === 'A'
+                ? 'added'
+                : 'modified';
+    const item = {
+      path: file,
+      status,
+      index_status: index,
+      worktree_status: worktree,
+      index,
+      worktree,
+      source: 'git_porcelain',
+      ...(originalPath ? { original_path: originalPath } : {}),
+      raw: record
+    };
     changed.push(item);
     if (index && index !== ' ' && index !== '?') staged.push(item);
   }
@@ -212,7 +245,11 @@ function detectGitContext(targetRoot = process.cwd()) {
   const headResult = runGit(root, ['rev-parse', 'HEAD']);
   const headSha = headResult.ok ? headResult.stdout : null;
   const remoteResult = runGit(root, ['config', '--get', 'remote.origin.url']);
-  const statusResult = runGit(root, ['status', '--porcelain=v1']);
+  // Routing needs concrete file paths.  Git's default porcelain collapses an
+  // entirely untracked directory to `?? directory/`, which makes an otherwise
+  // relevant new file invisible to a task-scoped path boundary.  Ask Git for
+  // all untracked files so changed_files is an evidence-bearing file list.
+  const statusResult = runGit(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { preserveStdout: true });
   const parsed = parsePorcelain(statusResult.stdout);
   const branches = listGitBranches(root);
   const generatedRuntimeStaged = parsed.staged
@@ -240,6 +277,16 @@ function detectGitContext(targetRoot = process.cwd()) {
       generated_runtime_staged: generatedRuntimeStaged.length
     },
     changed_files: parsed.changed.map((item) => item.path),
+    // Keep the historical string list for existing consumers, and expose the
+    // status-bearing porcelain rows for routing receipts and provenance.
+    changed_file_details: parsed.changed.map((item) => ({
+      path: item.path,
+      status: item.status,
+      index_status: item.index_status,
+      worktree_status: item.worktree_status,
+      source: item.source,
+      ...(item.original_path ? { original_path: item.original_path } : {})
+    })),
     staged_files: parsed.staged.map((item) => item.path),
     generated_runtime_staged: generatedRuntimeStaged,
     remote_url: remoteResult.ok ? remoteResult.stdout : null,
@@ -253,5 +300,6 @@ module.exports = {
   detectGitContext,
   listGitBranches,
   runGit,
-  isGeneratedRuntimePath
+  isGeneratedRuntimePath,
+  __test: { parsePorcelain, normalizeStatusPath }
 };

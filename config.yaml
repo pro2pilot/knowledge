@@ -1,4 +1,4 @@
-version: 3.2.11
+version: 3.3.0
 config_schema_version: 1
 distribution: public_release
 project_index: .knowledge/project_index.json
@@ -40,6 +40,20 @@ trust_order:
   - module_summaries
   - decisions
   - session_notes
+
+maintenance:
+  repair_on_touch:
+    enabled: true
+    mode: scoped
+    max_findings_per_task: 2
+    max_extra_minutes: 5
+    max_extra_context_percent: 10
+    rebuild_generated_artifacts: true
+    edit_curated_knowledge: verified_only
+    require_confirmation_for_critical_paths: true
+    require_confirmation_for_security_findings: true
+    include_task_readiness: true
+    show_final_maintenance_summary: true
 
 updates:
   enabled: true

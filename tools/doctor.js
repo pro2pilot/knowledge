@@ -4,17 +4,31 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId, withLock } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, appendNdjson, getAgentId } = require('./lib/json-store');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
+const {
+  reconcile: reconcileQueue,
+  lifecycleById
+} = require('./lib/queue-lifecycle');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { appendTeamEvent } = require('./lib/team-store');
 const { loadProviderManifests } = require('./lib/memory-providers');
 const { systemVersion } = require('./lib/system-version');
+const { granularFinding, severityCost, taskReadiness } = require('./lib/repair-on-touch');
+const { canonicalWikiStatus } = require('./lib/wiki-status');
 
 const context = resolveKnowledgeContext();
 const repoRoot = context.targetRoot;
 const knowledgeRoot = context.projectKnowledgeRoot;
 const stateRoot = context.stateRoot;
-const lockDir = path.join(stateRoot, '.lock');
+const DOCTOR_LOCK = Object.freeze({
+  context,
+  rootKind: 'state',
+  rootPath: stateRoot,
+  lockName: 'doctor',
+  purpose: LOCKS.doctor.purpose
+});
 const SCHEMA_VERSION = systemVersion();
 
 function nowIso() { return new Date().toISOString(); }
@@ -36,13 +50,22 @@ function artifactExists(relPath) {
   return fs.existsSync(path.join(repoRoot, relPath)) ||
     fs.existsSync(path.join(knowledgeRoot, String(relPath).replace(/^\.knowledge[\\/]/, '')));
 }
-function issue(issues, severity, code, message, artifact = null) { issues.push({ severity, code, message, artifact }); }
+function issue(issues, severity, code, message, artifact = null, details = {}) {
+  issues.push(granularFinding({
+    severity,
+    score_cost: severityCost(severity),
+    code,
+    message,
+    artifact,
+    ...details
+  }));
+}
 function walk(dir, output = []) {
   if (!fs.existsSync(dir)) return output;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const abs = path.join(dir, entry.name);
     const relative = rel(abs);
-    if (relative.startsWith('.lock/') || relative.startsWith('.runtime/') || relative.includes('.tmp-') || relative.includes('.bak-')) continue;
+    if (relative.startsWith('.lock/') || relative.startsWith('locks/') || relative.startsWith('.runtime/') || relative.includes('.tmp-') || relative.includes('.bak-')) continue;
     if (entry.isDirectory()) walk(abs, output);
     else if (entry.isFile()) output.push(abs);
   }
@@ -53,20 +76,16 @@ function safeJson(abs, issues) {
   catch (error) { issue(issues, 'critical', 'invalid_json', `Invalid JSON: ${error.message}`, `.knowledge/${rel(abs)}`); return null; }
 }
 function scoreFromIssues(issues) {
-  let score = 100;
-  for (const item of issues) {
-    if (item.severity === 'critical') score -= 25;
-    else if (item.severity === 'high') score -= 15;
-    else if (item.severity === 'medium') score -= 7;
-    else score -= 3;
-  }
-  return Math.max(0, score);
+  return Math.max(0, 100 - issues.reduce((total, item) =>
+    total + (Number.isFinite(Number(item.score_cost)) ? Number(item.score_cost) : severityCost(item.severity)), 0));
 }
 function statusFromScore(score, criticalCount) {
-  if (criticalCount > 0 || score < 50) return 'broken';
-  if (score < 75) return 'degraded';
-  if (score < 90) return 'usable_with_caution';
-  return 'healthy';
+  return criticalCount === 0 && score >= 90 ? 'healthy' : 'usable_with_warnings';
+}
+function statusWithStructure(score, criticalCount, structuralStatus) {
+  if (structuralStatus === 'structurally_broken') return 'structurally_broken';
+  if (structuralStatus === 'usable_with_warnings') return 'usable_with_warnings';
+  return statusFromScore(score, criticalCount);
 }
 
 function updateChecksEnabled() {
@@ -207,21 +226,75 @@ function doctorUnlocked(options = {}) {
   const freshness = parsed.get('freshness.json') || { tracked_files: [] };
   const tracked = freshness.tracked_files || [];
   const missingTracked = tracked.filter((entry) => entry.path && !exists(entry.path));
-  if (missingTracked.length > 0) issue(issues, 'high', 'tracked_file_missing', `${missingTracked.length} tracked files are missing.`, '.knowledge/freshness.json');
+  for (const entry of missingTracked) {
+    issue(
+      issues,
+      'high',
+      'tracked_file_missing',
+      `Tracked file is missing: ${entry.path}.`,
+      entry.path,
+      {
+        module_id: entry.module_id || 'root',
+        affected_artifacts: [entry.path, '.knowledge/freshness.json'],
+        repair_class: 'manual_review',
+        required_checks: ['restore_or_remove_tracked_file', 'verify_module_evidence'],
+        resolution_predicate: 'tracked_file_state_explicitly_resolved',
+        safe_during_current_task: false
+      }
+    );
+  }
   checks.push({ check: 'tracked_files_exist', status: missingTracked.length ? 'fail' : 'pass', tracked_files: tracked.length, missing: missingTracked.length });
 
   const trust = parsed.get('maintenance/trust_report.json') || {};
-  const suspectCount = ((trust.modules || {}).suspect || []).length + ((trust.modules || {}).low_confidence || []).length;
-  if (suspectCount > 0) issue(issues, 'medium', 'suspect_or_low_modules', `${suspectCount} modules are suspect or low-confidence; code recheck is mandatory before behavior claims.`, '.knowledge/maintenance/trust_report.json');
+  const suspectModules = ((trust.modules || {}).suspect || []).map((module_id) => ({ module_id, trust_status: 'suspect' }));
+  const lowModules = ((trust.modules || {}).low_confidence || []).map((module_id) => ({ module_id, trust_status: 'low_confidence' }));
+  const uncertainModules = [...suspectModules, ...lowModules];
+  const suspectCount = uncertainModules.length;
+  const moduleById = new Map(modules.map((item) => [item.module_id, item]));
+  for (const uncertain of uncertainModules) {
+    const moduleInfo = moduleById.get(uncertain.module_id) || {};
+    const card = moduleInfo.card || `.knowledge/modules/${uncertain.module_id}.json`;
+    const primaryArtifact = (moduleInfo.key_files || [])[0] || card;
+    const affected = Array.from(new Set([
+      primaryArtifact,
+      card,
+      ...(moduleInfo.key_files || []),
+      ...(moduleInfo.evidence_files || [])
+    ]));
+    issue(
+      issues,
+      'medium',
+      uncertain.trust_status === 'low_confidence' ? 'low_confidence_module' : 'suspect_module',
+      `Module ${uncertain.module_id} is ${uncertain.trust_status}; current source and relevant tests must be verified before behavior claims.`,
+      primaryArtifact,
+      {
+        module_id: uncertain.module_id,
+        affected_artifacts: affected,
+        repair_class: 'verify_on_touch',
+        required_checks: ['read_current_source', 'run_relevant_tests', 'compare_existing_claims'],
+        resolution_predicate: 'source_and_relevant_tests_confirm_claim',
+        safe_during_current_task: true
+      }
+    );
+  }
   checks.push({ check: 'trust_report_present', status: trust.generated_at ? 'pass' : 'warn', generated_at: trust.generated_at || null, suspect_or_low_modules: suspectCount });
 
   const wikiLint = parsed.get('maintenance/wiki_lint_report.json') || {};
-  if (wikiLint.status && !['healthy','usable_with_warnings'].includes(wikiLint.status)) issue(issues, 'low', 'wiki_lint_not_healthy', `Wiki lint status is ${wikiLint.status}.`, '.knowledge/maintenance/wiki_lint_report.json');
-  checks.push({ check: 'wiki_lint_report', status: wikiLint.generated_at ? 'pass' : 'warn', quality_score: wikiLint.quality_score ?? null });
-
   const graph = parsed.get('maps/wiki_graph.json') || {};
+  const wikiStructuralStatus = canonicalWikiStatus(wikiLint, graph);
+  if (wikiStructuralStatus === 'structurally_broken') issue(issues, 'medium', 'wiki_structurally_broken', 'Wiki graph is structurally broken.', '.knowledge/maintenance/wiki_lint_report.json', { affected_artifacts: ['.knowledge/maintenance/wiki_lint_report.json', '.knowledge/maps/wiki_graph.json'] });
+  else if (wikiStructuralStatus !== 'healthy') issue(issues, 'low', 'wiki_lint_has_warnings', `Wiki canonical status is ${wikiStructuralStatus}.`, '.knowledge/maintenance/wiki_lint_report.json', { affected_artifacts: ['.knowledge/maintenance/wiki_lint_report.json', '.knowledge/maps/wiki_graph.json'] });
+  checks.push({
+    check: 'wiki_lint_report',
+    status: wikiLint.generated_at ? 'pass' : 'warn',
+    aggregate_status: wikiStructuralStatus,
+    reported_status: wikiLint.status || null,
+    quality_score: wikiLint.quality_score ?? null,
+    structural_status: wikiStructuralStatus,
+    reported_structural_status: wikiLint.structural_status || null
+  });
   if ((graph.broken_edge_count || 0) > 0) issue(issues, 'medium', 'broken_wiki_edges', `${graph.broken_edge_count} broken wiki graph edges.`, '.knowledge/maps/wiki_graph.json');
-  checks.push({ check: 'wiki_graph', status: graph.generated_at ? 'pass' : 'warn', nodes: graph.node_count || 0, edges: graph.edge_count || 0, broken_edges: graph.broken_edge_count || 0 });
+  checks.push({ check: 'wiki_graph', status: graph.generated_at ? 'pass' : 'warn', nodes: graph.node_count || 0, edges: graph.edge_count || 0, broken_edges: graph.broken_edge_count || 0, structural_status: wikiStructuralStatus });
 
   const externalStatusPath = path.join(stateRoot, 'maintenance', 'external_memory_status.json');
   if (!fs.existsSync(externalStatusPath)) { try { require(path.join(context.systemRoot, 'tools', 'external-memory-status.js'))({ skipLock: true, quiet: true }); } catch {} }
@@ -300,8 +373,58 @@ function doctorUnlocked(options = {}) {
     issue(issues, 'low', 'secret_scan_missing', 'No secret_scan_report.json. Run node .knowledge/tools/scan-secrets.js for a baseline.', '.knowledge/maintenance/secret_scan_report.json');
   }
 
-  const criticalCount = issues.filter((i) => i.severity === 'critical').length;
-  const score = scoreFromIssues(issues);
+  const criticality = parsed.get('maps/file_criticality.json') || {};
+  const criticalFiles = new Set(
+    (criticality.files || [])
+      .filter((item) => item && (item.criticality === 'critical' || item.level === 'critical'))
+      .map((item) => String(item.path || item.file || '').replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase())
+  );
+  for (const finding of issues) {
+    if (finding.affected_artifacts.some((artifact) => criticalFiles.has(String(artifact).toLowerCase()))) {
+      finding.critical_path = true;
+    }
+    if (/secret|security|auth(?:entication|orization)?/i.test(`${finding.code} ${finding.message}`)) {
+      finding.security_sensitive = true;
+    }
+  }
+  const staleItems = readJson(path.join(stateRoot, 'maintenance', 'stale_items.json'), { items: [] });
+  const repairQueue = readJson(path.join(stateRoot, 'maintenance', 'repair_queue.json'), { queue: [] });
+  const currentLifecycle = lifecycleById(staleItems, repairQueue);
+  const pendingTrustClosures = new Map(
+    (options.pendingTrustClosures || [])
+      .filter((item) =>
+        item &&
+        /^LC-[a-f0-9]{16}$/.test(String(item.lifecycle_id || '')) &&
+        /^KVR-[a-f0-9]{64}$/.test(String(item.receipt_id || '')) &&
+        /^[a-f0-9]{64}$/.test(String(item.receipt_sha256 || ''))
+      )
+      .map((item) => [String(item.lifecycle_id), item])
+  );
+  const preservedPendingClosures = [];
+  const reconciliationIssues = issues.filter((item) => {
+    const pending = pendingTrustClosures.get(item.lifecycle_id);
+    if (
+      !pending ||
+      !['suspect_module', 'low_confidence_module'].includes(item.code)
+    ) {
+      return true;
+    }
+    const current = currentLifecycle.get(item.lifecycle_id);
+    const evidence = current?.resolution_evidence || {};
+    const preserve = Boolean(
+      current &&
+      ['closed', 'resolved'].includes(current.status) &&
+      evidence.receipt_id === pending.receipt_id &&
+      evidence.receipt_sha256 === pending.receipt_sha256 &&
+      evidence.task_id === pending.task_id &&
+      evidence.session_id === pending.session_id
+    );
+    if (preserve) preservedPendingClosures.push(item.lifecycle_id);
+    return !preserve;
+  });
+  const criticalCount = reconciliationIssues
+    .filter((i) => i.severity === 'critical').length;
+  const score = scoreFromIssues(reconciliationIssues);
   const report = {
     schema_version: SCHEMA_VERSION,
     generated_at: nowIso(),
@@ -311,11 +434,41 @@ function doctorUnlocked(options = {}) {
     project_knowledge_root: context.projectKnowledgeRoot,
     state_root: context.stateRoot,
     quality_score: score,
-    status: statusFromScore(score, criticalCount),
-    summary: `${issues.length} issue(s), ${criticalCount} critical, score ${score}/100.`,
+    status: statusWithStructure(score, criticalCount, wikiStructuralStatus),
+    structural_status: wikiStructuralStatus,
+    summary: `${reconciliationIssues.length} issue(s), ${criticalCount} critical, score ${score}/100.`,
     checks,
-    issues
+    issues: reconciliationIssues,
+    findings: reconciliationIssues,
+    global: {
+      score,
+      status: reconciliationIssues.length ? (score >= 90 ? 'healthy_with_debt' : 'usable_with_warnings') : 'healthy',
+      findings_open: reconciliationIssues.length
+    }
   };
+  if (options.taskScope) {
+    report.task_readiness = taskReadiness(
+      reconciliationIssues,
+      options.taskScope
+    );
+    report.deferred_unrelated_findings = report.task_readiness.excluded_unrelated_findings;
+  }
+  const queueProjection = reconcileQueue({
+    staleItems,
+    repairQueue,
+    findings: reconciliationIssues.map((item) => ({
+      ...item,
+      reason: item.message
+    })),
+    source: 'doctor',
+    agentId: getAgentId(),
+    timestamp: report.generated_at
+  });
+  report.pending_trust_closures_observed =
+    preservedPendingClosures.sort();
+  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'stale_items.json'), staleItems);
+  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'repair_queue.json'), repairQueue);
+  report.queue_transitions = queueProjection.events;
   writeJsonAtomic(path.join(stateRoot, 'maintenance', 'quality_report.json'), report);
   try { require(path.join(context.systemRoot, 'tools', 'build-routing-bundle.js'))({ skipLock: true, quiet: true }); } catch (error) { report.routing_bundle_refresh_error = error.message; }
   appendTeamEvent(context, 'doctor_result', {
@@ -323,16 +476,18 @@ function doctorUnlocked(options = {}) {
     quality_score: report.quality_score,
     issues_total: report.issues.length
   });
+  if (queueProjection.events.length) appendNdjson(path.join(stateRoot, 'maintenance', 'events', `${report.generated_at.slice(0, 10)}.ndjson`), { type: 'queue_lifecycle', source: 'doctor', generated_at: report.generated_at, agent_id: getAgentId(), transitions: queueProjection.events });
   if (!options.quiet) console.log(JSON.stringify(report, null, 2));
   return report;
 }
 
 function main(options = {}) {
   if (options.skipLock) return doctorUnlocked(options);
-  return withLock(lockDir, () => doctorUnlocked(options));
+  return withContainedLock(DOCTOR_LOCK, () => doctorUnlocked(options));
 }
 
 module.exports = main;
+module.exports.__test = { statusFromScore, statusWithStructure };
 
 if (require.main === module) {
   try { main({ quiet: process.argv.includes('--quiet') }); }

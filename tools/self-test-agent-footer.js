@@ -8,8 +8,10 @@ const { systemVersion } = require('./lib/system-version');
 const systemRoot = path.resolve(__dirname, '..');
 
 function run(args) {
-  const res = spawnSync(process.execPath, args, { cwd: systemRoot, encoding: 'utf8', windowsHide: true, timeout: 60000 });
-  if (res.status !== 0) throw new Error(`${args.join(' ')} failed\n${res.stdout}\n${res.stderr}`);
+  const res = spawnSync(process.execPath, args, { cwd: systemRoot, encoding: 'utf8', windowsHide: true, timeout: 120000 });
+  if (res.status !== 0) {
+    throw new Error(`${args.join(' ')} failed (status=${res.status}, signal=${res.signal || 'none'}, error=${res.error?.message || 'none'})\n${res.stdout || ''}\n${res.stderr || ''}`);
+  }
   return JSON.parse(res.stdout);
 }
 

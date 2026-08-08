@@ -3,7 +3,7 @@
 
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { ensureDir, readJson, writeJsonAtomic } = require('./lib/json-store');
+const { ensureDir, readJson, writeJsonAtomic, sleepSync } = require('./lib/json-store');
 const { resolveKnowledgeContext, contextEnv } = require('./lib/path-context');
 const { inspectSemanticJson, parseJsonOutput } = require('./lib/semantic-json');
 
@@ -22,23 +22,38 @@ const checks = [
   { name: 'templates_list', command: 'tools/apply-template.js --list' }
 ];
 
-function run(spec) {
+function run(spec, hooks = {}) {
   const started = Date.now();
   const parts = spec.command.split(/\s+/);
   const file = parts.shift();
   const args = parts;
-  const r = spawnSync(process.execPath, [path.join(context.systemRoot, file), ...args], {
-    cwd: context.targetRoot,
-    encoding: 'utf8',
-    env: contextEnv(context),
-    windowsHide: true
-  });
+  const spawnImpl = hooks.spawnSync || spawnSync;
+  const wait = hooks.sleepSync || sleepSync;
+  let r = null;
+  let attempts = 0;
+  let emptyExitRetries = 0;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    attempts = attempt;
+    r = spawnImpl(process.execPath, [path.join(context.systemRoot, file), ...args], {
+      cwd: context.targetRoot,
+      encoding: 'utf8',
+      env: contextEnv(context),
+      windowsHide: true
+    });
+    const unexplainedEmptyExit = r.status === 1 && r.signal === null && !r.error &&
+      String(r.stdout || '') === '' && String(r.stderr || '') === '';
+    if (!unexplainedEmptyExit) break;
+    emptyExitRetries += 1;
+    if (attempt < 3) wait(50 * attempt);
+  }
+  const persistentEmptyExit = emptyExitRetries === 3;
   let parsed = null;
   const semanticErrors = [];
   try { parsed = parseJsonOutput(r.stdout); }
   catch (error) { semanticErrors.push(`invalid JSON stdout: ${error.message}`); }
   if (parsed) semanticErrors.push(...inspectSemanticJson(parsed).errors);
   if (r.status !== 0) semanticErrors.push(`exit code ${r.status}`);
+  if (persistentEmptyExit) semanticErrors.push(`child exited 1 without output after ${attempts} attempts`);
   return {
     name: spec.name,
     status: semanticErrors.length === 0 ? 'pass' : 'fail',
@@ -46,6 +61,9 @@ function run(spec) {
     duration_ms: Date.now() - started,
     json_status: parsed?.status || null,
     semantic_errors: semanticErrors,
+    failure_code: persistentEmptyExit ? 'child_empty_exit_persistent' : null,
+    attempts,
+    empty_exit_retries: emptyExitRetries,
     stderr: (r.stderr || r.error?.message || '').slice(0, 1000)
   };
 }
@@ -54,6 +72,12 @@ function percentile(values, ratio) {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   if (!sorted.length) return null;
   return sorted[Math.floor((sorted.length - 1) * ratio)];
+}
+
+function exitCodeForReport(report) {
+  const failedCount = Number(report?.failed_count || 0);
+  const hasFailedCheck = Array.isArray(report?.results) && report.results.some((result) => result?.status === 'fail');
+  return report?.status === 'release_candidate' && failedCount === 0 && !hasFailedCheck ? 0 : 2;
 }
 
 function main() {
@@ -66,7 +90,7 @@ function main() {
   const quality = readJson(path.join(context.stateRoot, 'maintenance', 'quality_report.json'), {});
   const durations = results.map((result) => result.duration_ms);
   const report = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     generated_at: new Date().toISOString(),
     mode: context.mode,
     score,
@@ -102,5 +126,10 @@ function main() {
   return report;
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  const report = main();
+  process.exitCode = exitCodeForReport(report);
+}
 module.exports = main;
+module.exports.exitCodeForReport = exitCodeForReport;
+module.exports.runCheck = run;

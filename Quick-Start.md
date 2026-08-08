@@ -37,11 +37,13 @@ Install only the repo-local integration for the agent that is currently operatin
 | Hermes | `node .knowledge/tools/install-agent-integrations.js --runtime hermes` | `AGENTS.md` |
 | Gemini CLI | `node .knowledge/tools/install-agent-integrations.js --runtime gemini` | `GEMINI.md` |
 | GitHub Copilot | `node .knowledge/tools/install-agent-integrations.js --runtime copilot` | `.github/copilot-instructions.md` |
-| Devin | `node .knowledge/tools/install-agent-integrations.js --runtime devin` | `.devin/rules/knowledge.md` |
-| Windsurf Cascade | `node .knowledge/tools/install-agent-integrations.js --runtime windsurf` | `.devin/rules/knowledge.md` |
+| Devin | `node .knowledge/tools/install-agent-integrations.js --runtime devin` | `AGENTS.md`, `.devin/rules/knowledge.rules` |
+| Windsurf Cascade | `node .knowledge/tools/install-agent-integrations.js --runtime windsurf` | `.windsurf/rules/knowledge.md` |
 | Continue | `node .knowledge/tools/install-agent-integrations.js --runtime continue` | `.continue/rules/knowledge.md` |
 | Roo Code | `node .knowledge/tools/install-agent-integrations.js --runtime roo` | `.roo/rules/knowledge.md` |
 | Aider | `node .knowledge/tools/install-agent-integrations.js --runtime aider` | `CONVENTIONS.md`, `.aider.conf.yml` |
+
+Codex, OpenClaw, Hermes, and Devin share one runtime-neutral managed block in `AGENTS.md`; connecting another one updates that same block and preserves user-authored text. Devin and Windsurf also use separate vendor paths (`.devin/rules/knowledge.rules` and `.windsurf/rules/knowledge.md`) and never overwrite each other. Devin uses `AGENTS.md` as the documented primary bridge; the supplemental `.rules` bridge remains subject to a live Devin discovery canary.
 
 Do not install every integration during first setup. Other agents can join later
 by running their own `--runtime <agent>` command against the already installed
@@ -92,6 +94,92 @@ After setup, read:
 ```txt
 .knowledge/maintenance/routing_bundle.json
 ```
+
+For an explicitly scoped task, create or refresh one task snapshot and read
+its `first-read.md` before loading broader maintenance state:
+
+```bash
+node .knowledge/tools/task-routing.js create --task="<task>" --scope-module=<module> --scope-path=<path> --json
+```
+
+The result provides a task hash. A later refresh must preserve that recorded
+scope contract:
+
+```bash
+node .knowledge/tools/task-routing.js refresh --task-id=<64-character-task-hash> --json
+```
+
+## Use Repair-on-touch during normal work
+
+The default mode is `scoped`. It preserves verification an agent already
+performs for the current task; it does not chase a perfect Doctor score or
+expand into unrelated maintenance.
+
+Inspect the effective policy and build a task-scoped plan:
+
+```bash
+node .knowledge/tools/repair-on-touch.js status \
+  --task-id=<task-id> --session-id=<session-id> --json
+node .knowledge/tools/repair-on-touch.js plan --request=<task-scope.json>
+```
+
+Use the scoped `plan_artifact` returned by `plan`;
+`maintenance/repair_opportunities.json` is only the latest-run advisory view.
+Only selected, task-relevant findings may proceed. A finding closes only after
+the CLI executes the declared checks without a shell, stores a
+content-addressed execution, binds current source hashes into a verification
+receipt, and applies that receipt:
+
+```bash
+node .knowledge/tools/repair-on-touch.js verify --request=<verification.json>
+node .knowledge/tools/repair-on-touch.js receipt --request=<receipt.json>
+node .knowledge/tools/repair-on-touch.js apply --receipt=KVR-<sha256>
+```
+
+Never assert that a test ran, close a sibling finding, edit source merely to
+raise health, or bypass confirmation for security/critical-path findings.
+Unrelated debt remains deferred. Report the primary task first and knowledge
+maintenance separately. See `docs/repair-on-touch.md`.
+
+## Prepare a real-use Field Report
+
+When the user wants a publishable account of real `.knowledge` use, start the
+progressive interview. Answers may use any source language; the source defaults to `auto`, while the publication-ready report is always English.
+
+```bash
+node .knowledge/tools/field-report.js start --new --json
+node .knowledge/tools/field-report.js questions --report-id=<id> --json
+```
+
+Ask only the returned questions. Then ingest the tester's answers. A non-English
+source requires identity-attributed translation and independent tester approval
+before rendering.
+
+```bash
+node .knowledge/tools/field-report.js ingest --report-id=<id> --answers=<path>
+# Attach evidence-bound engineering results from task-results.template.json:
+node .knowledge/tools/field-report.js results-ingest --report-id=<id> --results=<path>
+# When translation is required: translation-export -> translation-ingest -> translation-approve
+node .knowledge/tools/field-report.js render --report-id=<id>
+```
+
+The task-results file supplies the engineering task title and project-specific
+checks such as build, tests, migrations, security, UI, or deployment. Each
+public pass/warning/fail row is content-addressed to repository- or state-local
+evidence. Informational rows may use `outcome_relevant=false`, for example when
+deployment was intentionally outside scope. Evidence and the repository
+snapshot are revalidated before render, approval, preview, and publication.
+
+The public draft starts with an evidence-bound **Verified engineering outcome**
+table. Doctor, wiki, Task Readiness, routing, and Repair-on-touch remain in a
+separate system-state table. A local draft may describe a dirty snapshot, but
+GitHub publication is blocked until the final Git worktree is clean and facts
+are recollected. Repair telemetry is reported as current, stale, invalid, or
+unavailable; stale/invalid metrics are withheld. Internal workspace and
+organization labels are generalized. Do not infer usefulness, accuracy, speed,
+or provider-token effects from health scores or local estimates, and do not
+approve or publish on the tester's behalf. Approval and GitHub publication are
+two separate explicit actions. See `docs/field-report.md`.
 
 If this is an existing configured `.knowledge` installation, read the routing
 bundle first. If it is missing or stale, choose the correct setup path below.
@@ -368,7 +456,8 @@ The graph section is the Free Core Trust Graph. It should show source-of-truth o
 
 ```bash
 node .knowledge/tools/build-wiki-graph.js
-node .knowledge/tools/self-test-free-core-graph.js
+node .knowledge/tools/lint-wiki.js --strict
+node .knowledge/tools/doctor.js
 ```
 
 ```bash
@@ -486,5 +575,14 @@ Then report:
 - routing bundle path;
 - PR summary path;
 - metrics path;
-- estimated tokens saved and percent saved when `.knowledge/metrics/baseline.json` contains routing metrics;
-- an explicit note when metrics are unavailable or not regenerated yet.
+- one mutually exclusive workspace-to-task first-read estimate state:
+  - **narrowing**: `Estimated workspace-to-task first-read narrowing: X estimated local context tokens (Y%).`
+  - **overhead**: `Estimated workspace-to-task first-read overhead: X estimated local context tokens (+Y%).`
+  - **neutral**: `No material estimated local first-read context difference.`
+  - **unavailable/not comparable**: `Workspace-to-task first-read estimate is unavailable or not comparable: <reason>.`
+
+> This is a deterministic local context estimate, not provider-reported model-token usage.
+
+Do not show a percentage when the claim is ineligible, the route is stale, the
+baseline is invalid, task context is ambiguous, or no comparable estimate is
+available.

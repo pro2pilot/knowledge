@@ -26,8 +26,58 @@ function readText(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
 }
 
+function canonicalPath(dirPath) {
+  let resolved = path.resolve(dirPath);
+  try { resolved = fs.realpathSync.native(resolved); }
+  catch {}
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isPathWithin(candidatePath, parentPath) {
+  return candidatePath === parentPath || candidatePath.startsWith(`${parentPath}${path.sep}`);
+}
+
+function fileInventory(dirPath) {
+  const files = new Set();
+  function walk(currentPath) {
+    if (!fs.existsSync(currentPath)) return;
+    for (const entry of fs.readdirSync(currentPath, { withFileTypes: true })) {
+      const absolutePath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) walk(absolutePath);
+      else files.add(canonicalPath(absolutePath));
+    }
+  }
+  walk(dirPath);
+  return files;
+}
+
 function main() {
   ensureDir(path.join(stateRoot, 'metrics'));
+  const canonicalKnowledgeRoot = canonicalPath(knowledgeRoot);
+  const canonicalStateRoot = canonicalPath(stateRoot);
+  const stateWithinKnowledge = isPathWithin(canonicalStateRoot, canonicalKnowledgeRoot);
+  const knowledgeWithinState = isPathWithin(canonicalKnowledgeRoot, canonicalStateRoot);
+  const rootsOverlap = stateWithinKnowledge || knowledgeWithinState;
+  const rootsRelation = canonicalKnowledgeRoot === canonicalStateRoot
+    ? 'same'
+    : stateWithinKnowledge
+      ? 'state_within_knowledge'
+      : knowledgeWithinState
+        ? 'knowledge_within_state'
+        : 'separate';
+  const curatedFiles = fileInventory(knowledgeRoot);
+  const stateFiles = fileInventory(stateRoot);
+  const runtimeOnlyFiles = new Set([...stateFiles].filter((filePath) => !curatedFiles.has(filePath)));
+  const uniqueFiles = new Set([...curatedFiles, ...stateFiles]);
+  const curatedTotal = curatedFiles.size;
+  const runtimeTotal = runtimeOnlyFiles.size;
+  const uniqueJson = [...uniqueFiles].filter((filePath) => filePath.endsWith('.json')).length;
+  const uniqueMarkdown = [...uniqueFiles].filter((filePath) => filePath.endsWith('.md')).length;
+  const runtimeAccounting = !rootsOverlap
+    ? 'separate_state_root'
+    : knowledgeWithinState && !stateWithinKnowledge
+      ? 'runtime_total_excludes_curated_overlap'
+      : 'included_in_curated_total';
   const routePath = path.join(stateRoot, 'maintenance', 'routing_bundle.json');
   const routeText = readText(routePath);
   const multi = [
@@ -39,12 +89,15 @@ function main() {
   ].map(readText).join('\n');
   const routeTokens = estimateTokens(routeText);
   const multiTokens = estimateTokens(multi);
+  // The global bootstrap and legacy multi-file read-set have different scope.
+  // Never turn this convenient local diagnostic into a public savings claim.
   const tokenDelta = multiTokens - routeTokens;
   const percentDelta = multiTokens ? Math.round((1 - routeTokens / multiTokens) * 100) : 0;
+  const routingIndex = readJson(path.join(stateRoot, 'routing', 'index.json'), { tasks: [] });
   const externalMemoryReport = readJson(path.join(stateRoot, 'maintenance', 'external_memory_status.json'), { providers: [], metrics: {} });
   const externalMemoryMetrics = readJson(path.join(stateRoot, 'metrics', 'external_memory.json'), externalMemoryReport.metrics || {});
   const metrics = {
-    schema_version: '3.2.11',
+    schema_version: '3.3.0',
     generated_at: new Date().toISOString(),
     generated_by: getAgentId(),
     mode: context.mode,
@@ -53,10 +106,14 @@ function main() {
     state_root: context.stateRoot,
     token_estimator: METHOD_ID,
     files: {
-      curated_total: count(knowledgeRoot),
-      runtime_total: count(stateRoot),
-      json: count(knowledgeRoot, (a) => a.endsWith('.json')) + count(stateRoot, (a) => a.endsWith('.json')),
-      markdown: count(knowledgeRoot, (a) => a.endsWith('.md')) + count(stateRoot, (a) => a.endsWith('.md')),
+      curated_total: curatedTotal,
+      runtime_total: runtimeTotal,
+      unique_total: uniqueFiles.size,
+      json: uniqueJson,
+      markdown: uniqueMarkdown,
+      roots_overlap: rootsOverlap,
+      roots_relation: rootsRelation,
+      runtime_total_accounting: runtimeAccounting,
       tools: count(path.join(context.systemRoot, 'tools'), (a) => a.endsWith('.js'))
     },
     routing: {
@@ -65,9 +122,20 @@ function main() {
       legacy_first_read_tokens_approx: multiTokens,
       estimated_token_delta: tokenDelta,
       estimated_percent_delta: percentDelta,
-      estimated_tokens_saved: Math.max(0, tokenDelta),
-      estimated_percent_saved: Math.max(0, percentDelta),
-      assessment: tokenDelta > 0 ? 'estimated_savings' : tokenDelta < 0 ? 'estimated_overhead' : 'neutral'
+      signed_delta_tokens: tokenDelta,
+      signed_delta_percent: percentDelta,
+      estimated_tokens_saved: 0,
+      estimated_percent_saved: 0,
+      estimated_tokens_overhead: 0,
+      estimated_percent_overhead: 0,
+      scope_comparable: false,
+      claim_eligible: false,
+      claim_ineligible_reason: 'baseline_and_routing_scope_differ',
+      measurement_kind: 'estimated_local_context',
+      assessment: 'not_comparable',
+      task_routing_index: 'routing/index.json',
+      task_snapshots_total: (routingIndex.tasks || []).length,
+      actual_model_usage: { available: false, reason: 'no_provider_telemetry' }
     },
     indexes: {
       search_documents: readJson(path.join(stateRoot, 'search', 'index.json'), { documents: [] }).documents.length,
@@ -94,9 +162,13 @@ Token estimator: ${metrics.token_estimator}
 
 - Routing bundle tokens (approx): ${metrics.routing.bundle_tokens_approx}
 - Legacy first-read tokens (approx): ${metrics.routing.legacy_first_read_tokens_approx}
-- Estimated tokens saved: ${metrics.routing.estimated_tokens_saved} (${metrics.routing.estimated_percent_saved}%)
-- Signed token delta: ${metrics.routing.estimated_token_delta} (${metrics.routing.estimated_percent_delta}%; positive means savings)
-- Assessment: ${metrics.routing.assessment}
+- Routing comparison: ${metrics.routing.assessment} (${metrics.routing.claim_ineligible_reason})
+- Signed diagnostic delta: ${metrics.routing.signed_delta_tokens} (${metrics.routing.signed_delta_percent}%; not a task-comparable claim)
+- Task snapshots: ${metrics.routing.task_snapshots_total} (${metrics.routing.task_routing_index})
+- Curated-root files: ${metrics.files.curated_total}
+- Separate runtime-root files: ${metrics.files.runtime_total}
+- Unique files across counted roots: ${metrics.files.unique_total}
+- Project/state roots overlap: ${metrics.files.roots_overlap} (${metrics.files.runtime_total_accounting})
 - Search documents: ${metrics.indexes.search_documents}
 - Wiki graph: ${metrics.indexes.wiki_nodes} nodes / ${metrics.indexes.wiki_edges} edges
 - Doctor score: ${metrics.health.doctor_score}
