@@ -1,0 +1,52 @@
+name: Model workflow accuracy study persistent
+
+on:
+  push:
+    branches:
+      - audit/3.4.0-rc1-model-study
+    paths:
+      - .github/workflows/model-accuracy-study-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/3.4.0-rc1-model-study
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run preregistered paired study
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL_ACCURACY_MODEL: openai/gpt-4.1-mini
+          MODEL_ACCURACY_OUT: research/results/model-accuracy-study
+        run: node research/model-accuracy-study.mjs
+      - name: Verify and persist result
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'research/results/model-accuracy-study/MODEL-ACCURACY-STUDY.json';
+          const r = JSON.parse(fs.readFileSync(p,'utf8'));
+          if (r.status !== 'complete') throw new Error(`study status ${r.status}`);
+          if (r.metrics.paired_tasks !== 12 || r.metrics.infrastructure_failures !== 0) throw new Error('incomplete paired study');
+          console.log(JSON.stringify({status:'pass', claim:r.candidate_claim.status, metrics:r.metrics}, null, 2));
+          NODE
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add research/results/model-accuracy-study
+          git commit -m "research: record preregistered model accuracy result" || exit 0
+          git push origin HEAD:audit/3.4.0-rc1-model-study
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-accuracy-study-persistent
+          path: research/results/model-accuracy-study/
+          if-no-files-found: error
+          retention-days: 30
