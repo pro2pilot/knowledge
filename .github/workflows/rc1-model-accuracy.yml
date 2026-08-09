@@ -1,0 +1,36 @@
+name: RC1 model navigation accuracy study
+on:
+  push:
+    branches:
+      - audit/3.4.0-rc1-model-study
+    paths:
+      - benchmarks/rc1-model-accuracy/**
+      - .github/workflows/rc1-model-accuracy.yml
+permissions:
+  contents: read
+  models: read
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify frozen inputs
+        run: |
+          sha256sum benchmarks/rc1-model-accuracy/PRE-REGISTRATION.md
+          node -e "const fs=require('fs'),z=require('zlib'),d=JSON.parse(z.gunzipSync(Buffer.from(fs.readFileSync('benchmarks/rc1-model-accuracy/dataset.json.gz.b64','utf8').trim(),'base64')));if(d.candidate.sha256!=='7686150325c43ae18229793ec8721b49a85c89149c042b8f963202ab9bd1dc6f')process.exit(1);console.log(d.dataset_sha256)"
+      - name: Run frozen model study
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node benchmarks/rc1-model-accuracy/run.mjs
+      - name: Upload model study evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc1-model-navigation-accuracy
+          path: model-study-output/
+          if-no-files-found: error
+          retention-days: 30
