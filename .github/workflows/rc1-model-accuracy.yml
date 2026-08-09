@@ -21,7 +21,8 @@ jobs:
       - name: Verify frozen inputs
         run: |
           sha256sum benchmarks/rc1-model-accuracy/PRE-REGISTRATION.md
-          node -e "const fs=require('fs'),z=require('zlib'),d=JSON.parse(z.gunzipSync(Buffer.from(fs.readFileSync('benchmarks/rc1-model-accuracy/dataset.json.gz.b64','utf8').trim(),'base64')));if(d.candidate.sha256!=='7686150325c43ae18229793ec8721b49a85c89149c042b8f963202ab9bd1dc6f')process.exit(1);console.log(d.dataset_sha256)"
+          cat benchmarks/rc1-model-accuracy/dataset.part*.b64 > benchmarks/rc1-model-accuracy/dataset.json.gz.b64
+          node -e "const fs=require('fs'),z=require('zlib'),d=JSON.parse(z.gunzipSync(Buffer.from(fs.readFileSync('benchmarks/rc1-model-accuracy/dataset.json.gz.b64','utf8').trim(),'base64')));if(d.candidate.sha256!=='7686150325c43ae18229793ec8721b49a85c89149c042b8f963202ab9bd1dc6f')process.exit(1);if(d.dataset_sha256!=='c82ecd442ffc0fec8ada459493368edabe72964b9ee4e3f45a8db754944b2f80')process.exit(1);console.log(d.dataset_sha256)"
       - name: Run frozen model study
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
