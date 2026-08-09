@@ -1,0 +1,46 @@
+name: Model workflow accuracy study
+
+on:
+  push:
+    branches:
+      - audit/3.4.0-rc1-model-study
+    paths:
+      - research/model-accuracy-study.mjs
+      - .github/workflows/model-accuracy-study.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  models: read
+
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run preregistered paired study
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODEL_ACCURACY_MODEL: openai/gpt-4.1-mini
+          MODEL_ACCURACY_OUT: model-accuracy-results
+        run: node research/model-accuracy-study.mjs
+      - name: Verify result contract
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('model-accuracy-results/MODEL-ACCURACY-STUDY.json','utf8'));
+          if (!['supported','unsupported'].includes(r.candidate_claim?.status)) throw new Error('missing candidate claim status');
+          if (r.metrics.paired_tasks !== 12) throw new Error(`expected 12 pairs, got ${r.metrics.paired_tasks}`);
+          if (r.metrics.infrastructure_failures !== 0) throw new Error('infrastructure failures present');
+          console.log(JSON.stringify({status:'pass', claim:r.candidate_claim.status, metrics:r.metrics}, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-accuracy-study
+          path: model-accuracy-results/
+          if-no-files-found: error
+          retention-days: 30
