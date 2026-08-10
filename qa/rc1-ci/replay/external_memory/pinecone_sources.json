@@ -1,0 +1,10 @@
+{
+  "schema_version": "3.1.5",
+  "enabled": false,
+  "mode": "disabled",
+  "namespace": null,
+  "index": null,
+  "sources": [],
+  "chunking": { "max_chars": 2200, "overlap_chars": 240 },
+  "note": "Configure only when Pinecone Local or Pinecone Cloud is intentionally used as a cold archive bridge."
+}

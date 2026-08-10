@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.dev/schemas/knowledge-repair-opportunities.v1.json",
+  "title": ".knowledge task-scoped repair opportunities",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "task_scope",
+    "repair_on_touch",
+    "global",
+    "task_readiness",
+    "summary",
+    "budget",
+    "opportunities"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "knowledge-repair-opportunities.v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "task_scope": {
+      "type": "object",
+      "required": [
+        "task_id",
+        "session_id",
+        "scope_hash"
+      ]
+    },
+    "repair_on_touch": {
+      "type": "object",
+      "required": [
+        "configured_mode",
+        "effective_mode",
+        "effective_mode_source",
+        "hard_safety"
+      ]
+    },
+    "global": {
+      "type": "object",
+      "required": [
+        "score",
+        "status"
+      ]
+    },
+    "task_readiness": {
+      "type": "object",
+      "required": [
+        "score",
+        "status",
+        "relevant_findings_open",
+        "relevant_findings_closed"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "findings_considered",
+        "findings_selected",
+        "findings_deferred"
+      ]
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "limits",
+        "selected",
+        "exhausted"
+      ]
+    },
+    "opportunities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "lifecycle_id",
+          "code",
+          "module_id",
+          "affected_artifacts",
+          "score_cost",
+          "repair_class",
+          "required_checks",
+          "resolution_predicate",
+          "relation_to_current_task",
+          "safe_during_current_task",
+          "requires_confirmation",
+          "status",
+          "decision_reason"
+        ],
+        "properties": {
+          "lifecycle_id": {
+            "type": "string",
+            "pattern": "^LC-[a-f0-9]{16}$"
+          },
+          "relation_to_current_task": {
+            "enum": [
+              "direct_overlap",
+              "dependency_overlap",
+              "no_overlap"
+            ]
+          },
+          "status": {
+            "enum": [
+              "selected",
+              "deferred",
+              "repaired",
+              "rejected"
+            ]
+          },
+          "confirmation_evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "critical_path",
+              "security_finding",
+              "exact_finding"
+            ],
+            "properties": {
+              "critical_path": {
+                "type": "boolean"
+              },
+              "security_finding": {
+                "type": "boolean"
+              },
+              "exact_finding": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

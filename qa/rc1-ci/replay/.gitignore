@@ -1,0 +1,94 @@
+# Runtime-only state for .knowledge
+*.bak-*
+*.tmp-*
+*.log
+*.zip
+.lock/
+locks/
+.runtime/
+project_index.json
+freshness.json
+
+# Local install/update safety reports and backups
+maintenance/install-backups/
+maintenance/install_check_report.json
+maintenance/update_system_files_report.json
+maintenance/update_status.json
+
+# Logs, flow traces, and append-only local events
+maintenance/events/
+maintenance/flow-logs/
+maintenance/hook_errors.log
+maintenance/watcher_*.log
+
+# Generated maintenance reports ignored by default.
+# Teams may force-add selected reports if that is their policy.
+maintenance/routing_bundle.json
+maintenance/routing_decision.json
+maintenance/routing_decisions.ndjson
+maintenance/maintenance_debt.json
+maintenance/workspace_health_summary.json
+maintenance/recertifications.json
+maintenance/trust_report.json
+maintenance/quality_report.json
+maintenance/wiki_lint_report.json
+maintenance/external_memory_status.json
+maintenance/secret_scan_report.json
+maintenance/pr_summary.md
+maintenance/sync_log.json
+maintenance/stale_items.json
+maintenance/repair_queue.json
+maintenance/repair_opportunities.json
+maintenance/repair_on_touch_telemetry.json
+maintenance/verification_receipts/
+maintenance/verification_executions/
+maintenance/dedicated_verification_receipts/
+maintenance/repair_sessions/
+maintenance/transactions/
+maintenance/integration-transactions/
+maintenance/automation_status.json
+maintenance/handoff_summary.json
+maintenance/restore-trust-report.md
+maintenance/graphs/
+
+# Generated indexes, metrics, inspector output, and sessions
+search/index.json
+search/query_log.ndjson
+metrics/baseline.json
+metrics/external_memory.json
+metrics/README.md
+inspector/data.json
+inspector/status.json
+inspector/
+sessions/active_task.json
+sessions/active_tasks/
+reports/field-reports/
+routing/
+
+# External memory provider runtime state
+external_memory/mem0/
+external_memory/legacy/
+external_memory/claude/
+external_memory/claude_mem/
+external_memory/claude-auto-memory/
+
+# Generated maps ignored by default.
+maps/wiki_graph.json
+maps/file_criticality.json
+maps/dependency_map.json
+maps/directory_map.json
+maps/entrypoints.json
+
+# Evaluation output
+evaluation/results/
+
+# Local caches and accidental nested metadata
+cache/
+.cache/
+.self-test-tmp/
+.qa-tmp/
+benchmark-runs/
+marketing-proof-packs/
+dist/
+.git/
+.github/

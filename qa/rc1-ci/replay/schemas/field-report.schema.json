@@ -1,0 +1,946 @@
+{
+  "schema_version": "knowledge-field-report.v2",
+  "contract_version": "2.4.0",
+  "product_version": "3.3.0",
+  "title": "Field Report contract",
+  "github_form": {
+    "title": "[Field report] ",
+    "introduction": "Starting with `.knowledge` 3.3.0, you can prepare this report semi-automatically with the `field-report` command. Answer in any language; the publication-ready draft is always English and requires tester-approved translation when needed. Only include things you actually observed. Review the final title and body before publishing, and never include secrets, private source code, personal data, internal workspace names, or internal addresses."
+  },
+  "automatic_evidence": {
+    "facts_schema_version": "knowledge-field-report-facts.v2",
+    "fact_fields": [
+      "value",
+      "kind",
+      "source",
+      "schema_path",
+      "collected_at",
+      "confidence",
+      "warning"
+    ],
+    "trust_metrics": [
+      "stale_artifacts_total",
+      "modules_suspect",
+      "modules_low_confidence",
+      "modules_needing_recheck"
+    ],
+    "repair_metrics": [
+      "repair_open",
+      "repair_closed",
+      "repair_reopened",
+      "repair_unmanaged"
+    ],
+    "repository_profile": [
+      "repository_tracked_files",
+      "repository_tracked_bytes",
+      "repository_source_files",
+      "repository_source_bytes",
+      "repository_profile_basis",
+      "repository_profile_excluded_files",
+      "repository_profile_dirty",
+      "knowledge_release_channel",
+      "knowledge_candidate_label",
+      "knowledge_candidate_name"
+    ],
+    "public_outcomes": [
+      "doctor_score",
+      "doctor_status",
+      "doctor_active_findings",
+      "doctor_critical_findings",
+      "wiki_structural_status",
+      "wiki_broken_edges",
+      "repair_task_readiness_status",
+      "routing_task_readiness",
+      "verification_receipts",
+      "task_result_title",
+      "task_result_outcome",
+      "task_result_summary",
+      "task_verification_results",
+      "repository_snapshot_status",
+      "repair_telemetry_status"
+    ],
+    "task_results_schema_version": "knowledge-field-report-task-results.v1"
+  },
+  "translation": {
+    "states": [
+      "translation_not_required",
+      "translation_required",
+      "translation_ready",
+      "translation_approved"
+    ],
+    "files": [
+      "answers.original.json",
+      "answers.translated.json",
+      "translation-provenance.json",
+      "translation-review.json"
+    ],
+    "source_language_default": "auto",
+    "claim_safety": "Publication is blocked when free-text assertions conflict with observed candidate identity or make routing, token, speed, or accuracy claims without the required evidence."
+  },
+  "fields": [
+    {
+      "id": "knowledge-version",
+      "type": "string",
+      "required": false,
+      "allowed_values": null,
+      "human_label": ".knowledge version",
+      "agent_prompt": null,
+      "github_form": {
+        "id": "knowledge-version",
+        "type": "input",
+        "label": ".knowledge version",
+        "description": "Release version or commit SHA used during the test.",
+        "placeholder": "Example: 3.3.0",
+        "required": false
+      },
+      "renderer": {
+        "section": "Project context",
+        "label": ".knowledge version",
+        "order": 10
+      },
+      "public_section": "Project context",
+      "redaction_policy": "safe_aggregate",
+      "omission_policy": "omit_when_unavailable"
+    },
+    {
+      "id": "project-context",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Project context",
+      "agent_prompt": "Describe the repository or an anonymized equivalent, stack, agents, testing period, and previous context setup. Do not include internal workspace, department, or client names; repository size is collected automatically.",
+      "github_form": {
+        "id": "project-context",
+        "type": "textarea",
+        "label": "Project context",
+        "description": "Describe the repository or an anonymized equivalent, stack, agents, testing period, and previous context setup. Repository size is collected automatically.",
+        "placeholder": "Repository or anonymized description:\nStack:\nCoding agents:\nTesting period:\nPrevious context setup (generalized):",
+        "required": true
+      },
+      "renderer": {
+        "section": "Project context",
+        "label": "Project context",
+        "order": 20
+      },
+      "public_section": "Project context",
+      "redaction_policy": "anonymize_private",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "report-relationship",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "first_party_maintainer",
+        "independent_user",
+        "internal_qa",
+        "controlled_comparison"
+      ],
+      "human_labels": {
+        "first_party_maintainer": "First-party maintainer dogfooding",
+        "independent_user": "Independent user report",
+        "internal_qa": "Internal QA report",
+        "controlled_comparison": "Controlled comparison"
+      },
+      "human_label": "Report relationship",
+      "agent_prompt": "What is the tester’s relationship to .knowledge for this report?",
+      "github_form": {
+        "id": "report-relationship",
+        "type": "dropdown",
+        "label": "What type of report is this?",
+        "description": "Choose the relationship that should be disclosed publicly.",
+        "required": true
+      },
+      "renderer": {
+        "section": "Disclosure",
+        "label": "Report type",
+        "order": 10
+      },
+      "public_section": "Disclosure",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "keep-using",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "yes",
+        "maybe",
+        "no",
+        "not_enough_evidence"
+      ],
+      "human_labels": {
+        "yes": "Yes",
+        "maybe": "Maybe, after specific changes",
+        "no": "No",
+        "not_enough_evidence": "I do not have enough evidence yet"
+      },
+      "human_label": "Would you keep using .knowledge?",
+      "agent_prompt": "Would you keep using .knowledge in this repository?",
+      "github_form": {
+        "id": "keep-using",
+        "type": "dropdown",
+        "label": "Would you keep using .knowledge in this repository?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Final assessment",
+        "label": "Would use again",
+        "order": 10
+      },
+      "public_section": "Final assessment",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "quick-summary",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Quick summary",
+      "agent_prompt": "In a few sentences, give the main result, most useful part, and biggest obstacle.",
+      "github_form": {
+        "id": "quick-summary",
+        "type": "textarea",
+        "label": "Quick summary",
+        "description": "Give the main result, most useful part, and biggest obstacle.",
+        "placeholder": "Main result:\nMost useful part:\nMain obstacle:",
+        "required": true
+      },
+      "renderer": {
+        "section": "Quick summary",
+        "label": "Main result",
+        "order": 10
+      },
+      "public_section": "Quick summary",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "installation-method",
+      "type": "string",
+      "required": false,
+      "allowed_values": null,
+      "human_label": "Installation method",
+      "agent_prompt": "How was .knowledge installed?",
+      "github_form": {
+        "id": "installation-method",
+        "type": "input",
+        "label": "Installation method",
+        "description": "How was .knowledge installed?",
+        "placeholder": "Release asset, update command, or manual setup",
+        "required": false
+      },
+      "renderer": {
+        "section": "Setup and workflow fit",
+        "label": "Installation method",
+        "order": 10
+      },
+      "public_section": "Setup and workflow fit",
+      "redaction_policy": "safe_aggregate",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "workflow-fit",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "natural",
+        "few_extra_steps",
+        "regular_attention",
+        "significantly_complicated",
+        "not_integrated"
+      ],
+      "human_labels": {
+        "natural": "It fit in without noticeably changing the workflow",
+        "few_extra_steps": "It required a few extra steps",
+        "regular_attention": "It required regular manual attention",
+        "significantly_complicated": "It made the workflow significantly more complicated",
+        "not_integrated": "I could not integrate it into normal work"
+      },
+      "human_label": "Workflow fit",
+      "agent_prompt": "How naturally did .knowledge fit into the normal workflow?",
+      "github_form": {
+        "id": "workflow-fit",
+        "type": "dropdown",
+        "label": "How naturally did .knowledge fit into your normal workflow?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Setup and workflow fit",
+        "label": "Workflow fit",
+        "order": 20
+      },
+      "public_section": "Setup and workflow fit",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "agent-intervention",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "none",
+        "once_or_twice",
+        "regularly",
+        "blocker",
+        "not_enough_evidence"
+      ],
+      "human_labels": {
+        "none": "No",
+        "once_or_twice": "Once or twice",
+        "regularly": "Regularly",
+        "blocker": "It became a blocker",
+        "not_enough_evidence": "Not enough evidence"
+      },
+      "human_label": "Agent intervention",
+      "agent_prompt": "Did the agent need extra guidance or intervention?",
+      "github_form": {
+        "id": "agent-intervention",
+        "type": "dropdown",
+        "label": "Did the agent need extra guidance or intervention to use .knowledge?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Observed results and limitations",
+        "label": "Manual intervention",
+        "order": 10
+      },
+      "public_section": "Observed results and limitations",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "workflow-notes",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Workflow notes",
+      "agent_prompt": "Where did intervention happen, and did .knowledge change the next action or engineering decision? Give one example.",
+      "github_form": {
+        "id": "workflow-notes",
+        "type": "textarea",
+        "label": "Workflow notes",
+        "description": "Describe interventions, what felt natural or awkward, and one decision impact.",
+        "placeholder": "Intervention:\nWhat felt natural:\nWhat felt awkward:\nDecision impact:\nSuggested improvement:",
+        "required": true
+      },
+      "renderer": {
+        "section": "Setup and workflow fit",
+        "label": "Workflow notes",
+        "order": 30
+      },
+      "public_section": "Setup and workflow fit",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "main-scenario",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Main test scenario",
+      "agent_prompt": "Describe one real engineering task, the agent, how .knowledge was used, the result, decision impact, and evidence.",
+      "github_form": {
+        "id": "main-scenario",
+        "type": "textarea",
+        "label": "Main test scenario",
+        "description": "Describe one real engineering task; installation alone is not enough.",
+        "placeholder": "Task:\nAgent:\nHow .knowledge was used:\nResult:\nWhat changed:\nSupporting evidence:",
+        "required": true
+      },
+      "renderer": {
+        "section": "Real test scenario",
+        "label": "Main scenario",
+        "order": 10
+      },
+      "public_section": "Real test scenario",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "additional-scenario",
+      "type": "string",
+      "required": false,
+      "allowed_values": null,
+      "human_label": "Additional scenario",
+      "agent_prompt": "Optional: add a second real task only if it revealed something different.",
+      "github_form": {
+        "id": "additional-scenario",
+        "type": "textarea",
+        "label": "Additional scenario",
+        "description": "Optional second real task.",
+        "placeholder": "Task:\nResult:\nWhat differed:",
+        "required": false
+      },
+      "renderer": {
+        "section": "Real test scenario",
+        "label": "Additional scenario",
+        "order": 20
+      },
+      "public_section": "Real test scenario",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "accuracy-change",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "clearly_improved",
+        "slightly_improved",
+        "no_clear_change",
+        "became_worse",
+        "not_enough_evidence"
+      ],
+      "human_labels": {
+        "clearly_improved": "Clearly improved",
+        "slightly_improved": "Slightly improved",
+        "no_clear_change": "No clear change",
+        "became_worse": "Accuracy became worse",
+        "not_enough_evidence": "Not enough evidence to judge"
+      },
+      "human_label": "Accuracy change",
+      "agent_prompt": "Did .knowledge change task accuracy?",
+      "github_form": {
+        "id": "accuracy-change",
+        "type": "dropdown",
+        "label": "Did .knowledge improve the accuracy of the agent's work?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Accuracy assessment",
+        "order": 10
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "accuracy-example",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Accuracy example",
+      "agent_prompt": "Give one concrete example supporting the accuracy assessment.",
+      "github_form": {
+        "id": "accuracy-example",
+        "type": "textarea",
+        "label": "Accuracy example",
+        "description": "Give one concrete example, including errors or uncertainty when applicable.",
+        "placeholder": "Concrete example:",
+        "required": true
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Accuracy example",
+        "order": 20
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "accuracy-basis",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "measured",
+        "objective_test_result",
+        "comparable_tasks",
+        "general_observation",
+        "not_enough_data"
+      ],
+      "human_labels": {
+        "measured": "Measured",
+        "objective_test_result": "Objective test result",
+        "comparable_tasks": "Comparable tasks",
+        "general_observation": "General observation",
+        "not_enough_data": "Not enough data"
+      },
+      "human_label": "Accuracy basis",
+      "agent_prompt": "What is the basis of the accuracy assessment?",
+      "github_form": {
+        "id": "accuracy-basis",
+        "type": "dropdown",
+        "label": "What is the basis for the accuracy assessment?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Accuracy basis",
+        "order": 30
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "accuracy-sample-count",
+      "type": "integer",
+      "required": false,
+      "minimum": 1,
+      "allowed_values": null,
+      "human_label": "Accuracy sample count",
+      "agent_prompt": "How many examples support the assessment, if known?",
+      "github_form": {
+        "id": "accuracy-sample-count",
+        "type": "input",
+        "label": "Accuracy sample count",
+        "description": "Optional number of observed examples.",
+        "placeholder": "Example: 5",
+        "required": false
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Accuracy sample count",
+        "order": 40
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "speed-scope",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "repository_orientation",
+        "first_useful_response",
+        "full_task_completion",
+        "pull_request_review",
+        "other"
+      ],
+      "human_labels": {
+        "repository_orientation": "Repository orientation",
+        "first_useful_response": "First useful response",
+        "full_task_completion": "Full task completion",
+        "pull_request_review": "Pull request review",
+        "other": "Other"
+      },
+      "human_label": "Speed scope",
+      "agent_prompt": "Which part of the workflow does the speed assessment cover?",
+      "github_form": {
+        "id": "speed-scope",
+        "type": "dropdown",
+        "label": "What does the speed assessment cover?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Speed scope",
+        "order": 50
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "response-speed-change",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "much_slower",
+        "slightly_slower",
+        "no_clear_change",
+        "slightly_faster",
+        "much_faster",
+        "not_enough_data"
+      ],
+      "human_labels": {
+        "much_slower": "Much slower",
+        "slightly_slower": "Slightly slower",
+        "no_clear_change": "No clear change",
+        "slightly_faster": "Slightly faster",
+        "much_faster": "Much faster",
+        "not_enough_data": "Not enough data"
+      },
+      "human_label": "Response speed change",
+      "agent_prompt": "How did speed change for the selected scope?",
+      "github_form": {
+        "id": "response-speed-change",
+        "type": "dropdown",
+        "label": "How did .knowledge affect speed for that scope?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Speed change",
+        "order": 60
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "response-speed-percent",
+      "type": "number",
+      "required": false,
+      "minimum": -100,
+      "maximum": 100,
+      "allowed_values": null,
+      "human_label": "Signed speed estimate",
+      "agent_prompt": "Optional signed percent: positive means faster, negative means slower.",
+      "github_form": {
+        "id": "response-speed-percent",
+        "type": "input",
+        "label": "Optional signed speed estimate",
+        "description": "Use -100% to +100%. Positive means faster; negative means slower.",
+        "placeholder": "Example: +20% or -15%",
+        "required": false
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Speed estimate",
+        "order": 70
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "response-speed-basis",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "measured",
+        "estimated_from_comparable_tasks",
+        "general_observation",
+        "not_enough_data"
+      ],
+      "human_labels": {
+        "measured": "Measured",
+        "estimated_from_comparable_tasks": "Estimated from comparable tasks",
+        "general_observation": "General observation",
+        "not_enough_data": "Not enough data"
+      },
+      "human_label": "Speed basis",
+      "agent_prompt": "How was the speed impact determined?",
+      "github_form": {
+        "id": "response-speed-basis",
+        "type": "dropdown",
+        "label": "How was the speed impact determined?",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Speed basis",
+        "order": 80
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "response-speed-sample-count",
+      "type": "integer",
+      "required": false,
+      "minimum": 1,
+      "allowed_values": null,
+      "human_label": "Speed sample count",
+      "agent_prompt": "How many comparable samples support the speed assessment?",
+      "github_form": {
+        "id": "response-speed-sample-count",
+        "type": "input",
+        "label": "Speed sample count",
+        "description": "Optional number of measured or comparable samples.",
+        "placeholder": "Example: 6",
+        "required": false
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Speed sample count",
+        "order": 90
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "baseline-duration-ms",
+      "type": "number",
+      "required": false,
+      "minimum": 0,
+      "allowed_values": null,
+      "human_label": "Baseline duration in milliseconds",
+      "agent_prompt": "Required when the speed basis is measured.",
+      "github_form": {
+        "id": "baseline-duration-ms",
+        "type": "input",
+        "label": "Baseline duration in milliseconds",
+        "description": "Required when speed basis is measured.",
+        "placeholder": "Example: 12500",
+        "required": false
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Baseline duration",
+        "order": 100
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "knowledge-duration-ms",
+      "type": "number",
+      "required": false,
+      "minimum": 0,
+      "allowed_values": null,
+      "human_label": ".knowledge duration in milliseconds",
+      "agent_prompt": "Required when the speed basis is measured.",
+      "github_form": {
+        "id": "knowledge-duration-ms",
+        "type": "input",
+        "label": ".knowledge duration in milliseconds",
+        "description": "Required when speed basis is measured.",
+        "placeholder": "Example: 9300",
+        "required": false
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": ".knowledge duration",
+        "order": 110
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "tester",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "response-speed-notes",
+      "type": "string",
+      "required": false,
+      "allowed_values": null,
+      "human_label": "Speed notes",
+      "agent_prompt": "What affected speed?",
+      "github_form": {
+        "id": "response-speed-notes",
+        "type": "textarea",
+        "label": "What affected speed?",
+        "description": "Mention exploration, validation, loading context, retries, or intervention.",
+        "placeholder": "",
+        "required": false
+      },
+      "renderer": {
+        "section": "Accuracy and response speed",
+        "label": "Speed notes",
+        "order": 120
+      },
+      "public_section": "Accuracy and response speed",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "useful-parts",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Useful parts",
+      "agent_prompt": "Which parts were useful, and why?",
+      "github_form": {
+        "id": "useful-parts",
+        "type": "textarea",
+        "label": "Which parts were useful?",
+        "description": "Name only parts you actually used and explain why.",
+        "placeholder": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Observed results and limitations",
+        "label": "Useful parts",
+        "order": 20
+      },
+      "public_section": "Observed results and limitations",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "observed-results",
+      "type": "string",
+      "required": false,
+      "allowed_values": null,
+      "human_label": "Observed results",
+      "agent_prompt": "Add only concrete metrics or outcomes actually observed.",
+      "github_form": {
+        "id": "observed-results",
+        "type": "textarea",
+        "label": "Observed results",
+        "description": "Add concrete outcomes and only metrics actually observed.",
+        "placeholder": "",
+        "required": false
+      },
+      "renderer": {
+        "section": "Observed results and limitations",
+        "label": "Observed results",
+        "order": 30
+      },
+      "public_section": "Observed results and limitations",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "what-did-not-work",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "What did not work",
+      "agent_prompt": "Describe the main limitation, failures, false positives/negatives, or maintenance overhead.",
+      "github_form": {
+        "id": "what-did-not-work",
+        "type": "textarea",
+        "label": "What did not work?",
+        "description": "Describe failures, false positives/negatives, confusing steps, or overhead.",
+        "placeholder": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "What did not work",
+        "label": "Limitation",
+        "order": 10
+      },
+      "public_section": "What did not work",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "previous-workflow-comparison",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Comparison with previous workflow",
+      "agent_prompt": "What did .knowledge add, what did the previous workflow do better, and could the result be simpler?",
+      "github_form": {
+        "id": "previous-workflow-comparison",
+        "type": "textarea",
+        "label": "Comparison with your previous workflow",
+        "description": "Compare with AGENTS.md, normal docs, and code search.",
+        "placeholder": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Comparison with the previous workflow",
+        "label": "Comparison",
+        "order": 10
+      },
+      "public_section": "Comparison with the previous workflow",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "final-assessment",
+      "type": "string",
+      "required": true,
+      "allowed_values": null,
+      "human_label": "Final assessment",
+      "agent_prompt": "Give the best fit, when it is unnecessary, top improvements, and final verdict.",
+      "github_form": {
+        "id": "final-assessment",
+        "type": "textarea",
+        "label": "Final assessment",
+        "description": "Give the best fit, when it is unnecessary, top improvements, and final verdict.",
+        "placeholder": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Final assessment",
+        "label": "Assessment",
+        "order": 20
+      },
+      "public_section": "Final assessment",
+      "redaction_policy": "redact_secrets",
+      "omission_policy": "never"
+    },
+    {
+      "id": "supporting-material",
+      "type": "string",
+      "required": false,
+      "allowed_values": null,
+      "human_label": "Supporting material",
+      "agent_prompt": "Optional public links or anonymized artifacts.",
+      "github_form": {
+        "id": "supporting-material",
+        "type": "textarea",
+        "label": "Supporting material",
+        "description": "Optional public links or anonymized material.",
+        "placeholder": "",
+        "required": false
+      },
+      "renderer": {
+        "section": "Supporting material",
+        "label": "Supporting material",
+        "order": 10
+      },
+      "public_section": "Supporting material",
+      "redaction_policy": "relative_paths_only",
+      "omission_policy": "omit_when_empty"
+    },
+    {
+      "id": "github-publication-permission",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "github_publication_allowed",
+        "local_draft_only"
+      ],
+      "human_labels": {
+        "github_publication_allowed": "Allowed to publish on GitHub",
+        "local_draft_only": "Keep as a local draft"
+      },
+      "human_label": "GitHub publication permission",
+      "agent_prompt": "May this report be published to GitHub Discussions?",
+      "github_form": null,
+      "renderer": {
+        "section": "Publication permission",
+        "label": "GitHub publication",
+        "order": 10
+      },
+      "public_section": "Publication permission",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    },
+    {
+      "id": "publication-permission",
+      "type": "enum",
+      "required": true,
+      "allowed_values": [
+        "link_and_quote_with_attribution",
+        "link_only",
+        "github_only",
+        "undecided"
+      ],
+      "human_labels": {
+        "link_and_quote_with_attribution": "The project may link and quote with attribution",
+        "link_only": "The project may link; quotes require separate permission",
+        "github_only": "Keep this report on GitHub only",
+        "undecided": "Permission not decided yet"
+      },
+      "human_label": "External reuse permission",
+      "agent_prompt": "What external reuse is allowed?",
+      "github_form": {
+        "id": "publication-permission",
+        "type": "dropdown",
+        "label": "Permission to reference this report",
+        "description": "",
+        "required": true
+      },
+      "renderer": {
+        "section": "Publication permission",
+        "label": "External reuse",
+        "order": 20
+      },
+      "public_section": "Publication permission",
+      "redaction_policy": "tester",
+      "omission_policy": "never"
+    }
+  ]
+}

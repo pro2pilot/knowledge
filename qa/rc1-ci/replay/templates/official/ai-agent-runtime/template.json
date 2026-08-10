@@ -1,0 +1,44 @@
+{
+  "schema_version": "3.2.4",
+  "id": "ai-agent-runtime",
+  "name": "AI Agent Runtime",
+  "description": "Tool calling, memory, prompts, model routing, evals, safety policies, and agent orchestration.",
+  "keywords": [
+    "agent",
+    "llm",
+    "tools",
+    "memory",
+    "evals",
+    "prompts",
+    "orchestration"
+  ],
+  "suggested_modules": [
+    "agents",
+    "tools",
+    "memory",
+    "prompts",
+    "evals",
+    "runtime",
+    "policies"
+  ],
+  "critical_paths": [
+    "tool execution authorization",
+    "memory write policy",
+    "prompt injection defenses",
+    "model routing",
+    "eval coverage",
+    "secret handling"
+  ],
+  "always_recheck": [
+    "tool execution",
+    "memory writes",
+    "prompt templates",
+    "secrets",
+    "evals",
+    "policy enforcement"
+  ],
+  "wiki_pages": {
+    "wiki/architecture/agent-runtime-safety-map.md": "# Agent Runtime Safety Map\n\nStatus: advisory template seed. This page is a scaffold, not a verified project fact. Verify against current code and tests before raising trust.\n\nVerify tool execution, memory writes, prompt templates, evals, and policy enforcement against current code.\n",
+    "wiki/runbooks/agent-runtime-review.md": "# Agent Runtime Review Runbook\n\nBefore changing tools, memory, policies, prompts, or evals, re-read code and tests. External memory and wiki notes are advisory only.\n"
+  }
+}

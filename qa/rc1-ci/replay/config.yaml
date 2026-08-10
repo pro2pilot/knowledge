@@ -1,0 +1,69 @@
+version: 3.4.0-rc1
+config_schema_version: 1
+distribution: public_release
+project_index: .knowledge/project_index.json
+module_registry: .knowledge/modules/module_registry.json
+freshness_file: .knowledge/freshness.json
+contradictions_file: .knowledge/contradictions.json
+trust_report_file: .knowledge/maintenance/trust_report.json
+file_criticality_map: .knowledge/maps/file_criticality.json
+confidence_policy_file: .knowledge/invariants/confidence_policy.json
+scan_policy:
+  default_hash_algorithm: sha256
+  prefer_machine_readable: true
+  incremental_updates_only: true
+criticality_policy:
+  critical: runtime entrypoints, lifecycle services, claim/queue/billing/storage/auth boundaries, foundational migrations
+  important: module card key files, config, middleware, interface definitions, public adapters
+  contextual: docs, handoff notes, secondary UI, examples, support scripts
+  ignore: node_modules, .git, generated outputs, caches, worktrees, build artifacts, legacy .knowledge backups, QA runs, baseline fixtures
+trust_policy:
+  trusted_when:
+    - critical files are tracked
+    - critical files are evidence-covered
+    - no open contradictions touch the module
+    - freshness is fresh
+  near_trusted_when:
+    - code-backed and fresh
+    - critical lifecycle paths still need targeted code checks
+  routing_trusted_when:
+    - enough structure exists for safe file/module routing
+    - not enough evidence for behavior planning
+  advisory_only_when:
+    - docs-only or context-only
+  excluded_when:
+    - generated/noisy/non-source areas
+trust_order:
+  - code
+  - tests
+  - evidence
+  - module_summaries
+  - decisions
+  - session_notes
+
+maintenance:
+  repair_on_touch:
+    enabled: true
+    mode: scoped
+    max_findings_per_task: 2
+    max_extra_minutes: 5
+    max_extra_context_percent: 10
+    rebuild_generated_artifacts: true
+    edit_curated_knowledge: verified_only
+    require_confirmation_for_critical_paths: true
+    require_confirmation_for_security_findings: true
+    include_task_readiness: true
+    show_final_maintenance_summary: true
+
+updates:
+  enabled: true
+  mode: advisory_only
+  interval_days: 7
+  source: github_releases
+  repository: pro2pilot/knowledge
+  current_version_source: package.json
+  auto_check_on_inspector_open: true
+  allow_prerelease: false
+  auto_update: false
+  telemetry: false
+  timeout_ms: 5000

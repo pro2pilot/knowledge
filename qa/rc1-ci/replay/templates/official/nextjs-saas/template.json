@@ -1,0 +1,43 @@
+{
+  "schema_version": "3.2.4",
+  "id": "nextjs-saas",
+  "name": "Next.js SaaS",
+  "description": "Auth, billing, route handlers, webhooks, migrations, and frontend/server boundaries for a Next.js SaaS repo.",
+  "keywords": [
+    "nextjs",
+    "next",
+    "react",
+    "saas",
+    "stripe",
+    "auth",
+    "webhooks"
+  ],
+  "suggested_modules": [
+    "app",
+    "api",
+    "auth",
+    "billing",
+    "database",
+    "jobs"
+  ],
+  "critical_paths": [
+    "auth/session lifecycle",
+    "billing/webhook processing",
+    "database migrations",
+    "server actions and route handlers",
+    "secrets/configuration",
+    "background jobs"
+  ],
+  "always_recheck": [
+    "auth",
+    "billing",
+    "webhooks",
+    "migrations",
+    "secrets",
+    "server actions"
+  ],
+  "wiki_pages": {
+    "wiki/architecture/nextjs-saas-boundaries.md": "# Next.js SaaS Boundaries\n\nStatus: advisory template seed. This page is a scaffold, not a verified project fact. Verify against current code and tests before raising trust.\n\n## Areas to map\n\n- app/router and route handlers\n- auth/session lifecycle\n- billing and webhook processing\n- database migrations\n- background jobs\n\n## Verification\n\nLink source files, tests, and evidence before raising trust.\n",
+    "wiki/runbooks/nextjs-saas-agent-review.md": "# Next.js SaaS Agent Review Runbook\n\nBefore changing auth, billing, migrations, or server actions, re-read source code and tests. Do not rely on wiki summaries for behavior claims.\n"
+  }
+}

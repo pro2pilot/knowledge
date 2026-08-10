@@ -1,0 +1,18 @@
+# Devin .knowledge bridge
+
+Use the repository-root `AGENTS.md` as the primary `.knowledge` instruction
+contract. This separate Devin rule is only a concise vendor-specific discovery
+bridge; it must not duplicate or override the shared managed block.
+
+For meaningful scoped work, run `node .knowledge/tools/agent-task.js begin`
+before broad exploration, read the exact returned first-read body, and finish
+with `node .knowledge/tools/agent-task.js finish` using the returned workflow ID,
+first-read SHA, physical source files, and physical test argv. The committed
+result keeps primary verification, routing, Doctor, Task Readiness, native repair
+receipts, optional release warnings, and deferred debt separate.
+
+Never describe the deterministic local first-read estimate as provider-reported
+model-token usage, cost, speed, or general accuracy.
+
+For concurrent work, set a stable `KNOWLEDGE_AGENT_ID` and use a separate
+worktree or branch.

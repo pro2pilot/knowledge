@@ -1,0 +1,92 @@
+name: RC1 macOS Node compatibility matrix
+
+on:
+  push:
+    branches:
+      - 'codex/rc1-macos-node-matrix'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: ${{ matrix.slug }}
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slug: macos-node18
+            node: 18.20.8
+            upgrade: false
+          - slug: macos-node20
+            node: 20.20.2
+            upgrade: false
+          - slug: macos-node22
+            node: 22.17.1
+            upgrade: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ''
+
+      - name: Verify immutable inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = 'qa/rc1-ci/knowledge-v3.4.0-rc1.zip'
+          $baseline = 'qa/rc1-ci/knowledge-v3.2.11.zip'
+          $expectedCandidate = 'eed806f008d90fede9c80804e100f18e016353a5d986055a24d497e759eff988'
+          $expectedBaseline = 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79'
+          if ((Get-FileHash $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedCandidate) { throw 'candidate SHA mismatch' }
+          if ((Get-FileHash $baseline -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedBaseline) { throw 'baseline SHA mismatch' }
+          node -e "const fs=require('fs'),crypto=require('crypto'),path=require('path');const root='qa/rc1-ci/replay';const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));for(const item of manifest.files||[]){const actual=crypto.createHash('sha256').update(fs.readFileSync(path.join(root,item.path))).digest('hex');if(actual!==item.sha256)throw new Error('replay manifest mismatch: '+item.path)};console.log('replay manifest pass')"
+
+      - name: Run external matrix cell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP "rc1-${{ matrix.slug }}"
+          $out = Join-Path $work 'cell'
+          $published = Join-Path $env:GITHUB_WORKSPACE "qa-results/${{ matrix.slug }}"
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          $nodeMajor = '${{ matrix.node }}'.Split('.')[0]
+          & node qa/rc1-ci/run-matrix-cell.js `
+            --candidate (Resolve-Path 'qa/rc1-ci/knowledge-v3.4.0-rc1.zip') `
+            --replay (Resolve-Path 'qa/rc1-ci/replay') `
+            --baseline (Resolve-Path 'qa/rc1-ci/knowledge-v3.2.11.zip') `
+            --out $out `
+            --os macos `
+            --node-major $nodeMajor `
+            --upgrade='${{ matrix.upgrade }}' `
+            --expected-candidate 'eed806f008d90fede9c80804e100f18e016353a5d986055a24d497e759eff988' `
+            --expected-baseline 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79'
+          $exitCode = $LASTEXITCODE
+          if (Test-Path $out) { Copy-Item -LiteralPath $out -Destination $published -Recurse -Force }
+          exit $exitCode
+
+      - name: Upload per-cell evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc1-${{ matrix.slug }}
+          path: qa-results/${{ matrix.slug }}/
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Enforce cell verdict
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = 'qa-results/${{ matrix.slug }}/result.json'
+          if (!(Test-Path $result)) { throw 'cell result.json missing' }
+          $body = Get-Content -Raw $result | ConvertFrom-Json
+          if ($body.status -ne 'pass') { throw "cell failed: $($body.error.message)" }
+          $tests = Get-Content -Raw 'qa-results/${{ matrix.slug }}/self-tests.json' | ConvertFrom-Json
+          $expected = @($tests.expected_tests).Count
+          if ($tests.status -ne 'pass' -or $tests.passed -ne $expected -or $tests.failed -ne 0) { throw "shipped self-tests are not $expected/$expected" }
