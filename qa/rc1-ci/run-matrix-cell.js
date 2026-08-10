@@ -301,7 +301,7 @@ async function main() {
   ], { cwd: fixture }).stdout, 'field-report-start');
   if (field.status !== 'needs_user_input') throw new Error(`unexpected Field Report start status: ${field.status}`);
 
-  const lockCode = "const path=require('path');const m=require(path.resolve('.knowledge/tools/lib/contained-lock-manager.js'));const c=require(path.resolve('.knowledge/tools/lib/path-context.js')).resolveKnowledgeContext([], {cwd:process.cwd()});const r=m.inspectContextLockSafety(c);console.log(JSON.stringify(r));process.exit(r.status==='safe'?0:2);";
+  const lockCode = "const path=require('path');const m=require(path.resolve('.knowledge/tools/lib/contained-lock-manager.js'));const c=require(path.resolve('.knowledge/tools/lib/path-context.js')).resolveKnowledgeContext([], {cwd:process.cwd()});const r=m.inspectContextLockSafety(c);console.log(JSON.stringify({status:r.status,message:r.message||null}));process.exit(r.status==='safe'?0:2);";
   const lockReport = parseJson(run('lock-safety-final', process.execPath, ['-e', lockCode], { cwd: fixture }).stdout, 'lock-safety-final');
   writeJson(path.join(out, 'lock-report.json'), lockReport);
 
