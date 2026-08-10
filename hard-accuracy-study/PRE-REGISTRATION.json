@@ -1,0 +1,58 @@
+{
+  "schema_version": "knowledge-hard-accuracy-preregistration.v1",
+  "study_id": "knowledge-3.4.0-rc1-hard-accuracy-v1",
+  "candidate_sha256": "44085f441946ca08905bacdd329ff5c7a68aeefeb25b04389bf3c2cdb4de961a",
+  "created_before_model_calls": true,
+  "seed": 34001,
+  "pairs": 32,
+  "decisions": 64,
+  "model": "openai/gpt-4.1-mini",
+  "temperature": 0,
+  "maximum_first_read_utf8_bytes": 2600,
+  "primary_endpoint": "exact first-pass repository decision: target module + required dependency + first source file",
+  "conditions": {
+    "W": "workspace-wide bounded first read",
+    "K": ".knowledge task-scoped first read"
+  },
+  "scoring": "all three fields must exactly match preregistered gold",
+  "task_design": [
+    "Current-vs-legacy wiring must be resolved by joining opaque aliases, active runtime mapping, file mapping and code imports.",
+    "No context line labels an owner, key file, direct dependency, target module or gold answer.",
+    "Both conditions contain every gold string; task-scoped context increases relevance density rather than introducing an otherwise absent answer.",
+    "All 32 pairs are retained regardless of result."
+  ],
+  "claim_tiers": {
+    "tier_a": {
+      "requirements": [
+        "32/32 complete",
+        "0 unresolved infrastructure failures",
+        "K>W",
+        "absolute delta >=20 percentage points",
+        "exact two-sided McNemar p<0.05"
+      ]
+    },
+    "tier_b": {
+      "requirements": [
+        "32/32 complete",
+        "0 unresolved infrastructure failures",
+        "K>W",
+        "exact two-sided McNemar p<0.05"
+      ]
+    },
+    "tier_c": {
+      "requirements": [
+        "K>W",
+        "p>=0.05"
+      ],
+      "interpretation": "descriptive only"
+    },
+    "unsupported": {
+      "requirements": [
+        "K<=W"
+      ]
+    }
+  },
+  "scope_limitation": "Measures first repository-decision accuracy on synthetic current-vs-legacy navigation tasks under a fixed first-read budget; not intrinsic intelligence or complete coding-task accuracy.",
+  "tasks_sha256": "2bd283358752381ebc052efed792df460a8ff2e5dc2d8e7b321255a8f24e9da6",
+  "input_manifest_sha256": "ebbd8932b500df410bff364f599ff434b592c1a7d1039f67dc673ecf1b588735"
+}

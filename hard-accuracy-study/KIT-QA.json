@@ -1,0 +1,36 @@
+{
+  "schema_version": "hard-accuracy-kit-qa.v1",
+  "status": "pass",
+  "candidate_sha256": "44085f441946ca08905bacdd329ff5c7a68aeefeb25b04389bf3c2cdb4de961a",
+  "checks": [
+    {
+      "id": "input_preflight",
+      "status": "pass",
+      "passed": 96,
+      "failed": 0
+    },
+    {
+      "id": "deterministic_answerability",
+      "status": "pass",
+      "passed": 64,
+      "failed": 0
+    },
+    {
+      "id": "scorer_self_test",
+      "status": "pass",
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "id": "runner_syntax",
+      "status": "pass"
+    },
+    {
+      "id": "scorer_syntax",
+      "status": "pass"
+    }
+  ],
+  "model_decisions_executed": 0,
+  "accuracy_claim_status": "not_measured",
+  "reason": "This environment has no authenticated model-inference endpoint. The kit is ready for an external/local model runner."
+}

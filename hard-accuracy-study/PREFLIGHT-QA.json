@@ -1,0 +1,661 @@
+{
+  "schema_version": "hard-accuracy-preflight-qa.v1",
+  "status": "pass",
+  "checks_total": 96,
+  "passed": 96,
+  "failed": 0,
+  "input_checks": [
+    {
+      "input_id": "HA-01-W",
+      "bytes": 1595,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-01-K",
+      "bytes": 1149,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-02-W",
+      "bytes": 1595,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-02-K",
+      "bytes": 1150,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-03-W",
+      "bytes": 1613,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-03-K",
+      "bytes": 1165,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-04-W",
+      "bytes": 1604,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-04-K",
+      "bytes": 1157,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-05-W",
+      "bytes": 1592,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-05-K",
+      "bytes": 1149,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-06-W",
+      "bytes": 1583,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-06-K",
+      "bytes": 1141,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-07-W",
+      "bytes": 1592,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-07-K",
+      "bytes": 1149,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-08-W",
+      "bytes": 1601,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-08-K",
+      "bytes": 1156,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-09-W",
+      "bytes": 1599,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-09-K",
+      "bytes": 1148,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-10-W",
+      "bytes": 1599,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-10-K",
+      "bytes": 1149,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-11-W",
+      "bytes": 1608,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-11-K",
+      "bytes": 1157,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-12-W",
+      "bytes": 1581,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-12-K",
+      "bytes": 1134,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-13-W",
+      "bytes": 1599,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-13-K",
+      "bytes": 1144,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-14-W",
+      "bytes": 1599,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-14-K",
+      "bytes": 1144,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-15-W",
+      "bytes": 1599,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-15-K",
+      "bytes": 1145,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-16-W",
+      "bytes": 1608,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-16-K",
+      "bytes": 1152,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-17-W",
+      "bytes": 1614,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-17-K",
+      "bytes": 1164,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-18-W",
+      "bytes": 1587,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-18-K",
+      "bytes": 1142,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-19-W",
+      "bytes": 1596,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-19-K",
+      "bytes": 1150,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-20-W",
+      "bytes": 1587,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-20-K",
+      "bytes": 1142,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-21-W",
+      "bytes": 1591,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-21-K",
+      "bytes": 1142,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-22-W",
+      "bytes": 1600,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-22-K",
+      "bytes": 1150,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-23-W",
+      "bytes": 1600,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-23-K",
+      "bytes": 1150,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-24-W",
+      "bytes": 1591,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-24-K",
+      "bytes": 1143,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-25-W",
+      "bytes": 1601,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-25-K",
+      "bytes": 1151,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-26-W",
+      "bytes": 1592,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-26-K",
+      "bytes": 1144,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-27-W",
+      "bytes": 1592,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-27-K",
+      "bytes": 1145,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-28-W",
+      "bytes": 1610,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-28-K",
+      "bytes": 1160,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-29-W",
+      "bytes": 1611,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-29-K",
+      "bytes": 1159,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-30-W",
+      "bytes": 1611,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-30-K",
+      "bytes": 1159,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-31-W",
+      "bytes": 1602,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-31-K",
+      "bytes": 1151,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-32-W",
+      "bytes": 1611,
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-32-K",
+      "bytes": 1159,
+      "status": "pass",
+      "failures": []
+    }
+  ],
+  "pair_checks": [
+    {
+      "task_id": "HA-01",
+      "order": "W_FIRST",
+      "workspace_bytes": 1595,
+      "task_scoped_bytes": 1149,
+      "reduction_percent": 27.96,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-02",
+      "order": "K_FIRST",
+      "workspace_bytes": 1595,
+      "task_scoped_bytes": 1150,
+      "reduction_percent": 27.9,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-03",
+      "order": "W_FIRST",
+      "workspace_bytes": 1613,
+      "task_scoped_bytes": 1165,
+      "reduction_percent": 27.77,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-04",
+      "order": "W_FIRST",
+      "workspace_bytes": 1604,
+      "task_scoped_bytes": 1157,
+      "reduction_percent": 27.87,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-05",
+      "order": "W_FIRST",
+      "workspace_bytes": 1592,
+      "task_scoped_bytes": 1149,
+      "reduction_percent": 27.83,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-06",
+      "order": "W_FIRST",
+      "workspace_bytes": 1583,
+      "task_scoped_bytes": 1141,
+      "reduction_percent": 27.92,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-07",
+      "order": "K_FIRST",
+      "workspace_bytes": 1592,
+      "task_scoped_bytes": 1149,
+      "reduction_percent": 27.83,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-08",
+      "order": "K_FIRST",
+      "workspace_bytes": 1601,
+      "task_scoped_bytes": 1156,
+      "reduction_percent": 27.8,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-09",
+      "order": "W_FIRST",
+      "workspace_bytes": 1599,
+      "task_scoped_bytes": 1148,
+      "reduction_percent": 28.21,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-10",
+      "order": "W_FIRST",
+      "workspace_bytes": 1599,
+      "task_scoped_bytes": 1149,
+      "reduction_percent": 28.14,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-11",
+      "order": "W_FIRST",
+      "workspace_bytes": 1608,
+      "task_scoped_bytes": 1157,
+      "reduction_percent": 28.05,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-12",
+      "order": "K_FIRST",
+      "workspace_bytes": 1581,
+      "task_scoped_bytes": 1134,
+      "reduction_percent": 28.27,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-13",
+      "order": "K_FIRST",
+      "workspace_bytes": 1599,
+      "task_scoped_bytes": 1144,
+      "reduction_percent": 28.46,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-14",
+      "order": "W_FIRST",
+      "workspace_bytes": 1599,
+      "task_scoped_bytes": 1144,
+      "reduction_percent": 28.46,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-15",
+      "order": "W_FIRST",
+      "workspace_bytes": 1599,
+      "task_scoped_bytes": 1145,
+      "reduction_percent": 28.39,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-16",
+      "order": "K_FIRST",
+      "workspace_bytes": 1608,
+      "task_scoped_bytes": 1152,
+      "reduction_percent": 28.36,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-17",
+      "order": "K_FIRST",
+      "workspace_bytes": 1614,
+      "task_scoped_bytes": 1164,
+      "reduction_percent": 27.88,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-18",
+      "order": "W_FIRST",
+      "workspace_bytes": 1587,
+      "task_scoped_bytes": 1142,
+      "reduction_percent": 28.04,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-19",
+      "order": "K_FIRST",
+      "workspace_bytes": 1596,
+      "task_scoped_bytes": 1150,
+      "reduction_percent": 27.94,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-20",
+      "order": "K_FIRST",
+      "workspace_bytes": 1587,
+      "task_scoped_bytes": 1142,
+      "reduction_percent": 28.04,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-21",
+      "order": "K_FIRST",
+      "workspace_bytes": 1591,
+      "task_scoped_bytes": 1142,
+      "reduction_percent": 28.22,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-22",
+      "order": "W_FIRST",
+      "workspace_bytes": 1600,
+      "task_scoped_bytes": 1150,
+      "reduction_percent": 28.12,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-23",
+      "order": "K_FIRST",
+      "workspace_bytes": 1600,
+      "task_scoped_bytes": 1150,
+      "reduction_percent": 28.12,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-24",
+      "order": "W_FIRST",
+      "workspace_bytes": 1591,
+      "task_scoped_bytes": 1143,
+      "reduction_percent": 28.16,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-25",
+      "order": "W_FIRST",
+      "workspace_bytes": 1601,
+      "task_scoped_bytes": 1151,
+      "reduction_percent": 28.11,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-26",
+      "order": "K_FIRST",
+      "workspace_bytes": 1592,
+      "task_scoped_bytes": 1144,
+      "reduction_percent": 28.14,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-27",
+      "order": "K_FIRST",
+      "workspace_bytes": 1592,
+      "task_scoped_bytes": 1145,
+      "reduction_percent": 28.08,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-28",
+      "order": "W_FIRST",
+      "workspace_bytes": 1610,
+      "task_scoped_bytes": 1160,
+      "reduction_percent": 27.95,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-29",
+      "order": "K_FIRST",
+      "workspace_bytes": 1611,
+      "task_scoped_bytes": 1159,
+      "reduction_percent": 28.06,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-30",
+      "order": "K_FIRST",
+      "workspace_bytes": 1611,
+      "task_scoped_bytes": 1159,
+      "reduction_percent": 28.06,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-31",
+      "order": "W_FIRST",
+      "workspace_bytes": 1602,
+      "task_scoped_bytes": 1151,
+      "reduction_percent": 28.15,
+      "status": "pass"
+    },
+    {
+      "task_id": "HA-32",
+      "order": "K_FIRST",
+      "workspace_bytes": 1611,
+      "task_scoped_bytes": 1159,
+      "reduction_percent": 28.06,
+      "status": "pass"
+    }
+  ],
+  "summary": {
+    "pairs": 32,
+    "inputs": 64,
+    "W_first": 16,
+    "K_first": 16,
+    "max_input_bytes": 1614,
+    "mean_workspace_bytes": 1598.84,
+    "mean_task_scoped_bytes": 1150.0,
+    "mean_reduction_percent": 28.07
+  }
+}

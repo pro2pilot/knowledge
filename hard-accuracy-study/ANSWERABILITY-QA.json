@@ -1,0 +1,330 @@
+{
+  "schema_version": "hard-accuracy-answerability-qa.v1",
+  "status": "pass",
+  "checks_total": 64,
+  "passed": 64,
+  "failed": 0,
+  "results": [
+    {
+      "input_id": "HA-01-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-01-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-02-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-02-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-03-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-03-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-04-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-04-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-05-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-05-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-06-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-06-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-07-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-07-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-08-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-08-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-09-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-09-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-10-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-10-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-11-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-11-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-12-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-12-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-13-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-13-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-14-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-14-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-15-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-15-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-16-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-16-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-17-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-17-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-18-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-18-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-19-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-19-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-20-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-20-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-21-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-21-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-22-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-22-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-23-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-23-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-24-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-24-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-25-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-25-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-26-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-26-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-27-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-27-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-28-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-28-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-29-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-29-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-30-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-30-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-31-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-31-K",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-32-W",
+      "status": "pass",
+      "failures": []
+    },
+    {
+      "input_id": "HA-32-K",
+      "status": "pass",
+      "failures": []
+    }
+  ],
+  "interpretation": "A deterministic oracle can recover the preregistered triple from both conditions. Model errors therefore measure inference under context structure/noise rather than missing gold data."
+}

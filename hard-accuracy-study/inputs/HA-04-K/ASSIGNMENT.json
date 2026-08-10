@@ -1,0 +1,13 @@
+{
+  "schema_version": "hard-accuracy-assignment.v1",
+  "input_id": "HA-04-K",
+  "task_id": "HA-04",
+  "condition": "K",
+  "order": "W_FIRST",
+  "candidate_sha256": "44085f441946ca08905bacdd329ff5c7a68aeefeb25b04389bf3c2cdb4de961a",
+  "input_sha256": "6634025126230802bacb79613f617f2b0561bbadf1709c0257de42d75dae5efb",
+  "input_utf8_bytes": 1157,
+  "model": "openai/gpt-4.1-mini",
+  "temperature": 0,
+  "seed": 34034
+}

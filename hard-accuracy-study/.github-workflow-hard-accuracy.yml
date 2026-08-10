@@ -1,0 +1,45 @@
+name: Hard routing accuracy study
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  models: read
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preflight
+        run: |
+          node hard-accuracy-study/tools/self-test-hard-accuracy.mjs
+      - name: Run 64 decisions
+        id: study
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HARD_ACCURACY_MODEL: openai/gpt-4.1-mini
+          HARD_ACCURACY_OUT: hard-accuracy-study/results
+          HARD_ACCURACY_DELAY_MS: '8500'
+        run: node hard-accuracy-study/tools/run-github-models.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hard-accuracy-study-results
+          path: hard-accuracy-study/results/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce completion
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const p='hard-accuracy-study/results/HARD-ACCURACY-STUDY.json';
+          if(!fs.existsSync(p)) throw new Error('missing study report');
+          const r=JSON.parse(fs.readFileSync(p,'utf8'));
+          console.log(JSON.stringify({status:r.status,tier:r.tier,metrics:r.metrics},null,2));
+          if(r.status!=='complete') process.exit(2);
+          NODE

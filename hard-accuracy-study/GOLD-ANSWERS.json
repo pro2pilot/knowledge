@@ -1,0 +1,162 @@
+{
+  "HA-01": {
+    "target_module": "svc-ember-1",
+    "required_dependency": "pkg-lumen-1",
+    "first_source_file": "svc-ember-1/src/classify.js"
+  },
+  "HA-02": {
+    "target_module": "svc-harbor-2",
+    "required_dependency": "pkg-onyx-2",
+    "first_source_file": "svc-harbor-2/src/classify.js"
+  },
+  "HA-03": {
+    "target_module": "svc-kestrel-3",
+    "required_dependency": "pkg-raven-3",
+    "first_source_file": "svc-kestrel-3/src/classify.js"
+  },
+  "HA-04": {
+    "target_module": "svc-nickel-4",
+    "required_dependency": "pkg-umber-4",
+    "first_source_file": "svc-nickel-4/src/classify.js"
+  },
+  "HA-05": {
+    "target_module": "svc-quartz-1",
+    "required_dependency": "pkg-xenon-1",
+    "first_source_file": "svc-quartz-1/src/routes.js"
+  },
+  "HA-06": {
+    "target_module": "svc-topaz-2",
+    "required_dependency": "pkg-amber-2",
+    "first_source_file": "svc-topaz-2/src/routes.js"
+  },
+  "HA-07": {
+    "target_module": "svc-willow-3",
+    "required_dependency": "pkg-ember-3",
+    "first_source_file": "svc-willow-3/src/routes.js"
+  },
+  "HA-08": {
+    "target_module": "svc-zephyr-4",
+    "required_dependency": "pkg-harbor-4",
+    "first_source_file": "svc-zephyr-4/src/routes.js"
+  },
+  "HA-09": {
+    "target_module": "svc-delta-1",
+    "required_dependency": "pkg-kestrel-1",
+    "first_source_file": "svc-delta-1/src/total.js"
+  },
+  "HA-10": {
+    "target_module": "svc-garnet-2",
+    "required_dependency": "pkg-nickel-2",
+    "first_source_file": "svc-garnet-2/src/total.js"
+  },
+  "HA-11": {
+    "target_module": "svc-juniper-3",
+    "required_dependency": "pkg-quartz-3",
+    "first_source_file": "svc-juniper-3/src/total.js"
+  },
+  "HA-12": {
+    "target_module": "svc-mango-4",
+    "required_dependency": "pkg-topaz-4",
+    "first_source_file": "svc-mango-4/src/total.js"
+  },
+  "HA-13": {
+    "target_module": "svc-pearl-1",
+    "required_dependency": "pkg-willow-1",
+    "first_source_file": "svc-pearl-1/src/redact.js"
+  },
+  "HA-14": {
+    "target_module": "svc-sable-2",
+    "required_dependency": "pkg-zephyr-2",
+    "first_source_file": "svc-sable-2/src/redact.js"
+  },
+  "HA-15": {
+    "target_module": "svc-violet-3",
+    "required_dependency": "pkg-delta-3",
+    "first_source_file": "svc-violet-3/src/redact.js"
+  },
+  "HA-16": {
+    "target_module": "svc-yarrow-4",
+    "required_dependency": "pkg-garnet-4",
+    "first_source_file": "svc-yarrow-4/src/redact.js"
+  },
+  "HA-17": {
+    "target_module": "svc-cobalt-1",
+    "required_dependency": "pkg-juniper-1",
+    "first_source_file": "svc-cobalt-1/src/locale.js"
+  },
+  "HA-18": {
+    "target_module": "svc-frost-2",
+    "required_dependency": "pkg-mango-2",
+    "first_source_file": "svc-frost-2/src/locale.js"
+  },
+  "HA-19": {
+    "target_module": "svc-indigo-3",
+    "required_dependency": "pkg-pearl-3",
+    "first_source_file": "svc-indigo-3/src/locale.js"
+  },
+  "HA-20": {
+    "target_module": "svc-lumen-4",
+    "required_dependency": "pkg-sable-4",
+    "first_source_file": "svc-lumen-4/src/locale.js"
+  },
+  "HA-21": {
+    "target_module": "svc-onyx-1",
+    "required_dependency": "pkg-violet-1",
+    "first_source_file": "svc-onyx-1/src/avatar.js"
+  },
+  "HA-22": {
+    "target_module": "svc-raven-2",
+    "required_dependency": "pkg-yarrow-2",
+    "first_source_file": "svc-raven-2/src/avatar.js"
+  },
+  "HA-23": {
+    "target_module": "svc-umber-3",
+    "required_dependency": "pkg-cobalt-3",
+    "first_source_file": "svc-umber-3/src/avatar.js"
+  },
+  "HA-24": {
+    "target_module": "svc-xenon-4",
+    "required_dependency": "pkg-frost-4",
+    "first_source_file": "svc-xenon-4/src/avatar.js"
+  },
+  "HA-25": {
+    "target_module": "svc-amber-1",
+    "required_dependency": "pkg-indigo-1",
+    "first_source_file": "svc-amber-1/src/filter.js"
+  },
+  "HA-26": {
+    "target_module": "svc-ember-2",
+    "required_dependency": "pkg-lumen-2",
+    "first_source_file": "svc-ember-2/src/filter.js"
+  },
+  "HA-27": {
+    "target_module": "svc-harbor-3",
+    "required_dependency": "pkg-onyx-3",
+    "first_source_file": "svc-harbor-3/src/filter.js"
+  },
+  "HA-28": {
+    "target_module": "svc-kestrel-4",
+    "required_dependency": "pkg-raven-4",
+    "first_source_file": "svc-kestrel-4/src/filter.js"
+  },
+  "HA-29": {
+    "target_module": "svc-nickel-1",
+    "required_dependency": "pkg-umber-1",
+    "first_source_file": "svc-nickel-1/src/preview.js"
+  },
+  "HA-30": {
+    "target_module": "svc-quartz-2",
+    "required_dependency": "pkg-xenon-2",
+    "first_source_file": "svc-quartz-2/src/preview.js"
+  },
+  "HA-31": {
+    "target_module": "svc-topaz-3",
+    "required_dependency": "pkg-amber-3",
+    "first_source_file": "svc-topaz-3/src/preview.js"
+  },
+  "HA-32": {
+    "target_module": "svc-willow-4",
+    "required_dependency": "pkg-ember-4",
+    "first_source_file": "svc-willow-4/src/preview.js"
+  }
+}

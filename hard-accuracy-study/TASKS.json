@@ -1,0 +1,802 @@
+[
+  {
+    "task_id": "HA-01",
+    "family": "retry",
+    "variant": 1,
+    "task": "The current retry classification behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-ember-1",
+      "required_dependency": "pkg-lumen-1",
+      "first_source_file": "svc-ember-1/src/classify.js"
+    },
+    "metadata": {
+      "target": "svc-ember-1",
+      "dependency": "pkg-lumen-1",
+      "legacy": "svc-ember-legacy-1",
+      "web": "web-ember-1",
+      "alt": "svc-lumen-1",
+      "dep_old": "pkg-lumen-v1-1",
+      "aliases": {
+        "handler": "h01",
+        "policy": "p01",
+        "entry": "e01"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-02",
+    "family": "retry",
+    "variant": 2,
+    "task": "The current retry classification behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-harbor-2",
+      "required_dependency": "pkg-onyx-2",
+      "first_source_file": "svc-harbor-2/src/classify.js"
+    },
+    "metadata": {
+      "target": "svc-harbor-2",
+      "dependency": "pkg-onyx-2",
+      "legacy": "svc-harbor-legacy-2",
+      "web": "web-harbor-2",
+      "alt": "svc-onyx-2",
+      "dep_old": "pkg-onyx-v1-2",
+      "aliases": {
+        "handler": "h02",
+        "policy": "p02",
+        "entry": "e02"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-03",
+    "family": "retry",
+    "variant": 3,
+    "task": "The current retry classification behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-kestrel-3",
+      "required_dependency": "pkg-raven-3",
+      "first_source_file": "svc-kestrel-3/src/classify.js"
+    },
+    "metadata": {
+      "target": "svc-kestrel-3",
+      "dependency": "pkg-raven-3",
+      "legacy": "svc-kestrel-legacy-3",
+      "web": "web-kestrel-3",
+      "alt": "svc-raven-3",
+      "dep_old": "pkg-raven-v1-3",
+      "aliases": {
+        "handler": "h03",
+        "policy": "p03",
+        "entry": "e03"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-04",
+    "family": "retry",
+    "variant": 4,
+    "task": "The current retry classification behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-nickel-4",
+      "required_dependency": "pkg-umber-4",
+      "first_source_file": "svc-nickel-4/src/classify.js"
+    },
+    "metadata": {
+      "target": "svc-nickel-4",
+      "dependency": "pkg-umber-4",
+      "legacy": "svc-nickel-legacy-4",
+      "web": "web-nickel-4",
+      "alt": "svc-umber-4",
+      "dep_old": "pkg-umber-v1-4",
+      "aliases": {
+        "handler": "h04",
+        "policy": "p04",
+        "entry": "e04"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-05",
+    "family": "route",
+    "variant": 1,
+    "task": "The current route ownership fallback behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-quartz-1",
+      "required_dependency": "pkg-xenon-1",
+      "first_source_file": "svc-quartz-1/src/routes.js"
+    },
+    "metadata": {
+      "target": "svc-quartz-1",
+      "dependency": "pkg-xenon-1",
+      "legacy": "svc-quartz-legacy-1",
+      "web": "web-quartz-1",
+      "alt": "svc-xenon-1",
+      "dep_old": "pkg-xenon-v1-1",
+      "aliases": {
+        "handler": "h05",
+        "policy": "p05",
+        "entry": "e05"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-06",
+    "family": "route",
+    "variant": 2,
+    "task": "The current route ownership fallback behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-topaz-2",
+      "required_dependency": "pkg-amber-2",
+      "first_source_file": "svc-topaz-2/src/routes.js"
+    },
+    "metadata": {
+      "target": "svc-topaz-2",
+      "dependency": "pkg-amber-2",
+      "legacy": "svc-topaz-legacy-2",
+      "web": "web-topaz-2",
+      "alt": "svc-amber-2",
+      "dep_old": "pkg-amber-v1-2",
+      "aliases": {
+        "handler": "h06",
+        "policy": "p06",
+        "entry": "e06"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-07",
+    "family": "route",
+    "variant": 3,
+    "task": "The current route ownership fallback behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-willow-3",
+      "required_dependency": "pkg-ember-3",
+      "first_source_file": "svc-willow-3/src/routes.js"
+    },
+    "metadata": {
+      "target": "svc-willow-3",
+      "dependency": "pkg-ember-3",
+      "legacy": "svc-willow-legacy-3",
+      "web": "web-willow-3",
+      "alt": "svc-ember-3",
+      "dep_old": "pkg-ember-v1-3",
+      "aliases": {
+        "handler": "h07",
+        "policy": "p07",
+        "entry": "e07"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-08",
+    "family": "route",
+    "variant": 4,
+    "task": "The current route ownership fallback behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-zephyr-4",
+      "required_dependency": "pkg-harbor-4",
+      "first_source_file": "svc-zephyr-4/src/routes.js"
+    },
+    "metadata": {
+      "target": "svc-zephyr-4",
+      "dependency": "pkg-harbor-4",
+      "legacy": "svc-zephyr-legacy-4",
+      "web": "web-zephyr-4",
+      "alt": "svc-harbor-4",
+      "dep_old": "pkg-harbor-v1-4",
+      "aliases": {
+        "handler": "h08",
+        "policy": "p08",
+        "entry": "e08"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-09",
+    "family": "pricing",
+    "variant": 1,
+    "task": "The current invoice total rounding behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-delta-1",
+      "required_dependency": "pkg-kestrel-1",
+      "first_source_file": "svc-delta-1/src/total.js"
+    },
+    "metadata": {
+      "target": "svc-delta-1",
+      "dependency": "pkg-kestrel-1",
+      "legacy": "svc-delta-legacy-1",
+      "web": "web-delta-1",
+      "alt": "svc-kestrel-1",
+      "dep_old": "pkg-kestrel-v1-1",
+      "aliases": {
+        "handler": "h09",
+        "policy": "p09",
+        "entry": "e09"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-10",
+    "family": "pricing",
+    "variant": 2,
+    "task": "The current invoice total rounding behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-garnet-2",
+      "required_dependency": "pkg-nickel-2",
+      "first_source_file": "svc-garnet-2/src/total.js"
+    },
+    "metadata": {
+      "target": "svc-garnet-2",
+      "dependency": "pkg-nickel-2",
+      "legacy": "svc-garnet-legacy-2",
+      "web": "web-garnet-2",
+      "alt": "svc-nickel-2",
+      "dep_old": "pkg-nickel-v1-2",
+      "aliases": {
+        "handler": "h10",
+        "policy": "p10",
+        "entry": "e10"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-11",
+    "family": "pricing",
+    "variant": 3,
+    "task": "The current invoice total rounding behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-juniper-3",
+      "required_dependency": "pkg-quartz-3",
+      "first_source_file": "svc-juniper-3/src/total.js"
+    },
+    "metadata": {
+      "target": "svc-juniper-3",
+      "dependency": "pkg-quartz-3",
+      "legacy": "svc-juniper-legacy-3",
+      "web": "web-juniper-3",
+      "alt": "svc-quartz-3",
+      "dep_old": "pkg-quartz-v1-3",
+      "aliases": {
+        "handler": "h11",
+        "policy": "p11",
+        "entry": "e11"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-12",
+    "family": "pricing",
+    "variant": 4,
+    "task": "The current invoice total rounding behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-mango-4",
+      "required_dependency": "pkg-topaz-4",
+      "first_source_file": "svc-mango-4/src/total.js"
+    },
+    "metadata": {
+      "target": "svc-mango-4",
+      "dependency": "pkg-topaz-4",
+      "legacy": "svc-mango-legacy-4",
+      "web": "web-mango-4",
+      "alt": "svc-topaz-4",
+      "dep_old": "pkg-topaz-v1-4",
+      "aliases": {
+        "handler": "h12",
+        "policy": "p12",
+        "entry": "e12"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-13",
+    "family": "redaction",
+    "variant": 1,
+    "task": "The current audit event redaction behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-pearl-1",
+      "required_dependency": "pkg-willow-1",
+      "first_source_file": "svc-pearl-1/src/redact.js"
+    },
+    "metadata": {
+      "target": "svc-pearl-1",
+      "dependency": "pkg-willow-1",
+      "legacy": "svc-pearl-legacy-1",
+      "web": "web-pearl-1",
+      "alt": "svc-willow-1",
+      "dep_old": "pkg-willow-v1-1",
+      "aliases": {
+        "handler": "h13",
+        "policy": "p13",
+        "entry": "e13"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-14",
+    "family": "redaction",
+    "variant": 2,
+    "task": "The current audit event redaction behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-sable-2",
+      "required_dependency": "pkg-zephyr-2",
+      "first_source_file": "svc-sable-2/src/redact.js"
+    },
+    "metadata": {
+      "target": "svc-sable-2",
+      "dependency": "pkg-zephyr-2",
+      "legacy": "svc-sable-legacy-2",
+      "web": "web-sable-2",
+      "alt": "svc-zephyr-2",
+      "dep_old": "pkg-zephyr-v1-2",
+      "aliases": {
+        "handler": "h14",
+        "policy": "p14",
+        "entry": "e14"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-15",
+    "family": "redaction",
+    "variant": 3,
+    "task": "The current audit event redaction behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-violet-3",
+      "required_dependency": "pkg-delta-3",
+      "first_source_file": "svc-violet-3/src/redact.js"
+    },
+    "metadata": {
+      "target": "svc-violet-3",
+      "dependency": "pkg-delta-3",
+      "legacy": "svc-violet-legacy-3",
+      "web": "web-violet-3",
+      "alt": "svc-delta-3",
+      "dep_old": "pkg-delta-v1-3",
+      "aliases": {
+        "handler": "h15",
+        "policy": "p15",
+        "entry": "e15"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-16",
+    "family": "redaction",
+    "variant": 4,
+    "task": "The current audit event redaction behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-yarrow-4",
+      "required_dependency": "pkg-garnet-4",
+      "first_source_file": "svc-yarrow-4/src/redact.js"
+    },
+    "metadata": {
+      "target": "svc-yarrow-4",
+      "dependency": "pkg-garnet-4",
+      "legacy": "svc-yarrow-legacy-4",
+      "web": "web-yarrow-4",
+      "alt": "svc-garnet-4",
+      "dep_old": "pkg-garnet-v1-4",
+      "aliases": {
+        "handler": "h16",
+        "policy": "p16",
+        "entry": "e16"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-17",
+    "family": "locale",
+    "variant": 1,
+    "task": "The current locale fallback selection behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-cobalt-1",
+      "required_dependency": "pkg-juniper-1",
+      "first_source_file": "svc-cobalt-1/src/locale.js"
+    },
+    "metadata": {
+      "target": "svc-cobalt-1",
+      "dependency": "pkg-juniper-1",
+      "legacy": "svc-cobalt-legacy-1",
+      "web": "web-cobalt-1",
+      "alt": "svc-juniper-1",
+      "dep_old": "pkg-juniper-v1-1",
+      "aliases": {
+        "handler": "h17",
+        "policy": "p17",
+        "entry": "e17"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-18",
+    "family": "locale",
+    "variant": 2,
+    "task": "The current locale fallback selection behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-frost-2",
+      "required_dependency": "pkg-mango-2",
+      "first_source_file": "svc-frost-2/src/locale.js"
+    },
+    "metadata": {
+      "target": "svc-frost-2",
+      "dependency": "pkg-mango-2",
+      "legacy": "svc-frost-legacy-2",
+      "web": "web-frost-2",
+      "alt": "svc-mango-2",
+      "dep_old": "pkg-mango-v1-2",
+      "aliases": {
+        "handler": "h18",
+        "policy": "p18",
+        "entry": "e18"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-19",
+    "family": "locale",
+    "variant": 3,
+    "task": "The current locale fallback selection behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-indigo-3",
+      "required_dependency": "pkg-pearl-3",
+      "first_source_file": "svc-indigo-3/src/locale.js"
+    },
+    "metadata": {
+      "target": "svc-indigo-3",
+      "dependency": "pkg-pearl-3",
+      "legacy": "svc-indigo-legacy-3",
+      "web": "web-indigo-3",
+      "alt": "svc-pearl-3",
+      "dep_old": "pkg-pearl-v1-3",
+      "aliases": {
+        "handler": "h19",
+        "policy": "p19",
+        "entry": "e19"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-20",
+    "family": "locale",
+    "variant": 4,
+    "task": "The current locale fallback selection behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-lumen-4",
+      "required_dependency": "pkg-sable-4",
+      "first_source_file": "svc-lumen-4/src/locale.js"
+    },
+    "metadata": {
+      "target": "svc-lumen-4",
+      "dependency": "pkg-sable-4",
+      "legacy": "svc-lumen-legacy-4",
+      "web": "web-lumen-4",
+      "alt": "svc-sable-4",
+      "dep_old": "pkg-sable-v1-4",
+      "aliases": {
+        "handler": "h20",
+        "policy": "p20",
+        "entry": "e20"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-21",
+    "family": "media",
+    "variant": 1,
+    "task": "The current avatar normalization behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-onyx-1",
+      "required_dependency": "pkg-violet-1",
+      "first_source_file": "svc-onyx-1/src/avatar.js"
+    },
+    "metadata": {
+      "target": "svc-onyx-1",
+      "dependency": "pkg-violet-1",
+      "legacy": "svc-onyx-legacy-1",
+      "web": "web-onyx-1",
+      "alt": "svc-violet-1",
+      "dep_old": "pkg-violet-v1-1",
+      "aliases": {
+        "handler": "h21",
+        "policy": "p21",
+        "entry": "e21"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-22",
+    "family": "media",
+    "variant": 2,
+    "task": "The current avatar normalization behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-raven-2",
+      "required_dependency": "pkg-yarrow-2",
+      "first_source_file": "svc-raven-2/src/avatar.js"
+    },
+    "metadata": {
+      "target": "svc-raven-2",
+      "dependency": "pkg-yarrow-2",
+      "legacy": "svc-raven-legacy-2",
+      "web": "web-raven-2",
+      "alt": "svc-yarrow-2",
+      "dep_old": "pkg-yarrow-v1-2",
+      "aliases": {
+        "handler": "h22",
+        "policy": "p22",
+        "entry": "e22"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-23",
+    "family": "media",
+    "variant": 3,
+    "task": "The current avatar normalization behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-umber-3",
+      "required_dependency": "pkg-cobalt-3",
+      "first_source_file": "svc-umber-3/src/avatar.js"
+    },
+    "metadata": {
+      "target": "svc-umber-3",
+      "dependency": "pkg-cobalt-3",
+      "legacy": "svc-umber-legacy-3",
+      "web": "web-umber-3",
+      "alt": "svc-cobalt-3",
+      "dep_old": "pkg-cobalt-v1-3",
+      "aliases": {
+        "handler": "h23",
+        "policy": "p23",
+        "entry": "e23"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-24",
+    "family": "media",
+    "variant": 4,
+    "task": "The current avatar normalization behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-xenon-4",
+      "required_dependency": "pkg-frost-4",
+      "first_source_file": "svc-xenon-4/src/avatar.js"
+    },
+    "metadata": {
+      "target": "svc-xenon-4",
+      "dependency": "pkg-frost-4",
+      "legacy": "svc-xenon-legacy-4",
+      "web": "web-xenon-4",
+      "alt": "svc-frost-4",
+      "dep_old": "pkg-frost-v1-4",
+      "aliases": {
+        "handler": "h24",
+        "policy": "p24",
+        "entry": "e24"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-25",
+    "family": "consent",
+    "variant": 1,
+    "task": "The current analytics consent filtering behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-amber-1",
+      "required_dependency": "pkg-indigo-1",
+      "first_source_file": "svc-amber-1/src/filter.js"
+    },
+    "metadata": {
+      "target": "svc-amber-1",
+      "dependency": "pkg-indigo-1",
+      "legacy": "svc-amber-legacy-1",
+      "web": "web-amber-1",
+      "alt": "svc-indigo-1",
+      "dep_old": "pkg-indigo-v1-1",
+      "aliases": {
+        "handler": "h25",
+        "policy": "p25",
+        "entry": "e25"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-26",
+    "family": "consent",
+    "variant": 2,
+    "task": "The current analytics consent filtering behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-ember-2",
+      "required_dependency": "pkg-lumen-2",
+      "first_source_file": "svc-ember-2/src/filter.js"
+    },
+    "metadata": {
+      "target": "svc-ember-2",
+      "dependency": "pkg-lumen-2",
+      "legacy": "svc-ember-legacy-2",
+      "web": "web-ember-2",
+      "alt": "svc-lumen-2",
+      "dep_old": "pkg-lumen-v1-2",
+      "aliases": {
+        "handler": "h26",
+        "policy": "p26",
+        "entry": "e26"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-27",
+    "family": "consent",
+    "variant": 3,
+    "task": "The current analytics consent filtering behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-harbor-3",
+      "required_dependency": "pkg-onyx-3",
+      "first_source_file": "svc-harbor-3/src/filter.js"
+    },
+    "metadata": {
+      "target": "svc-harbor-3",
+      "dependency": "pkg-onyx-3",
+      "legacy": "svc-harbor-legacy-3",
+      "web": "web-harbor-3",
+      "alt": "svc-onyx-3",
+      "dep_old": "pkg-onyx-v1-3",
+      "aliases": {
+        "handler": "h27",
+        "policy": "p27",
+        "entry": "e27"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-28",
+    "family": "consent",
+    "variant": 4,
+    "task": "The current analytics consent filtering behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-kestrel-4",
+      "required_dependency": "pkg-raven-4",
+      "first_source_file": "svc-kestrel-4/src/filter.js"
+    },
+    "metadata": {
+      "target": "svc-kestrel-4",
+      "dependency": "pkg-raven-4",
+      "legacy": "svc-kestrel-legacy-4",
+      "web": "web-kestrel-4",
+      "alt": "svc-raven-4",
+      "dep_old": "pkg-raven-v1-4",
+      "aliases": {
+        "handler": "h28",
+        "policy": "p28",
+        "entry": "e28"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-29",
+    "family": "preview",
+    "variant": 1,
+    "task": "The current document preview formatting behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-nickel-1",
+      "required_dependency": "pkg-umber-1",
+      "first_source_file": "svc-nickel-1/src/preview.js"
+    },
+    "metadata": {
+      "target": "svc-nickel-1",
+      "dependency": "pkg-umber-1",
+      "legacy": "svc-nickel-legacy-1",
+      "web": "web-nickel-1",
+      "alt": "svc-umber-1",
+      "dep_old": "pkg-umber-v1-1",
+      "aliases": {
+        "handler": "h29",
+        "policy": "p29",
+        "entry": "e29"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-30",
+    "family": "preview",
+    "variant": 2,
+    "task": "The current document preview formatting behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-quartz-2",
+      "required_dependency": "pkg-xenon-2",
+      "first_source_file": "svc-quartz-2/src/preview.js"
+    },
+    "metadata": {
+      "target": "svc-quartz-2",
+      "dependency": "pkg-xenon-2",
+      "legacy": "svc-quartz-legacy-2",
+      "web": "web-quartz-2",
+      "alt": "svc-xenon-2",
+      "dep_old": "pkg-xenon-v1-2",
+      "aliases": {
+        "handler": "h30",
+        "policy": "p30",
+        "entry": "e30"
+      }
+    },
+    "order": "K_FIRST"
+  },
+  {
+    "task_id": "HA-31",
+    "family": "preview",
+    "variant": 3,
+    "task": "The current document preview formatting behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-topaz-3",
+      "required_dependency": "pkg-amber-3",
+      "first_source_file": "svc-topaz-3/src/preview.js"
+    },
+    "metadata": {
+      "target": "svc-topaz-3",
+      "dependency": "pkg-amber-3",
+      "legacy": "svc-topaz-legacy-3",
+      "web": "web-topaz-3",
+      "alt": "svc-amber-3",
+      "dep_old": "pkg-amber-v1-3",
+      "aliases": {
+        "handler": "h31",
+        "policy": "p31",
+        "entry": "e31"
+      }
+    },
+    "order": "W_FIRST"
+  },
+  {
+    "task_id": "HA-32",
+    "family": "preview",
+    "variant": 4,
+    "task": "The current document preview formatting behavior must be updated. Before editing, identify the application module that is wired into the active runtime, the shared package used by that implementation, and the first source file to inspect.",
+    "gold": {
+      "target_module": "svc-willow-4",
+      "required_dependency": "pkg-ember-4",
+      "first_source_file": "svc-willow-4/src/preview.js"
+    },
+    "metadata": {
+      "target": "svc-willow-4",
+      "dependency": "pkg-ember-4",
+      "legacy": "svc-willow-legacy-4",
+      "web": "web-willow-4",
+      "alt": "svc-ember-4",
+      "dep_old": "pkg-ember-v1-4",
+      "aliases": {
+        "handler": "h32",
+        "policy": "p32",
+        "entry": "e32"
+      }
+    },
+    "order": "K_FIRST"
+  }
+]
