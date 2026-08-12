@@ -78,7 +78,8 @@ jobs:
           set -euo pipefail
           git config user.name "Pro2Pilot"
           git config user.email "github@pro2pilot.com"
-          git add README.md .github/DISCUSSION_TEMPLATE/field-reports.yml
+          git add README.md
+          git add -f .github/DISCUSSION_TEMPLATE/field-reports.yml
           git commit -m "docs: refresh README and Field Report guidance for 3.4.0"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:main
