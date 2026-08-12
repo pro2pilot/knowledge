@@ -379,6 +379,7 @@ function updatePackageJson(repoRoot) {
     'kb:update-system:verify': 'node .knowledge/tools/update-system-files.js --verify-upgrade --json',
     'kb:git-policy': 'node .knowledge/tools/git-policy.js --json',
     'kb:routing': 'node .knowledge/tools/build-routing-bundle.js',
+    'kb:agent-task': 'node .knowledge/tools/agent-task.js --help',
     'kb:index': 'node .knowledge/tools/build-search-index.js',
     'kb:search': 'node .knowledge/tools/search-knowledge.js',
     'kb:doctor': 'node .knowledge/tools/doctor.js',

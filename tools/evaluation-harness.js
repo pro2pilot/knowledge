@@ -6,6 +6,7 @@ const { spawnSync } = require('child_process');
 const { ensureDir, readJson, writeJsonAtomic, sleepSync } = require('./lib/json-store');
 const { resolveKnowledgeContext, contextEnv } = require('./lib/path-context');
 const { inspectSemanticJson, parseJsonOutput } = require('./lib/semantic-json');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const checks = [
@@ -90,7 +91,7 @@ function main() {
   const quality = readJson(path.join(context.stateRoot, 'maintenance', 'quality_report.json'), {});
   const durations = results.map((result) => result.duration_ms);
   const report = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     generated_at: new Date().toISOString(),
     mode: context.mode,
     score,

@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 const { providerStateDir, findManifest, buildExternalMemoryReport } = require('./lib/memory-providers');
 const { ensureDir, readJson, writeJsonAtomic } = require('./lib/json-store');
 const { withContainedLock } = require('./lib/contained-lock-manager');
@@ -1058,7 +1059,7 @@ function runtimeStatusSnapshot(result, context, previous = null) {
     ? resultCount
     : previousRetrievalCount;
   return {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     provider_id: 'mem0-oss',
     adapter_id: 'live',
     checked_at: checkedAt,
@@ -1091,7 +1092,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     tool: 'memory-mem0.js',
     usage: 'node .knowledge/tools/memory-mem0.js <command> [query] [options] --json',
     commands: [

@@ -197,6 +197,27 @@ async function main() {
   const reg1 = parseJson(nodeTool(w1, 'workspace-register.js', ['--team-root', teamRoot, '--target-root', w1, '--workspace-id', 'codex-task-1', '--agent-id', 'codex-01', '--json'], { cwd: w1 }));
   const reg2 = parseJson(nodeTool(w2, 'workspace-register.js', ['--team-root', teamRoot, '--target-root', w2, '--workspace-id', 'claude-task-2', '--agent-id', 'claude-01', '--json'], { cwd: w2 }));
   assert(reg1.workspace.stateRoot !== reg2.workspace.stateRoot, 'workspace states must be separated');
+
+  const freshTeamDoctorRun = run(process.execPath, [
+    path.join(w1, '.knowledge', 'tools', 'doctor.js'),
+    '--team-root', teamRoot,
+    '--target-root', w1,
+    '--workspace-id', 'codex-task-1',
+    '--agent-id', 'codex-01',
+    '--json'
+  ], { cwd: w1 });
+  assert(freshTeamDoctorRun.status === 0, `fresh team Doctor failed before runtime artifacts existed\n${freshTeamDoctorRun.stderr}\n${freshTeamDoctorRun.stdout}`);
+  const freshTeamDoctor = parseJson(freshTeamDoctorRun);
+  assert(
+    (freshTeamDoctor.issues || []).every((item) => !path.isAbsolute(String(item.artifact || ''))),
+    'fresh team Doctor emitted an absolute state artifact into the repair lifecycle'
+  );
+  assert(
+    (freshTeamDoctor.issues || []).some((item) =>
+      item.code === 'missing_runtime_file' &&
+      String(item.artifact || '').startsWith('.knowledge-team/repos/')),
+    'fresh team Doctor did not expose safe relative team-state diagnostics'
+  );
   assertFails(run(process.execPath, [path.join(w1, '.knowledge', 'tools', 'workspace-register.js'), '--team-root', teamRoot, '--target-root', w2, '--workspace-id', 'codex-task-1', '--agent-id', 'codex-01', '--json'], { cwd: w1 }), 'duplicate workspaceId with different targetRoot should fail');
   const duplicateAgent = parseJson(nodeTool(w2, 'workspace-register.js', ['--team-root', teamRoot, '--target-root', w2, '--workspace-id', 'claude-duplicate-agent', '--agent-id', 'claude-01', '--json'], { cwd: w2 }));
   assert((duplicateAgent.workspace.warnings || []).some((warning) => /agentId duplicate/i.test(warning)), 'duplicate agentId warning missing');

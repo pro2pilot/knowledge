@@ -6,6 +6,7 @@ const path = require('path');
 const { ensureDir, readJson, writeJsonAtomic, writeFileAtomic, getAgentId } = require('./lib/json-store');
 const { estimateTokens, METHOD_ID } = require('./lib/token-estimate');
 const { resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 
 const context = resolveKnowledgeContext();
 const knowledgeRoot = context.projectKnowledgeRoot;
@@ -97,7 +98,7 @@ function main() {
   const externalMemoryReport = readJson(path.join(stateRoot, 'maintenance', 'external_memory_status.json'), { providers: [], metrics: {} });
   const externalMemoryMetrics = readJson(path.join(stateRoot, 'metrics', 'external_memory.json'), externalMemoryReport.metrics || {});
   const metrics = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     generated_at: new Date().toISOString(),
     generated_by: getAgentId(),
     mode: context.mode,

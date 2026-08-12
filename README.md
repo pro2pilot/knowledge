@@ -1,3 +1,11 @@
+## Integrated task workflow (3.4.0 RC1)
+
+For meaningful scoped work, use `agent-task begin` before broad exploration and
+`agent-task finish` after the primary change and physical tests. The workflow
+binds the exact task first-read, executes verification once, and may reuse the
+native evidence for one exact safe Repair-on-touch closure. See
+[`docs/agent-task-workflow.md`](docs/agent-task-workflow.md).
+
 # .knowledge by Pro2Pilot
 
 > **AI agents/installers:** install from the latest GitHub release asset, not from repo source. See the collapsed install contract below.

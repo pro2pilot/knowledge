@@ -127,7 +127,7 @@ function safeNumber(value, fallback = 0) {
 }
 
 const DEFAULT_OPERATOR_PROFILE = {
-  schema_version: '3.3.0',
+  schema_version: systemVersion,
   user_mode: 'simple',
   first_run_onboarding_completed: false,
   detected_agent_runtime: null,
@@ -137,7 +137,7 @@ const DEFAULT_OPERATOR_PROFILE = {
 };
 
 const DEFAULT_AUTONOMY_POLICY = {
-  schema_version: '3.3.0',
+  schema_version: systemVersion,
   agents_can_do_without_asking: 'run checks and reports',
   network_actions_require_confirmation: true,
   destructive_actions_require_confirmation: true,
@@ -146,7 +146,7 @@ const DEFAULT_AUTONOMY_POLICY = {
 };
 
 const DEFAULT_AGENT_POLICY = {
-  schema_version: '3.3.0',
+  schema_version: systemVersion,
   concurrent_work_policy: 'Safe Queue',
   merge_policy: 'Manual Only',
   auto_merge: false,
@@ -155,7 +155,7 @@ const DEFAULT_AGENT_POLICY = {
 };
 
 const DEFAULT_REPORT_FOOTER = {
-  schema_version: '3.3.0',
+  schema_version: systemVersion,
   mode: 'compact',
   show_token_metrics: true,
   show_restore_action: true,

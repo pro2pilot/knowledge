@@ -2,7 +2,7 @@
 
 ## v3.3.0 - Safer local knowledge maintenance and task-scoped routing
 
-v3.3.0 is the direct public upgrade from v3.2.11.
+Users of v3.2.11 can directly upgrade to v3.3.0.
 
 - Agent integrations now coexist safely: Codex, OpenClaw, Hermes, and Devin share one runtime-neutral `AGENTS.md` managed block, while Devin and Windsurf use separate `.devin/rules/knowledge.rules` and `.windsurf/rules/knowledge.md` vendor files.
 - Finding-specific repair and bounded Repair-on-touch preserve relevant
@@ -19,3 +19,12 @@ v3.3.0 is the direct public upgrade from v3.2.11.
 The release contains focused approval, redaction, translation, publication
 state, routing, repair, and update-safety regression coverage. It makes no
 comparative speed, accuracy, error-rate, or model-token-savings claims.
+
+## v3.4.0 - Integrated task routing and evidence reuse
+
+Adds the integrated `agent-task` begin/finish workflow so task-specific routing
+is consumed before broad exploration and physical verification can be reused
+for one exact safe Repair-on-touch closure. The RC also binds finish to a
+content-addressed first-read acknowledgement, rejects request/test-cwd path
+escapes, and makes prerelease packaging deterministic. It makes no comparative
+speed, accuracy, error-rate, or model-token-savings claims.

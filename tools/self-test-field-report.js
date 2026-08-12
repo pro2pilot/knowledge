@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { systemVersion } = require('./lib/system-version');
 const {
   run,
   __test: fieldReportTest
@@ -1373,13 +1374,19 @@ function main() {
       assert(text.includes('not Git-tracked files'), text);
     });
 
-    check('collector and renderer: installed release-candidate identity is observed from package metadata', () => {
+    check('collector and renderer: installed release identity is observed from package metadata', () => {
       const collected = collect(context);
-      assert(collected.values.knowledge_release_channel.value === 'release_candidate', JSON.stringify(collected.values.knowledge_release_channel));
-      assert(collected.values.knowledge_candidate_label.value === 'RC58', JSON.stringify(collected.values.knowledge_candidate_label));
-      assert(collected.values.knowledge_candidate_name.value === 'knowledge-v3.3.0-step1-rc4-r58.zip', JSON.stringify(collected.values.knowledge_candidate_name));
+      const currentPackage = JSON.parse(fs.readFileSync(path.join(context.systemRoot, 'package.json'), 'utf8'));
+      assert(collected.values.knowledge_release_channel.value === currentPackage.knowledge_release.channel, JSON.stringify(collected.values.knowledge_release_channel));
+      const expectedLabel = currentPackage.knowledge_release.candidate_label;
+      const expectedName = currentPackage.knowledge_release.candidate_name;
+      assert(collected.values.knowledge_candidate_label.value === expectedLabel, JSON.stringify(collected.values.knowledge_candidate_label));
+      assert(collected.values.knowledge_candidate_name.value === expectedName, JSON.stringify(collected.values.knowledge_candidate_name));
       const identity = releaseIdentity(collected);
-      assert(identity.display === '3.3.0 RC58', JSON.stringify(identity));
+      const expectedDisplay = expectedLabel === null || expectedLabel === undefined
+        ? currentPackage.version
+        : `${currentPackage.version} ${expectedLabel}`;
+      assert(identity.display === expectedDisplay, JSON.stringify(identity));
     });
 
     check('task results: content-addressed evidence, metrics, and repository snapshot validate together', () => {
@@ -1544,11 +1551,11 @@ function main() {
       const teamRoot = path.join(temporaryRoot, 'team-scope');
       for (const repoId of ['repo-a', 'repo-b']) {
         writeJson(path.join(teamRoot, 'repos', repoId, 'repo.json'), {
-          schema_version: '3.3.0', repoId, status: 'active'
+          schema_version: systemVersion(), repoId, status: 'active'
         });
       }
       writeJson(path.join(teamRoot, 'repos', 'repo-archived', 'repo.json'), {
-        schema_version: '3.3.0', repoId: 'repo-archived', status: 'archived'
+        schema_version: systemVersion(), repoId: 'repo-archived', status: 'archived'
       });
       const teamContext = makeContext(systemRoot, stateRoot, {
         mode: 'team', teamRoot, repoId: 'repo-a', workspaceId: 'workspace-a'
@@ -1940,12 +1947,20 @@ function main() {
 
     check('claim safety: current candidate identity mismatches are blocked and explicit historical baselines are allowed', () => {
       const baseFacts = collect(context);
+      const currentPackage = JSON.parse(fs.readFileSync(path.join(context.systemRoot, 'package.json'), 'utf8'));
+      const currentLabel = currentPackage.knowledge_release.candidate_label;
       const mismatch = claimSafetyFindings(baseFacts, validAnswers({
-        'project-context': 'This report was produced with .knowledge 3.3.0 RC56.'
+        'project-context': 'This report was produced with .knowledge 3.3.0 RC99.',
+        'github-publication-permission': 'local_draft_only'
       }));
-      assert(mismatch.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(mismatch));
+      if (currentLabel) {
+        assert(mismatch.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(mismatch));
+      } else {
+        assert(!mismatch.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(mismatch));
+      }
       const historical = claimSafetyFindings(baseFacts, validAnswers({
-        'project-context': 'The project was upgraded from RC56 to RC58 before this report was collected.'
+        'project-context': `The project was upgraded from RC56 to ${currentLabel} before this report was collected.`,
+        'github-publication-permission': 'local_draft_only'
       }));
       assert(!historical.some((finding) => finding.rule === 'candidate_identity_mismatch'), JSON.stringify(historical));
     });

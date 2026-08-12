@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { systemVersion } = require('./lib/system-version');
 const {
   resolvePolicy,
   granularFinding,
@@ -1365,7 +1366,7 @@ async function main() {
     artifacts.injected_delay_timing = delayed.verification.timing;
     artifacts.cli_empty_exit_retries = cliEmptyExitRetries;
     process.stdout.write(`${JSON.stringify({
-      schema_version: '3.3.0',
+      schema_version: systemVersion(),
       status: 'pass',
       checks_total: checks.length,
       checks,

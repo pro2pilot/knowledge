@@ -12,6 +12,7 @@ const {
   normalizeSystemAlias
 } = require('./lib/json-store');
 const { inspectSemanticJson, parseJsonOutput } = require('./lib/semantic-json');
+const { systemVersion } = require('./lib/system-version');
 
 const defaultKnowledgeRoot = path.resolve(__dirname, '..');
 const defaultRepoRoot = path.basename(defaultKnowledgeRoot).toLowerCase() === '.knowledge' ? path.dirname(defaultKnowledgeRoot) : process.cwd();
@@ -19,7 +20,7 @@ let activeKnowledgeRoot = defaultKnowledgeRoot;
 let activeRepoRoot = defaultRepoRoot;
 
 const DEFAULT_MANIFEST = {
-  schema_version: '3.3.0',
+  schema_version: systemVersion(),
   system_paths: [
     '.gitattributes',
     '.gitignore',
@@ -1764,7 +1765,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const report = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     status: errors.length ? 'failed' : 'ok',
     phase: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),
     mode: args.verifyUpgrade ? 'verify_upgrade' : (args.preflight ? 'preflight' : (args.apply ? 'apply' : 'dry_run')),

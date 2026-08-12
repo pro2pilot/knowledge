@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const evaluationHarness = require('./evaluation-harness');
+const { systemVersion } = require('./lib/system-version');
 
 const systemRoot = path.resolve(__dirname, '..');
 
@@ -215,7 +216,7 @@ function main() {
 
   const failed = results.filter((result) => result.status === 'fail');
   const report = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     status: failed.length ? 'fail' : 'pass',
     tests_total: results.length,
     tests_passed: results.length - failed.length,
@@ -229,7 +230,7 @@ function main() {
 try { main(); }
 catch (error) {
   console.log(JSON.stringify({
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     status: 'fail',
     tests_total: 0,
     tests_passed: 0,

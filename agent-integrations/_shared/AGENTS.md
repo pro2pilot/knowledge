@@ -8,4 +8,9 @@ If `.agents/skills/` exists, use the installed workflows when they match the tas
 
 {{FINAL_REPORT_CONTRACT}}
 
+For meaningful work, report exactly one routing-context estimate state:
+workspace-to-task narrowing, estimated overhead, neutral, or
+unavailable/not comparable. This is a deterministic local context estimate,
+not provider-reported model-token usage.
+
 For concurrent agent work, set a stable `KNOWLEDGE_AGENT_ID` and use separate git worktrees or branches. A newly connected AGENTS.md-compatible agent must reuse this shared managed block instead of adding a second runtime-specific `.knowledge` block.

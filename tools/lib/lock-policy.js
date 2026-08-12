@@ -8,6 +8,7 @@ const ROOT_KINDS = Object.freeze({
 
 const LOCKS = Object.freeze({
   'agent-integrations': Object.freeze({ root_kinds: ['state'], purpose: 'Install agent integrations transactionally.', consumers: ['install-agent-integrations'] }),
+  'agent-task': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize integrated agent task workflows.', consumers: ['agent-task'] }),
   'apply-template': Object.freeze({ root_kinds: ['project'], purpose: 'Apply or remove project templates.', consumers: ['apply-template'] }),
   'doctor': Object.freeze({ root_kinds: ['state'], purpose: 'Refresh Doctor health artifacts.', consumers: ['doctor'] }),
   'evidence-publication': Object.freeze({ root_kinds: ['system'], purpose: 'Publish maintainer release evidence atomically.', consumers: [] }),

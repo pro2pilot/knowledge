@@ -1,22 +1,29 @@
-# Routing context estimate reporting
+# Routing and task-result reporting
 
-After meaningful work, run:
+For meaningful scoped work, use the committed result from:
 
 ```bash
-node .knowledge/tools/flow.js release
+node .knowledge/tools/agent-task.js finish --workflow-id=<ATW-id> --request=<finish.json> --json
 ```
 
-Use the generated PR summary as the canonical human-readable result:
+Treat that result as the canonical task report. Keep separate:
 
-```txt
-.knowledge/maintenance/pr_summary.md
-```
+- primary verification outcome;
+- task-route snapshot and exact first-read acknowledgement;
+- one routing-context state: workspace-to-task narrowing, estimated overhead,
+  neutral, or unavailable / not comparable;
+- Global Doctor before/after;
+- Task Readiness before/after;
+- native KVE/KVR IDs and sustained repair status;
+- deferred unrelated debt;
+- provider usage only when an actual provider receipt was supplied.
 
-Report exactly one routing-context state when it is available:
+Use `node .knowledge/tools/flow.js release` only when the task or repository
+policy requires the broader release workflow. A structured optional release
+failure must remain visible as `completed_with_warnings`; it must not replace or
+hide a verified primary task result.
 
-1. **Workspace-to-task narrowing** — report the estimated local first-read reduction and percentage.
-2. **Estimated overhead** — report the estimated local first-read overhead and percentage.
-3. **Neutral** — report that there is no material estimated local first-read difference.
-4. **Unavailable / not comparable** — report the reason and do not invent a percentage.
-
-Always state that this is a deterministic local context estimate, not provider-reported model-token usage. Do not describe it as actual token savings, model speed, accuracy, or error reduction. If the metrics were not regenerated in the current run or the task route is stale, say so explicitly.
+Always state that a routing percentage is a deterministic local first-read
+context estimate, not provider-reported model-token usage. Do not describe it as
+actual token savings, model speed, general model accuracy, error reduction, or
+API cost savings.

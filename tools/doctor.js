@@ -39,6 +39,11 @@ function rel(abs, base = knowledgeRoot) {
   if (!fromState.startsWith('..') && !path.isAbsolute(fromState)) return fromState;
   return path.basename(abs);
 }
+function stateArtifact(relPath) {
+  const clean = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (context.mode === 'repo') return `.knowledge/${clean}`;
+  return `.knowledge-team/repos/${context.repoId}/workspaces/${context.workspaceId}/state/${clean}`;
+}
 function exists(relPath) {
   const raw = String(relPath || '');
   const clean = raw.replace(/^\.knowledge[\\/]/, '');
@@ -198,8 +203,9 @@ function doctorUnlocked(options = {}) {
   }
   for (const file of stateRequired) {
     const ok = fs.existsSync(path.join(stateRoot, file));
-    checks.push({ check: 'runtime_file', artifact: context.mode === 'repo' ? `.knowledge/${file}` : path.join(stateRoot, file), status: ok ? 'pass' : 'warn' });
-    if (!ok) issue(issues, 'medium', 'missing_runtime_file', `Missing runtime artifact: ${file}. Run the relevant flow to generate it.`, context.mode === 'repo' ? `.knowledge/${file}` : path.join(stateRoot, file));
+    const artifact = stateArtifact(file);
+    checks.push({ check: 'runtime_file', artifact, status: ok ? 'pass' : 'warn' });
+    if (!ok) issue(issues, 'medium', 'missing_runtime_file', `Missing runtime artifact: ${file}. Run the relevant flow to generate it.`, artifact);
   }
 
   const jsonFiles = Array.from(new Set([

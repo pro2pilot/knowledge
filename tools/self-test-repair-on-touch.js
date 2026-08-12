@@ -2988,7 +2988,7 @@ function main() {
           'install-manifest.json'
         ),
         {
-          schema_version: '3.3.0',
+          schema_version: systemVersion(),
           approved_local_rebuild_tools: [
             'tools/build-search-index.js'
           ]

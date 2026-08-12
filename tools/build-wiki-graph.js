@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { systemVersion } = require('./lib/system-version');
 const {
   readJson,
   writeJsonAtomicContained,
@@ -502,7 +503,7 @@ function buildUnlocked(options = {}) {
   const relation_counts = relationCounts(edges);
 
   const graph = {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     generated_at: nowIso(),
     generated_by: getAgentId(),
     mode: context.mode,

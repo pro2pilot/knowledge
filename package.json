@@ -1,6 +1,6 @@
 {
   "name": "dot-knowledge",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "Open repo-local trust layer for AI coding agents: routing, evidence, freshness, repair, PR review, and a local Visual Inspector.",
   "type": "commonjs",
   "engines": {
@@ -79,7 +79,9 @@
     "kb:self-test-task-routing": "node tools/self-test-task-routing.js",
     "kb:self-test-field-report": "node tools/self-test-field-report.js",
     "kb:self-test-handoff-current-state": "node tools/self-test-handoff-current-state.js --json",
-    "kb:self-test-export-privacy": "node tools/self-test-export-privacy.js"
+    "kb:self-test-export-privacy": "node tools/self-test-export-privacy.js",
+    "kb:agent-task": "node tools/agent-task.js --help",
+    "kb:self-test-agent-task-workflow": "node tools/self-test-agent-task-workflow.js"
   },
   "keywords": [
     "ai-agents",
@@ -98,8 +100,8 @@
   ],
   "license": "Apache-2.0",
   "knowledge_release": {
-    "channel": "release_candidate",
-    "candidate_label": "RC58",
-    "candidate_name": "knowledge-v3.3.0-step1-rc4-r58.zip"
+    "channel": "stable",
+    "candidate_label": null,
+    "candidate_name": "knowledge-v3.4.0.zip"
   }
 }

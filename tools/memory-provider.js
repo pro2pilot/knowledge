@@ -2,6 +2,7 @@
 'use strict';
 
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
+const { systemVersion } = require('./lib/system-version');
 const {
   listProviders,
   previewProvider,
@@ -34,7 +35,7 @@ function print(result, json) {
 
 function help() {
   return {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     tool: 'memory-provider.js',
     usage: 'node .knowledge/tools/memory-provider.js <command> [provider] [options] --json',
     commands: [

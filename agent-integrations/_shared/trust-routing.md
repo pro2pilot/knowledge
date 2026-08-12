@@ -1,17 +1,25 @@
-Use `.knowledge/` as the first trust/routing layer for this repository.
+Use `.knowledge/` as the repository-local trust and task-routing layer.
 
-## First file to read
+## Default meaningful-task entrypoint
 
-1. `.knowledge/maintenance/routing_bundle.json`
+Before broad repository exploration, start a scoped task:
 
-Then read only what the bundle says is relevant:
+```text
+node .knowledge/tools/agent-task.js begin \
+  --task="<exact engineering task>" \
+  --scope-module=<module-id> \
+  --scope-path=<path> \
+  --json
+```
 
-- `.knowledge/project_index.json`
-- `.knowledge/maintenance/trust_report.json`
-- `.knowledge/maintenance/handoff_summary.json`
-- `.knowledge/wiki/index.md`
-- relevant `.knowledge/modules/*.json`
-- relevant source files and tests
+Read the returned `route.first_read.content` immediately. Preserve the returned
+`workflow_id` and `route.first_read.sha256`. The task snapshot, canonical
+workspace comparison and first-read body are immutable evidence for this run.
+Do not substitute the global routing bootstrap for this task-specific first
+read.
+
+Then inspect only the selected source/tests and any required continuation or
+direct dependency. Re-read current code for behavior claims and critical edits.
 
 ## Source-of-truth order
 
@@ -23,7 +31,8 @@ Then read only what the bundle says is relevant:
 6. `.knowledge/wiki/*.md`
 7. `.knowledge/sessions/*`
 
-Code beats summaries. Tests beat prose. Wiki is advisory unless backed by evidence and current code/tests.
+Code beats summaries. Tests beat prose. Wiki is advisory unless backed by
+evidence and current code/tests.
 
 ## Trust rules
 
@@ -33,36 +42,34 @@ Code beats summaries. Tests beat prose. Wiki is advisory unless backed by eviden
 - `advisory_only`: context only; never source of truth.
 - `suspect`, `needs_recheck`, `low_confidence`: re-read source code before behavior claims or edits.
 
-## Opportunistic knowledge repair
+## Finish the task with native evidence
 
-The built-in default is task-scoped repair. After routing, plan only against the
-current task:
+After the primary change and relevant local tests are ready, create a finish
+request inside the repository containing the exact first-read SHA,
+changed/source files and physical test argv. Test `cwd` values are relative to
+the repository root. Then run:
 
-`node .knowledge/tools/repair-on-touch.js plan --task "<current task>" --json`
+```text
+node .knowledge/tools/agent-task.js finish \
+  --workflow-id=<ATW-id> \
+  --request=<finish-request.json> \
+  --json
+```
 
-The plan is a hard scope boundary. Complete the primary task first. If that work
-actually verifies every required source artifact and runs the finding's required
-checks, record those checks through `repair-on-touch.js verify` or
-`repair-on-touch.js receipt --request=<json>`, then apply only the receipt's
-exact lifecycle ID. Never claim an unexecuted test, close a sibling finding,
-edit source code for Doctor score, or auto-close a contradiction, security,
-policy, incident, architecture-conflict, or manual-review finding. Leave
-unrelated debt deferred.
+The workflow executes primary verification once. If exactly one safe,
+task-relevant `verify_on_touch` finding is selected and every affected artifact
+is explicitly in the verified source set, it reuses the native KVE execution
+IDs to create one native KVR and applies only that exact lifecycle finding.
+Ambiguity, protected findings, missing artifacts, failed tests and unsustained
+recertification fail closed. Unrelated debt stays visible.
 
-Before the final answer, rerun Doctor and use
-`node .knowledge/tools/repair-on-touch.js summary --request=<json>` to keep the
-primary-task result, maintenance performed, global Doctor, task readiness, and
-deferred work visibly separate. See `.knowledge/docs/repair-on-touch.md` for the
-request contract.
+The final result keeps the engineering outcome separate from routing evidence,
+Doctor, Task Readiness, repair receipts and deferred debt. It also writes a
+content-addressed first-read acknowledgement receipt bound to the finish
+request. This is proof of exact snapshot acknowledgement, not proof that the
+agent was technically unable to inspect other files.
 
-## Maintenance
+## Context estimate rule
 
-After significant changes, run:
-
-`node .knowledge/tools/sync-tracked.js`
-
-When new files, wiki pages, or module summaries changed, also run:
-
-`node .knowledge/tools/build-routing-bundle.js`
-`node .knowledge/tools/build-search-index.js`
-`node .knowledge/tools/doctor.js`
+A task-routing percentage is a deterministic local first-read estimate. It is
+not provider-reported model-token usage, cost, accuracy or speed.

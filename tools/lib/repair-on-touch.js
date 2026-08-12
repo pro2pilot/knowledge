@@ -10,6 +10,7 @@ const {
   writeFileAtomic,
   normalizeSystemAlias
 } = require('./json-store');
+const { systemVersion } = require('./system-version');
 const {
   stableId,
   canonicalPath,
@@ -135,7 +136,8 @@ const GENERATED_REBUILD_DEPENDENCIES = Object.freeze({
     '.knowledge/tools/lib/lock-owner-schema.js',
     '.knowledge/tools/lib/lock-policy.js',
     '.knowledge/tools/lib/path-context.js',
-    '.knowledge/tools/lib/strict-temp-cleanup.js'
+    '.knowledge/tools/lib/strict-temp-cleanup.js',
+    '.knowledge/tools/lib/system-version.js'
   ])
 });
 const PROTECTED_CODES = new Set([
@@ -1386,7 +1388,7 @@ function resolvePolicy({
 function saveOperatorRepairSettings(context, raw = {}, options = {}) {
   const settingsPath = path.join(context.projectKnowledgeRoot, 'settings', 'operator-profile.json');
   const profile = readJson(settingsPath, {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     user_mode: 'simple',
     first_run_onboarding_completed: false,
     connected_agents: [],
@@ -1395,7 +1397,7 @@ function saveOperatorRepairSettings(context, raw = {}, options = {}) {
   const policy = options.reset
     ? normalizePolicy(DEFAULT_REPAIR_POLICY)
     : normalizePolicy(raw, operatorRepairSettings(profile)?.mode ? operatorRepairSettings(profile) : DEFAULT_REPAIR_POLICY);
-  profile.schema_version = '3.3.0';
+  profile.schema_version = systemVersion();
   profile.maintenance = {
     ...(profile.maintenance || {}),
     repair_on_touch: {

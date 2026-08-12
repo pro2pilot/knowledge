@@ -1,3 +1,16 @@
+## Recommended meaningful-task entrypoint
+
+Start scoped work with:
+
+```text
+node .knowledge/tools/agent-task.js begin --task="<task>" --scope-module=<id> --scope-path=<path> --json
+```
+
+Read the exact returned first-read body. Finish with the returned workflow ID,
+first-read SHA, source files and physical test argv. This lets `.knowledge`
+reuse the same native verification evidence for one safe task-relevant repair
+without hiding unrelated debt. See `docs/agent-task-workflow.md`.
+
 # Quick Start For Any Agent
 
 You are configuring and operating `.knowledge` for this repository.

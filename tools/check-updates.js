@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { systemVersion } = require('./lib/system-version');
 
 const knowledgeRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(knowledgeRoot, '..');
@@ -196,7 +197,7 @@ function selectReleaseAsset(latest) {
 
 function makeStatusBase(config) {
   return {
-    schema_version: '3.3.0',
+    schema_version: systemVersion(),
     generated_at: nowIso(),
     repository: OFFICIAL_UPDATE_REPOSITORY,
     source: config.source,

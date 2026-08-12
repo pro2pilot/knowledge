@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
 const { readJson } = require('./lib/json-store');
-const { estimateForFile } = require('./lib/token-estimate');
+const taskRouting = require('./lib/task-routing');
+const { resolveTaskRoutingContext, resolveEffectiveTaskRoutingState, formatTaskRoutingEstimate } = require('./lib/task-routing-state');
 const { systemVersion } = require('./lib/system-version');
 
 function safeJson(file, fallback) {
@@ -26,32 +27,49 @@ function trustState(context) {
   return { status, why };
 }
 
-function estimateContext(context) {
-  const routingPath = path.join(context.stateRoot, 'maintenance', 'routing_bundle.json');
-  const routing = estimateForFile(routingPath);
-  const baseline = Math.max(routing.tokens_approx * 2, routing.tokens_approx + 1200, 1);
-  const savedPct = Math.max(0, Math.min(99, Math.round((1 - routing.tokens_approx / baseline) * 100)));
+function estimateContext(context, settings = {}) {
+  let manifests = [];
+  try { manifests = taskRouting.listTasks(context); } catch { manifests = []; }
+  const resolved = resolveTaskRoutingContext({
+    context,
+    manifests,
+    explicitTaskId: settings.task_id || settings.taskId || null,
+    sessionId: settings.session_id || settings.sessionId || null,
+    prNumber: settings.pr_number || settings.prNumber || null
+  });
+  if (resolved.status !== 'resolved') {
+    return {
+      status: 'unavailable',
+      task_scope_hash: null,
+      public_text: 'Task routing estimate unavailable: no unambiguous current task is bound.',
+      disclaimer: 'This is a deterministic local first-read context estimate, not provider-reported model-token usage.'
+    };
+  }
+  const state = resolveEffectiveTaskRoutingState({ context, taskScopeHash: resolved.task_scope_hash, verifyLiveInputs: true });
   return {
-    estimated_system_tokens_used: routing.tokens_approx,
-    estimated_context_saved_pct: savedPct
+    status: state.effective_claim_eligible ? 'available' : 'unavailable',
+    task_scope_hash: resolved.task_scope_hash,
+    state,
+    public_text: formatTaskRoutingEstimate(state.metrics || {}, state),
+    disclaimer: 'This is a deterministic local first-read context estimate, not provider-reported model-token usage.'
   };
 }
 
 function renderFooter(context, settings) {
   const trust = trustState(context);
-  const metrics = estimateContext(context);
+  const metrics = estimateContext(context, settings);
   const mode = String(settings.mode || 'compact').toLowerCase();
   if (mode === 'off') return '';
   if (settings.only_when_trust_incomplete && !/recheck|stale|suspect|missing|conflict|blocked/i.test(trust.status)) return '';
   if (mode === 'compact') {
-    return `.knowledge: Trust ${trust.status} · ~${metrics.estimated_system_tokens_used} estimated system tokens · ~${metrics.estimated_context_saved_pct}% estimated context saved`;
+    return `.knowledge: Trust ${trust.status} · ${metrics.public_text}`;
   }
   return `## .knowledge report
 
 Knowledge trust: ${trust.status}
 Why: ${trust.why}
-.knowledge context used: ~${metrics.estimated_system_tokens_used} estimated system tokens
-Estimated context saved: ~${metrics.estimated_context_saved_pct}%
+Task routing: ${metrics.public_text}
+Routing disclaimer: ${metrics.disclaimer}
 
 Suggested action:
 ${settings.show_restore_action === false ? 'Review current reports' : 'Restore trust in knowledge'}
@@ -85,4 +103,4 @@ if (require.main === module) {
   catch (error) { console.error(error.stack || error.message); process.exit(1); }
 }
 
-module.exports = { renderFooter, main };
+module.exports = { renderFooter, estimateContext, main };
