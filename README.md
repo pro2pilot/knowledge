@@ -1,125 +1,120 @@
-## Integrated task workflow (3.4.0 RC1)
-
-For meaningful scoped work, use `agent-task begin` before broad exploration and
-`agent-task finish` after the primary change and physical tests. The workflow
-binds the exact task first-read, executes verification once, and may reuse the
-native evidence for one exact safe Repair-on-touch closure. See
-[`docs/agent-task-workflow.md`](docs/agent-task-workflow.md).
-
 # .knowledge by Pro2Pilot
 
-> **AI agents/installers:** install from the latest GitHub release asset, not from repo source. See the collapsed install contract below.
+> **A repo-local trust layer for AI coding agents: task-scoped routing, physical evidence, freshness, bounded repair, PR review, Field Reports, and a local Inspector.**
 
-<details>
-<summary><strong>AI agents: use latest release asset, never repo source</strong></summary>
-
-If you are installing `.knowledge` into another project:
-
-- Do not clone this repository into the target project.
-- Do not use GitHub **Code > Download ZIP**.
-- Do not use GitHub-generated `Source code (zip)` or `Source code (tar.gz)`.
-- Download only the latest release asset named `knowledge-vX.Y.Z.zip`.
-- Extract it so the target repository contains `.knowledge/`.
-
-Correct installed shape:
-
-```txt
-.knowledge/
-.agents/skills/        # only after agent integration install
-AGENTS.md              # or the selected agent rules file
-```
-
-Incorrect installed shape:
-
-```txt
-knowledge-src/
-.knowledge/.git/
-.knowledge/.github/
-```
-
-Canonical install source:
-
-```txt
-https://github.com/pro2pilot/knowledge/releases/latest
-```
-
-After extraction, run:
-
-```bash
-node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime codex
-node .knowledge/tools/flow.js import
-node .knowledge/inspector.js
-```
-
-Replace `codex` with the active agent runtime when needed. Install only the
-active runtime during first setup; other agents can connect later by running
-their own `--runtime <agent>` command.
-
-</details>
+Current code and tests remain the source of truth. External memory stays advisory.
 
 <p align="center">
   <img src="assets/knowledge-trust-gate-light-readme.svg" alt=".knowledge trust gate: code, tests, agents, memory, and PR review pass through the local trust layer" width="100%">
 </p>
 
-<p align="center"><strong>The open, repo-local trust layer for AI coding agents.</strong></p>
+## Why this exists
 
-`.knowledge` gives Codex, Claude Code, OpenCode, Gemini CLI, GitHub Copilot, Devin/Windsurf, Continue, Roo Code, Aider, and custom agents a shared local system for:
+AI coding agents often fail for reasons that are hard to audit later:
 
-```txt
-routing -> evidence -> trust + freshness -> repair -> PR review
+- they read too much irrelevant repository context;
+- stale summaries outrank current code and tests;
+- verification evidence is disconnected from the final claim;
+- repair may look successful even when recertification did not hold;
+- unrelated debt disappears behind one green summary;
+- multi-agent repos accumulate runtime-specific glue and drift.
+
+`.knowledge` keeps trust decisions **inside the repository** and makes them reviewable.
+
+## What 3.4.0 changes
+
+Version **3.4.0** adds one integrated task-bound workflow:
+
+```text
+meaningful task
+→ exact task route
+→ content-addressed first read
+→ primary verification
+→ native evidence
+→ one exact safe repair reuse
+→ reviewable final state
 ```
 
-Current code and tests remain the source of truth. External memory stays advisory.
+### `agent-task begin`
 
-This repository contains the installable `.knowledge` core: schemas, CLI tools, release artifacts, templates, integrations, and reproducible test assets.
+For meaningful scoped work, start with:
 
-For the human-readable trust model, benchmark explanation, compatibility guide, integration overview, and embedding guide, see the Pro2Pilot `.knowledge` docs:
-
-https://pro2pilot.com/knowledge/
-
-## Where To Go
-
-| Need | Go here |
-|---|---|
-| Install `.knowledge` | Use the release asset and Quick Start below |
-| Plan task-scoped Repair-on-touch | `node .knowledge/tools/repair-on-touch.js plan --request=<path>` |
-| Prepare a real-use Field Report | `node .knowledge/tools/field-report.js start --new --json` |
-| Understand the trust model | https://pro2pilot.com/knowledge/docs/trust-model/ |
-| See what ships vs what is generated | https://pro2pilot.com/knowledge/docs/shipped-vs-generated/ |
-| Review benchmark methodology | https://pro2pilot.com/knowledge/technical-notes/benchmarks/ |
-| Pick an agent integration | https://pro2pilot.com/knowledge/docs/integrations/ |
-| Verify schemas, CLI behavior, and reproducible checks | This repository |
-| Embed `.knowledge` in your app | https://pro2pilot.com/knowledge/docs/embedding/ |
-| Evaluate Inspector Pro | https://pro2pilot.com/inspector/ |
-
-Field Report can attach a versioned, content-addressed task-results manifest so
-its public **Verified engineering outcome** table describes the actual build,
-test, migration, security, UI, or deployment result. `.knowledge` health stays
-in a separate system-state table, and GitHub publication fails closed while the
-final Git snapshot is dirty or the bound evidence has changed.
-
-## Install
-
-> **Install note:** Do not use GitHub "Download ZIP" as the install package. Use the release asset only.
-
-Canonical install source:
-
-```txt
-https://github.com/pro2pilot/knowledge/releases/latest
+```bash
+node .knowledge/tools/agent-task.js begin \
+  --task="Update the orders route and its shared mapping" \
+  --scope-module=orders_app \
+  --scope-path=apps/orders/ \
+  --json
 ```
 
-Download the attached asset named `knowledge-vX.Y.Z.zip`, where `X.Y.Z`
-matches the latest release tag. Do not install from an old release page, a
-GitHub-generated source archive, or a repository checkout.
+`begin` creates a canonical task snapshot and returns the exact current `first-read.md` body, relative path, SHA-256 and byte count before broad exploration.
 
-Extract the release so your repository contains `.knowledge/`, then tell your agent:
+### `agent-task finish`
+
+Finish with an explicit, repository-contained request:
+
+```json
+{
+  "schema_version": "knowledge-agent-task-finish-request.v1",
+  "route_first_read_sha256": "<from begin>",
+  "changed_files": ["src/orders.js"],
+  "source_files": ["src/orders.js", "tests/orders.test.js"],
+  "tests_to_run": [
+    {
+      "argv": ["node", "tests/orders.test.js"],
+      "cwd": ".",
+      "timeout_ms": 120000
+    }
+  ],
+  "run_release_flow": true
+}
+```
+
+```bash
+node .knowledge/tools/agent-task.js finish \
+  --workflow-id=<ATW-id> \
+  --request=finish.json \
+  --json
+```
+
+`finish` runs primary verification once, records content-addressed native evidence, and may reuse that evidence for **one exact safe Repair-on-touch closure**. Unknown side effects, unsupported repair classes, path escapes and unsustained recertification fail closed.
+
+[Read the integrated task workflow](docs/agent-task-workflow.md)
+
+## Verified evidence snapshot
+
+| Evidence block | Result |
+|---|---:|
+| Windows / Ubuntu / macOS × Node 18 / 20 / 22 | **9 / 9 PASS** |
+| Shipped self-test executions across that matrix | **243 / 243 PASS** |
+| Agent integration bridges exercised in every matrix cell | **12** |
+| Exact upgrades `3.2.11 → 3.4.0` on Node 22 | **3 / 3 PASS** |
+| Candidate-bound deterministic routing cases | **48 / 48 claim-eligible** |
+| False omissions | **0** |
+| High-risk silent omissions | **0** |
+| Workspace modules → selected modules | **3,584 → 96** |
+| Corrected median local first-read byte reduction | **90.77%** |
+| Byte-weighted aggregate reduction | **91.14%** |
+
+> Routing percentages are deterministic local UTF-8 first-read bytes on synthetic fixtures. They are **not** provider-reported tokens, cost, latency or model accuracy.
+
+## Supported agent runtimes
+
+Codex, Claude Code, OpenCode, OpenClaw, Hermes, Gemini CLI, GitHub Copilot, Devin, Windsurf, Continue, Roo Code, Aider, and others.
+
+In 3.3.0+ the shared repository guidance is coordinated through one managed `AGENTS.md` block, while vendor-specific files stay isolated where needed.
+
+## Install the release asset
+
+> Do **not** use GitHub **Code → Download ZIP** as the install package.
+
+Download the uploaded release asset named `knowledge-vX.Y.Z.zip`, extract it so the target repository contains `.knowledge/`, and tell the active agent:
 
 ```txt
 Read `.knowledge/Quick-Start.md` and execute it for this repository.
 ```
 
-Manual setup:
+### Manual setup
 
 ```bash
 node .knowledge/tools/install-check.js --json
@@ -128,185 +123,165 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with `claude`, `opencode`, `openclaw`, `hermes`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent. Do not install every integration on first setup.
+Replace `codex` with the active runtime. Install another runtime later without replacing the existing `.knowledge/` state.
 
-To connect another agent later, keep the existing `.knowledge/` folder and run
-only that agent's runtime bridge:
+<details>
+<summary><strong>Supported installer runtimes</strong></summary>
+
+```txt
+codex
+claude
+opencode
+openclaw
+hermes
+gemini
+copilot
+devin
+windsurf
+continue
+roo
+aider
+```
+
+</details>
+
+## What ships
+
+A normal installed repository contains:
+
+- `.knowledge/Quick-Start.md`
+- `.knowledge/docs/`
+- `.knowledge/tools/`
+- `.knowledge/schemas/`
+- `.knowledge/agent-integrations/`
+- `.knowledge/templates/`
+- `.knowledge/config/`
+- `.knowledge/inspector.js`
+- the managed runtime integration files required for the selected agents
+
+Maintainer-only release and benchmark tooling stays out of installed repositories.
+
+## Core trust model
+
+`.knowledge` is built around a few simple rules:
+
+1. **Current code and tests outrank memory.**
+2. **Task scope should be explicit before broad exploration.**
+3. **Verification evidence should stay attached to the final result.**
+4. **Repair may close only exact, eligible, sustained findings.**
+5. **Global health and task outcome should remain separate.**
+6. **Unrelated debt must stay visible.**
+
+That is why the system keeps distinct outputs for:
+
+- primary engineering verification;
+- task routing;
+- Doctor health;
+- Task Readiness;
+- KVE/KVR evidence and repair state;
+- deferred debt;
+- provider usage, only when a real provider receipt exists.
+
+## Inspector
+
+Run the local Inspector to review repository state:
 
 ```bash
-node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
-node .knowledge/tools/flow.js doctor
-```
-
-After import, the first operational file an agent reads is:
-
-```txt
-.knowledge/maintenance/routing_bundle.json
-```
-
-## What Ships
-
-The release zip ships:
-
-- `Quick-Start.md`
-- `tools/`
-- `docs/`
-- `templates/`
-- `agent-integrations/`
-- `github-action-templates/`
-- schemas, policies, memory-provider manifests, and static assets
-
-Generated after import or release:
-
-- `maintenance/routing_bundle.json`
-- module cards and evidence records
-- freshness and trust reports
-- repair queue
-- task-scoped repair opportunities and actual-only maintenance telemetry
-- content-addressed local verification executions and receipts
-- PR summaries
-- metrics
-- local Inspector output
-
-Full table:
-
-https://pro2pilot.com/knowledge/docs/shipped-vs-generated/
-
-Technical proof:
-
-```txt
-docs/release-artifact.md
-install-manifest.json
-```
-
-Maintainer packaging and release QA tools live only in the source checkout; they
-are intentionally excluded from installed user `.knowledge` artifacts.
-
-Repair runtime state is generated locally and is never shipped in the release
-ZIP. Existing opportunities, telemetry, verification executions, receipts,
-transactions, and operator settings are preserved byte-for-byte by system-file
-updates and ignored by Git by default.
-
-## Trust Model
-
-Knowledge artifacts are routing and review aids, not unquestioned facts.
-
-```txt
-current code
-> current tests
-> .knowledge/evidence/*.json
-> .knowledge/modules/*.json
-> .knowledge/decisions.json
-> .knowledge/wiki/*.md
-> .knowledge/sessions/*
-> external retrieved memory
-```
-
-Code beats summaries. Tests beat prose. External memory is retrieved advisory context only.
-
-Human-readable guide:
-
-https://pro2pilot.com/knowledge/docs/trust-model/
-
-Formal behavior lives here: CLI code, schemas, tests, fixtures, generated reports.
-
-## Integrations, Inspector, Memory, Embedding
-
-Agent integration overview:
-
-```txt
-docs/integration-matrix.md
-agent-integrations/
-tools/install-agent-integrations.js
-```
-
-Local Inspector:
-
-```bash
-node .knowledge/tools/build-visual-inspector.js
 node .knowledge/inspector.js
 ```
 
-Memory providers:
+The Inspector provides a local, human-reviewable view of current evidence, route state, Doctor status, readiness, repair state and change impact.
+
+## Field Reports
+
+`.knowledge` also supports a structured **Field Report** workflow so real users can publish results from real repositories without turning their repo into a public dump of internals.
+
+You can create a Field Report in two ways:
+
+- **manually**, by filling the template yourself;
+- **semi-automatically**, by letting the local `field-report` workflow collect observable task facts, ask for the missing human answers and prepare a draft for your review.
+
+Field Report is designed as a **local reviewable workflow**:
+
+- collection happens locally;
+- review, redaction and approval happen before publication;
+- sensitive project details can be removed or generalized;
+- public drafts are meant to share outcomes and observations, not repository secrets.
+
+[How Field Reports work](https://github.com/pro2pilot/knowledge/discussions/4) · [Technical workflow](docs/field-report.md)
+
+Starter command:
 
 ```bash
-node .knowledge/tools/memory-provider.js status-all --json
+node .knowledge/tools/field-report.js start --new --json
 ```
 
-Embedding apps can shell out to the CLI, read JSON and Markdown outputs, or use the local Inspector API while the Inspector is running.
+## Useful local commands
 
-Embedding guide:
-
-https://pro2pilot.com/knowledge/docs/embedding/
-
-Technical reference:
-
-```txt
-docs/vscode-browser-embedding.md
-docs/memory-providers.md
-docs/external-memory.md
-```
-
-## Benchmarks
-
-The published benchmark language is intentionally conservative: synthetic fixtures, local context estimates, no guaranteed speedup, and no guarantee of agent correctness.
-
-Reproduce locally:
+### Import and refresh generated state
 
 ```bash
-node .knowledge/tools/flow.js release --no-color
+node .knowledge/tools/flow.js import
 ```
 
-Methodology:
-
-https://pro2pilot.com/knowledge/technical-notes/benchmarks/
-
-Privacy boundary:
-
-Real-world benchmark context, when referenced, must follow the published protocol and limitations. Raw data, project names, code, repository paths, and raw logs are not public.
-
-Technical reference:
-
-```txt
-docs/metrics-benchmarks.md
-metrics/
-```
-
-The installed artifact does not include the maintainer benchmark harness. Comparative benchmark protocols and raw evidence remain in the source/evidence layer; installed projects generate only local repository metrics and evaluation outputs.
-
-## Main Commands
+### Check installer/runtime consistency
 
 ```bash
-node .knowledge/tools/doctor.js
+node .knowledge/tools/install-check.js --json
+```
+
+### Start a Field Report
+
+```bash
+node .knowledge/tools/field-report.js start --new --json
+```
+
+### Launch the Inspector
+
+```bash
+node .knowledge/inspector.js
+```
+
+## Upgrades
+
+Users of **3.2.11** can upgrade directly to **3.4.0**.
+
+A conservative upgrade path is:
+
+```bash
 node .knowledge/tools/install-check.js --json
 node .knowledge/tools/flow.js import
-node .knowledge/tools/flow.js release
-node .knowledge/tools/search-knowledge.js "query"
-node .knowledge/tools/generate-pr-summary.js
-node .knowledge/tools/collect-metrics.js
-node .knowledge/tools/build-wiki-graph.js
-node .knowledge/tools/build-visual-inspector.js
 node .knowledge/inspector.js
 ```
 
-## Release Boundary
+Then run a small real task through `agent-task begin` / `agent-task finish`.
 
-Installed user artifacts contain runtime/user-facing tools only: install,
-doctor, sync, routing, search, Inspector, memory providers, templates, and user
-docs. Maintainer packaging, artifact validators, CI/release gates, post-release
-asset tools, and source release policies are source-checkout-only and are
-intentionally excluded from the installed `.knowledge` archive.
+## Benchmarks and claim boundary
 
-The output archive uses `.knowledge/` as the archive root and excludes source
-checkout state, runtime logs, temp folders, `node_modules`, `.git`, generated
-heavy outputs, and maintainer-only release tooling.
+`.knowledge` can support public benchmark work, but the project is intentionally conservative about claims.
 
-## Website And Proof
+Supported public claims today:
 
-The website is the decision and understanding layer. GitHub is the install and proof layer: release asset, source, schemas, CLI, tests, fixtures, validators, exact commands, and reproducible checks.
+- the integrated task-bound workflow exists and is reviewable;
+- the release line passed the reported compatibility and shipped self-test checks;
+- the candidate-bound routing suite reduced deterministic local first-read byte scope on the published fixtures;
+- exact safe evidence reuse for one Repair-on-touch closure is implemented.
+
+Unsupported claims today:
+
+- `.knowledge` makes the base model intrinsically smarter;
+- `.knowledge` improved model accuracy by a validated published percentage;
+- `.knowledge` reduced provider tokens or API cost unless you independently measure that with provider receipts.
+
+## Project links
+
+- **Homepage:** `https://pro2pilot.com/knowledge/`
+- **Field Reports explained:** [How Field Reports work](https://github.com/pro2pilot/knowledge/discussions/4)
+- **3.4.0 Discussion:** https://github.com/pro2pilot/knowledge/discussions/5
+- **GitHub Discussions:** use Discussions for release notes, Field Reports and benchmarks
+- **Release Notes:** [`RELEASE_NOTES.md`](RELEASE_NOTES.md)
+- **Workflow details:** [`docs/agent-task-workflow.md`](docs/agent-task-workflow.md)
 
 ## License
 
-The open-core `.knowledge` distribution in this archive is licensed under the Apache License, Version 2.0. See [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
-
-This Apache-2.0 license applies to the contents shipped in this `.knowledge` archive unless a file explicitly states otherwise.
+Apache-2.0.

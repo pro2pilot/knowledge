@@ -1,18 +1,18 @@
 name: "Field report"
-description: "Share evidence from real .knowledge use."
+description: "Share evidence from real .knowledge use through a local, reviewable workflow."
 title: "[Field report] "
 labels:
   - "field-report"
 body:
   - type: markdown
     attributes:
-      value: "Starting with `.knowledge` 3.3.0, you can prepare this report semi-automatically with the `field-report` command. Answer in any language; the publication-ready draft is always English and requires tester-approved translation when needed. Only include things you actually observed. Review the final title and body before publishing, and never include secrets, private source code, personal data, internal workspace names, or internal addresses."
+      value: "With `.knowledge` 3.4.0, you can prepare this report manually or semi-automatically with the local `field-report` workflow. Answer in any language; the publication-ready draft is always English, and non-English publication prose requires identity-attributed translation plus independent tester approval. The workflow builds public output from allowlisted local facts, keeps verified task outcome separate from `.knowledge` system health, generalizes or redacts sensitive values, and requires review, exact approval, and a separately confirmed publication preview before any remote create. Only include things you actually observed, and never include secrets, private source code, personal data, internal workspace names, or internal addresses."
   - type: input
     id: knowledge-version
     attributes:
       label: ".knowledge version"
       description: "Release version or commit SHA used during the test."
-      placeholder: "Example: 3.3.0"
+      placeholder: "Example: 3.4.0"
     validations:
       required: false
   - type: textarea
