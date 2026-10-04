@@ -37,23 +37,46 @@ function readJsonBody(req, limit = MAX_JSON_BODY_BYTES) {
       chunks.length = 0;
       reject(error);
     };
+    const failOversize = () => {
+      if (settled) return;
+      settled = true;
+      chunks.length = 0;
+      // A close response while a client is still writing can replace HTTP 413
+      // with ECONNRESET. Drain without retaining bytes, but never wait forever
+      // for a client that declares an oversized body and stops sending it.
+      const error = requestError('request_body_too_large', 413);
+      const finish = () => {
+        clearTimeout(timer);
+        req.removeListener('end', finish);
+        req.removeListener('error', onError);
+        req.removeListener('aborted', onAborted);
+        reject(error);
+      };
+      const onError = (transportError) => { error.code = transportError.code || 'request_aborted'; error.statusCode = 400; finish(); };
+      const onAborted = () => { error.code = 'request_aborted'; error.statusCode = 400; finish(); };
+      const timer = setTimeout(finish, 1000);
+      timer.unref();
+      req.once('end', finish);
+      req.once('error', onError);
+      req.once('aborted', onAborted);
+      req.resume();
+    };
+    req.on('error', (error) => fail(error));
+    req.on('aborted', () => fail(requestError('request_aborted', 400)));
     const contentLength = Number(req.headers['content-length']);
     if (Number.isFinite(contentLength) && contentLength > limit) {
-      req.resume();
-      fail(requestError('request_body_too_large', 413));
+      failOversize();
       return;
     }
     req.on('data', (chunk) => {
       if (settled) return;
       bytes += chunk.length;
       if (bytes > limit) {
-        fail(requestError('request_body_too_large', 413));
+        failOversize();
         return;
       }
       chunks.push(chunk);
     });
-    req.on('error', (error) => fail(error));
-    req.on('aborted', () => fail(requestError('request_aborted', 400)));
     req.on('end', () => {
       if (settled) return;
       let body;

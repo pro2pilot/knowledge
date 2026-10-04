@@ -8,6 +8,8 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { PassThrough } = require('stream');
+const { readJsonBody, MAX_JSON_BODY_BYTES } = require('./lib/inspector-http');
 const { runAction, getRun } = require('./lib/action-runner');
 const { createActionServer } = require('./lib/local-action-server');
 const { runOne } = require('./flow');
@@ -48,7 +50,7 @@ function request(port, method, requestPath, token, rawBody, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = http.request({ hostname: '127.0.0.1', port, method, path: requestPath, headers: {
       ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...(rawBody !== undefined ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(rawBody) } : {}),
+      ...(rawBody !== undefined ? { 'content-type': 'application/json', ...(!headers['transfer-encoding'] ? { 'content-length': Buffer.byteLength(rawBody) } : {}) } : {}),
       ...headers
     } }, (res) => {
       let body = '';
@@ -100,6 +102,18 @@ function seedRouting(context) {
 }
 
 async function main() {
+  const incomplete = new PassThrough();
+  incomplete.headers = { 'content-length': MAX_JSON_BODY_BYTES + 1 };
+  const drainStarted = Date.now();
+  const boundedDrain = readJsonBody(incomplete);
+  // Keep the unit fixture alive just as a real HTTP socket would be.
+  const keepAlive = setInterval(() => {}, 100);
+  try {
+    await assert.rejects(boundedDrain, error => error.code === 'request_body_too_large' && error.statusCode === 413);
+    check('incomplete oversized body rejects within a bounded drain window', () => assert(Date.now() - drainStarted < 4000));
+    incomplete.emit('error', new Error('late transport failure'));
+    check('late transport failure after drain timeout remains handled', () => assert.equal(incomplete.listenerCount('error'), 1));
+  } finally { clearInterval(keepAlive); incomplete.destroy(); }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-inspector-safety-'));
   let child = null;
   let local = null;
@@ -192,6 +206,8 @@ async function main() {
     }
     const large = await request(port, 'POST', '/api/settings/onboarding', token, JSON.stringify({ value: 'x'.repeat(1024 * 1024) }));
     check('oversize POST returns 413 without mutation', () => { assert.equal(large.status, 413); assert.deepStrictEqual(treeSnapshot(live.targetRoot), beforeBadBody); });
+    const chunked = await request(port, 'POST', '/api/settings/onboarding', token, JSON.stringify({ value: 'x'.repeat(MAX_JSON_BODY_BYTES) }), { 'transfer-encoding': 'chunked' });
+    check('chunked oversize POST returns 413 without mutation', () => { assert.equal(chunked.status, 413); assert.deepStrictEqual(treeSnapshot(live.targetRoot), beforeBadBody); });
     const missing = await request(port, 'GET', '/api/files/open?path=..%2Foutside.txt', token);
     check('file open traversal is rejected', () => assert.equal(missing.status, 404));
     const saved = await request(port, 'POST', '/api/settings/onboarding', token, '{"user_mode":"advanced","agent_id":"audit"}');
