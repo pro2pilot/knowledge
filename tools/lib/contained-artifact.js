@@ -98,7 +98,7 @@ function readContainedJson(context, relative, policy = 'curated', options = {}) 
     }
     // Once a preferred root contains the artifact, invalid/unsafe state is
     // authoritative. Never fall back to a stale lower-priority copy.
-    return { ...result, source_policy: policy, fallback_used: false, candidates: missing };
+    return { ...result, source_policy: policy, fallback_used: missing.length > 0, candidates: missing };
   }
   return { available: false, error: 'role_source_missing', file: null, root: null, source_policy: policy, candidates: missing };
 }

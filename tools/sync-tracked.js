@@ -5,16 +5,18 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const {
-  ensureDir,
+  ensureContainedDir,
   readJson,
-  writeJsonAtomic,
-  appendNdjson,
+  writeJsonAtomicContained,
+  appendNdjsonContained,
   normalizeRelative,
+  assertSafeContainedPath,
+  containedPath,
   getAgentId
 } = require('./lib/json-store');
 const { withContainedLock } = require('./lib/contained-lock-manager');
 const { LOCKS } = require('./lib/lock-policy');
-const { reconcile: reconcileQueue } = require('./lib/queue-lifecycle');
+const { reconcile: reconcileQueue, canonicalPath, canonicalModule } = require('./lib/queue-lifecycle');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { systemVersion } = require('./lib/system-version');
 
@@ -66,7 +68,10 @@ const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
 
 function exists(filePath) { return fs.existsSync(filePath); }
 function isFile(filePath) {
-  try { return fs.statSync(filePath).isFile(); } catch { return false; }
+  try {
+    assertSafeContainedPath(repoRoot, filePath);
+    return fs.lstatSync(filePath).isFile();
+  } catch { return false; }
 }
 function isDirectory(filePath) {
   try { return fs.statSync(filePath).isDirectory(); } catch { return false; }
@@ -83,14 +88,48 @@ function resolveArtifactPath(relPath) {
 }
 function nowIso() { return new Date().toISOString(); }
 function sha256(filePath) { return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'); }
-function safeReadJson(filePath, fallback) { return readJson(filePath, fallback); }
+function safeReadJson(filePath, fallback) {
+  try {
+    const root = [stateRoot, knowledgeRoot, repoRoot].find((candidate) => containedPath(candidate, filePath));
+    if (!root) throw new Error('Sync input is outside configured roots.');
+    assertSafeContainedPath(root, filePath, { allowMissing: true });
+    return readJson(filePath);
+  }
+  catch (error) {
+    if (error.code === 'ENOENT') return fallback;
+    // Invalid persisted state is evidence, not an empty baseline. In
+    // particular, never replace a corrupt freshness/queue file during sync.
+    throw error;
+  }
+}
+function validateInputs(inputs) {
+  const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  const sourcePath = (value) => {
+    if (typeof value !== 'string' || !value) return false;
+    try { return canonicalPath(value) !== 'unknown'; } catch { return false; }
+  };
+  for (const [file, value, arrays = [], objects = []] of inputs) {
+    const invalid = !record(value) ||
+      arrays.some(([key, check]) => value[key] !== undefined &&
+        (!Array.isArray(value[key]) || value[key].some((item) => !record(item) || (check && !check(item, sourcePath))))) ||
+      objects.some((key) => value[key] !== undefined && !record(value[key]));
+    if (invalid) {
+      const error = new Error(`Invalid sync input shape: ${file}. Restore or repair the artifact before syncing.`);
+      error.code = 'sync_input_invalid';
+      throw error;
+    }
+  }
+}
 function limitArray(items, max) { return items.length > max ? items.slice(items.length - max) : items; }
 function rel(filePath) { return path.relative(repoRoot, filePath).replace(/\\/g, '/'); }
 
 function parseTouchedHint() {
   try {
     const parsed = JSON.parse(process.env.KNOWLEDGE_CHANGED_FILES || '[]');
-    return Array.isArray(parsed) ? parsed.map(normalizeRelative).filter(Boolean) : [];
+    return Array.isArray(parsed) ? parsed.flatMap((value) => {
+      if (typeof value !== 'string' || !value) return [];
+      try { return [canonicalPath(value)]; } catch { return []; }
+    }) : [];
   } catch {
     return [];
   }
@@ -105,7 +144,9 @@ function isKnowledgeSourceCheckoutPath(pathStr) {
   const lower = top.toLowerCase();
   if (!isDirectory(full)) return false;
   if (lower === 'knowledge-src' || lower.startsWith('knowledge-src')) return true;
-  const pkg = safeReadJson(path.join(full, 'package.json'), {}) || {};
+  let pkg = {};
+  // Discovery may encounter an unrelated incomplete project manifest.
+  try { pkg = safeReadJson(path.join(full, 'package.json'), {}) || {}; } catch { /* not a known source checkout */ }
   const hasKnowledgePackage = pkg.name === 'dot-knowledge' || pkg.name === 'knowledge' || /knowledge/.test(String(pkg.name || ''));
   const hasReleaseTool = isFile(path.join(full, 'tools', 'package-release.js'));
   const hasInstallManifest = isFile(path.join(full, 'install-manifest.json'));
@@ -190,7 +231,7 @@ function addUnique(list, value) {
 }
 
 function updateActiveTasks(timestamp, note) {
-  ensureDir(paths.activeTasksDir);
+  ensureContainedDir(stateRoot, paths.activeTasksDir);
   const agentTaskPath = path.join(paths.activeTasksDir, `${agentId.replace(/[^a-zA-Z0-9_.-]/g, '_')}.json`);
   const task = safeReadJson(agentTaskPath, {
     task_id: agentId,
@@ -209,7 +250,7 @@ function updateActiveTasks(timestamp, note) {
     task.notes = task.notes || [];
     task.notes.push(note);
     task.notes = limitArray(task.notes, 200);
-    writeJsonAtomic(agentTaskPath, task);
+    writeJsonAtomicContained(agentTaskPath, task, stateRoot);
   }
 
   const legacy = safeReadJson(paths.activeTaskLegacy, null);
@@ -218,11 +259,12 @@ function updateActiveTasks(timestamp, note) {
     legacy.notes = legacy.notes || [];
     legacy.notes.push(`[${agentId}] ${note}`);
     legacy.notes = limitArray(legacy.notes, 200);
-    writeJsonAtomic(paths.activeTaskLegacy, legacy);
+    writeJsonAtomicContained(paths.activeTaskLegacy, legacy, stateRoot);
   }
 }
 
 function mainUnlocked() {
+  ensureContainedDir(stateRoot, path.join(stateRoot, 'maintenance'));
   const timestamp = nowIso();
   const freshness = safeReadJson(paths.freshness, { generated_at: null, hash_algorithm: 'sha256', tracked_files: [], artifact_dependencies: {}, artifact_statuses: {} });
   const staleItems = safeReadJson(paths.staleItems, { generated_at: null, items: [] });
@@ -251,6 +293,37 @@ function mainUnlocked() {
     ]
   });
   let routingBundleSummary = null;
+
+  const pathLists = (item, pathOk) => ['key_files', 'evidence_files'].every((key) =>
+    item[key] === undefined || (Array.isArray(item[key]) && item[key].every(pathOk)));
+  validateInputs([
+    ['freshness.json', freshness, [['tracked_files', (item, pathOk) => pathOk(item.path)]], ['artifact_dependencies', 'artifact_statuses']],
+    ['maintenance/stale_items.json', staleItems, [['items']]],
+    ['maintenance/repair_queue.json', repairQueue, [['queue']]],
+    ['maintenance/sync_log.json', syncLog, [['entries']]],
+    ['contradictions.json', contradictions, [['items']]],
+    ['modules/module_registry.json', moduleRegistry, [['modules', (item, pathOk) => {
+      try { canonicalModule(item.module_id); } catch { return false; }
+      return typeof item.module_id === 'string' && pathLists(item, pathOk) && (!item.card || pathOk(item.card));
+    }]]],
+    ['maps/file_criticality.json', fileCriticality, [['files', (item, pathOk) => pathOk(item.path)]], ['coverage_by_module']],
+    ['evidence/file_facts.json', fileFacts, [['facts', (item, pathOk) => pathOk(item.file)]]],
+    ['maps/critical_paths.json', criticalPaths, [['paths']]],
+    ['maintenance/automation_status.json', automationStatus],
+    ['maintenance/handoff_summary.json', handoffSummary]
+  ]);
+  const validPathArray = (value) => Array.isArray(value) && value.every((item) => {
+    try { return typeof item === 'string' && Boolean(item) && canonicalPath(item) !== 'unknown'; } catch { return false; }
+  });
+  if (Object.values(freshness.artifact_dependencies || {}).some((value) => !validPathArray(value)) ||
+      Object.values(freshness.artifact_statuses || {}).some((value) => !value || typeof value !== 'object' || Array.isArray(value) || (value.affected_files !== undefined && !validPathArray(value.affected_files))) ||
+      Object.values(fileCriticality.coverage_by_module || {}).some((value) => !value || typeof value !== 'object' || Array.isArray(value)) ||
+      (contradictions.items || []).some((item) => item.sources !== undefined && (!Array.isArray(item.sources) || item.sources.some((source) => !source || typeof source !== 'object'))) ||
+      (criticalPaths.paths || []).some((item) => item.modules !== undefined && (!Array.isArray(item.modules) || item.modules.some((id) => typeof id !== 'string')))) {
+    const error = new Error('Invalid sync dependency, coverage, contradiction, or critical-path state. Restore or repair the artifact before syncing.');
+    error.code = 'sync_input_invalid';
+    throw error;
+  }
 
   freshness.tracked_files = freshness.tracked_files || [];
   freshness.artifact_dependencies = freshness.artifact_dependencies || {};
@@ -314,14 +387,17 @@ function mainUnlocked() {
   const changedFiles = [];
   const missingFiles = [];
   const newFiles = [];
-  const criticalityByPath = new Map((fileCriticality.files || []).map((file) => [file.path, file.classification]));
+  const criticalityByPath = new Map((fileCriticality.files || []).map((file) => [file.path, file.classification || file.criticality || file.level]));
+  const securityFiles = new Set((fileCriticality.files || []).filter((file) => file.security_sensitive === true).map((file) => file.path));
+  const isCritical = (file) => criticalityByPath.get(file) === 'critical' || getCriticality(file) === 'critical';
+  const isSecuritySensitive = (file) => securityFiles.has(file) || /(^|\/)(?:auth(?:entication|orization)?|security|secrets?|credentials)(?=[\/._-]|$)/i.test(file);
 
   for (const rawPath of candidateFiles) {
     const relPath = normalizeRelative(rawPath);
     const abs = path.join(repoRoot, relPath);
     const classification = getCriticality(relPath);
     if (classification === 'ignore') continue;
-    if (discoverNewFiles && !trackedPaths.has(relPath) && exists(abs) && shouldAutoTrackNewFile(relPath)) {
+    if (discoverNewFiles && !trackedPaths.has(relPath) && isFile(abs) && shouldAutoTrackNewFile(relPath)) {
       const moduleId = inferModule(relPath, moduleRegistry);
       freshness.tracked_files.push({ path: relPath, sha256: sha256(abs), last_scanned_at: timestamp, status: classification === 'contextual' ? 'clean' : 'needs_recheck', first_seen_by: agentId, first_seen_at: timestamp });
       trackedPaths.add(relPath);
@@ -350,8 +426,9 @@ function mainUnlocked() {
   for (const entry of freshness.tracked_files) {
     trackedPaths.add(entry.path);
     const abs = path.join(repoRoot, entry.path);
-    if (!exists(abs)) {
+    if (!isFile(abs)) {
       entry.status = 'missing';
+      entry.reason = 'Tracked path is missing or is not a contained physical file.';
       entry.last_scanned_at = timestamp;
       missingFiles.push(entry.path);
       continue;
@@ -366,7 +443,12 @@ function mainUnlocked() {
       entry.last_changed_by = agentId;
       changedFiles.push(entry.path);
     } else {
-      entry.status = ['suspect', 'needs_recheck'].includes(entry.status) ? entry.status : 'clean';
+      // A repeated scan observes bytes; it cannot recertify them. Keep
+      // changed and restored paths pending until an explicit verifier clears
+      // their state, just like suspect and needs_recheck entries.
+      entry.status = ['changed', 'suspect', 'needs_recheck'].includes(entry.status)
+        ? entry.status
+        : entry.status === 'clean' ? 'clean' : 'needs_recheck';
       if (entry.status === 'clean') delete entry.reason;
       entry.last_scanned_at = timestamp;
     }
@@ -386,7 +468,16 @@ function mainUnlocked() {
   freshness.artifact_statuses = artifactStatuses;
   fileCriticality.generated_at = timestamp;
 
-  const evidenceCovered = new Set((fileFacts.facts || []).map((fact) => fact.file));
+  const evidenceCovered = new Set();
+  const currentSourceHashes = new Map();
+  for (const fact of fileFacts.facts || []) {
+    const expectedHash = fact.evidence?.source_sha256;
+    if (!/^[a-f0-9]{64}$/.test(String(expectedHash || ''))) continue;
+    const abs = path.join(repoRoot, fact.file);
+    if (!isFile(abs)) continue;
+    if (!currentSourceHashes.has(fact.file)) currentSourceHashes.set(fact.file, sha256(abs));
+    if (currentSourceHashes.get(fact.file) === expectedHash) evidenceCovered.add(fact.file);
+  }
   const openContradictions = (contradictions.items || []).filter((item) => item.status === 'open');
   const highSeverity = openContradictions.filter((item) => item.severity === 'high');
   const staleArtifactsTotal = (staleItems.items || []).filter((item) => item.status === 'needs_recheck' || item.status === 'partial').length;
@@ -394,7 +485,8 @@ function mainUnlocked() {
   const moduleTrust = [];
   for (const moduleInfo of moduleRegistry.modules || []) {
     let card = null;
-    try { card = readJson(resolveArtifactPath(moduleInfo.card)); } catch { card = null; }
+    try { card = safeReadJson(resolveArtifactPath(moduleInfo.card)); } catch { card = null; }
+    if (card && (typeof card !== 'object' || Array.isArray(card) || !pathLists(card, (value) => validPathArray([value])))) card = null;
     if (!card) {
       moduleTrust.push({ module_id: moduleInfo.module_id, confidence: 'low', freshness_status: 'missing_card', trust_status: 'low_confidence', reasons: { missing_card: moduleInfo.card } });
       continue;
@@ -499,7 +591,9 @@ function mainUnlocked() {
       code: `tracked_file_${file.status}`,
       artifact: '.knowledge/freshness.json',
       reason: `${file.status}: ${file.path}`,
-      priority: getCriticality(file.path) === 'critical' ? 'high' : 'medium',
+      priority: isCritical(file.path) ? 'high' : 'medium',
+      critical_path: isCritical(file.path),
+      security_sensitive: isSecuritySensitive(file.path),
       affected_artifacts: ['.knowledge/freshness.json', file.path]
     }));
   for (const [artifact, status] of Object.entries(artifactStatuses)) {
@@ -509,6 +603,8 @@ function mainUnlocked() {
       code: 'artifact_needs_recheck',
       artifact,
       reason: `Artifact depends on changed or missing files: ${(status.affected_files || []).sort().join(', ')}`,
+      critical_path: (status.affected_files || []).some(isCritical),
+      security_sensitive: (status.affected_files || []).some(isSecuritySensitive),
       affected_artifacts: [artifact, ...(status.affected_files || [])]
     });
   }
@@ -521,15 +617,15 @@ function mainUnlocked() {
   const note = `sync_tracked_files(trigger=${trigger}): changed=${changedFiles.length}, missing=${missingFiles.length}, new=${newFiles.length}, trusted=${trustedModules.length}, near=${nearTrustedModules.length}, routing=${routingTrustedModules.length}, advisory=${advisoryOnlyModules.length}, suspect=${suspectModules.length}, low=${lowModules.length}`;
   updateActiveTasks(timestamp, note);
 
-  writeJsonAtomic(paths.freshness, freshness);
-  writeJsonAtomic(paths.moduleRegistry, moduleRegistry);
-  writeJsonAtomic(paths.fileFacts, fileFacts);
-  writeJsonAtomic(paths.fileCriticality, fileCriticality);
-  writeJsonAtomic(paths.staleItems, staleItems);
-  writeJsonAtomic(paths.repairQueue, repairQueue);
-  writeJsonAtomic(paths.syncLog, syncLog);
-  writeJsonAtomic(paths.trustReport, trustReport);
-  writeJsonAtomic(paths.automationStatus, automationStatus);
+  writeJsonAtomicContained(paths.freshness, freshness, stateRoot);
+  writeJsonAtomicContained(paths.moduleRegistry, moduleRegistry, knowledgeRoot);
+  writeJsonAtomicContained(paths.fileFacts, fileFacts, knowledgeRoot);
+  writeJsonAtomicContained(paths.fileCriticality, fileCriticality, stateRoot);
+  writeJsonAtomicContained(paths.staleItems, staleItems, stateRoot);
+  writeJsonAtomicContained(paths.repairQueue, repairQueue, stateRoot);
+  writeJsonAtomicContained(paths.syncLog, syncLog, stateRoot);
+  writeJsonAtomicContained(paths.trustReport, trustReport, stateRoot);
+  writeJsonAtomicContained(paths.automationStatus, automationStatus, stateRoot);
   handoffSummary.generated_at = timestamp;
   handoffSummary.generated_by = agentId;
   handoffSummary.trusted_modules = trustedModules;
@@ -544,7 +640,7 @@ function mainUnlocked() {
   handoffSummary.critical_paths_total = criticalPathRows.length;
   handoffSummary.critical_path_summary = criticalPathHandoffSummary;
   handoffSummary.critical_path_summary_truncated = criticalPathRows.length > HANDOFF_CRITICAL_PATH_LIMIT;
-  writeJsonAtomic(paths.handoffSummary, handoffSummary);
+  writeJsonAtomicContained(paths.handoffSummary, handoffSummary, stateRoot);
 
   try {
     const buildRoutingBundle = require(path.join(context.systemRoot, 'tools', 'build-routing-bundle.js'));
@@ -553,21 +649,20 @@ function mainUnlocked() {
     automationStatus.routing_bundle_status = 'healthy';
     automationStatus.routing_bundle_updated_at = timestamp;
     automationStatus.routing_bundle_error = null;
-    writeJsonAtomic(paths.automationStatus, automationStatus);
+    writeJsonAtomicContained(paths.automationStatus, automationStatus, stateRoot);
   } catch (error) {
     automationStatus.routing_bundle_status = 'failed';
     automationStatus.routing_bundle_error = error.message;
-    writeJsonAtomic(paths.automationStatus, automationStatus);
+    writeJsonAtomicContained(paths.automationStatus, automationStatus, stateRoot);
   }
 
   const eventDate = timestamp.slice(0, 10);
-  appendNdjson(path.join(paths.eventLogDir, `${eventDate}.ndjson`), { type: 'sync', ...syncEntry, routing_bundle: routingBundleSummary });
+  appendNdjsonContained(path.join(paths.eventLogDir, `${eventDate}.ndjson`), { type: 'sync', ...syncEntry, routing_bundle: routingBundleSummary }, stateRoot);
 
   return { status: automationStatus.routing_bundle_status === 'failed' ? 'failed' : 'ok', trigger, agent_id: agentId, full_scan: fullScan, changed_files: changedFiles, missing_files: missingFiles, new_files: newFiles, ignored_tracked_paths_removed: ignoredTrackedPaths, ignored_modules_removed: Array.from(ignoredModuleIds), ignored_module_cards_removed: ignoredModuleCardsRemoved, trusted_modules: trustedModules, near_trusted_modules: nearTrustedModules, routing_trusted_modules: routingTrustedModules, advisory_only_modules: advisoryOnlyModules, suspect_modules: suspectModules, low_confidence_modules: lowModules, routing_bundle: routingBundleSummary };
 }
 
 function main() {
-  ensureDir(path.join(stateRoot, 'maintenance'));
   return withContainedLock(SYNC_LOCK, mainUnlocked);
 }
 

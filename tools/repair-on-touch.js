@@ -345,8 +345,22 @@ function validatedClosures(opportunities = null) {
     if (!record || !['closed', 'resolved'].includes(record.status)) continue;
     const evidence = record.resolution_evidence || {};
     try {
+      const related = evidence.verifier_type === 'repair_on_touch_related_source_verification';
+      const primary = related
+        ? records.get(loadReceipt(stateRoot, evidence.receipt_id).receipt.finding_id)
+        : record;
+      if (related) {
+        const subset = new Map([[record.lifecycle_id, record]]);
+        if (primary) subset.set(primary.lifecycle_id, primary);
+        const errors = recertify.validatePriorModuleClosures(subset, record.module_id, primary?.lifecycle_id);
+        if (errors.length) {
+          const error = new Error('Related closure provenance is invalid');
+          error.code = 'related_closure_evidence_invalid';
+          throw error;
+        }
+      }
       const loaded = loadReceipt(stateRoot, evidence.receipt_id, {
-        finding: record,
+        finding: primary,
         scope: artifact.task_scope,
         policyResolution: artifact.repair_on_touch
       });
@@ -359,7 +373,8 @@ function validatedClosures(opportunities = null) {
       }
       const sourceErrors = recertify.validateClosedReceiptSources(
         loaded.receipt,
-        record
+        primary,
+        related ? { relatedFinding: record } : {}
       );
       if (sourceErrors.length) {
         const error = new Error(sourceErrors.join(', '));
@@ -381,7 +396,9 @@ function validatedClosures(opportunities = null) {
         });
       }
       lifecycleIds.push(record.lifecycle_id);
-      receipts.push(loaded.receipt);
+      if (!receipts.some((item) => item.receipt_id === loaded.receipt.receipt_id)) {
+        receipts.push(loaded.receipt);
+      }
     } catch (error) {
       invalid.push({
         lifecycle_id: record.lifecycle_id,

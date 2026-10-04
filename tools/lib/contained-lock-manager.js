@@ -140,9 +140,9 @@ function mapContainmentFailure(error, code = 'unsafe_lock_parent') {
   return lockError(code, 'Lock storage is not physically contained in its allowed root.', { os_code: error?.code || null });
 }
 
-function validatePhysicalDirectory(root, directory, code = 'unsafe_lock_path') {
+function validatePhysicalDirectory(root, directory, code = 'unsafe_lock_path', statOptions, namespaceTransition) {
   let stat;
-  try { stat = fs.lstatSync(directory); }
+  try { stat = fs.lstatSync(directory, statOptions); }
   catch (error) {
     if (error.code === 'ENOENT') return null;
     throw mapContainmentFailure(error, code);
@@ -154,9 +154,15 @@ function validatePhysicalDirectory(root, directory, code = 'unsafe_lock_path') {
     assertSafeContainedPath(root, directory);
     const real = fs.realpathSync.native ? fs.realpathSync.native(directory) : fs.realpathSync(directory);
     if (!samePhysicalPath(real, directory) || !containedPath(root, real)) {
+      // Windows can resolve an open directory handle at its new release name.
+      // Acquisition may discard this observation only after a separate strict
+      // walk proves the original physical directory disappeared or changed.
+      if (namespaceTransition && namespaceTransition(stat)) return null;
       throw lockError(code, 'Lock directory resolves through a reparse point.');
     }
   } catch (error) {
+    if (process.platform === 'win32' && error.code === 'EBADF' &&
+        namespaceTransition && namespaceTransition(stat)) return null;
     throw mapContainmentFailure(error, code);
   }
   return stat;
@@ -175,6 +181,12 @@ function sameIdentity(left, right) {
   const a = statIdentity(left);
   const b = statIdentity(right);
   return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.nlink === b.nlink;
+}
+
+function sameDirectoryIdentity(left, right) {
+  // Publishing or removing owner.json changes directory size/link metadata.
+  // Only physical device/inode identity proves directory replacement.
+  return String(left.dev) === String(right.dev) && String(left.ino) === String(right.ino);
 }
 
 function boundedPhysicalRead(root, ownerPath) {
@@ -223,6 +235,15 @@ function boundedPhysicalRead(root, ownerPath) {
     const raw = fs.readFileSync(descriptor, 'utf8');
     const after = fs.fstatSync(descriptor, { bigint: true });
     if (!sameIdentity(opened, after)) throw lockError('unsafe_lock_owner', 'Lock owner identity changed during read.');
+    let current;
+    try { current = fs.lstatSync(ownerPath, { bigint: true }); }
+    catch (error) {
+      if (error.code === 'ENOENT') throw lockError('lock_owner_invalid', 'Lock owner metadata is missing.', { reason: 'missing' });
+      throw mapContainmentFailure(error, 'unsafe_lock_owner');
+    }
+    if (!current.isFile() || current.isSymbolicLink() || !sameIdentity(after, current)) {
+      throw lockError(current.nlink !== 1n ? 'lock_owner_hardlinked' : 'unsafe_lock_owner', 'Lock owner path identity changed after read.');
+    }
     return { raw, digest: hash(Buffer.from(raw, 'utf8')), stat: after };
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
@@ -457,28 +478,40 @@ function createOwner(policy) {
   };
 }
 
-function inspectCurrent(policy, paths) {
-  let stat;
-  try { stat = fs.lstatSync(paths.lockDir); }
-  catch (error) {
-    if (error.code === 'ENOENT') return { status: 'missing' };
-    throw mapContainmentFailure(error, 'unsafe_lock_path');
-  }
+function inspectCurrent(policy, paths, options = {}) {
+  const provenNamespaceTransition = options.retryDirectoryTransitions === true
+    ? observed => {
+      const latest = validatePhysicalDirectory(policy.rootPath, paths.lockDir, 'unsafe_lock_path', { bigint: true });
+      return !latest || !sameDirectoryIdentity(observed, latest);
+    }
+    : null;
   const currentDirectory = () => {
     try {
-      // A releasing owner may rename its physical directory after the lstat
-      // above but before the containment walk reaches it. That is a normal
-      // lock-state transition, not evidence of a reparse point.
-      return validatePhysicalDirectory(policy.rootPath, paths.lockDir, 'unsafe_lock_path');
+      // A releasing owner may rename its physical directory between lstat
+      // and the containment walk. ENOENT is a normal namespace transition.
+      return validatePhysicalDirectory(policy.rootPath, paths.lockDir, 'unsafe_lock_path', { bigint: true }, provenNamespaceTransition);
     } catch (error) {
       if (error?.os_code === 'ENOENT') return null;
       throw error;
     }
   };
-  if (!currentDirectory()) return { status: 'missing' };
+  const directory = currentDirectory();
+  if (!directory) return { status: 'missing' };
+  const acquisitionTransition = () => {
+    if (options.retryDirectoryTransitions !== true) return null;
+    // Never reinterpret an owner-file failure on the same directory as
+    // contention. Revalidate physical containment and prove disappearance or
+    // replacement of the entire directory before discarding an observation.
+    const refreshed = currentDirectory();
+    if (!refreshed) return { status: 'missing' };
+    if (!sameDirectoryIdentity(directory, refreshed)) return { status: 'replaced' };
+    return null;
+  };
   let read;
   try { read = readStrictOwner(policy.rootPath, paths.lockDir, { lockName: policy.lockName, purpose: policy.purpose }); }
   catch (error) {
+    const transition = acquisitionTransition();
+    if (transition) return transition;
     // A releasing owner can rename its directory after currentDirectory()
     // succeeded but before readStrictOwner() repeats the physical walk. An
     // ENOENT at that exact boundary is an expected state transition. Any
@@ -490,20 +523,23 @@ function inspectCurrent(policy, paths) {
     if (error.code === 'lock_owner_invalid' && error.reason === 'missing') {
       const refreshed = currentDirectory();
       if (!refreshed) return { status: 'missing' };
-      const ageMs = Math.max(0, Date.now() - refreshed.mtimeMs);
+      const ageMs = Math.max(0, Date.now() - Number(refreshed.mtimeMs));
       if (ageMs < LOCK_POLICY.owner_initialization_grace_ms) {
         return { status: 'initializing', age_ms: ageMs };
       }
     }
     throw error;
   }
-  const ageMs = Math.max(0, Date.now() - stat.mtimeMs);
+  const transition = acquisitionTransition();
+  if (transition) return transition;
+  const ageMs = Math.max(0, Date.now() - Number(directory.mtimeMs));
   const disposition = ownerDisposition(read.owner, ageMs, policy);
   return {
     status: disposition.stale ? 'stale' : 'active',
     owner: read.owner,
     owner_digest: read.digest,
     sanitized_owner: sanitizedOwner(read.owner),
+    directory_identity: directory,
     disposition,
     age_ms: ageMs,
   };
@@ -566,6 +602,7 @@ function acquireContainedLock(request) {
   const paths = ensureLayout(policy);
   let owner;
   let ownerDigest;
+  let acquiredDirectoryIdentity;
 
   while (true) {
     let createdDirectory = false;
@@ -580,6 +617,7 @@ function acquireContainedLock(request) {
       ownerWritten = true;
       const verified = readStrictOwner(policy.rootPath, paths.lockDir, { lockName: policy.lockName, purpose: policy.purpose });
       ownerDigest = verified.digest;
+      acquiredDirectoryIdentity = validatePhysicalDirectory(policy.rootPath, paths.lockDir, 'unsafe_lock_path', { bigint: true });
       break;
     } catch (error) {
       if (error.code !== 'EEXIST') {
@@ -594,8 +632,11 @@ function acquireContainedLock(request) {
         }
         throw error;
       }
-      const inspected = inspectCurrent(policy, paths);
-      if (inspected.status === 'missing') continue;
+      const inspected = inspectCurrent(policy, paths, { retryDirectoryTransitions: true });
+      if (inspected.status === 'missing' || inspected.status === 'replaced') {
+        if (Date.now() - startedAt >= policy.timeoutMs) throw timeoutError(policy, null);
+        continue;
+      }
       if (inspected.status === 'stale') {
         recoverCurrent(policy, paths, inspected);
         continue;
@@ -616,20 +657,37 @@ function acquireContainedLock(request) {
     acquired_at: owner.acquired_at,
     release() {
       if (released) return { status: 'already_released' };
-      const current = inspectCurrent(policy, paths);
-      if (!['active', 'stale'].includes(current.status) ||
-          current.owner_digest !== ownerDigest ||
-          current.owner.lock_id !== owner.lock_id ||
-          current.owner.nonce !== owner.nonce) {
-        throw lockError('lock_ownership_changed', `Lock "${policy.lockName}" ownership changed before release.`);
-      }
       const releasePath = path.join(paths.releaseRoot, quarantineName('release', policy));
-      try { fs.renameSync(paths.lockDir, releasePath); }
-      catch (error) {
-        if (error.code === 'ENOENT') throw lockError('lock_ownership_changed', `Lock "${policy.lockName}" disappeared before release.`);
-        throw mapContainmentFailure(error, 'unsafe_lock_path');
+      const releaseStarted = Date.now();
+      let directoryIdentity = acquiredDirectoryIdentity;
+      for (;;) {
+        const current = inspectCurrent(policy, paths);
+        if (!['active', 'stale'].includes(current.status) ||
+            current.owner_digest !== ownerDigest ||
+            current.owner.lock_id !== owner.lock_id ||
+            current.owner.nonce !== owner.nonce ||
+            (directoryIdentity && !sameDirectoryIdentity(directoryIdentity, current.directory_identity))) {
+          throw lockError('lock_ownership_changed', `Lock "${policy.lockName}" ownership changed before release.`);
+        }
+        directoryIdentity = current.directory_identity;
+        try { fs.renameSync(paths.lockDir, releasePath); break; }
+        catch (error) {
+          if (error.code === 'ENOENT') throw lockError('lock_ownership_changed', `Lock "${policy.lockName}" disappeared before release.`);
+          // Windows forbids directory rename while another contender has its
+          // owner open. Retry only that sharing failure, within the policy
+          // deadline, rechecking physical identity and exact ownership first.
+          if (process.platform === 'win32' && ['EPERM', 'EACCES', 'EBUSY'].includes(error.code) &&
+              Date.now() - releaseStarted < policy.timeoutMs) {
+            sleepSync(Math.min(policy.retryMs, Math.max(1, policy.timeoutMs - (Date.now() - releaseStarted))));
+            continue;
+          }
+          throw mapContainmentFailure(error, 'unsafe_lock_path');
+        }
       }
-      validatePhysicalDirectory(policy.rootPath, releasePath, 'unsafe_lock_path');
+      const movedDirectory = validatePhysicalDirectory(policy.rootPath, releasePath, 'unsafe_lock_path', { bigint: true });
+      if (!movedDirectory || !sameDirectoryIdentity(directoryIdentity, movedDirectory)) {
+        throw lockError('lock_ownership_changed', `Lock "${policy.lockName}" physical directory changed during release.`);
+      }
       const moved = readStrictOwner(policy.rootPath, releasePath, { lockName: policy.lockName, purpose: policy.purpose });
       if (moved.digest !== ownerDigest || moved.owner.lock_id !== owner.lock_id || moved.owner.nonce !== owner.nonce) {
         throw lockError('lock_ownership_changed', `Lock "${policy.lockName}" ownership changed during release.`);

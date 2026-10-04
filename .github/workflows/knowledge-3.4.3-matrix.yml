@@ -1,0 +1,60 @@
+name: Knowledge 3.4.3 compatibility matrix
+on:
+  push:
+    branches: ['codex/knowledge-3.4.3-matrix']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    name: ${{ matrix.slug }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {slug: linux-node18, runner: ubuntu-24.04, os: linux, node: '18.20.8', major: 18, upgrade: false}
+          - {slug: linux-node20, runner: ubuntu-24.04, os: linux, node: '20.20.2', major: 20, upgrade: false}
+          - {slug: linux-node22, runner: ubuntu-24.04, os: linux, node: '22.17.1', major: 22, upgrade: true}
+          - {slug: linux-node24, runner: ubuntu-24.04, os: linux, node: '24.0.0', major: 24, upgrade: false}
+          - {slug: macos-node18, runner: macos-15-intel, os: macos, node: '18.20.8', major: 18, upgrade: false}
+          - {slug: macos-node20, runner: macos-15-intel, os: macos, node: '20.20.2', major: 20, upgrade: false}
+          - {slug: macos-node22, runner: macos-15-intel, os: macos, node: '22.17.1', major: 22, upgrade: true}
+          - {slug: macos-node24, runner: macos-15-intel, os: macos, node: '24.0.0', major: 24, upgrade: false}
+    env:
+      KNOWLEDGE_FLOW_NO_OPEN: '1'
+      KNOWLEDGE_INSPECTOR_NO_OPEN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact candidate and harness
+        run: python qa/a343-ci/evidence.py inputs
+      - name: Replay all bundled self-tests and syntax checks
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/a343-${{ matrix.slug }}"
+          python qa/a343-ci/run_candidate.py --archive "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.4.3.zip" --output "$RUNNER_TEMP/a343-${{ matrix.slug }}/replay" --node "$(node -p process.execPath)" --suite-timeout 300 --offline-auto-updates
+      - name: Exercise installed flows, integrations, Inspector and upgrade
+        shell: bash
+        run: |
+          node qa/a343-ci/run-matrix-cell.js --candidate "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.4.3.zip" --replay "$GITHUB_WORKSPACE/qa/a343-ci/replay" --replay-results "$RUNNER_TEMP/a343-${{ matrix.slug }}/replay/replay-results.json" --audit-runner "$GITHUB_WORKSPACE/qa/a343-ci/run_candidate.py" --baseline "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.2.11.zip" --out "$RUNNER_TEMP/a343-${{ matrix.slug }}/cli" --os '${{ matrix.os }}' --node-major '${{ matrix.major }}' --upgrade='${{ matrix.upgrade }}' --offline-auto-updates --expected-candidate 4efe2e8afcfc77f136e555f6d551d91e99938aefea22bbc422a09960d17c72c4 --expected-baseline b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79
+      - name: Collect hash-bound raw evidence
+        if: always()
+        shell: bash
+        run: python qa/a343-ci/evidence.py collect --work "$RUNNER_TEMP/a343-${{ matrix.slug }}" --out "qa-results/${{ matrix.slug }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a343-${{ matrix.slug }}
+          path: qa-results/${{ matrix.slug }}/
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Enforce complete executed evidence
+        if: always()
+        run: python qa/a343-ci/evidence.py enforce --out "qa-results/${{ matrix.slug }}"

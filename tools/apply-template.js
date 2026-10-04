@@ -7,7 +7,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId } = require('./lib/json-store');
+const crypto = require('crypto');
+const { readJson, writeJsonAtomicContained, writeFileAtomicContained, assertSafeContainedPath, getAgentId } = require('./lib/json-store');
+const { assertSafePathSegment } = require('./lib/path-segment');
 const { withContainedLock } = require('./lib/contained-lock-manager');
 const { LOCKS } = require('./lib/lock-policy');
 const { systemVersion } = require('./lib/system-version');
@@ -24,20 +26,60 @@ const TEMPLATE_LOCK = Object.freeze({
 });
 
 function nowIso() { return new Date().toISOString(); }
+function contentHash(text) { return crypto.createHash('sha256').update(text).digest('hex'); }
+function readMetadata(file, fallback) { return fs.existsSync(file) ? readJson(file) : fallback; }
+
+function safeKnowledgeFile(relative) {
+  const file = path.join(knowledgeRoot, relative);
+  assertSafeContainedPath(knowledgeRoot, file, { allowMissing: true });
+  return file;
+}
+
+function safeWikiFile(relative) {
+  if (typeof relative !== 'string' || !relative.startsWith('wiki/') ||
+      !relative.endsWith('.md') || relative.includes('\\') ||
+      relative.split('/').some((segment) => !segment || segment === '.' || segment === '..')) {
+    throw new Error('Template pages must be canonical wiki/*.md paths inside .knowledge/wiki');
+  }
+  for (const segment of relative.split('/')) assertSafePathSegment(segment, 'template page segment');
+  if (relative === 'wiki/index.md') throw new Error('Templates cannot own the managed wiki/index.md');
+  return safeKnowledgeFile(relative);
+}
+
+function metadataPaths() {
+  return {
+    index: safeKnowledgeFile('wiki/index.md'),
+    repair: safeKnowledgeFile('maintenance/repair_queue.json'),
+    applied: safeKnowledgeFile('maintenance/applied_templates.json'),
+    project: safeKnowledgeFile('project_index.json')
+  };
+}
 
 function listTemplates() {
   if (!fs.existsSync(templatesRoot)) return [];
+  assertSafeContainedPath(knowledgeRoot, templatesRoot);
   return fs.readdirSync(templatesRoot, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => {
-    const file = path.join(templatesRoot, e.name, 'template.json');
-    const data = readJson(file, { id: e.name, name: e.name });
+    const data = readTemplate(e.name);
     return { id: data.id || e.name, name: data.name || e.name, description: data.description || '', version: data.schema_version || '1' };
   });
 }
 
 function readTemplate(id) {
+  assertSafePathSegment(id, 'template id');
   const file = path.join(templatesRoot, id, 'template.json');
+  assertSafeContainedPath(knowledgeRoot, file, { allowMissing: true });
   if (!fs.existsSync(file)) throw new Error(`Unknown official template: ${id}. Run --list.`);
-  return readJson(file);
+  const tpl = readJson(file);
+  if (!tpl || typeof tpl !== 'object' || Array.isArray(tpl) || tpl.id !== id ||
+      !tpl.wiki_pages || typeof tpl.wiki_pages !== 'object' || Array.isArray(tpl.wiki_pages) ||
+      (tpl.critical_paths !== undefined && !Array.isArray(tpl.critical_paths))) {
+    throw new Error(`Invalid official template manifest: ${id}`);
+  }
+  for (const [relative, body] of Object.entries(tpl.wiki_pages)) {
+    safeWikiFile(relative);
+    if (typeof body !== 'string') throw new Error('Template page body must be a string');
+  }
+  return tpl;
 }
 
 function rel(absUnderKnowledge) {
@@ -146,7 +188,10 @@ function diffSummary(beforeText, afterText, label) {
 function addRepair(repairQueue, item, templateId) {
   repairQueue.queue = repairQueue.queue || [];
   if (repairQueue.queue.some(x => x.subject === item.subject)) return null;
-  const id = `TPL-${String(repairQueue.queue.length + 1).padStart(4, '0')}`;
+  const usedIds = new Set(repairQueue.queue.map((entry) => entry.id));
+  let ordinal = repairQueue.queue.length + 1;
+  while (usedIds.has(`TPL-${String(ordinal).padStart(4, '0')}`)) ordinal += 1;
+  const id = `TPL-${String(ordinal).padStart(4, '0')}`;
   const entry = { id, ...item, source_template: templateId };
   repairQueue.queue.push(entry);
   return id;
@@ -154,6 +199,7 @@ function addRepair(repairQueue, item, templateId) {
 
 function applyOne(id, options = {}) {
   const tpl = readTemplate(id);
+  const files = metadataPaths();
   const now = nowIso();
   const wikiPaths = Object.keys(tpl.wiki_pages || {}).map((p) => p.replace(/^wiki\//, ''));
   const typedLinks = inferTypedLinks(wikiPaths);
@@ -162,24 +208,24 @@ function applyOne(id, options = {}) {
   const wikiWrites = [];
   for (const [relWiki, body] of Object.entries(tpl.wiki_pages || {})) {
     const pagePath = relWiki.replace(/^wiki\//, '');
-    const target = path.join(knowledgeRoot, relWiki);
+    const target = safeWikiFile(relWiki);
     const exists = fs.existsSync(target);
     if (exists && !options.force) {
-      planned.push(diffSummary(fs.readFileSync(target, 'utf8'), null, relWiki) + ' (skip: already exists, use --force to overwrite)');
+      planned.push(`= preserve ${relWiki} (skip: already exists, use --force to overwrite)`);
       continue;
     }
     const content = renderFrontmatter(tpl, pagePath, typedLinks) + body;
     planned.push(diffSummary(exists ? fs.readFileSync(target, 'utf8') : null, content, relWiki));
-    wikiWrites.push({ target, content });
+    wikiWrites.push({ relative: relWiki, target, content });
   }
 
-  const indexPath = path.join(wikiRoot, 'index.md');
+  const indexPath = files.index;
   const indexBefore = fs.existsSync(indexPath) ? fs.readFileSync(indexPath, 'utf8') : null;
   const indexAfter = upsertManagedBlock(indexPath, tpl, wikiPaths);
   planned.push(diffSummary(indexBefore, indexAfter, 'wiki/index.md'));
 
-  const repairPath = path.join(knowledgeRoot, 'maintenance', 'repair_queue.json');
-  const repair = readJson(repairPath, { generated_at: null, queue: [] });
+  const repairPath = files.repair;
+  const repair = readMetadata(repairPath, { generated_at: null, queue: [] });
   const repairSnapshot = JSON.stringify(repair);
   const repairAdded = [];
   for (const cp of tpl.critical_paths || []) {
@@ -196,9 +242,14 @@ function applyOne(id, options = {}) {
   repair.generated_at = now;
   planned.push(repairAdded.length === 0 ? '= unchanged maintenance/repair_queue.json' : `~ modify  maintenance/repair_queue.json (+${repairAdded.length} items)`);
 
-  const appliedPath = path.join(knowledgeRoot, 'maintenance', 'applied_templates.json');
-  const applied = readJson(appliedPath, { schema_version: systemVersion(), generated_at: null, templates: [] });
+  const appliedPath = files.applied;
+  const applied = readMetadata(appliedPath, { schema_version: systemVersion(), generated_at: null, templates: [] });
   const before = applied.templates.find((t) => t.id === tpl.id);
+  // A skipped pre-existing page never becomes template-owned. Hashes bind
+  // removal to the exact bytes written by this tool; legacy records without
+  // hashes deliberately preserve their pages until explicitly overwritten.
+  const pageHashes = { ...(before?.wiki_page_hashes || {}) };
+  for (const write of wikiWrites) pageHashes[write.relative] = contentHash(write.content);
   if (!before) {
     applied.templates.push({
       id: tpl.id,
@@ -207,18 +258,20 @@ function applyOne(id, options = {}) {
       applied_at: now,
       applied_by: getAgentId(),
       status: 'advisory_template_seed_requires_code_verification',
-      wiki_pages: Object.keys(tpl.wiki_pages || {}),
+      wiki_pages: wikiWrites.map((write) => write.relative),
+      wiki_page_hashes: pageHashes,
       repair_items: repairAdded,
       managed_index_marker: `template:${tpl.id}`
     });
   } else {
     before.applied_at = now;
     before.repair_items = Array.from(new Set([...(before.repair_items || []), ...repairAdded]));
-    before.wiki_pages = Array.from(new Set([...(before.wiki_pages || []), ...Object.keys(tpl.wiki_pages || {})]));
+    before.wiki_pages = Array.from(new Set([...(before.wiki_pages || []), ...wikiWrites.map((write) => write.relative)]));
+    before.wiki_page_hashes = pageHashes;
   }
   applied.generated_at = now;
 
-  const project = readJson(path.join(knowledgeRoot, 'project_index.json'), {});
+  const project = readMetadata(files.project, {});
   project.official_templates = project.official_templates || [];
   if (!project.official_templates.some(t => t.id === tpl.id)) project.official_templates.push({ id: tpl.id, name: tpl.name, version: tpl.schema_version || '1', applied_at: now });
 
@@ -226,6 +279,8 @@ function applyOne(id, options = {}) {
     applied: tpl.id,
     name: tpl.name,
     wiki_pages: Object.keys(tpl.wiki_pages || {}).length,
+    wiki_pages_written: wikiWrites.length,
+    wiki_pages_skipped: Object.keys(tpl.wiki_pages || {}).length - wikiWrites.length,
     typed_links_generated: true,
     repair_items_seeded: repairAdded.length,
     note: 'Template suggestions are advisory until verified against current code/tests.',
@@ -235,75 +290,99 @@ function applyOne(id, options = {}) {
   if (options.dryRun) return summary;
 
   for (const { target, content } of wikiWrites) {
-    ensureDir(path.dirname(target));
-    fs.writeFileSync(target, content, 'utf8');
+    writeFileAtomicContained(target, content, knowledgeRoot);
   }
-  ensureDir(path.dirname(indexPath));
-  fs.writeFileSync(indexPath, indexAfter, 'utf8');
-  writeJsonAtomic(repairPath, repair);
-  writeJsonAtomic(appliedPath, applied);
-  writeJsonAtomic(path.join(knowledgeRoot, 'project_index.json'), project);
+  writeFileAtomicContained(indexPath, indexAfter, knowledgeRoot);
+  writeJsonAtomicContained(repairPath, repair, knowledgeRoot);
+  writeJsonAtomicContained(appliedPath, applied, knowledgeRoot);
+  writeJsonAtomicContained(files.project, project, knowledgeRoot);
 
   if (JSON.stringify(repair) === repairSnapshot) summary.repair_items_seeded = 0;
   return summary;
 }
 
 function removeOne(id, options = {}) {
-  const appliedPath = path.join(knowledgeRoot, 'maintenance', 'applied_templates.json');
-  const applied = readJson(appliedPath, { templates: [] });
+  assertSafePathSegment(id, 'template id');
+  const files = metadataPaths();
+  const appliedPath = files.applied;
+  const applied = readMetadata(appliedPath, { templates: [] });
   const record = (applied.templates || []).find((t) => t.id === id);
   if (!record) throw new Error(`Template ${id} is not applied. Nothing to remove.`);
   const now = nowIso();
   const planned = [];
+  const deletions = [];
+  const preserved = [];
 
   // Delete generated wiki pages
   for (const relWiki of record.wiki_pages || []) {
-    const abs = path.join(knowledgeRoot, relWiki);
-    if (fs.existsSync(abs)) planned.push(diffSummary(fs.readFileSync(abs, 'utf8'), null, relWiki));
+    const abs = safeWikiFile(relWiki);
+    if (!fs.existsSync(abs)) continue;
+    const current = fs.readFileSync(abs);
+    const expected = record.wiki_page_hashes?.[relWiki];
+    if (typeof expected === 'string' && expected === contentHash(current)) {
+      deletions.push({ abs, relative: relWiki, expected });
+      planned.push(diffSummary(current.toString('utf8'), null, relWiki));
+    } else {
+      const reason = expected ? 'modified_since_apply' : 'ownership_hash_missing';
+      preserved.push({ path: relWiki, reason });
+      planned.push(`= preserve ${relWiki} (${reason})`);
+    }
   }
   // Update wiki/index.md (remove managed block)
-  const indexPath = path.join(wikiRoot, 'index.md');
+  const indexPath = files.index;
   const indexBefore = fs.existsSync(indexPath) ? fs.readFileSync(indexPath, 'utf8') : null;
   const indexAfter = removeManagedBlock(indexPath, id);
   planned.push(diffSummary(indexBefore, indexAfter, 'wiki/index.md'));
 
   // Remove repair items
-  const repairPath = path.join(knowledgeRoot, 'maintenance', 'repair_queue.json');
-  const repair = readJson(repairPath, { queue: [] });
-  const removeIds = new Set(record.repair_items || []);
+  const repairPath = files.repair;
+  const repair = readMetadata(repairPath, { queue: [] });
   const beforeRepair = (repair.queue || []).length;
-  repair.queue = (repair.queue || []).filter((item) => !removeIds.has(item.id) && item.source_template !== id);
+  repair.queue = (repair.queue || []).filter((item) => item.source_template !== id);
   const repairRemoved = beforeRepair - repair.queue.length;
   if (repairRemoved > 0) planned.push(`~ modify  maintenance/repair_queue.json (-${repairRemoved} items)`);
 
   // Remove from applied_templates + project_index
   const newApplied = { ...applied, generated_at: now, templates: (applied.templates || []).filter((t) => t.id !== id) };
-  const project = readJson(path.join(knowledgeRoot, 'project_index.json'), {});
+  const project = readMetadata(files.project, {});
   project.official_templates = (project.official_templates || []).filter((t) => t.id !== id);
 
   const summary = {
     removed: id,
     name: record.name,
-    wiki_pages_deleted: (record.wiki_pages || []).length,
+    wiki_pages_deleted: deletions.length,
+    wiki_pages_preserved: preserved,
     repair_items_removed: repairRemoved,
     diff: planned,
     dry_run: !!options.dryRun
   };
   if (options.dryRun) return summary;
 
-  for (const relWiki of record.wiki_pages || []) {
-    const abs = path.join(knowledgeRoot, relWiki);
-    if (fs.existsSync(abs)) fs.unlinkSync(abs);
+  for (const item of deletions) {
+    safeWikiFile(item.relative);
+    if (fs.existsSync(item.abs) && contentHash(fs.readFileSync(item.abs)) === item.expected) fs.unlinkSync(item.abs);
+    else {
+      summary.wiki_pages_deleted -= 1;
+      summary.wiki_pages_preserved.push({ path: item.relative, reason: 'changed_during_remove' });
+    }
   }
-  if (indexAfter !== null) fs.writeFileSync(indexPath, indexAfter, 'utf8');
+  if (indexAfter !== null) writeFileAtomicContained(indexPath, indexAfter, knowledgeRoot);
   repair.generated_at = now;
-  writeJsonAtomic(repairPath, repair);
-  writeJsonAtomic(appliedPath, newApplied);
-  writeJsonAtomic(path.join(knowledgeRoot, 'project_index.json'), project);
+  writeJsonAtomicContained(repairPath, repair, knowledgeRoot);
+  writeJsonAtomicContained(appliedPath, newApplied, knowledgeRoot);
+  writeJsonAtomicContained(files.project, project, knowledgeRoot);
   return summary;
 }
 
 function main(argv = process.argv.slice(2)) {
+  const allowedFlags = new Set(['--list', '--force', '--dry-run', '--diff', '--remove', '--help', '--json']);
+  for (const arg of argv) {
+    if (arg.startsWith('--') && !allowedFlags.has(arg)) throw new Error(`Unknown apply-template flag: ${arg}`);
+  }
+  if (argv.includes('--help')) {
+    console.log(JSON.stringify({ usage: 'apply-template.js <template-id> [--force] [--dry-run|--diff] | --remove <template-id> | --list', removal: 'Only unchanged pages with a recorded ownership hash are deleted.' }, null, 2));
+    return;
+  }
   if (argv.includes('--list') || argv.length === 0) {
     console.log(JSON.stringify({ templates: listTemplates() }, null, 2));
     return;
@@ -312,10 +391,11 @@ function main(argv = process.argv.slice(2)) {
   const ids = argv.filter((a) => !a.startsWith('--'));
   const options = {
     force: flags.has('--force'),
-    dryRun: flags.has('--dry-run'),
+    dryRun: flags.has('--dry-run') || flags.has('--diff'),
     diff: flags.has('--diff'),
     remove: flags.has('--remove')
   };
+  if (ids.length === 0) throw new Error('A template id is required. Run --list.');
   const results = ids.map((id) => options.remove ? removeOne(id, options) : applyOne(id, options));
   console.log(JSON.stringify({ results }, null, 2));
 }
@@ -323,8 +403,13 @@ function main(argv = process.argv.slice(2)) {
 if (require.main === module) {
   // Read-only operations (--list, --dry-run, --diff) skip the lock.
   const argv = process.argv.slice(2);
-  if (argv.includes('--list') || argv.includes('--dry-run')) main(argv);
-  else withContainedLock(TEMPLATE_LOCK, () => main(argv));
+  try {
+    if (argv.length === 0 || argv.some((flag) => ['--list', '--help', '--dry-run', '--diff'].includes(flag))) main(argv);
+    else withContainedLock(TEMPLATE_LOCK, () => main(argv));
+  } catch (error) {
+    console.error(JSON.stringify({ ok: false, error: error.message, code: error.code || 'template_operation_failed' }, null, 2));
+    process.exitCode = 1;
+  }
 }
 
 module.exports = { listTemplates, applyOne, removeOne };

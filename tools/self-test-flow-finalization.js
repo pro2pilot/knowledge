@@ -78,6 +78,31 @@ function main() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'k-flow-final-'));
   const checks = [];
   try {
+    for (const failedStep of [
+      { ...fakeStepResult(), step: 'install-check', command: 'install-check.js --json', success: false, status: 'fail', exit: 2, parsed: { status: 'failed', issues: [{ code: 'source_checkout_in_target_root' }] } },
+      { ...fakeStepResult(), step: 'install-check', command: 'install-check.js --json', success: false, status: 'fail', exit: 0, parsed: null, semantic_errors: ['invalid_step_json'] }
+    ]) {
+      const context = makeContext(path.join(root, `blocked-import-${failedStep.exit}`));
+      let executions = 0;
+      const blocked = runFlow({ ...flowOptions(context), name: 'import' }, {
+        stepsForFlow: () => ['install-check.js --json', 'ingest-existing-project.js --merge'],
+        runOne: () => { executions += 1; return failedStep; }
+      });
+      assert(executions === 1 && blocked.steps_total === 1, 'blocked import executed a post-preflight command', blocked);
+      assert(blocked.status === 'failed' && blocked.failure_code === 'install_check_failed', 'blocked import lost its failure status', blocked);
+      assert(blocked.onboarding_follow_up === null, 'blocked import announced completed installation', blocked);
+      const log = JSON.parse(fs.readFileSync(absoluteLogPath(blocked, context), 'utf8'));
+      assert(log.steps.length === 1 && !log.steps[0].success, 'blocked import evidence includes unexecuted commands', log);
+      checks.push({ id: `import-preflight-stops-${failedStep.exit}`, status: 'pass' });
+    }
+    const successfulImportContext = makeContext(path.join(root, 'successful-import'));
+    let importExecutions = 0;
+    const successfulImport = runFlow({ ...flowOptions(successfulImportContext), name: 'import' }, {
+      stepsForFlow: () => ['install-check.js --json', 'ingest-existing-project.js --merge'],
+      runOne: () => { importExecutions += 1; return fakeStepResult(); }
+    });
+    assert(importExecutions === 2 && successfulImport.status === 'ok', 'valid import stopped before ingest', successfulImport);
+    checks.push({ id: 'import-preflight-success-continues', status: 'pass' });
     const normalContext = makeContext(path.join(root, 'normal'));
     const normal = runFlow(flowOptions(normalContext), baseHooks());
     assert(normal.status === 'ok', 'normal flow did not pass', normal);

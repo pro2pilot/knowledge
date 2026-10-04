@@ -31,9 +31,9 @@ function evaluateEffectiveRoutingClaimEligibility(input) {
   return { effective_claim_eligible: reasons.length === 0, claim_ineligible_reasons: [...new Set(reasons)] };
 }
 
-function resolveEffectiveTaskRoutingState({ context, taskScopeHash, verifyLiveInputs = true }) {
+function resolveEffectiveTaskRoutingState({ context, taskScopeHash, verifyLiveInputs = true, readOnly = false }) {
   if (!taskScopeHash) return { current_status: 'missing', snapshot_complete: false, pointer_consistent: false, live_inputs_match: false, baseline_complete: false, task_readiness: 'missing', immutable_claim_eligible: false, effective_claim_eligible: false, claim_ineligible_reasons: ['task_routing_context_ambiguous'] };
-  const reconciled = routing.inspectTask(context, taskScopeHash);
+  const reconciled = routing.inspectTask(context, taskScopeHash, { readOnly });
   const current = reconciled?.status === 'ok' ? reconciled.current : null;
   const snapshotHash = current?.routing_snapshot_hash || current?.snapshot_hash;
   const snapshotPath = snapshotHash ? routing.snapshotRoot(context, taskScopeHash, snapshotHash) : null;

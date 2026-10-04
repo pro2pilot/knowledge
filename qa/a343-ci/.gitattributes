@@ -1,0 +1,2 @@
+# Preserve every hash-bound test input byte on every host.
+* -text

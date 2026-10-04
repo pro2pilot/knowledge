@@ -9,10 +9,15 @@ const {
   ensureDir,
   readJson,
   writeJsonAtomic,
+  writeFileAtomicContained,
+  assertSafeContainmentRoot,
+  assertSafeContainedPath,
+  ensureContainedDir,
   normalizeSystemAlias
 } = require('./lib/json-store');
 const { inspectSemanticJson, parseJsonOutput } = require('./lib/semantic-json');
 const { systemVersion } = require('./lib/system-version');
+const { inspectLegacyGate } = require('./migrate-legacy-release-gate');
 
 const defaultKnowledgeRoot = path.resolve(__dirname, '..');
 const defaultRepoRoot = path.basename(defaultKnowledgeRoot).toLowerCase() === '.knowledge' ? path.dirname(defaultKnowledgeRoot) : process.cwd();
@@ -122,6 +127,7 @@ const DEFAULT_MANIFEST = {
     'inspector'
   ],
   curated_preserve_paths: [
+    'external_memory',
     'wiki',
     'modules',
     'evidence',
@@ -244,6 +250,76 @@ const LEGACY_OLD_UPDATER_COMPATIBLE_REMOVALS = new Set([
   'agent-integrations/devin/rules/knowledge.md'
 ]);
 
+function validateManifestPath(value, field = 'path') {
+  if (typeof value !== 'string') throw new Error(`Invalid install manifest ${field}: expected a string path.`);
+  const rel = value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '').normalize('NFC');
+  const parts = rel.split('/');
+  if (!rel || /^[a-z]:/i.test(rel) || rel.startsWith('/') || /[\x00-\x1f\x7f:]/.test(rel) ||
+      parts.some((part) => !part || part === '.' || part === '..' || /[. ]$/.test(part))) {
+    throw new Error(`Unsafe install manifest ${field}: ${JSON.stringify(value)}`);
+  }
+  return rel;
+}
+
+function assertUpdatePath(root, absolute, allowMissing = false) {
+  assertSafeContainedPath(root, absolute, { allowMissing });
+  let stat;
+  try { stat = fs.lstatSync(absolute); } catch (error) {
+    if (allowMissing && error.code === 'ENOENT') return null;
+    throw error;
+  }
+  if ((!stat.isFile() && !stat.isDirectory()) || stat.isSymbolicLink() || (stat.isFile() && stat.nlink !== 1)) {
+    throw new Error(`Unsafe update path (physical, singly linked file or directory required): ${absolute}`);
+  }
+  return stat;
+}
+
+function readPhysicalFile(filePath) {
+  assertUpdatePath(path.dirname(filePath), filePath);
+  const before = fs.lstatSync(filePath, { bigint: true });
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
+  try {
+    const opened = fs.fstatSync(descriptor, { bigint: true });
+    if (!opened.isFile() || opened.nlink !== 1n || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw new Error(`Update file changed while opening: ${filePath}`);
+    }
+    const bytes = fs.readFileSync(descriptor);
+    const after = fs.fstatSync(descriptor, { bigint: true });
+    const current = fs.lstatSync(filePath, { bigint: true });
+    if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size ||
+        after.mtimeNs !== before.mtimeNs || current.dev !== before.dev || current.ino !== before.ino || current.nlink !== 1n) {
+      throw new Error(`Update file changed while reading: ${filePath}`);
+    }
+    return bytes;
+  } finally { fs.closeSync(descriptor); }
+}
+
+function assertUpdateTree(root, directory, skip = () => false) {
+  const stat = assertUpdatePath(root, directory);
+  if (!stat.isDirectory()) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    if (skip(normalizeRel(path.relative(root, absolute)))) continue;
+    assertUpdateTree(root, absolute, skip);
+  }
+}
+
+function isPreservedDefault(relPath) {
+  return relPath === 'external_memory' || relPath.startsWith('external_memory/');
+}
+
+function configWithoutVersion(bytes) {
+  return String(bytes).replace(/^\uFEFF/, '').replace(/^version:[^\r\n]*(?:\r?\n|$)/m, '');
+}
+
+function mergedConfigBytes(source, existing) {
+  const version = String(source).match(/^version:\s*[^\r\n]+/m)?.[0];
+  if (!version) throw new Error('Source config.yaml has no version.');
+  const text = String(existing).replace(/^\uFEFF/, '');
+  if ((text.match(/^version:/gm) || []).length > 1) throw new Error('Target config.yaml contains duplicate version fields.');
+  return Buffer.from(/^version:/m.test(text) ? text.replace(/^version:[^\r\n]*/m, version) : `${version}\n${text}`, 'utf8');
+}
+
 function normalizeRel(value) {
   return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/g, '');
 }
@@ -285,7 +361,12 @@ function parseArgs(argv) {
     else if (arg.startsWith('--repair-defaults=')) args.repairDefaults = !['false', '0', 'no', 'off'].includes(arg.slice('--repair-defaults='.length).toLowerCase());
     else if (arg === '--post-upgrade-trust-refresh') args.postUpgradeTrustRefresh = argv[++i];
     else if (arg.startsWith('--post-upgrade-trust-refresh=')) args.postUpgradeTrustRefresh = arg.slice('--post-upgrade-trust-refresh='.length);
+    else throw new Error(`Unknown update argument: ${arg}`);
   }
+  for (const [name, value] of [['--from', args.from], ['--target', args.targetKnowledgeRoot], ['--post-upgrade-trust-refresh', args.postUpgradeTrustRefresh]]) {
+    if (value === undefined || (typeof value === 'string' && (!value || value.startsWith('--')))) throw new Error(`Missing value for ${name}.`);
+  }
+  if ([args.dryRun, args.apply, args.preflight, args.verifyUpgrade, args.pruneVerifiedBackups].filter(Boolean).length > 1) throw new Error('Choose only one update phase.');
   if (!args.verifyUpgrade && !args.preflight && !args.pruneVerifiedBackups && !args.dryRun && !args.apply) args.dryRun = true;
   return args;
 }
@@ -309,7 +390,7 @@ function configureTarget(targetArg) {
 }
 
 function sha256(filePath) {
-  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+  return crypto.createHash('sha256').update(readPhysicalFile(filePath)).digest('hex');
 }
 
 function isDirectory(filePath) {
@@ -332,6 +413,7 @@ function isRegularFile(filePath) {
 function walkFiles(root) {
   const out = [];
   if (!fs.existsSync(root)) return out;
+  assertUpdatePath(path.dirname(root), root);
   function walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, entry.name);
@@ -339,6 +421,7 @@ function walkFiles(root) {
       const parts = rel.split('/');
       if (parts.includes('.git') || parts.includes('node_modules')) continue;
       if (rel.includes('.tmp-') || rel.includes('.bak-')) continue;
+      assertUpdatePath(root, abs);
       if (entry.isDirectory()) walk(abs);
       else if (entry.isFile()) out.push({ abs, rel });
     }
@@ -350,7 +433,22 @@ function walkFiles(root) {
 
 function loadInstallManifest(root = activeKnowledgeRoot) {
   const manifestPath = path.join(root, 'install-manifest.json');
-  const raw = fs.existsSync(manifestPath) ? readJson(manifestPath, {}) : {};
+  assertSafeContainmentRoot(root);
+  assertUpdatePath(root, manifestPath, true);
+  const raw = fs.existsSync(manifestPath) ? JSON.parse(readPhysicalFile(manifestPath).toString('utf8').replace(/^\uFEFF/, '')) : {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid install manifest: expected a JSON object.');
+  for (const [field, values] of Object.entries(raw)) {
+    if (!Array.isArray(DEFAULT_MANIFEST[field]) && field !== 'project_default_paths') continue;
+    if (!Array.isArray(values)) throw new Error(`Invalid install manifest ${field}: expected an array.`);
+    const seen = new Map();
+    for (const value of values) {
+      const rel = validateManifestPath(value, field);
+      if (field !== 'system_exclude_paths' && /[?*<>"|]/.test(rel)) throw new Error(`Unsafe install manifest ${field}: ${JSON.stringify(value)}`);
+      const identity = rel.toLowerCase();
+      if (seen.has(identity) && seen.get(identity) !== rel) throw new Error(`Install manifest path case collision: ${rel}`);
+      seen.set(identity, rel);
+    }
+  }
   const merged = (field, aliases = []) => uniqueNormalized([
     ...(DEFAULT_MANIFEST[field] || []),
     ...[field, ...aliases].flatMap((name) =>
@@ -390,12 +488,15 @@ function obsoleteSystemPaths(manifest) {
 }
 
 function sourcePathFor(sourceRoot, relPath) {
-  const rel = normalizeRel(relPath);
+  const rel = validateManifestPath(relPath);
   if (rel === '.gitignore') {
     const installedTemplate = path.join(sourceRoot, 'templates', 'git-policy', '.knowledge.gitignore');
+    assertUpdatePath(sourceRoot, installedTemplate, true);
     if (fs.existsSync(installedTemplate)) return installedTemplate;
   }
-  return path.join(sourceRoot, rel);
+  const absolute = path.join(sourceRoot, rel);
+  assertUpdatePath(sourceRoot, absolute, true);
+  return absolute;
 }
 
 function isExcludedByManifest(relPath, manifest) {
@@ -408,8 +509,8 @@ function resolveSourceRoot(fromArg) {
   const candidate = path.resolve(process.cwd(), fromArg);
   const direct = path.join(candidate, 'tools', 'flow.js');
   const nested = path.join(candidate, '.knowledge', 'tools', 'flow.js');
-  if (fs.existsSync(direct)) return candidate;
-  if (fs.existsSync(nested)) return path.join(candidate, '.knowledge');
+  if (fs.existsSync(direct)) { assertUpdatePath(candidate, direct); return candidate; }
+  if (fs.existsSync(nested)) { assertUpdatePath(path.join(candidate, '.knowledge'), nested); return path.join(candidate, '.knowledge'); }
   throw new Error(`Cannot find a .knowledge root at ${candidate}. Expected tools/flow.js or .knowledge/tools/flow.js.`);
 }
 
@@ -428,43 +529,71 @@ function sourceMissingSystemPaths(sourceRoot, manifest) {
 function planActions(sourceRoot, options = {}) {
   const targetRoot = options.targetKnowledgeRoot || activeKnowledgeRoot;
   const manifest = options.manifest || loadInstallManifest(sourceRoot);
+  assertSafeContainmentRoot(sourceRoot);
+  assertSafeContainmentRoot(targetRoot);
   const actions = [];
+  const seenFiles = new Set();
+  function planFile(src, dst, relFile) {
+    if (seenFiles.has(relFile)) return;
+    seenFiles.add(relFile);
+    assertSystemWriteAllowed(relFile, manifest);
+    const targetStat = assertUpdatePath(targetRoot, dst, true);
+    if (targetStat && !targetStat.isFile()) throw new Error(`Update target must be a file: ${relFile}`);
+    if (isPreservedDefault(relFile) && (targetStat || (manifest.repair_default_paths || []).includes(relFile))) {
+      actions.push({ action: 'preserve', path: relFile, reason: targetStat ? 'existing_project_default' : 'repair_default_only' });
+      return;
+    }
+    const sourceBytes = readPhysicalFile(src);
+    const existing = targetStat ? readPhysicalFile(dst) : null;
+    const sourceHash = crypto.createHash('sha256').update(sourceBytes).digest('hex');
+    const targetHash = existing ? crypto.createHash('sha256').update(existing).digest('hex') : null;
+    const desired = relFile === 'config.yaml' && existing ? mergedConfigBytes(sourceBytes, existing) : sourceBytes;
+    actions.push(existing && desired.equals(existing)
+      ? { action: 'skip', path: relFile, reason: 'unchanged' }
+      : { action: existing ? 'update' : 'create', path: relFile, kind: 'file', source_sha256: sourceHash,
+          target_sha256: targetHash, ...(relFile === 'config.yaml' && existing ? { reason: 'preserve_operator_config_update_version' } : {}) });
+  }
   for (const relPath of manifest.system_paths) {
+    assertSystemWriteAllowed(relPath, manifest);
+    if (isExcludedByManifest(relPath, manifest)) continue;
     const src = sourcePathFor(sourceRoot, relPath);
     const dst = path.join(targetRoot, relPath);
+    const targetStat = assertUpdatePath(targetRoot, dst, true);
     if (!fs.existsSync(src)) {
       actions.push({ action: 'skip', path: relPath, reason: 'source_missing' });
       continue;
     }
     if (isDirectory(src)) {
+      if (targetStat && !targetStat.isDirectory()) throw new Error(`Update target must be a directory: ${relPath}`);
       const files = walkFiles(src)
         .filter((file) => !isExcludedByManifest(path.posix.join(relPath, file.rel), manifest));
       if (!fs.existsSync(dst)) actions.push({ action: 'create', path: relPath, kind: 'directory' });
       for (const file of files) {
         const dstFile = path.join(dst, file.rel);
         const relFile = normalizeRel(path.posix.join(relPath, file.rel));
-        if (!fs.existsSync(dstFile)) actions.push({ action: 'create', path: relFile, kind: 'file' });
-        else if (!isFile(dstFile)) actions.push({ action: 'update', path: relFile, reason: 'replace_non_file', kind: 'file' });
-        else if (sha256(file.abs) !== sha256(dstFile)) actions.push({ action: 'update', path: relFile, kind: 'file' });
-        else actions.push({ action: 'skip', path: relFile, reason: 'unchanged' });
+        planFile(file.abs, dstFile, relFile);
       }
       continue;
     }
     if (isFile(src)) {
-      if (!fs.existsSync(dst)) actions.push({ action: 'create', path: relPath, kind: 'file' });
-      else if (!isFile(dst)) actions.push({ action: 'update', path: relPath, reason: 'replace_non_file', kind: 'file' });
-      else if (sha256(src) !== sha256(dst)) actions.push({ action: 'update', path: relPath, kind: 'file' });
-      else actions.push({ action: 'skip', path: relPath, reason: 'unchanged' });
+      planFile(src, dst, relPath);
     }
   }
 
   for (const relPath of obsoleteSystemPaths(manifest)) {
+    assertSystemWriteAllowed(relPath, manifest, 'remove');
+    if (fs.existsSync(sourcePathFor(sourceRoot, relPath)) && !isExcludedByManifest(relPath, manifest)) {
+      throw new Error(`Refusing to remove a shipped system artifact: ${relPath}`);
+    }
+    assertUpdatePath(targetRoot, path.join(targetRoot, relPath), true);
     if (fs.existsSync(path.join(targetRoot, relPath))) {
       actions.push({ action: 'remove', path: relPath, reason: 'obsolete_system_path' });
     }
   }
 
   for (const relPath of manifest.project_preserve_paths) {
+    validateManifestPath(relPath);
+    assertUpdatePath(targetRoot, path.join(targetRoot, relPath), true);
     if (fs.existsSync(path.join(targetRoot, relPath))) actions.push({ action: 'preserve', path: relPath, reason: 'project_specific' });
   }
   return actions;
@@ -475,8 +604,10 @@ function planRepairDefaults(sourceRoot, manifest, options = {}) {
   const targetRoot = options.targetKnowledgeRoot || activeKnowledgeRoot;
   const actions = [];
   for (const relPath of manifest.repair_default_paths || []) {
+    assertRepairDefaultWriteAllowed(relPath, manifest);
     const src = sourcePathFor(sourceRoot, relPath);
     const dst = path.join(targetRoot, relPath);
+    assertUpdatePath(targetRoot, dst, true);
     if (!fs.existsSync(src)) {
       actions.push({ action: 'skip', path: relPath, reason: 'source_missing', kind: 'repair_default' });
       continue;
@@ -485,14 +616,14 @@ function planRepairDefaults(sourceRoot, manifest, options = {}) {
       actions.push({ action: 'skip', path: relPath, reason: 'target_exists', kind: 'repair_default' });
       continue;
     }
-    actions.push({ action: 'repair_default', path: relPath, reason: 'missing_project_default', kind: 'file' });
+    actions.push({ action: 'repair_default', path: relPath, reason: 'missing_project_default', kind: 'file', source_sha256: sha256(src) });
   }
   return actions;
 }
 
 function copyFile(src, dst) {
-  ensureDir(path.dirname(dst));
-  fs.copyFileSync(src, dst);
+  assertUpdatePath(activeKnowledgeRoot, dst, true);
+  writeFileAtomicContained(dst, readPhysicalFile(src), activeKnowledgeRoot);
 }
 
 function timestamp() {
@@ -502,13 +633,14 @@ function timestamp() {
 function copyKnowledgeBackup() {
   const backupRoot = path.join(activeKnowledgeRoot, 'maintenance', 'install-backups', `system-files-${timestamp()}`);
   function copyDir(src, dst) {
-    ensureDir(dst);
+    ensureContainedDir(activeKnowledgeRoot, dst);
     for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
       const from = path.join(src, entry.name);
       const rel = normalizeRel(path.relative(activeKnowledgeRoot, from));
-      if (rel.startsWith('.lock/') || rel.startsWith('.runtime/')) continue;
+      if (rel === '.lock' || rel === '.runtime' || rel.startsWith('.lock/') || rel.startsWith('.runtime/')) continue;
       if (rel.startsWith('maintenance/install-backups/')) continue;
       const to = path.join(dst, entry.name);
+      assertUpdatePath(activeKnowledgeRoot, from);
       if (entry.isDirectory()) copyDir(from, to);
       else if (entry.isFile()) copyFile(from, to);
     }
@@ -662,8 +794,19 @@ function runNode(script, args, label = null) {
   };
 }
 
-function assertSystemWriteAllowed(actionPath, manifest) {
-  const rel = normalizeRel(actionPath);
+function assertSystemWriteAllowed(actionPath, manifest, operation = 'write') {
+  const rel = validateManifestPath(actionPath, 'system path');
+  const trustedSystemPath = DEFAULT_MANIFEST.system_paths.some((candidate) => rel === candidate || rel.startsWith(`${candidate}/`));
+  if (!trustedSystemPath && !LEGACY_OLD_UPDATER_COMPATIBLE_REMOVALS.has(rel)) {
+    throw new Error(`Refusing to write outside the system path policy: ${actionPath}`);
+  }
+  const protectedPaths = [...DEFAULT_MANIFEST.curated_preserve_paths, ...DEFAULT_MANIFEST.immutable_runtime_evidence_paths,
+    ...DEFAULT_MANIFEST.runtime_preserve_paths, ...(manifest.curated_preserve_paths || []),
+    ...(manifest.immutable_runtime_evidence_paths || []), ...(manifest.runtime_preserve_paths || []), 'extensions', 'pro'];
+  if (operation !== 'remove' && isPreservedDefault(rel)) return;
+  if (protectedPaths.some((item) => rel === item || rel.startsWith(`${item}/`) || (operation === 'remove' && item.startsWith(`${rel}/`)))) {
+    throw new Error(`Refusing to modify protected project data: ${actionPath}`);
+  }
   const systemPath = manifest.system_paths.some((candidate) => rel === candidate || rel.startsWith(`${candidate}/`));
   const removablePath = obsoleteSystemPaths(manifest).some((candidate) => rel === candidate || rel.startsWith(`${candidate}/`));
   if (!systemPath && !removablePath) throw new Error(`Refusing to write non-system path: ${actionPath}`);
@@ -671,27 +814,69 @@ function assertSystemWriteAllowed(actionPath, manifest) {
 }
 
 function assertRepairDefaultWriteAllowed(actionPath, manifest) {
-  const rel = normalizeRel(actionPath);
+  const rel = validateManifestPath(actionPath, 'repair default');
   const allowed = (manifest.repair_default_paths || []).some((defaultPath) => rel === defaultPath);
-  if (!allowed) throw new Error(`Refusing to write non-repair-default path: ${actionPath}`);
+  if (!allowed || !DEFAULT_MANIFEST.repair_default_paths.includes(rel)) throw new Error(`Refusing to write non-repair-default path: ${actionPath}`);
   if (isExcludedByManifest(rel, manifest)) throw new Error(`Refusing to write excluded repair default path: ${actionPath}`);
 }
 
+function targetChangedError(action, actualHash, stage) {
+  const error = new Error(stage === 'prepare'
+    ? `Target changed after update planning: ${action.path}`
+    : `Target changed before update write: ${action.path}`);
+  error.code = 'update_target_changed';
+  error.update_precondition = {
+    code: error.code,
+    stage,
+    path: action.path,
+    action: action.action,
+    expected_exists: action.target_sha256 != null,
+    actual_exists: actualHash != null,
+    expected_sha256: action.target_sha256 ?? null,
+    actual_sha256: actualHash
+  };
+  return error;
+}
+
 function applyActions(sourceRoot, actions, manifest) {
+  // Authenticate every input and inspect every destination before the first live write.
+  const prepared = new Map();
+  for (const action of actions) {
+    if (!['create', 'update', 'remove'].includes(action.action)) continue;
+    assertSystemWriteAllowed(action.path, manifest, action.action === 'remove' ? 'remove' : 'write');
+    const dst = path.join(activeKnowledgeRoot, action.path);
+    assertUpdatePath(activeKnowledgeRoot, dst, true);
+    if (action.kind !== 'file') continue;
+    const bytes = readPhysicalFile(sourcePathFor(sourceRoot, action.path));
+    if (crypto.createHash('sha256').update(bytes).digest('hex') !== action.source_sha256) {
+      throw new Error(`Source changed after update planning: ${action.path}`);
+    }
+    const existing = fs.existsSync(dst) ? readPhysicalFile(dst) : null;
+    const actualHash = existing ? crypto.createHash('sha256').update(existing).digest('hex') : null;
+    if (actualHash !== action.target_sha256) {
+      throw targetChangedError(action, actualHash, 'prepare');
+    }
+    prepared.set(action, action.path === 'config.yaml' && existing ? mergedConfigBytes(bytes, existing) : bytes);
+  }
   for (const action of actions) {
     if (action.action === 'remove') {
-      assertSystemWriteAllowed(action.path, manifest);
-      fs.rmSync(path.join(activeKnowledgeRoot, action.path), { recursive: true, force: true });
+      assertSystemWriteAllowed(action.path, manifest, 'remove');
+      const target = path.join(activeKnowledgeRoot, action.path);
+      assertUpdatePath(activeKnowledgeRoot, target, true);
+      fs.rmSync(target, { recursive: true, force: true });
       continue;
     }
     if (!['create', 'update'].includes(action.action)) continue;
     assertSystemWriteAllowed(action.path, manifest);
     const dst = path.join(activeKnowledgeRoot, action.path);
     if (action.kind === 'directory') {
-      ensureDir(dst);
+      ensureContainedDir(activeKnowledgeRoot, dst);
       continue;
     }
-    copyFile(sourcePathFor(sourceRoot, action.path), dst);
+    assertUpdatePath(activeKnowledgeRoot, dst, true);
+    const currentHash = fs.existsSync(dst) ? sha256(dst) : null;
+    if (currentHash !== action.target_sha256) throw targetChangedError(action, currentHash, 'write');
+    writeFileAtomicContained(dst, prepared.get(action), activeKnowledgeRoot);
   }
 }
 
@@ -700,8 +885,12 @@ function applyRepairDefaults(sourceRoot, actions, manifest) {
     if (action.action !== 'repair_default') continue;
     assertRepairDefaultWriteAllowed(action.path, manifest);
     const dst = path.join(activeKnowledgeRoot, action.path);
+    assertUpdatePath(activeKnowledgeRoot, dst, true);
     if (fs.existsSync(dst)) continue;
-    copyFile(sourcePathFor(sourceRoot, action.path), dst);
+    const bytes = readPhysicalFile(sourcePathFor(sourceRoot, action.path));
+    if (crypto.createHash('sha256').update(bytes).digest('hex') !== action.source_sha256) throw new Error(`Repair default changed after planning: ${action.path}`);
+    writeFileAtomicContained(dst, bytes, activeKnowledgeRoot);
+    action.applied = true;
   }
 }
 
@@ -1089,6 +1278,7 @@ function verifySystemCompleteness(sourceRoot, manifest) {
   const hashMismatches = [];
   const comparedPaths = new Set();
   let checkedFiles = 0;
+  const preservedDefaults = [];
 
   function compareFile(src, dst, relPath) {
     if (!isRegularFile(src)) {
@@ -1099,10 +1289,18 @@ function verifySystemCompleteness(sourceRoot, manifest) {
       missingSystemPaths.add(relPath);
       return;
     }
+    assertUpdatePath(sourceRoot, src);
+    assertUpdatePath(activeKnowledgeRoot, dst);
+    if (isPreservedDefault(relPath)) {
+      preservedDefaults.push(relPath);
+      return;
+    }
     if (comparedPaths.has(relPath)) return;
     comparedPaths.add(relPath);
     checkedFiles += 1;
-    const expected = sha256(src);
+    const expected = relPath === 'config.yaml'
+      ? crypto.createHash('sha256').update(mergedConfigBytes(readPhysicalFile(src), readPhysicalFile(dst))).digest('hex')
+      : sha256(src);
     const actual = sha256(dst);
     if (expected !== actual) hashMismatches.push({ path: relPath, expected_sha256: expected, actual_sha256: actual });
   }
@@ -1145,7 +1343,8 @@ function verifySystemCompleteness(sourceRoot, manifest) {
     mismatched_system_paths: hashMismatches.map((item) => item.path),
     system_hash_mismatches: hashMismatches,
     obsolete_system_paths_present: obsoletePathsPresent,
-    checked_system_files: checkedFiles
+    checked_system_files: checkedFiles,
+    preserved_project_defaults: Array.from(new Set(preservedDefaults)).sort()
   };
 }
 
@@ -1193,7 +1392,7 @@ function readVersionFromConfig(root) {
 function readPackageVersion(root) {
   const packagePath = path.join(root, 'package.json');
   const pkg = fs.existsSync(packagePath) ? readJson(packagePath, {}) : {};
-  return String(pkg.version || readVersionFromConfig(root) || 'unknown');
+  return String(pkg?.version || readVersionFromConfig(root) || 'unknown');
 }
 
 function detectTargetCapabilities(root = activeKnowledgeRoot) {
@@ -1261,6 +1460,21 @@ function permissionPreflight(sourceRoot, manifest) {
   const checks = [];
   const reportDir = path.join(activeKnowledgeRoot, 'maintenance');
   const backupParent = path.join(reportDir, 'install-backups');
+  try {
+    assertSafeContainmentRoot(activeKnowledgeRoot);
+    assertUpdateTree(activeKnowledgeRoot, activeKnowledgeRoot, (rel) =>
+      rel === '.lock' || rel === '.runtime' || rel.startsWith('.lock/') || rel.startsWith('.runtime/') || rel.startsWith('maintenance/install-backups/'));
+    assertUpdatePath(activeKnowledgeRoot, backupParent, true);
+    if (sourceRoot) {
+      planActions(sourceRoot, { manifest });
+      planRepairDefaults(sourceRoot, manifest);
+    }
+    checks.push({ check: 'physical_path_safety', status: 'pass', path: activeKnowledgeRoot });
+  } catch (error) {
+    const failure = permissionError(error, 'physical_path_safety', activeKnowledgeRoot);
+    return { status: 'failed', checks: [failure], errors: [failure.message], manual_action_required: [failure.remediation],
+      report_path: path.join(reportDir, 'update_system_files_report.json'), backup_parent: backupParent };
+  }
   checks.push(fs.existsSync(activeKnowledgeRoot)
     ? { check: 'knowledge_root_exists', status: 'pass', path: activeKnowledgeRoot }
     : { check: 'knowledge_root_exists', status: 'fail', path: activeKnowledgeRoot, message: 'target .knowledge root does not exist' });
@@ -1492,7 +1706,8 @@ function summarize(actions, postChecks, curatedProof, runtimeProof, completeness
       json_status: check.json_status,
       semantic_errors: check.semantic_errors
     }));
-  const migrationCreated = migrationDefaults.filter((a) => a.action === 'repair_default');
+  const migrationPlanned = migrationDefaults.filter((a) => a.action === 'repair_default');
+  const migrationCreated = migrationPlanned.filter((a) => a.applied === true);
   return {
     create: actions.filter((a) => a.action === 'create').length,
     update: actions.filter((a) => a.action === 'update').length,
@@ -1506,6 +1721,8 @@ function summarize(actions, postChecks, curatedProof, runtimeProof, completeness
     project_preserved: actions.filter((a) => a.action === 'preserve').length,
     migration_defaults_created: migrationCreated.length,
     migration_default_paths: migrationCreated.map((action) => action.path),
+    migration_defaults_planned: migrationPlanned.length,
+    migration_default_planned_paths: migrationPlanned.map((action) => action.path),
     runtime_regenerated: runtimeRegenerated,
     missing_system_paths: completeness ? completeness.missing_system_paths : [],
     source_missing_system_paths: completeness ? completeness.source_missing_system_paths : [],
@@ -1631,13 +1848,13 @@ function main(argv = process.argv.slice(2)) {
   if (args.pruneVerifiedBackups) {
     const prune = pruneVerifiedBackups(args.yes);
     console.log(JSON.stringify(prune, null, 2));
-    if (prune.status !== 'ok') process.exit(2);
+    if (prune.status !== 'ok') process.exitCode = 2;
     return prune;
   }
   const warnings = [];
   const errors = [];
   let sourceRoot = null;
-  let manifest = loadInstallManifest(activeKnowledgeRoot);
+  let manifest = { ...DEFAULT_MANIFEST, manifest_path: null, used_default: true };
   let actions = [];
   let migrationDefaults = [];
   let backupPath = null;
@@ -1656,8 +1873,10 @@ function main(argv = process.argv.slice(2)) {
   let legacyProofPersistence = null;
   let deprecatedIntegrationCleanup = [];
   let legacyCompatibilityCleanup = [];
+  let preconditionFailure = null;
 
   try {
+    manifest = loadInstallManifest(activeKnowledgeRoot);
     if (!['repair_queue', 'report_only', 'none'].includes(args.postUpgradeTrustRefresh)) {
       errors.push(`Invalid --post-upgrade-trust-refresh value: ${args.postUpgradeTrustRefresh}. Use repair_queue, report_only, or none.`);
     }
@@ -1713,6 +1932,10 @@ function main(argv = process.argv.slice(2)) {
         applyRepairDefaults(sourceRoot, migrationDefaults, manifest);
         deprecatedIntegrationCleanup = cleanupDeprecatedManagedIntegrations(backupPath);
         curatedApplyProof = curatedPreservationProof(backupPath, manifest);
+        if (fs.existsSync(path.join(backupPath, 'config.yaml')) &&
+            configWithoutVersion(readPhysicalFile(path.join(backupPath, 'config.yaml'))) !== configWithoutVersion(readPhysicalFile(path.join(activeKnowledgeRoot, 'config.yaml')))) {
+          errors.push('System-file apply changed operator config outside the version field.');
+        }
         runtimeApplyProof = runtimePreservationProof(backupPath, manifest);
         systemCompleteness = verifySystemCompleteness(sourceRoot, manifest);
         if (systemCompleteness.source_missing_system_paths.length) errors.push(`Source is missing system artifacts: ${systemCompleteness.source_missing_system_paths.join(', ')}`);
@@ -1749,6 +1972,7 @@ function main(argv = process.argv.slice(2)) {
     }
   } catch (error) {
     errors.push(error.message);
+    if (error.code === 'update_target_changed') preconditionFailure = error.update_precondition;
   }
 
   if (backupPath) {
@@ -1764,6 +1988,12 @@ function main(argv = process.argv.slice(2)) {
     }
   }
 
+  const legacyReleaseGate = inspectLegacyGate(activeRepoRoot);
+  if (legacyReleaseGate.status === 'obsolete') warnings.push(
+    'Obsolete project tools/release-gate.js detected. Run node .knowledge/tools/migrate-legacy-release-gate.js --apply to preserve a backup and redirect it to the maintained gate. The runtime distribution does not contain maintainer release certification tools.'
+  );
+  const plannedDefaults = migrationDefaults.filter((action) => action.action === 'repair_default');
+  const completedDefaults = plannedDefaults.filter((action) => action.applied === true);
   const report = {
     schema_version: systemVersion(),
     status: errors.length ? 'failed' : 'ok',
@@ -1799,10 +2029,14 @@ function main(argv = process.argv.slice(2)) {
     permission_preflight: permission,
     actions,
     migration_defaults: {
-      status: migrationDefaults.some((action) => action.action === 'repair_default') ? 'planned_or_applied' : 'none_required',
+      status: !plannedDefaults.length ? 'none_required' : (!args.apply ? 'planned'
+        : completedDefaults.length === plannedDefaults.length ? 'applied'
+          : completedDefaults.length ? 'partially_applied' : 'not_applied'),
       actions: migrationDefaults,
-      created_paths: migrationDefaults.filter((action) => action.action === 'repair_default').map((action) => action.path)
+      planned_paths: plannedDefaults.map((action) => action.path),
+      created_paths: completedDefaults.map((action) => action.path)
     },
+    precondition_failure: preconditionFailure,
     summary: summarize(actions, postChecks, curatedProof, runtimeProof, systemCompleteness, errors, migrationDefaults),
     system_completeness: systemCompleteness,
     curated_apply_preservation_proof: curatedApplyProof,
@@ -1815,6 +2049,7 @@ function main(argv = process.argv.slice(2)) {
     legacy_proof_persistence: legacyProofPersistence,
     legacy_compatibility_cleanup: legacyCompatibilityCleanup,
     deprecated_integration_cleanup: deprecatedIntegrationCleanup,
+    legacy_release_gate: legacyReleaseGate,
     verify,
     warnings,
     errors,
@@ -1822,7 +2057,7 @@ function main(argv = process.argv.slice(2)) {
     post_checks: postChecks
   };
 
-  if (args.apply && args.yes) {
+  if (args.apply && args.yes && (backupPath || permission?.status === 'ok')) {
     reportWrite = safeWriteUpdateReport(report);
     report.report_write = reportWrite;
     if (reportWrite.status === 'ok') report.report = reportWrite.path;
@@ -1834,10 +2069,16 @@ function main(argv = process.argv.slice(2)) {
   }
 
   console.log(JSON.stringify(report, null, 2));
-  if (errors.length) process.exit(2);
+  if (errors.length) process.exitCode = 2;
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  try { main(); }
+  catch (error) {
+    console.log(JSON.stringify({ status: 'failed', phase: 'validation', errors: [error.message] }, null, 2));
+    process.exitCode = 2;
+  }
+}
 
 module.exports = {
   SYSTEM_PATHS,

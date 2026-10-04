@@ -896,7 +896,7 @@ function liveAdapter(flags, context) {
 
 function adapterFor(context, flags) {
   const adapter = selectedAdapter(flags);
-  if (adapter === 'test') return jsonlAdapter('mem0-oss', 'test-jsonl', adapterFile(context));
+  if (adapter === 'test') return jsonlAdapter('mem0-oss', 'test-jsonl', adapterFile(context), { containmentRoot: context.stateRoot });
   if (adapter === 'live') return liveAdapter(flags, context);
   return dryRunAdapter('mem0-oss', 'dry-run', 'runtime_not_installed');
 }

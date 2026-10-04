@@ -1,0 +1,42 @@
+{
+  "schema_version": "knowledge-audit-replay-manifest.v1",
+  "generated_at": "2026-10-04T21:44:28.912Z",
+  "entries": [
+    "tools/conformance-install-smoke.js",
+    "tools/validate-release-artifact.js"
+  ],
+  "files": [
+    {
+      "path": "fixtures/README.md",
+      "sha256": "1d6f27c770fdd28f17c3401a721cc6307be283a12348e789d9ec2eb0eb2e7e7a"
+    },
+    {
+      "path": "install-manifest.json",
+      "sha256": "bf8690b8208468b42249d81bc4afc6a158ad6a466344a385a5805ff646c7a4c8"
+    },
+    {
+      "path": "package.json",
+      "sha256": "7fbb7a1715e10e37d5e5d4b34a1afda779da1c9c01ed06d5659f013afc2455fd"
+    },
+    {
+      "path": "release-policy.json",
+      "sha256": "dc77462aaa612817c38c4aaf903beb8c1574123b7246d9a7132e0b6c5d3e7a9e"
+    },
+    {
+      "path": "tools/conformance-install-smoke.js",
+      "sha256": "a21fa7d76fe2f4a20da94b3127b6f4d4170463f88ab6e80ec3864c81fc0005b5"
+    },
+    {
+      "path": "tools/lib/release-contract.js",
+      "sha256": "b62aec5fe64c562ba84ec26d4360af0905536a9a7c76258a6c26d59e89640512"
+    },
+    {
+      "path": "tools/lib/release-policy.js",
+      "sha256": "851e2a44d11e32b6a880acf7dc34de53811200ecc39a5d8a43597a6dbffd441c"
+    },
+    {
+      "path": "tools/validate-release-artifact.js",
+      "sha256": "de30b877f2da0de0a95bdd026521a44ca5d586ef47e96dc7d6c56042d69a9f4f"
+    }
+  ]
+}

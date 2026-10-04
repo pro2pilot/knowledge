@@ -7,6 +7,7 @@ const { spawnSync } = require('child_process');
 const {
   ensureDir,
   writeJsonAtomic,
+  writeJsonAtomicContained,
   assertSafeContainmentRoot,
   assertSafeContainedPath
 } = require('./lib/json-store');
@@ -18,7 +19,8 @@ const {
   supportedRuntimeIds
 } = require('./install-agent-integrations');
 const {
-  loadInstallManifest
+  loadInstallManifest,
+  DEFAULT_MANIFEST
 } = require('./update-system-files');
 
 const knowledgeRoot = path.resolve(__dirname, '..');
@@ -363,7 +365,12 @@ function analyze(options = {}) {
     );
   }
 
-  const installManifest = loadInstallManifest(knowledgeRoot);
+  let installManifest;
+  try { installManifest = loadInstallManifest(knowledgeRoot); }
+  catch (error) {
+    issue(issues, 'error', 'invalid_install_manifest', error.message, '.knowledge/install-manifest.json');
+    installManifest = DEFAULT_MANIFEST;
+  }
   const rawInstallManifest = safeReadJson(path.join(knowledgeRoot, 'install-manifest.json')) || {};
   const requiredSystemFiles = Array.from(new Set([
     'Quick-Start.md',
@@ -594,6 +601,8 @@ function applyFixes() {
   const nestedGit = path.join(knowledgeRoot, '.git');
   if (isDirectory(nestedGit)) {
     const backupDir = path.join(knowledgeRoot, 'maintenance', 'install-backups', `nested-git-${timestamp()}`);
+    assertSafeContainedPath(knowledgeRoot, nestedGit);
+    assertSafeContainedPath(knowledgeRoot, backupDir, { allowMissing: true });
     moveDirectory(nestedGit, backupDir);
     fixesApplied.push({ code: 'move_nested_git', from: '.knowledge/.git', to: `.knowledge/${rel(backupDir, knowledgeRoot)}` });
   }
@@ -614,6 +623,9 @@ function main(argv = process.argv.slice(2)) {
       ]
     };
   } else if (options.fix && options.yes) {
+    const safeReport = path.join(knowledgeRoot, 'maintenance', 'install_check_report.json');
+    assertSafeContainedPath(knowledgeRoot, safeReport, { allowMissing: true });
+    if (fs.existsSync(safeReport) && fs.lstatSync(safeReport).nlink !== 1) throw new Error('Install report must not be hardlinked.');
     const preFix = analyze();
     const fixesApplied = applyFixes();
     const postFix = analyze();
@@ -626,8 +638,7 @@ function main(argv = process.argv.slice(2)) {
       report: '.knowledge/maintenance/install_check_report.json',
       generated_at: new Date().toISOString()
     };
-    ensureDir(path.dirname(reportPath));
-    writeJsonAtomic(reportPath, result);
+    writeJsonAtomicContained(reportPath, result, knowledgeRoot);
   }
   console.log(JSON.stringify(result, null, 2));
   // Keep stdout drainable through a pipe on Node 18/20 before reporting the

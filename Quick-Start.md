@@ -108,8 +108,17 @@ After setup, read:
 .knowledge/maintenance/routing_bundle.json
 ```
 
-For an explicitly scoped task, create or refresh one task snapshot and read
-its `first-read.md` before loading broader maintenance state:
+For normal meaningful scoped work, use the recommended `agent-task begin` and
+`agent-task finish` workflow at the top of this guide. It owns the task route,
+first-read acknowledgement, primary verification, and any eligible evidence
+reuse.
+
+## Advanced task-routing diagnostics and recovery
+
+Use direct `task-routing` commands only when diagnosing or recovering task
+snapshot state, or when explicitly maintaining a legacy direct-routing flow.
+They are not the normal meaningful-task workflow. Read the returned
+`first-read.md` before loading broader maintenance state:
 
 ```bash
 node .knowledge/tools/task-routing.js create --task="<task>" --scope-module=<module> --scope-path=<path> --json
@@ -240,28 +249,9 @@ Mem0 OSS is the recommended optional free/core backend. Start with `setup mem0-o
 
 If `.knowledge/` already exists and the user is applying a newer `.knowledge` release, do **not** replace the whole folder and do **not** overwrite project knowledge records.
 
-Update only the system files that implement the framework:
-
-```txt
-README.md
-Quick-Start.md
-Portal.md
-LICENSE
-NOTICE
-package.json
-config.yaml
-assets/
-agent-integrations/
-commands/
-docs/
-flows/
-github-action-templates/
-models/
-prompts/
-skills/
-templates/
-tools/
-```
+Update only the system paths declared in `.knowledge/install-manifest.json`:
+`system_paths` and `required_system_files` are the machine-checked contract.
+Do not maintain or follow a copied manual path list.
 
 Preserve project-specific knowledge and trust state unless the user explicitly asks to reset it:
 

@@ -1409,6 +1409,7 @@ function resolveRequestedRuntime(options = {}) {
 
 function runtimeRequired(reason = 'No supported agent runtime was detected.') {
   return {
+    ok: false,
     status: 'runtime_required',
     reason,
     supported_runtimes: supportedRuntimeIds(),
@@ -1419,6 +1420,7 @@ function runtimeRequired(reason = 'No supported agent runtime was detected.') {
 
 function allRequiresConfirmation() {
   return {
+    ok: false,
     status: 'all_requires_confirmation',
     reason: '`--all` installs every supported agent bridge and is not a first-run default.',
     recommendation: 'Use one --runtime command for the active agent. Only use --all with --confirm-all when a human explicitly wants every integration folder.',
@@ -1511,7 +1513,9 @@ if (require.main === module) {
     if (parsed.listRuntimes) {
       console.log(JSON.stringify({ status: 'ok', supported_runtimes: supportedRuntimeIds(), commands: runtimeCommands() }, null, 2));
     } else {
-      console.log(JSON.stringify(installAgentIntegrations(options), null, 2));
+      const result = installAgentIntegrations(options);
+      console.log(JSON.stringify(result, null, 2));
+      if (result.ok === false || result.status !== 'ok') process.exitCode = 2;
     }
   } catch (error) {
     const failure = {
@@ -1523,6 +1527,6 @@ if (require.main === module) {
       transaction: error.transaction || undefined
     };
     console.error(JSON.stringify(failure, null, 2));
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

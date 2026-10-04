@@ -1,0 +1,86 @@
+{
+  "schema_version": "knowledge-a343-ci-inputs.v1",
+  "candidate_sha256": "4efe2e8afcfc77f136e555f6d551d91e99938aefea22bbc422a09960d17c72c4",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 67,
+      "sha256": "9cd61b9067c51fe1c4cc360f73462dbad76cf2a5a9d245f6381d9fb96e3da4f6"
+    },
+    {
+      "path": "evidence.py",
+      "bytes": 5136,
+      "sha256": "f6b78d60a3449200c6313506141790ae9b2ffa7ec6db080dde0374a5e524f5e2"
+    },
+    {
+      "path": "knowledge-v3.2.11.zip",
+      "bytes": 472004,
+      "sha256": "b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79"
+    },
+    {
+      "path": "knowledge-v3.4.3.zip",
+      "bytes": 958107,
+      "sha256": "4efe2e8afcfc77f136e555f6d551d91e99938aefea22bbc422a09960d17c72c4"
+    },
+    {
+      "path": "README.md",
+      "bytes": 861,
+      "sha256": "266ed8fe64d802384be8a526b643beddad989eec5db56f134357622adc5c7887"
+    },
+    {
+      "path": "replay/fixtures/README.md",
+      "bytes": 76,
+      "sha256": "1d6f27c770fdd28f17c3401a721cc6307be283a12348e789d9ec2eb0eb2e7e7a"
+    },
+    {
+      "path": "replay/install-manifest.json",
+      "bytes": 19660,
+      "sha256": "bf8690b8208468b42249d81bc4afc6a158ad6a466344a385a5805ff646c7a4c8"
+    },
+    {
+      "path": "replay/manifest.json",
+      "bytes": 1375,
+      "sha256": "4c9a0adeddbec671cd996eb6f6ddbb558d8d01b96ad7b2b27d038bd7c6e200db"
+    },
+    {
+      "path": "replay/package.json",
+      "bytes": 87,
+      "sha256": "7fbb7a1715e10e37d5e5d4b34a1afda779da1c9c01ed06d5659f013afc2455fd"
+    },
+    {
+      "path": "replay/release-policy.json",
+      "bytes": 24234,
+      "sha256": "dc77462aaa612817c38c4aaf903beb8c1574123b7246d9a7132e0b6c5d3e7a9e"
+    },
+    {
+      "path": "replay/tools/conformance-install-smoke.js",
+      "bytes": 19396,
+      "sha256": "a21fa7d76fe2f4a20da94b3127b6f4d4170463f88ab6e80ec3864c81fc0005b5"
+    },
+    {
+      "path": "replay/tools/lib/release-contract.js",
+      "bytes": 7659,
+      "sha256": "b62aec5fe64c562ba84ec26d4360af0905536a9a7c76258a6c26d59e89640512"
+    },
+    {
+      "path": "replay/tools/lib/release-policy.js",
+      "bytes": 1779,
+      "sha256": "851e2a44d11e32b6a880acf7dc34de53811200ecc39a5d8a43597a6dbffd441c"
+    },
+    {
+      "path": "replay/tools/validate-release-artifact.js",
+      "bytes": 15657,
+      "sha256": "de30b877f2da0de0a95bdd026521a44ca5d586ef47e96dc7d6c56042d69a9f4f"
+    },
+    {
+      "path": "run-matrix-cell.js",
+      "bytes": 37039,
+      "sha256": "ea1f4e6e5dff4de49e50fdbd27ee42fcece51ecd53df359b1ba882fbb8d27741"
+    },
+    {
+      "path": "run_candidate.py",
+      "bytes": 28207,
+      "sha256": "ce2890762395522a1f7a0cc741a995fcdb52f8a133d99958a3a76f041203ac6c"
+    }
+  ]
+}

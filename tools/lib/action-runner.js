@@ -6,6 +6,7 @@ const { spawnSync } = require('child_process');
 const { contextEnv } = require('./path-context');
 const { ensureDir, appendNdjson, writeJsonAtomic } = require('./json-store');
 const { getAction, canRunAction, loadEntitlements, RISK_REQUIRES_CONFIRMATION } = require('./action-registry');
+const { inspectSemanticJson } = require('./semantic-json');
 
 const RUNS = new Map();
 
@@ -84,7 +85,7 @@ function runAction(context, id, body = {}) {
     return run;
   }
 
-  if (RISK_REQUIRES_CONFIRMATION.has(action.risk) && !body.confirmed) {
+  if (RISK_REQUIRES_CONFIRMATION.has(action.risk) && body?.confirmed !== true) {
     run.status = 'needs_confirmation';
     run.finished_at = nowIso();
     run.errors.push({ reason: 'confirmation_required', risk: action.risk });
@@ -102,7 +103,7 @@ function runAction(context, id, body = {}) {
     return run;
   }
 
-  const scriptPath = path.join(context.projectKnowledgeRoot, action.command[0]);
+  const scriptPath = path.join(context.systemRoot || context.projectKnowledgeRoot, action.command[0]);
   const args = [scriptPath, ...action.command.slice(1)];
   const started = Date.now();
   run.status = 'running';
@@ -119,13 +120,26 @@ function runAction(context, id, body = {}) {
   const stderr = redactText(result.stderr || '');
   run.finished_at = nowIso();
   run.duration_ms = Date.now() - started;
-  run.status = result.status === 0 ? 'passed' : 'failed';
+  let parsed = null;
+  let semantic = { ok: true, errors: [] };
+  try {
+    parsed = JSON.parse(String(result.stdout || '').trim().replace(/^\uFEFF/, ''));
+    semantic = inspectSemanticJson(parsed);
+  } catch (error) {
+    // Every allowlisted action is a structured-report command. A successful
+    // process exit cannot stand in for a complete, valid evidence report.
+    semantic = { ok: false, errors: [`invalid_action_json: ${error.message}`] };
+  }
+  run.status = result.status === 0 && !result.error && !result.signal && semantic.ok ? 'passed' : 'failed';
   run.exit_code = result.status;
+  run.json_status = parsed?.status || null;
+  run.semantic_errors = semantic.errors;
   run.stdout_summary = stdout.trim().slice(-1200) || '(no stdout)';
   run.stderr_summary = stderr.trim().slice(-1200);
   if (result.error) run.errors.push({ reason: 'spawn_error', message: result.error.message });
   if (result.signal) run.errors.push({ reason: 'signal', signal: result.signal });
   if (result.status !== 0) run.errors.push({ reason: 'non_zero_exit', exit_code: result.status });
+  if (!semantic.ok) run.errors.push({ reason: 'semantic_failure', errors: semantic.errors });
   run.next_recommended_actions = action.id === 'trust.restore.safe'
     ? ['doctor.run', 'inspector.rebuild']
     : ['trust.restore.safe'];

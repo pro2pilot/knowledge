@@ -9,6 +9,7 @@ const ROOT_KINDS = Object.freeze({
 const LOCKS = Object.freeze({
   'agent-integrations': Object.freeze({ root_kinds: ['state'], purpose: 'Install agent integrations transactionally.', consumers: ['install-agent-integrations'] }),
   'agent-task': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize integrated agent task workflows.', consumers: ['agent-task'] }),
+  'agent-session': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize agent session lifecycle and registry updates.', consumers: ['agent-session'] }),
   'apply-template': Object.freeze({ root_kinds: ['project'], purpose: 'Apply or remove project templates.', consumers: ['apply-template'] }),
   'doctor': Object.freeze({ root_kinds: ['state'], purpose: 'Refresh Doctor health artifacts.', consumers: ['doctor'] }),
   'evidence-publication': Object.freeze({ root_kinds: ['system'], purpose: 'Publish maintainer release evidence atomically.', consumers: [] }),
@@ -30,6 +31,7 @@ const LOCKS = Object.freeze({
     consumers: ['task-routing']
   }),
   'team-flow': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize exclusive team flow operations.', consumers: ['team-store'] }),
+  'team-registry': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize shared team registry and workspace mutations.', consumers: ['team-store'] }),
   'visual-inspector': Object.freeze({ root_kinds: ['state'], purpose: 'Build Visual Inspector data and pages.', consumers: ['build-visual-inspector'] }),
   'watch-maintenance': Object.freeze({ root_kinds: ['state'], purpose: 'Update maintenance watcher state.', consumers: ['watch-maintenance'] }),
   'wiki-graph': Object.freeze({ root_kinds: ['state'], purpose: 'Build the typed wiki graph.', consumers: ['build-wiki-graph'] }),

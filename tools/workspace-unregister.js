@@ -11,7 +11,7 @@ function main(argv = process.argv.slice(2)) {
   const workspaceId = flags.workspaceId || process.env.KNOWLEDGE_WORKSPACE_ID;
   if (!teamRoot || teamRoot === path.resolve('')) throw new Error('workspace-unregister requires --team-root or KNOWLEDGE_TEAM_ROOT');
   if (!workspaceId) throw new Error('workspace-unregister requires --workspace-id or KNOWLEDGE_WORKSPACE_ID');
-  const workspace = unregisterWorkspace(teamRoot, workspaceId);
+  const workspace = unregisterWorkspace(teamRoot, workspaceId, flags.repoId || null);
   const out = { ok: true, command: 'workspace-unregister', teamRoot, workspace };
   console.log(JSON.stringify(out, null, 2));
   return out;
@@ -23,4 +23,3 @@ if (require.main === module) {
 }
 
 module.exports = main;
-

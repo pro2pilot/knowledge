@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { systemVersion } = require('./lib/system-version');
+const { assertSafeContainedPath, writeFileAtomicContained } = require('./lib/json-store');
 
 const knowledgeRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(knowledgeRoot, '..');
@@ -15,12 +16,16 @@ const OFFICIAL_UPDATE_REPOSITORY = 'pro2pilot/knowledge';
 function nowIso() { return new Date().toISOString(); }
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file, fallback = {}) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')); }
+  try {
+    const value = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : fallback;
+  }
   catch { return fallback; }
 }
 function writeJson(file, data) {
-  ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  assertSafeContainedPath(knowledgeRoot, file, { allowMissing: true });
+  if (fs.existsSync(file) && fs.lstatSync(file).nlink !== 1) throw new Error('Update status file must not be hardlinked.');
+  writeFileAtomicContained(file, JSON.stringify(data, null, 2) + '\n', knowledgeRoot);
 }
 function parseBool(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -31,6 +36,7 @@ function parseIntervalDays(raw, fallback = 7) {
   const value = String(raw).trim().toLowerCase();
   const match = value.match(/^(\d+)(d|day|days)?$/);
   if (!match) throw new Error(`Invalid interval: ${raw}. Use a value like 7d or 14d.`);
+  if (!Number.isSafeInteger(Number(match[1])) || Number(match[1]) > 3650) throw new Error('Update interval must not exceed 3650 days.');
   return Math.max(1, Number(match[1]));
 }
 function parseArgs(argv) {
@@ -45,14 +51,16 @@ function parseArgs(argv) {
     else if (arg.startsWith('--interval=')) opts.intervalDays = parseIntervalDays(arg.slice('--interval='.length));
     else throw new Error(`Unknown argument: ${arg}`);
   }
+  if (opts.enable && opts.disable) throw new Error('Choose only one of --enable and --disable.');
   return opts;
 }
 function readPackageVersion() {
   const pkg = readJson(packagePath, {});
-  return String(pkg.version || '0.0.0');
+  return typeof pkg.version === 'string' ? pkg.version : null;
 }
 function readConfigText() {
   if (!fs.existsSync(configPath)) return '';
+  assertSafeContainedPath(knowledgeRoot, configPath);
   return fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, '');
 }
 function parseUpdatesBlock(text) {
@@ -70,10 +78,11 @@ function parseUpdatesBlock(text) {
 }
 function getConfig() {
   const block = parseUpdatesBlock(readConfigText());
+  const positive = (value, fallback, max) => Number.isSafeInteger(Number(value)) && Number(value) > 0 && Number(value) <= max ? Number(value) : fallback;
   return {
     enabled: parseBool(block.enabled, false),
     mode: block.mode || 'advisory_only',
-    interval_days: Number(block.interval_days || 7),
+    interval_days: positive(block.interval_days, 7, 3650),
     source: block.source || 'github_releases',
     repository: OFFICIAL_UPDATE_REPOSITORY,
     current_version_source: block.current_version_source || 'package.json',
@@ -81,7 +90,7 @@ function getConfig() {
     allow_prerelease: parseBool(block.allow_prerelease, false),
     auto_update: parseBool(block.auto_update, false),
     telemetry: parseBool(block.telemetry, false),
-    timeout_ms: Number(block.timeout_ms || 5000)
+    timeout_ms: positive(block.timeout_ms, 5000, 60000)
   };
 }
 function removeUpdatesBlock(text) {
@@ -112,7 +121,9 @@ function writeConfig(updates) {
     `  timeout_ms: ${Number(updates.timeout_ms || 5000)}`,
     ''
   ].join('\n');
-  fs.writeFileSync(configPath, `${base.trimEnd()}\n\n${block}`, 'utf8');
+  assertSafeContainedPath(knowledgeRoot, configPath, { allowMissing: true });
+  if (fs.existsSync(configPath) && fs.lstatSync(configPath).nlink !== 1) throw new Error('Update configuration must not be hardlinked.');
+  writeFileAtomicContained(configPath, `${base.trimEnd()}\n\n${block}`, knowledgeRoot);
 }
 function setAutoCheckOnInspectorOpen(enabled) {
   const config = getConfig();
@@ -121,15 +132,27 @@ function setAutoCheckOnInspectorOpen(enabled) {
   return getConfig();
 }
 function semverParts(version) {
-  return String(version || '0.0.0').replace(/^v/i, '').split(/[+-]/)[0].split('.').map((p) => Number(p.replace(/\D/g, '') || 0));
+  if (typeof version !== 'string') throw new Error('Missing semantic release version.');
+  const match = /^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/i.exec(version);
+  if (!match || (match[4] || '').split('.').some((part) => /^0\d+$/.test(part))) throw new Error(`Invalid semantic release version: ${version}`);
+  return { core: match.slice(1, 4).map(BigInt), prerelease: match[4] ? match[4].split('.') : [] };
 }
 function compareVersions(a, b) {
   const aa = semverParts(a); const bb = semverParts(b);
-  const max = Math.max(aa.length, bb.length, 3);
-  for (let i = 0; i < max; i += 1) {
-    const av = aa[i] || 0; const bv = bb[i] || 0;
+  for (let i = 0; i < 3; i += 1) {
+    const av = aa.core[i]; const bv = bb.core[i];
     if (av > bv) return 1;
     if (av < bv) return -1;
+  }
+  if (!aa.prerelease.length || !bb.prerelease.length) return aa.prerelease.length ? -1 : bb.prerelease.length ? 1 : 0;
+  for (let i = 0; i < Math.max(aa.prerelease.length, bb.prerelease.length); i += 1) {
+    const av = aa.prerelease[i]; const bv = bb.prerelease[i];
+    if (av === bv) continue;
+    if (av === undefined || bv === undefined) return av === undefined ? -1 : 1;
+    const an = /^\d+$/.test(av); const bn = /^\d+$/.test(bv);
+    if (an && bn) return BigInt(av) > BigInt(bv) ? 1 : -1;
+    if (an !== bn) return an ? -1 : 1;
+    return av > bv ? 1 : -1;
   }
   return 0;
 }
@@ -149,7 +172,7 @@ async function fetchLatestRelease(config) {
       html_url: 'mock://latest-release',
       source: 'mock',
       prerelease: false,
-      assets: mockAssetUrl ? [{ name: `knowledge-v${process.env.KNOWLEDGE_UPDATE_MOCK_LATEST}.zip`, browser_download_url: mockAssetUrl }] : []
+      assets: mockAssetUrl ? [{ name: `knowledge-v${process.env.KNOWLEDGE_UPDATE_MOCK_LATEST.replace(/^v/i, '')}.zip`, browser_download_url: mockAssetUrl }] : []
     };
   }
   const controller = new AbortController();
@@ -170,12 +193,16 @@ async function fetchLatestRelease(config) {
     const release = Array.isArray(json)
       ? json.find((item) => item && !item.draft && (config.allow_prerelease || !item.prerelease))
       : json;
+    if (!release || typeof release !== 'object' || release.draft || (!config.allow_prerelease && release.prerelease)) {
+      throw new Error('Release metadata is missing or not eligible for the configured channel.');
+    }
+    semverParts(release.tag_name);
     return {
-      tag_name: release?.tag_name || release?.name || '',
+      tag_name: release.tag_name,
       html_url: release?.html_url || null,
       source: 'github_releases',
       prerelease: Boolean(release?.prerelease),
-      assets: Array.isArray(release?.assets) ? release.assets.map((asset) => ({
+      assets: Array.isArray(release?.assets) ? release.assets.filter((asset) => asset && typeof asset === 'object').map((asset) => ({
         name: asset.name,
         browser_download_url: asset.browser_download_url,
         size: asset.size,
@@ -192,7 +219,7 @@ function selectReleaseAsset(latest) {
   const version = String(latest?.tag_name || '').replace(/^v/i, '');
   if (!version) return null;
   const exactName = `knowledge-v${version}.zip`.toLowerCase();
-  return assets.find((asset) => String(asset.name || '').toLowerCase() === exactName) || null;
+  return assets.find((asset) => asset && typeof asset === 'object' && String(asset.name || '').toLowerCase() === exactName) || null;
 }
 
 function makeStatusBase(config) {
@@ -217,7 +244,7 @@ async function checkNow(config, reason = 'manual') {
     const latest = await fetchLatestRelease(config);
     const asset = selectReleaseAsset(latest);
     const latestVersion = String(latest.tag_name || '').replace(/^v/i, '') || null;
-    const cmp = latestVersion ? compareVersions(base.current_version, latestVersion) : 0;
+    const cmp = compareVersions(base.current_version, latestVersion);
     const status = {
       ...base,
       status: latestVersion && cmp < 0 ? 'update_available' : 'up_to_date',
@@ -307,5 +334,9 @@ module.exports = Object.assign(main, {
   OFFICIAL_UPDATE_REPOSITORY
 });
 if (require.main === module) {
-  main().catch((error) => { console.error(error.stack || error.message); process.exit(1); });
+  main().catch((error) => {
+    if (process.argv.includes('--json')) console.log(JSON.stringify({ status: 'failed', error: error.message }, null, 2));
+    else console.error(error.message);
+    process.exitCode = 1;
+  });
 }

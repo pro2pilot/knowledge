@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+'use strict';
+
+const { spawnSync } = require('child_process');
+
+const commands = [
+  ['inspector-launcher', ['tools/self-test-inspector-launcher.js']],
+  ['inspector-actions', ['tools/self-test-inspector-actions.js']],
+  ['inspector-security', ['tools/self-test-inspector-security.js']],
+  ['inspector-ux-structure', ['tools/self-test-inspector-ux-structure.js']],
+  ['export-pro-snapshot', ['tools/self-test-export-pro-snapshot.js']],
+  ['pro-license-gates', ['tools/self-test-pro-license-gates.js']],
+  ['pro-extension-verification', ['tools/self-test-pro-extension-verification.js']],
+  ['package-release', ['tools/package-release.js', '--json']],
+  ['validate-release-artifact', ['tools/validate-release-artifact.js', 'dist/knowledge-v3.2.0.zip', '--json']]
+];
+
+function parseArgs(argv) {
+  return { json: argv.includes('--json') };
+}
+
+const flags = parseArgs(process.argv.slice(2));
+const results = commands.map(([label, args]) => {
+  const started = Date.now();
+  const result = spawnSync(process.execPath, args, { encoding: 'utf8', windowsHide: true });
+  return {
+    label,
+    command: ['node', ...args].join(' '),
+    status: result.status === 0 ? 'pass' : 'fail',
+    exit_code: result.status,
+    duration_ms: Date.now() - started,
+    stdout_tail: String(result.stdout || '').slice(-1200),
+    stderr_tail: String(result.stderr || '').slice(-1200)
+  };
+});
+const failed = results.filter((item) => item.status !== 'pass');
+const output = {
+  schema_version: 'knowledge-release-gate.v1',
+  generated_at: new Date().toISOString(),
+  status: failed.length ? 'fail' : 'pass',
+  results
+};
+if (flags.json) console.log(JSON.stringify(output, null, 2));
+else console.log(`release gate ${output.status}`);
+if (failed.length) process.exit(1);

@@ -133,22 +133,43 @@ function readJson(filePath, fallback) {
 }
 
 function loadEntitlements(knowledgeRoot, env = process.env) {
-  const entitlementsPath = path.join(knowledgeRoot, 'extensions', 'entitlements.json');
-  const licensePath = path.join(knowledgeRoot, 'extensions', 'license.json');
-  const data = readJson(entitlementsPath, readJson(licensePath, {}));
+  const currentRoot = path.join(knowledgeRoot, 'extensions');
+  const legacyRoot = path.join(knowledgeRoot, 'pro');
+  const stateRoot = ['entitlements.json', 'license.json'].some((file) => fs.existsSync(path.join(currentRoot, file)))
+    ? currentRoot : legacyRoot;
+  const record = (name) => {
+    const file = path.join(stateRoot, name);
+    if (!fs.existsSync(file)) return { value: {}, valid: true };
+    const value = readJson(file, null);
+    return { value: value && typeof value === 'object' && !Array.isArray(value) ? value : {},
+      valid: Boolean(value && typeof value === 'object' && !Array.isArray(value)) };
+  };
+  const license = record('license.json');
+  const grant = record('entitlements.json');
+  const data = { ...license.value, ...grant.value };
   const devMode = env.KNOWLEDGE_EXTENSION_DEV_ENTITLEMENT === '1';
+  const declaredTimes = [data.expires_at, data.offline_grace_until].filter((value) => value !== undefined && value !== null);
+  const validTimes = declaredTimes.every((value) => typeof value === 'string' && Number.isFinite(Date.parse(value)));
+  const deadline = declaredTimes.length && validTimes ? Math.max(...declaredTimes.map(Date.parse)) : null;
+  const localActive = license.valid && grant.valid && validTimes && (deadline === null || deadline > Date.now()) &&
+    data.active !== false && !['inactive', 'expired', 'revoked', 'deactivated'].includes(data.status) &&
+    (data.active === true || data.status === 'active' || (typeof data.plan === 'string' && data.plan !== '' && data.plan !== 'free'));
+  const localEntitlements = localActive && Array.isArray(data.entitlements) ? data.entitlements.filter((item) => typeof item === 'string' && item.length > 0) : [];
   const entitlements = Array.from(new Set([
-    ...(Array.isArray(data.entitlements) ? data.entitlements : []),
+    ...localEntitlements,
+    ...(localEntitlements.includes('pro_base') ? ['extension_base'] : []),
     ...(devMode ? ['extension_base', 'repair_planner', 'policy_packs'] : [])
   ]));
   return {
-    active: Boolean(devMode || data.active || data.plan),
+    active: Boolean(devMode || localActive),
     source: devMode ? 'dev_env' : data.source || (data.plan ? 'local_license' : 'free'),
     plan: data.plan || (devMode ? 'dev_extension' : 'free'),
     dev_mode: devMode,
     entitlements,
     expires_at: data.expires_at || null,
-    offline_grace_until: data.offline_grace_until || null
+    offline_grace_until: data.offline_grace_until || null,
+    ...(license.valid && grant.valid && validTimes ? {} : { reason: 'invalid_entitlement_metadata' }),
+    ...(deadline !== null && deadline <= Date.now() ? { reason: 'entitlement_expired' } : {})
   };
 }
 
