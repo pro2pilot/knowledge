@@ -260,11 +260,13 @@ function liveMem0TimeoutMs(flags, payload) {
   return numericTimeout(flags.timeoutMs, fallback);
 }
 
-function liveImportOptions(flags, payload) {
+function liveImportOptions(flags, payload, context) {
   return {
     flags,
     timeoutMs: numericTimeout(pythonTimeoutFlag(flags), liveMem0TimeoutMs(flags, payload)),
-    env: process.env
+    // Importing Mem0 writes its telemetry config; use the same isolated
+    // runtime and UTF-8 environment as the subsequent live operation.
+    env: liveProcessEnv(flags, context)
   };
 }
 
@@ -592,7 +594,7 @@ function runLiveMem0(flags, payload, context) {
     });
   }
   const selectedPython = discovery.selected.executable || discovery.selected.command;
-  const moduleCheck = checkPythonModule(selectedPython, 'mem0', liveImportOptions(flags, payload));
+  const moduleCheck = checkPythonModule(selectedPython, 'mem0', liveImportOptions(flags, payload, context));
   if (!moduleCheck.ok) {
     const diagnosticCode = normalizeDiagnosticCode(moduleCheck.diagnostic_code === 'mem0_package_missing' ? 'mem0_package_missing' : moduleCheck.diagnostic_code);
     return redactSecrets({

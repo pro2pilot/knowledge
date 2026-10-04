@@ -1815,8 +1815,9 @@ function runMem0LiveHealth(context, flags, config) {
     env: {
       ...process.env,
       MEM0_TELEMETRY: process.env.MEM0_TELEMETRY || 'False',
-      MEM0_TELEMETRY_SAMPLE_RATE: process.env.MEM0_TELEMETRY_SAMPLE_RATE || '0',
-      MEM0_DIR: process.env.MEM0_DIR || path.dirname(config.path)
+      // memory-mem0 derives its runtime directory from the selected storage.
+      // Never make a package import write into the canonical config folder.
+      MEM0_TELEMETRY_SAMPLE_RATE: process.env.MEM0_TELEMETRY_SAMPLE_RATE || '0'
     },
     encoding: 'utf8',
     windowsHide: true,
