@@ -192,7 +192,7 @@ function watchDirectoryRecursiveFallback(root) {
         recordEvent(abs);
         try {
           if (fs.existsSync(abs) && fs.lstatSync(abs).isDirectory() && !shouldIgnore(path.relative(repoRoot, abs))) watchDirectoryRecursiveFallback(abs);
-        } catch (error) { failWatcher(error); }
+        } catch (error) { if (error.code !== 'ENOENT') failWatcher(error); }
       });
       watchers.push(watcher);
       watchedDirectories.add(current);
@@ -211,16 +211,10 @@ function watchDirectoryRecursiveFallback(root) {
 function watchRoot(root) {
   const abs = path.join(repoRoot, root);
   if (!fs.existsSync(abs)) return;
-  try {
-    const watcher = fs.watch(abs, { recursive: true }, (_eventType, filename) => {
-      if (!filename) return;
-      recordEvent(path.join(abs, filename.toString()));
-    });
-    watchers.push(watcher);
-    watcher.on('error', failWatcher);
-  } catch {
-    watchDirectoryRecursiveFallback(abs);
-  }
+  // Native recursive watchers traverse excluded runtime trees before our
+  // event filter runs. Transient lock releases can make that traversal fail.
+  // Subscribe only to selected source directories on every platform.
+  watchDirectoryRecursiveFallback(abs);
 }
 
 function shutdown() {

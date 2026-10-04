@@ -84,11 +84,28 @@ async function main() {
     const childPid = path.join(state, 'active-sync-pid.json');
     const childExit = path.join(state, 'active-sync-exited.json');
     write(sync, `const fs=require('fs');fs.writeFileSync(${JSON.stringify(childPid)},JSON.stringify({pid:process.pid}));process.on('SIGTERM',()=>{fs.writeFileSync(${JSON.stringify(childExit)},JSON.stringify({terminated:true}));process.exit(0)});setInterval(()=>{},1000);\n`);
+    const subscriptionTrace = path.join(state, 'watch-subscriptions.jsonl');
+    const watchProbe = path.join(root, 'watch-subscriptions-preload.js');
+    write(watchProbe, `const fs=require('fs');const original=fs.watch;fs.watch=function(file,options,...rest){fs.appendFileSync(${JSON.stringify(subscriptionTrace)},JSON.stringify({file:String(file),recursive:options?.recursive===true})+'\\n');return original.call(this,file,options,...rest)};\n`);
     let diagnostics = '';
-    child = spawn(process.execPath, [path.join(installed, 'tools/watch-maintenance.js')], { cwd: repo, env: envFor(repo, installed, state), stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+    child = spawn(process.execPath, ['--require', watchProbe, path.join(installed, 'tools/watch-maintenance.js')], { cwd: repo, env: envFor(repo, installed, state), stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
     child.stderr.on('data', chunk => { diagnostics += chunk; });
     const statusPath = path.join(state, 'maintenance/automation_status.json');
     await ready(child, statusPath, () => diagnostics);
+    for (let index = 0; index < 20; index += 1) {
+      const transient = path.join(state, 'locks/v1/.release', `synthetic-release-${index}.lock`);
+      fs.mkdirSync(transient, { recursive: true });
+      fs.writeFileSync(path.join(transient, 'owner.json'), '{}');
+      fs.rmSync(transient, { recursive: true });
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    check('watch subscriptions exclude transient runtime trees before native traversal', () => {
+      const subscriptions = fs.readFileSync(subscriptionTrace, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      assert(subscriptions.length > 0);
+      assert(subscriptions.every(row => !row.recursive));
+      assert(subscriptions.every(row => !path.resolve(row.file).startsWith(path.resolve(state) + path.sep)));
+      assert.equal(child.exitCode, null, diagnostics);
+    });
     // The runtime directory sits inside the target. Its own heartbeat writes
     // must not recursively become source changes.
     await new Promise(resolve => setTimeout(resolve, 350));

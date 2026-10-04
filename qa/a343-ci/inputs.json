@@ -1,6 +1,6 @@
 {
   "schema_version": "knowledge-a343-ci-inputs.v1",
-  "candidate_sha256": "e575eb0df3ca3f7906261e755623611f131a6feac9601da399c4833d20c6276d",
+  "candidate_sha256": "551012c342bbe56de7df1f0b19984e17bc5013277e538ab8ef7a2df7d635e5e8",
   "files": [
     {
       "path": ".gitattributes",
@@ -10,7 +10,7 @@
     {
       "path": "evidence.py",
       "bytes": 5136,
-      "sha256": "3b2e1df5d45e3f5a02dc9df514c348b241c5ae8a659d4205537305d27d3a4d93"
+      "sha256": "d83d64e5c38e84cef7a4c0959d5df26f021ea8c7707b59abd8ed77d0325eb220"
     },
     {
       "path": "knowledge-v3.2.11.zip",
@@ -19,8 +19,8 @@
     },
     {
       "path": "knowledge-v3.4.3.zip",
-      "bytes": 958324,
-      "sha256": "e575eb0df3ca3f7906261e755623611f131a6feac9601da399c4833d20c6276d"
+      "bytes": 958994,
+      "sha256": "551012c342bbe56de7df1f0b19984e17bc5013277e538ab8ef7a2df7d635e5e8"
     },
     {
       "path": "README.md",
@@ -75,7 +75,7 @@
     {
       "path": "run-matrix-cell.js",
       "bytes": 37039,
-      "sha256": "f25edccffb29ae4be3ebfbfc131efba949d9d75d0fe24fec30898f9f52342ffb"
+      "sha256": "df61bba946c830565b3993eab511a10066165147dfb7051f53345e11dd51d25d"
     },
     {
       "path": "run_candidate.py",
