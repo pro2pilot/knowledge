@@ -10,7 +10,7 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 const RUNTIMES = ['codex','claude','opencode','openclaw','hermes','gemini','copilot','devin','windsurf','continue','roo','aider'];
-const PINNED_CANDIDATE_SHA256 = '4e9dc63655ede9fd8a492cb64b6a7577029a8ae431698df2a5d70c3441abfe70';
+const PINNED_CANDIDATE_SHA256 = '0cc84224dad609137e59d70df5f58a95a37889bbc720b5da7543d5e56679ce4c';
 const PINNED_BASELINE_SHA256 = 'b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79';
 const EXPECTED_SELF_TESTS = 44;
 const EXPECTED_SYNTAX_CHECKS = 144;

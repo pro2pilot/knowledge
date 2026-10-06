@@ -43,7 +43,7 @@ jobs:
       - name: Exercise installed flows, integrations, Inspector and upgrade
         shell: bash
         run: |
-          node qa/a343-ci/run-matrix-cell.js --candidate "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.4.3.zip" --replay "$GITHUB_WORKSPACE/qa/a343-ci/replay" --replay-results "$RUNNER_TEMP/a343-${{ matrix.slug }}/replay/replay-results.json" --audit-runner "$GITHUB_WORKSPACE/qa/a343-ci/run_candidate.py" --baseline "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.2.11.zip" --out "$RUNNER_TEMP/a343-${{ matrix.slug }}/cli" --os '${{ matrix.os }}' --node-major '${{ matrix.major }}' --upgrade='${{ matrix.upgrade }}' --offline-auto-updates --expected-candidate 4e9dc63655ede9fd8a492cb64b6a7577029a8ae431698df2a5d70c3441abfe70 --expected-baseline b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79
+          node qa/a343-ci/run-matrix-cell.js --candidate "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.4.3.zip" --replay "$GITHUB_WORKSPACE/qa/a343-ci/replay" --replay-results "$RUNNER_TEMP/a343-${{ matrix.slug }}/replay/replay-results.json" --audit-runner "$GITHUB_WORKSPACE/qa/a343-ci/run_candidate.py" --baseline "$GITHUB_WORKSPACE/qa/a343-ci/knowledge-v3.2.11.zip" --out "$RUNNER_TEMP/a343-${{ matrix.slug }}/cli" --os '${{ matrix.os }}' --node-major '${{ matrix.major }}' --upgrade='${{ matrix.upgrade }}' --offline-auto-updates --expected-candidate 0cc84224dad609137e59d70df5f58a95a37889bbc720b5da7543d5e56679ce4c --expected-baseline b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79
       - name: Collect hash-bound raw evidence
         if: always()
         shell: bash

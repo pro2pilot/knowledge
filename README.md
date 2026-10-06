@@ -44,9 +44,9 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with the active agent runtime when needed. Install only the
-active runtime during first setup; other agents can connect later by running
-their own `--runtime <agent>` command.
+Replace `codex` with a supported runtime from the Quick Start table when needed.
+Install only the active runtime during first setup. Unlisted agents should use
+the [general connection recipe](Quick-Start.md#connect-an-agent-without-a-dedicated-recipe).
 
 </details>
 
@@ -149,11 +149,12 @@ node .knowledge/inspector.js
 
 Replace `codex` with `claude`, `opencode`, `openclaw`, `hermes`, `gemini`, `copilot`, `devin`, `windsurf`, `continue`, `roo`, or `aider` when that is the active agent. Do not install every integration on first setup.
 
-To connect another agent later, keep the existing `.knowledge/` folder and run
-only that agent's runtime bridge:
+To connect another supported agent, keep the existing `.knowledge/` folder and
+use its runtime identifier from Quick Start. Unlisted agents should use the
+general recipe linked above:
 
 ```bash
-node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js doctor
 ```
 

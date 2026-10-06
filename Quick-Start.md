@@ -58,9 +58,9 @@ Install only the repo-local integration for the agent that is currently operatin
 
 Codex, OpenClaw, Hermes, and Devin share one runtime-neutral managed block in `AGENTS.md`; connecting another one updates that same block and preserves user-authored text. Devin and Windsurf also use separate vendor paths (`.devin/rules/knowledge.rules` and `.windsurf/rules/knowledge.md`) and never overwrite each other. Devin uses `AGENTS.md` as the documented primary bridge; the supplemental `.rules` bridge remains subject to a live Devin discovery canary.
 
-Do not install every integration during first setup. Other agents can join later
-by running their own `--runtime <agent>` command against the already installed
-`.knowledge/` folder.
+Do not install every integration during first setup. Agents listed in the table
+can join later with their supported runtime identifier against the existing
+`.knowledge/` folder. Unlisted agents should use the general recipe below.
 
 Power users can install every supported integration only when a human explicitly
 requests it:
@@ -126,12 +126,13 @@ Suggested persistent project bridge:
 ## Connect another agent later
 
 If `.knowledge/` is already installed and a different agent joins this same
-repository, do not reinstall the system and do not run `--all`. The new agent
-only installs its own repo-local bridge:
+repository, keep the installed system. For an agent listed in the table, install
+its supported repo-local bridge. For an unlisted agent, use the general recipe
+above instead of substituting its name into the runtime option:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js doctor
 ```
 
@@ -148,7 +149,7 @@ intentionally not shipped yet. Run first-time setup first:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
@@ -206,8 +207,10 @@ node .knowledge/tools/repair-on-touch.js receipt --request=<receipt.json>
 node .knowledge/tools/repair-on-touch.js apply --receipt=KVR-<sha256>
 ```
 
-Never assert that a test ran, close a sibling finding, edit source merely to
-raise health, or bypass confirmation for security/critical-path findings.
+Never invent a test execution or manually close a sibling finding. Native
+verification may close exact covered related records in the same committed
+transaction; uncovered and unrelated records stay open. Do not edit source
+merely to raise health or bypass security/critical-path review requirements.
 Unrelated debt remains deferred. Report the primary task first and knowledge
 maintenance separately. See `docs/repair-on-touch.md`.
 
@@ -251,8 +254,10 @@ or provider-token effects from health scores or local estimates, and do not
 approve or publish on the tester's behalf. Approval and GitHub publication are
 two separate explicit actions. See `docs/field-report.md`.
 
-If this is an existing configured `.knowledge` installation, read the routing
-bundle first. If it is missing or stale, choose the correct setup path below.
+For an existing configured installation, the global routing bundle is an
+orientation aid. Begin meaningful work with `agent-task begin` and read its
+returned task first-read. If generated state is missing or stale, choose the
+appropriate setup or refresh path below.
 
 ## Setup for a new project
 
@@ -260,12 +265,12 @@ From the repository root:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Then read:
+For setup and health orientation, inspect:
 
 ```txt
 .knowledge/maintenance/routing_bundle.json

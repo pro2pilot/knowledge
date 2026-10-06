@@ -53,19 +53,22 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with the active runtime when needed.
+Replace `codex` with a supported runtime from the Quick Start table when needed.
+Unlisted agents should follow the [general connection recipe](Quick-Start.md#connect-an-agent-without-a-dedicated-recipe).
 
-Other agents can connect later by running their own `--runtime <agent>` command
+Other supported agents can connect later using their listed runtime identifier
 against the existing `.knowledge/` installation. The `--all --confirm-all` mode
 is only for deliberate multi-integration setup, not first install.
 
 ## Connect Another Agent Later
 
-From the same target repository root:
+For a supported agent from the Quick Start table, use its runtime identifier
+from the same target repository root. Unlisted agents should use the general
+recipe linked above:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js doctor
 ```
 
