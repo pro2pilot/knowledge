@@ -1,11 +1,9 @@
-# Knowledge 3.4.3 audit candidate
+# Knowledge 3.4.3 audit background
 
-This is a local audited derivative of the supplied Knowledge 3.4.3 install
-artifact. The core version remains `3.4.3`; `package.json` identifies the
-derivative as `knowledge_release.channel: release_candidate`, with label `RC2` and
-canonical asset name `knowledge-v3.4.3.zip`. It is not an official stable release.
-The accompanying audit handoff contains the exact input/output hashes, source
-diff, scenario matrix, complete execution logs and final verification results.
+This document records the audit corrections incorporated into Knowledge 3.4.3.
+The audit began with an install artifact and its handoff, then the fixes were
+integrated into the maintainer source before release certification. This is a
+technical overview; release evidence is tied to the exact published artifact.
 
 ## Doctor and trust recovery
 
@@ -78,18 +76,18 @@ restricted execution environment. In the audit environment, invoking Node by
 its absolute executable path was necessary for physical runtime hash evidence.
 That environment adjustment is recorded separately from product changes.
 
-## Remaining release responsibilities
+## Runtime health and release certification
 
-The supplied install artifact intentionally omits the maintainer source checkout,
-release policy implementation, canonical release gate, packaging validator and
-conformance tooling. A local runtime test pass, Doctor score, safe repair receipt
-or `flow release` result does not replace those checks. The final audit report
-states which runtime tests and real local scenarios ran and which external or
-platform checks remain outstanding.
+Install artifacts intentionally omit the maintainer source checkout, release
+policy implementation, canonical release gate, packaging validator and
+conformance tooling. A runtime test pass, Doctor score, safe repair receipt or
+`flow release` result does not replace maintainer release certification.
 
-Before an official release, integrate this derivative into the corresponding
-maintainer source, run its canonical release/conformance checks, repeat the
-documented Windows/PowerShell and external-provider checks as appropriate, and
-build and verify the official release artifact from that source. Do not copy
-fixture state, synthetic credentials, locks or audit runtime evidence into an
-installed project's curated data.
+The release checks distinguish Windows verification from the Linux/macOS
+runtime matrix. Live Mem0 evidence comes from Windows; the runtime matrix does
+not claim live provider coverage on every platform. External memory remains
+optional and advisory.
+
+Do not copy fixture state, synthetic credentials, locks or audit runtime evidence
+into an installed project's curated data. See the release notes and upgrade
+guide for the changes that apply to existing installations.

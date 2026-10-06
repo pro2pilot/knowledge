@@ -118,8 +118,8 @@
   ],
   "license": "Apache-2.0",
   "knowledge_release": {
-    "channel": "release_candidate",
-    "candidate_label": "RC2",
-    "candidate_name": "knowledge-v3.4.3.zip"
+    "channel": "stable",
+    "candidate_label": null,
+    "candidate_name": null
   }
 }

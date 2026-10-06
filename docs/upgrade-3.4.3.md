@@ -1,9 +1,9 @@
 # 3.4.3 upgrade and verification notes
 
-This candidate starts from the unreleased 3.4.1 source and preserves its
-documentation corrections. Version 3.4.2 was already used by local experimental
-artifacts; 3.4.3 avoids reusing that artifact identity. No release is certified by
-the version change or by the focused tests below.
+Knowledge 3.4.3 includes the trust recovery and runtime fixes developed and
+audited since 3.4.0. Upgrade existing installations through the system updater
+so local configuration and evidence retain their normal protection. A version
+number or focused runtime test does not certify a release by itself.
 
 ## Recover covered historical rechecks
 

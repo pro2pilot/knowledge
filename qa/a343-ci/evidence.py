@@ -4,7 +4,7 @@ import argparse, hashlib, json, os, shutil, sys
 from pathlib import Path
 
 HERE=Path(__file__).resolve().parent
-SHA='670f656d48670d3525bb24565734b6a81807f8b134a66993f7d9fb57368bf478'
+SHA='42554f5f93fd0aa08098bf6547768876a185f4ae71b1c8f3d44fb9520699d499'
 BASE='b7f4e912e8bcffff1e2ffb35756d68850a980b6b841306ac7a51c9d88fc59d79'
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def save(p,v): p.parent.mkdir(parents=True,exist_ok=True); p.write_text(json.dumps(v,indent=2)+'\n',encoding='utf-8')

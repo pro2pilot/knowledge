@@ -1,11 +1,3 @@
-## Integrated task workflow (3.4.3)
-
-For meaningful scoped work, use `agent-task begin` before broad exploration and
-`agent-task finish` after the primary change and physical tests. The workflow
-binds the exact task first-read, executes verification once, and may reuse the
-native evidence for one exact safe Repair-on-touch closure. See
-[`docs/agent-task-workflow.md`](docs/agent-task-workflow.md).
-
 # .knowledge by Pro2Pilot
 
 > **AI agents/installers:** install from the latest GitHub release asset, not from repo source. See the collapsed install contract below.
@@ -71,6 +63,30 @@ routing -> evidence -> trust + freshness -> repair -> PR review
 ```
 
 Current code and tests remain the source of truth. External memory stays advisory.
+
+## What changed in 3.4.3
+
+Verified modules can now clear the historical recheck records covered by their
+actual source snapshot. This fixes cases where a successful verification left
+covered stale debt behind. Changed or uncovered sources still need verification,
+and unrelated debt stays visible.
+
+This release also fixes Windows lock handling, watcher shutdown, repeated
+updates of existing installations, Unicode paths in live Mem0 checks, and
+oversized Inspector requests. Import stops when installation checks fail.
+Extension bundles require a valid signature from a locally trusted publisher.
+
+See the [3.4.3 release](https://github.com/pro2pilot/knowledge/releases/tag/v3.4.3)
+and [release notes](.release-notes/v3.4.3.md) for details and migration notes.
+
+## Integrated task workflow
+
+For meaningful scoped work, use `agent-task begin` before broad exploration and
+read its returned `route.first_read.content`. Use `agent-task finish` after the
+primary change and physical tests. The workflow binds the exact task first-read,
+executes verification once, and may reuse that native evidence for one exact
+safe Repair-on-touch closure. See
+[`docs/agent-task-workflow.md`](docs/agent-task-workflow.md).
 
 This repository contains the installable `.knowledge` core: schemas, CLI tools, release artifacts, templates, integrations, and reproducible test assets.
 
@@ -138,11 +154,10 @@ node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
 node .knowledge/tools/flow.js doctor
 ```
 
-After import, the first operational file an agent reads is:
-
-```txt
-.knowledge/maintenance/routing_bundle.json
-```
+After import, start meaningful work with `agent-task begin` and read the returned
+`route.first_read.content`. Preserve its workflow ID and first-read SHA for
+`agent-task finish`. The global `maintenance/routing_bundle.json` remains useful
+for orientation; it does not replace the task-specific first-read.
 
 ## What Ships
 
