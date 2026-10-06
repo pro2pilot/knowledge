@@ -27,7 +27,7 @@ const flows = {
   import: ['install-check.js --json', 'ingest-existing-project.js --merge', 'sync-tracked.js --scan --discover', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'build-visual-inspector.js', 'scan-secrets.js', 'doctor.js'],
   // Task snapshots must be last among routing-input producers. Consumers then
   // observe the finalized route, not an intermediate release state.
-  release: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'scan-secrets.js', 'doctor.js', 'task-routing.js refresh --all --quiet', 'build-visual-inspector.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
+  release: ['sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js', 'build-routing-bundle.js', 'build-search-index.js', 'scan-secrets.js', 'doctor.js', 'task-routing.js refresh --all --json', 'build-visual-inspector.js', 'collect-metrics.js', 'generate-pr-summary.js', 'render-graph-execution.js', 'evaluation-harness.js']
 };
 
 const STEP_LABELS = {
@@ -126,11 +126,14 @@ function runOne(cmd, context, hooks = {}) {
     ? `Child exited 1 without stdout, stderr, signal, or spawn error after ${attempts} attempts.`
     : (res.stderr || '').toString();
   let parsed = null;
-  if (stdout.trim()) {
-    try { parsed = JSON.parse(stdout.trim().replace(/^\uFEFF/, '')); } catch { parsed = null; }
+  let semantic;
+  try {
+    parsed = JSON.parse(stdout.trim().replace(/^\uFEFF/, ''));
+    semantic = inspectSemanticJson(parsed);
+  } catch (error) {
+    semantic = { ok: false, errors: [`invalid_step_json: ${error.message}`] };
   }
-  const semantic = parsed ? inspectSemanticJson(parsed) : { ok: true, errors: [] };
-  const success = res.status === 0 && semantic.ok;
+  const success = res.status === 0 && !res.error && !res.signal && semantic.ok;
   return {
     step: STEP_LABELS[file] || file.replace(/\.js$/, ''),
     command: `${file}${args.length ? ' ' + args.join(' ') : ''}`,
@@ -139,7 +142,12 @@ function runOne(cmd, context, hooks = {}) {
     status: success ? 'pass' : 'fail',
     json_status: parsed?.status || null,
     semantic_errors: semantic.errors,
-    failure_code: persistentEmptyExit ? 'child_empty_exit_persistent' : null,
+    failure_code: persistentEmptyExit ? 'child_empty_exit_persistent'
+      : res.error ? 'child_spawn_error'
+        : res.signal ? 'child_signal'
+          : !semantic.ok ? 'child_semantic_failure' : null,
+    spawn_error: res.error ? { code: res.error.code || null, message: res.error.message } : null,
+    signal: res.signal || null,
     attempts,
     empty_exit_retries: emptyExitRetries,
     duration_ms,
@@ -408,6 +416,7 @@ function runFlow(options, hooks = {}) {
     ? hooks.stepsForFlow(name, context)
     : stepsForFlow(name, context);
   const executeStep = hooks.runOne || runOne;
+  let importPreflight = null;
   for (const cmd of commands) {
     const result = executeStep(cmd, context);
     results.push(result);
@@ -417,6 +426,15 @@ function runFlow(options, hooks = {}) {
       const detail = detailFor(result);
       const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n);
       console.log(`[ ${status} ] ${pad(result.step, 11)} ${String(result.duration_ms).padStart(5, ' ')} ms${detail ? '  /  ' + detail : ''}`);
+    }
+    if (name === 'import' && cmd.split(/\s+/)[0] === 'install-check.js' && !result.success) {
+      importPreflight = {
+        status: 'blocked',
+        failure_code: 'install_check_failed',
+        issue_codes: (Array.isArray(result.parsed?.issues) ? result.parsed.issues : []).map(issue => issue.code).filter(Boolean),
+        skipped_commands: commands.slice(results.length)
+      };
+      break;
     }
   }
   const totalMs = Date.now() - startedMs;
@@ -470,7 +488,7 @@ function runFlow(options, hooks = {}) {
     flowLogError = serializeFlowLogError(error);
   }
   const overall = checksOverall === 'ok' && flowLogStatus === 'written' ? 'ok' : 'failed';
-  const onboarding = onboardingFollowUp(context, name);
+  const onboarding = overall === 'ok' ? onboardingFollowUp(context, name) : null;
   if (overall === 'ok' && onboarding?.required && !json && !quiet) {
     onboarding.launch = launchInspectorForOnboarding(context);
   }
@@ -498,7 +516,8 @@ function runFlow(options, hooks = {}) {
     flow_log_sha256: flowLogSha256,
     flow_log_status: flowLogStatus,
     flow_log_error: flowLogError,
-    failure_code: flowLogStatus === 'failed' ? 'flow_log_write_failed' : null,
+    failure_code: flowLogStatus === 'failed' ? 'flow_log_write_failed' : importPreflight?.failure_code || null,
+    import_preflight: importPreflight,
     onboarding_follow_up: onboarding,
     steps: results.map((r) => ({
       step: r.step,

@@ -268,6 +268,11 @@ the effective mode but cannot raise it past the configured safety cap.
 
 ## Final task summary
 
+Since 3.4.3, a selected module verification can also resolve covered historical
+tracked-file rechecks in that module. This is a source-bound related closure,
+not a second test execution or permission to close unrelated debt. See
+[recovery and migration details](upgrade-3.4.3.md).
+
 Keep the main result and optional maintenance visibly separate:
 
 ```text

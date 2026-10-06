@@ -7,6 +7,8 @@ const STATUS_RANK = Object.freeze({
 });
 
 function statusValues(wikiLint = {}, wikiGraph = {}) {
+  wikiLint = wikiLint && typeof wikiLint === 'object' && !Array.isArray(wikiLint) ? wikiLint : {};
+  wikiGraph = wikiGraph && typeof wikiGraph === 'object' && !Array.isArray(wikiGraph) ? wikiGraph : {};
   return [
     wikiLint.status,
     wikiLint.structural_status,
@@ -20,6 +22,8 @@ function statusValues(wikiLint = {}, wikiGraph = {}) {
 }
 
 function canonicalWikiStatus(wikiLint = {}, wikiGraph = {}) {
+  wikiLint = wikiLint && typeof wikiLint === 'object' && !Array.isArray(wikiLint) ? wikiLint : {};
+  wikiGraph = wikiGraph && typeof wikiGraph === 'object' && !Array.isArray(wikiGraph) ? wikiGraph : {};
   const brokenEdges = [
     wikiGraph.broken_edge_count,
     wikiGraph.summary?.broken_edges,
@@ -37,6 +41,10 @@ function canonicalWikiStatus(wikiLint = {}, wikiGraph = {}) {
       ? value
       : 'usable_with_warnings';
     if (!selected || STATUS_RANK[normalized] > STATUS_RANK[selected]) selected = normalized;
+  }
+
+  if (selected === 'healthy' && (!statusValues(wikiLint, {}).length || !statusValues({}, wikiGraph).length)) {
+    return 'usable_with_warnings';
   }
 
   // Missing or unknown machine state must not silently downgrade routing or

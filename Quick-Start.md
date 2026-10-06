@@ -58,9 +58,9 @@ Install only the repo-local integration for the agent that is currently operatin
 
 Codex, OpenClaw, Hermes, and Devin share one runtime-neutral managed block in `AGENTS.md`; connecting another one updates that same block and preserves user-authored text. Devin and Windsurf also use separate vendor paths (`.devin/rules/knowledge.rules` and `.windsurf/rules/knowledge.md`) and never overwrite each other. Devin uses `AGENTS.md` as the documented primary bridge; the supplemental `.rules` bridge remains subject to a live Devin discovery canary.
 
-Do not install every integration during first setup. Other agents can join later
-by running their own `--runtime <agent>` command against the already installed
-`.knowledge/` folder.
+Do not install every integration during first setup. Agents listed in the table
+can join later with their supported runtime identifier against the existing
+`.knowledge/` folder. Unlisted agents should use the general recipe below.
 
 Power users can install every supported integration only when a human explicitly
 requests it:
@@ -69,26 +69,78 @@ requests it:
 node .knowledge/tools/install-agent-integrations.js --all --confirm-all
 ```
 
+## Connect an agent without a dedicated recipe
+
+An agent does not need a dedicated adapter to use the shared CLI workflow.
+Follow this recipe when its name is absent from the table above.
+
+1. Locate the project root and its installed `.knowledge/`. Run
+   `node .knowledge/tools/install-check.js --json` there. Use the uploaded GitHub
+   Release asset for a fresh install; keep an existing installation and its
+   curated knowledge when connecting another agent.
+2. Check the agent's documented project-instruction convention. If it reads
+   `AGENTS.md`, reuse the existing shared DOT-KNOWLEDGE managed block. If that
+   block is absent, the supported `--runtime agents` alias installs the shared
+   `AGENTS.md` bridge and `.agents/skills/`:
+
+   ```bash
+   node .knowledge/tools/install-agent-integrations.js --runtime agents
+   ```
+
+   This alias uses the existing Codex bridge; it does not declare a new native
+   adapter or prove that an unlisted agent discovers skills automatically.
+   Read `AGENTS.md` explicitly and use skills only if the agent supports them.
+3. If the agent uses another documented instruction file, add a small project
+   bridge there that tells it to read this Quick Start, follow
+   `agent-integrations/_shared/trust-routing.md` and
+   `agent-integrations/_shared/final-report-contract.md`, and execute the CLI
+   from the project root. Preserve existing instructions and other agents'
+   bridges. Do not copy the unresolved `{{...}}` templates or invent a
+   `--runtime <unknown-name>` option. If no persistent convention is documented,
+   put the same bridge in the agent's project instructions or initial prompt
+   and explicitly read these files each session.
+4. For a fresh installation, run `node .knowledge/tools/flow.js import` once
+   before relying on generated state. For an existing installation, run
+   `node .knowledge/tools/flow.js doctor`. External memory is optional; it is
+   not required for connecting an agent.
+5. Start the first real task with `agent-task begin` and an explicit task and
+   scope. Read its returned `route.first_read.content`, preserve the workflow
+   ID and SHA, inspect the selected source/tests, and use `agent-task finish`
+   with actual changed/source files and physical test argv. See
+   [`docs/agent-task-workflow.md`](docs/agent-task-workflow.md) for the finish
+   request. A successful install check alone does not verify engineering work.
+
+For parallel agents, give each a stable `KNOWLEDGE_AGENT_ID` and a separate
+worktree or branch. Confirm which project instruction file the agent actually
+read, record the native task result, and keep Doctor, Task Readiness and deferred
+debt separate from the engineering outcome.
+
+Suggested persistent project bridge:
+
+> Read `.knowledge/Quick-Start.md` and the shared trust-routing and final-report
+> contracts before meaningful work. Current code and tests are the source of
+> truth. Begin with `agent-task begin`, read the exact returned first-read and
+> finish with real source/test evidence. Reuse the existing shared `AGENTS.md`
+> block and preserve other agents' instructions.
+
 ## Connect another agent later
 
 If `.knowledge/` is already installed and a different agent joins this same
-repository, do not reinstall the system and do not run `--all`. The new agent
-only installs its own repo-local bridge:
+repository, keep the installed system. For an agent listed in the table, install
+its supported repo-local bridge. For an unlisted agent, use the general recipe
+above instead of substituting its name into the runtime option:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js doctor
 ```
 
-Then the new agent starts from:
+Then the new agent starts meaningful work with `agent-task begin` and reads
+the returned `route.first_read.content`. The global routing bundle and handoff
+summary are orientation aids; they do not replace the task-specific first-read.
 
-```txt
-.knowledge/maintenance/routing_bundle.json
-.knowledge/maintenance/handoff_summary.json
-```
-
-OpenClaw uses the `AGENTS.md` plus `.agents/skills/` workspace-skills bridge. Hermes uses an explicit `AGENTS.md` bridge without a vendor folder. Pi and other agents without a confirmed repo-local rules-file convention should read or paste `.knowledge/Quick-Start.md` until their documented convention is confirmed.
+OpenClaw uses the `AGENTS.md` plus `.agents/skills/` workspace-skills bridge. Hermes uses an explicit `AGENTS.md` bridge without a vendor folder. Pi and other unlisted agents should follow the general connection recipe above and confirm their documented project-instruction convention.
 
 ## Required first action
 
@@ -97,19 +149,25 @@ intentionally not shipped yet. Run first-time setup first:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-After setup, read:
+After setup, use `agent-task begin` for meaningful work and read its returned
+`route.first_read.content`. Use the global routing bundle only for orientation.
 
-```txt
-.knowledge/maintenance/routing_bundle.json
-```
+For normal meaningful scoped work, use the recommended `agent-task begin` and
+`agent-task finish` workflow at the top of this guide. It owns the task route,
+first-read acknowledgement, primary verification, and any eligible evidence
+reuse.
 
-For an explicitly scoped task, create or refresh one task snapshot and read
-its `first-read.md` before loading broader maintenance state:
+## Advanced task-routing diagnostics and recovery
+
+Use direct `task-routing` commands only when diagnosing or recovering task
+snapshot state, or when explicitly maintaining a legacy direct-routing flow.
+They are not the normal meaningful-task workflow. Read the returned
+`first-read.md` before loading broader maintenance state:
 
 ```bash
 node .knowledge/tools/task-routing.js create --task="<task>" --scope-module=<module> --scope-path=<path> --json
@@ -149,8 +207,10 @@ node .knowledge/tools/repair-on-touch.js receipt --request=<receipt.json>
 node .knowledge/tools/repair-on-touch.js apply --receipt=KVR-<sha256>
 ```
 
-Never assert that a test ran, close a sibling finding, edit source merely to
-raise health, or bypass confirmation for security/critical-path findings.
+Never invent a test execution or manually close a sibling finding. Native
+verification may close exact covered related records in the same committed
+transaction; uncovered and unrelated records stay open. Do not edit source
+merely to raise health or bypass security/critical-path review requirements.
 Unrelated debt remains deferred. Report the primary task first and knowledge
 maintenance separately. See `docs/repair-on-touch.md`.
 
@@ -194,8 +254,10 @@ or provider-token effects from health scores or local estimates, and do not
 approve or publish on the tester's behalf. Approval and GitHub publication are
 two separate explicit actions. See `docs/field-report.md`.
 
-If this is an existing configured `.knowledge` installation, read the routing
-bundle first. If it is missing or stale, choose the correct setup path below.
+For an existing configured installation, the global routing bundle is an
+orientation aid. Begin meaningful work with `agent-task begin` and read its
+returned task first-read. If generated state is missing or stale, choose the
+appropriate setup or refresh path below.
 
 ## Setup for a new project
 
@@ -203,12 +265,12 @@ From the repository root:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Then read:
+For setup and health orientation, inspect:
 
 ```txt
 .knowledge/maintenance/routing_bundle.json
@@ -240,28 +302,9 @@ Mem0 OSS is the recommended optional free/core backend. Start with `setup mem0-o
 
 If `.knowledge/` already exists and the user is applying a newer `.knowledge` release, do **not** replace the whole folder and do **not** overwrite project knowledge records.
 
-Update only the system files that implement the framework:
-
-```txt
-README.md
-Quick-Start.md
-Portal.md
-LICENSE
-NOTICE
-package.json
-config.yaml
-assets/
-agent-integrations/
-commands/
-docs/
-flows/
-github-action-templates/
-models/
-prompts/
-skills/
-templates/
-tools/
-```
+Update only the system paths declared in `.knowledge/install-manifest.json`:
+`system_paths` and `required_system_files` are the machine-checked contract.
+Do not maintain or follow a copied manual path list.
 
 Preserve project-specific knowledge and trust state unless the user explicitly asks to reset it:
 

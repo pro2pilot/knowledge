@@ -233,6 +233,7 @@ function createFixture() {
       id: `FACT-${file.replace(/[^a-z0-9]+/gi, '-').toUpperCase()}`,
       file,
       sha256: sha256(path.join(repoRoot, file)),
+      evidence: { source_sha256: sha256(path.join(repoRoot, file)) },
       claim: `Fixture fact for ${file}`,
       evidence_type: 'source_hash'
     }))

@@ -81,7 +81,7 @@ function expandTokens(tokens) {
   return Array.from(out);
 }
 function tokenize(text) {
-  const matched = String(text || '').toLowerCase().match(/[a-zа-яё0-9_./:-]{2,}/gi) || [];
+  const matched = String(text || '').normalize('NFC').toLowerCase().match(/[\p{L}\p{M}\p{N}_./:-]{2,}/gu) || [];
   return matched.map((t) => t.toLowerCase()).filter((t) => !stopwords.has(t));
 }
 function countTerms(tokens) {

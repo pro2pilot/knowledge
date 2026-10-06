@@ -1211,7 +1211,22 @@ function listTasks(context) {
   reconcileAll(context);
   return taskIds(context).map((taskHash) => safeRead(path.join(taskRoot(context, taskHash), 'manifest.json'), null)).filter(Boolean);
 }
-function inspectTask(context, taskHash) {
+function inspectTask(context, taskHash, options = {}) {
+  if (options.readOnly === true) {
+    const inspect = (hash) => {
+      canonicalHash(hash, 'task id');
+      const current = readCanonicalCurrent(context, hash);
+      return current
+        ? { status: 'ok', task_scope_hash: hash, pointer_consistent: true, current, read_only: true }
+        : { status: 'unavailable', task_scope_hash: hash, pointer_consistent: false, reason: 'no_valid_canonical_current', read_only: true };
+    };
+    if (taskHash) return inspect(taskHash);
+    return {
+      status: 'ok', tasks: taskIds(context).map(inspect),
+      index_reconciled: false, read_only: true,
+      index: safeRead(path.join(context.stateRoot, 'routing', 'index.json'), { tasks: [] })
+    };
+  }
   if (taskHash) {
     return withContainedLock(taskRoutingLock(context, canonicalHash(taskHash, 'task id')), () => {
       const result = reconcileTaskUnlocked(context, canonicalHash(taskHash, 'task id'));

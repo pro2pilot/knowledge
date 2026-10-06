@@ -22,7 +22,7 @@ const SAFE_STEPS = [
 
 function runStep(context, [name, command]) {
   const started = Date.now();
-  const script = path.join(context.projectKnowledgeRoot, command[0]);
+  const script = path.join(context.systemRoot, command[0]);
   const result = spawnSync(process.execPath, [script, ...command.slice(1)], {
     cwd: context.targetRoot,
     env: contextEnv(context),
@@ -73,7 +73,9 @@ ${failed.length ? '- Review failed command output in maintenance/restore-trust-r
 
 function main(argv = process.argv.slice(2)) {
   const parsed = parseCliArgs(argv);
-  if (!parsed.flags.safe) throw new Error('Restore Trust requires --safe.');
+  if (![true, 'true', '1'].includes(parsed.flags.safe)) {
+    throw new Error('Restore Trust requires --safe.');
+  }
   const context = resolveKnowledgeContext(parsed.flags);
   ensureDir(path.join(context.stateRoot, 'maintenance'));
   const steps = SAFE_STEPS.map((step) => runStep(context, step));

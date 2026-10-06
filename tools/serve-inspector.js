@@ -26,6 +26,7 @@ const {
 const visualInspector = require('./build-visual-inspector');
 const checkUpdates = require('./check-updates');
 const { systemVersion } = require('./lib/system-version');
+const { assertLoopbackRequest, readJsonBody, reportRequestError } = require('./lib/inspector-http');
 
 const parsed = parseCliArgs(process.argv.slice(2));
 const flags = parsed.flags;
@@ -37,6 +38,10 @@ const token = crypto.randomBytes(24).toString('hex');
 if (host !== '127.0.0.1') {
   throw new Error('Inspector must bind only to 127.0.0.1.');
 }
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
+  throw new Error('Inspector port must be an integer from 0 to 65535.');
+}
+function actualPort() { return server?.address()?.port || port; }
 
 function safeJson(rel, fallback) {
   const statePath = path.join(context.stateRoot, rel);
@@ -825,7 +830,7 @@ function state() {
 
 function html() {
   const s = state();
-  const data = visualInspector.collect();
+  const data = visualInspector.collect({ readOnly: true });
   data.generated_at = s.generated_at;
   data.context = s.context;
   data.settings = s.settings;
@@ -990,24 +995,18 @@ function authOk(req) {
   return provided === token || url.searchParams.get('token') === token;
 }
 
-async function readBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
-  if (!raw) return {};
-  try { return JSON.parse(raw); } catch { return {}; }
-}
-
 async function handle(req, res) {
+  assertLoopbackRequest(req, actualPort());
   const url = new URL(req.url, `http://${host}:${port}`);
   if (url.pathname === '/' || url.pathname === '/index.html') {
     return send(res, 200, html(), 'text/html; charset=utf-8');
   }
   if (!url.pathname.startsWith('/api/')) return sendJson(res, 404, { ok: false, error: 'not_found' });
   if (!authOk(req)) return sendJson(res, 401, { ok: false, error: 'session_token_required' });
+  const body = req.method === 'POST' ? await readJsonBody(req) : {};
 
   if (req.method === 'GET' && url.pathname === '/api/session') {
-    return sendJson(res, 200, { ok: true, token, host, port, scope: 'local-inspector' });
+    return sendJson(res, 200, { ok: true, token, host, port: actualPort(), scope: 'local-inspector' });
   }
   if (req.method === 'GET' && url.pathname === '/api/state') return sendJson(res, 200, { ok: true, state: state() });
   if (req.method === 'GET' && url.pathname === '/api/files/open') {
@@ -1040,18 +1039,19 @@ async function handle(req, res) {
     return sendJson(res, result.ok ? 200 : 404, result);
   }
   if (req.method === 'GET' && url.pathname === '/api/update/status') {
-    let status;
     if (url.searchParams.get('refresh') === '1') {
-      const config = checkUpdates.getConfig();
-      status = decorateUpdateStatus(await checkUpdates.checkNow(config, 'inspector_manual_refresh'), config);
-      launchUpdateStatus = status;
-    } else {
-      status = await updateStatus();
+      return sendJson(res, 405, { ok: false, error: 'update_check_requires_post', endpoint: '/api/update/check' });
     }
+    const status = await updateStatus();
+    return sendJson(res, 200, { ok: true, status, release: status });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/update/check') {
+    const config = checkUpdates.getConfig();
+    const status = decorateUpdateStatus(await checkUpdates.checkNow(config, 'inspector_manual_refresh'), config);
+    launchUpdateStatus = status;
     return sendJson(res, 200, { ok: true, status, release: status });
   }
   if (req.method === 'POST' && url.pathname === '/api/update/auto-check') {
-    const body = await readBody(req);
     if (typeof body.enabled !== 'boolean') {
       return sendJson(res, 400, { ok: false, error: 'enabled_boolean_required' });
     }
@@ -1079,7 +1079,6 @@ async function handle(req, res) {
   }
   if (req.method === 'POST' && url.pathname === '/api/update/apply') {
     const status = await updateStatus();
-    const body = await readBody(req);
     if (body.confirm !== true) {
       return sendJson(res, 409, {
         ok: false,
@@ -1106,7 +1105,6 @@ async function handle(req, res) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/settings/onboarding') {
-    const body = await readBody(req);
     try {
       const settings = saveOnboarding(body);
       return sendJson(res, 200, { ok: true, settings });
@@ -1115,7 +1113,6 @@ async function handle(req, res) {
     }
   }
   if (req.method === 'POST' && url.pathname === '/api/settings/repair-on-touch') {
-    const body = await readBody(req);
     try {
       const saved = saveRepairSettings(body);
       return sendJson(res, 200, { ok: true, repair_on_touch: saved.policy, saved: true });
@@ -1124,7 +1121,6 @@ async function handle(req, res) {
     }
   }
   if (req.method === 'POST' && url.pathname === '/api/settings/repair-on-touch/reset') {
-    const body = await readBody(req);
     try {
       const saved = saveRepairSettings(body, { reset: true });
       return sendJson(res, 200, { ok: true, repair_on_touch: saved.policy, reset: true });
@@ -1135,7 +1131,6 @@ async function handle(req, res) {
 
   const runMatch = url.pathname.match(/^\/api\/actions\/([^/]+)\/run$/);
   if (req.method === 'POST' && runMatch) {
-    const body = await readBody(req);
     const run = runAction(context, decodeURIComponent(runMatch[1]), body);
     const code = run.status === 'passed' ? 200 : run.status === 'needs_confirmation' ? 409 : run.status === 'blocked' ? 423 : 500;
     return sendJson(res, code, { ok: run.status === 'passed', run });
@@ -1163,17 +1158,19 @@ function openLocalBrowser(url) {
   const command = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
   const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
   const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
+  child.on('error', (error) => console.error(`Inspector browser could not be opened: ${error.message}`));
   child.unref();
 }
 
 ensureDir(path.join(context.stateRoot, 'maintenance', 'action-runs'));
 runUpdateCheckOnLaunch();
 server = http.createServer((req, res) => {
-  Promise.resolve(handle(req, res)).catch((error) => sendJson(res, 500, { ok: false, error: error.stack || error.message }));
+  Promise.resolve(handle(req, res)).catch((error) => reportRequestError(res, error, sendJson));
 });
 server.listen(port, host, () => {
-  const url = `http://${host}:${port}/?token=${token}`;
-  const payload = { ok: true, url, host, port, session_token: token, scope: 'local-inspector' };
+  const boundPort = actualPort();
+  const url = `http://${host}:${boundPort}/?token=${token}`;
+  const payload = { ok: true, url, host, port: boundPort, session_token: token, scope: 'local-inspector' };
   console.log(JSON.stringify(payload, null, 2));
   openLocalBrowser(url);
 });

@@ -3,6 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { writeFileAtomic, writeFileAtomicContained, assertSafeContainedPath } = require('./json-store');
+const { sanitizeExportValue } = require('./export-sanitizer');
 
 const SCHEMA_VERSION = '3.3.0';
 const TRUST_POLICY = Object.freeze({
@@ -27,14 +29,27 @@ function ensureDir(dirPath) {
 
 function readJsonl(filePath) {
   if (!fs.existsSync(filePath)) return [];
-  return fs.readFileSync(filePath, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => {
-    try { return JSON.parse(line); } catch { return null; }
-  }).filter(Boolean);
+  const records = [];
+  const lines = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].trim()) continue;
+    let record;
+    try { record = JSON.parse(lines[index]); }
+    catch { record = null; }
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      const error = new Error(`Memory JSONL contains an invalid record at line ${index + 1}; source bytes were preserved.`);
+      error.code = 'memory_jsonl_invalid';
+      throw error;
+    }
+    records.push(record);
+  }
+  return records;
 }
 
-function writeJsonl(filePath, records) {
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, records.map((record) => JSON.stringify(record)).join('\n') + (records.length ? '\n' : ''), 'utf8');
+function writeJsonl(filePath, records, options = {}) {
+  const body = records.map((record) => JSON.stringify(record)).join('\n') + (records.length ? '\n' : '');
+  if (options.containmentRoot) return writeFileAtomicContained(filePath, body, options.containmentRoot);
+  writeFileAtomic(filePath, body);
 }
 
 function redactSecrets(value) {
@@ -146,12 +161,16 @@ function visibleRecords(filePath) {
   return readJsonl(filePath).filter((record) => !record.deleted_at);
 }
 
-function jsonlAdapter(providerId, adapterId, filePath) {
+function jsonlAdapter(providerId, adapterId, filePath, options = {}) {
+  const validateStore = () => {
+    if (options.containmentRoot) assertSafeContainedPath(options.containmentRoot, filePath, { allowMissing: true });
+  };
   return {
     providerId,
     adapterId,
     filePath,
     health() {
+      validateStore();
       const records = visibleRecords(filePath);
       return advisoryEnvelope(providerId, adapterId, 'health', {
         status: 'ok',
@@ -161,6 +180,7 @@ function jsonlAdapter(providerId, adapterId, filePath) {
       });
     },
     remember(input = {}) {
+      validateStore();
       const text = String(input.text || '').trim();
       if (!text) throw new Error('remember requires text');
       const records = readJsonl(filePath);
@@ -171,7 +191,7 @@ function jsonlAdapter(providerId, adapterId, filePath) {
         override_attempt: input.override_attempt
       });
       records.push(record);
-      writeJsonl(filePath, records);
+      writeJsonl(filePath, records, options);
       return advisoryEnvelope(providerId, adapterId, 'remember', {
         status: 'ok',
         persisted: true,
@@ -180,6 +200,7 @@ function jsonlAdapter(providerId, adapterId, filePath) {
       });
     },
     recall(input = {}) {
+      validateStore();
       const query = String(input.query || '').trim();
       if (!query) throw new Error('recall requires query');
       const q = query.toLowerCase();
@@ -194,10 +215,12 @@ function jsonlAdapter(providerId, adapterId, filePath) {
       });
     },
     list(input = {}) {
+      validateStore();
       const records = visibleRecords(filePath).map((record) => publicRecord(record, Boolean(input.include_text)));
       return advisoryEnvelope(providerId, adapterId, 'list', { status: 'ok', records_count: records.length, records });
     },
     forget(input = {}) {
+      validateStore();
       const id = String(input.id || '').trim();
       if (!id) throw new Error('forget requires id');
       const records = readJsonl(filePath);
@@ -209,11 +232,15 @@ function jsonlAdapter(providerId, adapterId, filePath) {
         }
         return record;
       });
-      writeJsonl(filePath, updated);
+      writeJsonl(filePath, updated, options);
       return advisoryEnvelope(providerId, adapterId, 'forget', { status: 'ok', deleted, id });
     },
     exportRedacted() {
-      const records = visibleRecords(filePath).map((record) => publicRecord(record, false));
+      validateStore();
+      const records = sanitizeExportValue(
+        visibleRecords(filePath).map((record) => publicRecord(record, false)),
+        { redactContentFields: true, redactWorkspaceName: true }
+      );
       return advisoryEnvelope(providerId, adapterId, 'export-redacted', {
         status: 'ok',
         content_included: false,

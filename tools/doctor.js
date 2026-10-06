@@ -3,13 +3,16 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
-const { ensureDir, readJson, writeJsonAtomic, appendNdjson, getAgentId } = require('./lib/json-store');
+const { ensureContainedDir, writeJsonAtomicContained, appendNdjsonContained, getAgentId, assertSafeContainedPath } = require('./lib/json-store');
 const { withContainedLock } = require('./lib/contained-lock-manager');
 const { LOCKS } = require('./lib/lock-policy');
 const {
   reconcile: reconcileQueue,
-  lifecycleById
+  lifecycleById,
+  canonicalPath,
+  canonicalModule
 } = require('./lib/queue-lifecycle');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 const { appendTeamEvent } = require('./lib/team-store');
@@ -44,16 +47,81 @@ function stateArtifact(relPath) {
   if (context.mode === 'repo') return `.knowledge/${clean}`;
   return `.knowledge-team/repos/${context.repoId}/workspaces/${context.workspaceId}/state/${clean}`;
 }
+function documentRelative(abs) {
+  const fromState = path.relative(stateRoot, abs).replace(/\\/g, '/');
+  return fromState !== '..' && !fromState.startsWith('../') && !path.isAbsolute(fromState)
+    ? fromState : path.relative(knowledgeRoot, abs).replace(/\\/g, '/');
+}
+function documentArtifact(abs) {
+  const fromState = path.relative(stateRoot, abs).replace(/\\/g, '/');
+  return fromState !== '..' && !fromState.startsWith('../') && !path.isAbsolute(fromState)
+    ? stateArtifact(fromState) : `.knowledge/${path.relative(knowledgeRoot, abs).replace(/\\/g, '/')}`;
+}
 function exists(relPath) {
-  const raw = String(relPath || '');
-  const clean = raw.replace(/^\.knowledge[\\/]/, '');
-  return fs.existsSync(path.join(repoRoot, raw)) ||
-    fs.existsSync(path.join(repoRoot, clean)) ||
-    fs.existsSync(path.join(knowledgeRoot, clean));
+  const resolved = sourcePath(relPath);
+  return Boolean(resolved && physicalFile(resolved.root, resolved.absolute));
 }
 function artifactExists(relPath) {
-  return fs.existsSync(path.join(repoRoot, relPath)) ||
-    fs.existsSync(path.join(knowledgeRoot, String(relPath).replace(/^\.knowledge[\\/]/, '')));
+  if (exists(relPath)) return true;
+  if (!safeRelative(relPath)) return false;
+  return physicalFile(knowledgeRoot, path.join(knowledgeRoot, relPath));
+}
+function safeRelative(value) {
+  if (typeof value !== 'string' || !value) return false;
+  try { return canonicalPath(value) !== 'unknown'; } catch { return false; }
+}
+function physicalFile(root, absolute) {
+  try {
+    assertSafeContainedPath(root, absolute);
+    return fs.lstatSync(absolute).isFile();
+  } catch { return false; }
+}
+function sourcePath(value) {
+  if (!safeRelative(value)) return null;
+  const normalized = canonicalPath(value);
+  const root = normalized.startsWith('.knowledge/') ? knowledgeRoot : repoRoot;
+  return { root, absolute: path.join(root, normalized.replace(/^\.knowledge\//, '')) };
+}
+function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function documentShape(relative, value) {
+  const pathList = (item, key) => item[key] === undefined ||
+    (Array.isArray(item[key]) && item[key].every(safeRelative));
+  const moduleEntry = (item) => {
+    if (!object(item) || typeof item.module_id !== 'string') return false;
+    try { canonicalModule(item.module_id); } catch { return false; }
+    return (!item.card || safeRelative(item.card)) && pathList(item, 'key_files') && pathList(item, 'evidence_files');
+  };
+  const definitions = {
+    'modules/module_registry.json': { modules: ['array', moduleEntry] },
+    'freshness.json': { tracked_files: ['array', (item) => object(item) && safeRelative(item.path)], artifact_dependencies: ['object'], artifact_statuses: ['object'] },
+    'maintenance/trust_report.json': { modules: ['object'] },
+    'maintenance/wiki_lint_report.json': {},
+    'maps/wiki_graph.json': {},
+    'maps/file_criticality.json': { files: ['array', (item) => object(item) && safeRelative(item.path || item.file)] },
+    'maintenance/external_memory_status.json': { providers: ['array', object], source_of_truth_policy: ['object'], legacy_providers_detected: ['array'] },
+    'maintenance/secret_scan_report.json': { by_severity: ['object'] },
+    'maintenance/stale_items.json': { items: ['array', object] },
+    'maintenance/repair_queue.json': { queue: ['array', object] }
+  };
+  const definition = definitions[relative] || (/^modules\/.+\.json$/.test(relative)
+    ? { key_files: ['array', safeRelative], evidence_files: ['array', safeRelative] } : null);
+  if (!definition) return true;
+  if (!object(value)) return false;
+  for (const [key, [type, entry]] of Object.entries(definition)) {
+    if (value[key] === undefined) continue;
+    if (type === 'object' && !object(value[key])) return false;
+    if (type === 'array' && (!Array.isArray(value[key]) || (entry && !value[key].every(entry)))) return false;
+  }
+  if (relative === 'maintenance/trust_report.json' && value.modules) {
+    for (const key of ['trusted', 'near_trusted', 'routing_trusted', 'advisory_only', 'suspect', 'low_confidence']) {
+      if (value.modules[key] === undefined) continue;
+      if (!Array.isArray(value.modules[key]) || !value.modules[key].every((id) => {
+        if (typeof id !== 'string') return false;
+        try { canonicalModule(id); return true; } catch { return false; }
+      })) return false;
+    }
+  }
+  return true;
 }
 function issue(issues, severity, code, message, artifact = null, details = {}) {
   issues.push(granularFinding({
@@ -76,9 +144,21 @@ function walk(dir, output = []) {
   }
   return output;
 }
-function safeJson(abs, issues) {
-  try { return JSON.parse(fs.readFileSync(abs, 'utf8').replace(/^\uFEFF/, '')); }
-  catch (error) { issue(issues, 'critical', 'invalid_json', `Invalid JSON: ${error.message}`, `.knowledge/${rel(abs)}`); return null; }
+function safeJson(abs, issues, invalid = new Set()) {
+  try {
+    const value = JSON.parse(fs.readFileSync(abs, 'utf8').replace(/^\uFEFF/, ''));
+    if (!documentShape(documentRelative(abs), value)) {
+      invalid.add(abs);
+      issue(issues, 'critical', 'invalid_artifact_shape', 'Knowledge artifact has an invalid data shape. Restore or repair it before maintenance.', documentArtifact(abs), { safe_during_current_task: false });
+      return null;
+    }
+    return value;
+  }
+  catch (error) {
+    invalid.add(abs);
+    issue(issues, 'critical', 'invalid_json', `Invalid JSON: ${error.message}`, documentArtifact(abs), { safe_during_current_task: false });
+    return null;
+  }
 }
 function scoreFromIssues(issues) {
   return Math.max(0, 100 - issues.reduce((total, item) =>
@@ -154,7 +234,7 @@ function legacyProjectRootKnowledgeBackups() {
 }
 
 function doctorUnlocked(options = {}) {
-  ensureDir(path.join(stateRoot, 'maintenance'));
+  ensureContainedDir(stateRoot, path.join(stateRoot, 'maintenance'));
   const issues = [];
   const checks = [];
   const legacyBackups = legacyProjectRootKnowledgeBackups();
@@ -197,12 +277,12 @@ function doctorUnlocked(options = {}) {
     'maintenance/wiki_lint_report.json'
   ];
   for (const file of projectRequired) {
-    const ok = fs.existsSync(path.join(knowledgeRoot, file));
+    const ok = physicalFile(knowledgeRoot, path.join(knowledgeRoot, file));
     checks.push({ check: 'required_file', artifact: `.knowledge/${file}`, status: ok ? 'pass' : 'fail' });
     if (!ok) issue(issues, file.includes('routing_bundle') ? 'medium' : 'high', 'missing_required_file', `Missing required knowledge artifact: ${file}`, `.knowledge/${file}`);
   }
   for (const file of stateRequired) {
-    const ok = fs.existsSync(path.join(stateRoot, file));
+    const ok = physicalFile(stateRoot, path.join(stateRoot, file));
     const artifact = stateArtifact(file);
     checks.push({ check: 'runtime_file', artifact, status: ok ? 'pass' : 'warn' });
     if (!ok) issue(issues, 'medium', 'missing_runtime_file', `Missing runtime artifact: ${file}. Run the relevant flow to generate it.`, artifact);
@@ -213,10 +293,14 @@ function doctorUnlocked(options = {}) {
     ...(stateRoot === knowledgeRoot ? [] : walk(stateRoot))
   ])).filter((abs) => abs.endsWith('.json'));
   const parsed = new Map();
-  for (const abs of jsonFiles) parsed.set(rel(abs), safeJson(abs, issues));
+  const invalidInputs = new Set();
+  for (const abs of jsonFiles) parsed.set(abs, safeJson(abs, issues, invalidInputs));
+  const projectJson = (relative, fallback) => parsed.get(path.join(knowledgeRoot, relative)) || fallback;
+  const stateJson = (relative, fallback) => parsed.get(path.join(stateRoot, relative)) || fallback;
   checks.push({ check: 'json_parse', status: issues.some((i) => i.code === 'invalid_json') ? 'fail' : 'pass', files_checked: jsonFiles.length });
+  checks.push({ check: 'artifact_shapes', status: issues.some((i) => i.code === 'invalid_artifact_shape') ? 'fail' : 'pass' });
 
-  const registry = parsed.get('modules/module_registry.json') || { modules: [] };
+  const registry = projectJson('modules/module_registry.json', { modules: [] });
   const modules = registry.modules || [];
   checks.push({ check: 'module_registry_non_empty', status: modules.length > 0 ? 'pass' : 'warn', modules: modules.length });
   if (modules.length === 0) issue(issues, 'medium', 'empty_module_registry', 'Module registry is empty. Run ingest-existing-project.js.', '.knowledge/modules/module_registry.json');
@@ -229,7 +313,7 @@ function doctorUnlocked(options = {}) {
     }
   }
 
-  const freshness = parsed.get('freshness.json') || { tracked_files: [] };
+  const freshness = stateJson('freshness.json', { tracked_files: [] });
   const tracked = freshness.tracked_files || [];
   const missingTracked = tracked.filter((entry) => entry.path && !exists(entry.path));
   for (const entry of missingTracked) {
@@ -251,7 +335,39 @@ function doctorUnlocked(options = {}) {
   }
   checks.push({ check: 'tracked_files_exist', status: missingTracked.length ? 'fail' : 'pass', tracked_files: tracked.length, missing: missingTracked.length });
 
-  const trust = parsed.get('maintenance/trust_report.json') || {};
+  const missingPaths = new Set(missingTracked.map((entry) => entry.path));
+  let changedSinceScan = 0;
+  let pendingRecheck = 0;
+  for (const entry of tracked) {
+    if (missingPaths.has(entry.path)) continue;
+    const resolved = sourcePath(entry.path);
+    let currentHash = null;
+    try { currentHash = crypto.createHash('sha256').update(fs.readFileSync(resolved.absolute)).digest('hex'); }
+    catch { /* Unreadable files remain unverified. */ }
+    const hashMismatch = currentHash !== entry.sha256 || !/^[a-f0-9]{64}$/.test(String(entry.sha256 || ''));
+    const unresolved = entry.status !== 'clean';
+    if (hashMismatch) changedSinceScan += 1;
+    if (!hashMismatch && !unresolved) continue;
+    pendingRecheck += 1;
+    const moduleInfo = modules
+      .filter((item) => [...(item.key_files || []), ...(item.evidence_files || [])].includes(entry.path))
+      .sort((a, b) => String(b.path || '').length - String(a.path || '').length)[0];
+    issue(issues, 'medium', 'tracked_file_needs_recheck',
+      hashMismatch
+        ? `Tracked file differs from its recorded hash or could not be read: ${entry.path}. Sync and verify current source and relevant tests.`
+        : `Tracked file still requires verification: ${entry.path} (${entry.status}). Repeated scans do not recertify source.`,
+      entry.path, {
+        module_id: entry.module_id || moduleInfo?.module_id || 'root',
+        // Freshness is the mutable detector projection. Recertification
+        // updates it after verifying this source; requiring its pre-repair
+        // bytes as an immutable KVR source would invalidate that very repair.
+        affected_artifacts: [entry.path],
+        repair_class: 'verify_on_touch'
+      });
+  }
+  checks.push({ check: 'tracked_files_current', status: pendingRecheck ? 'warn' : 'pass', tracked_files: tracked.length, changed_since_scan: changedSinceScan, pending_recheck: pendingRecheck });
+
+  const trust = stateJson('maintenance/trust_report.json', {});
   const suspectModules = ((trust.modules || {}).suspect || []).map((module_id) => ({ module_id, trust_status: 'suspect' }));
   const lowModules = ((trust.modules || {}).low_confidence || []).map((module_id) => ({ module_id, trust_status: 'low_confidence' }));
   const uncertainModules = [...suspectModules, ...lowModules];
@@ -285,8 +401,8 @@ function doctorUnlocked(options = {}) {
   }
   checks.push({ check: 'trust_report_present', status: trust.generated_at ? 'pass' : 'warn', generated_at: trust.generated_at || null, suspect_or_low_modules: suspectCount });
 
-  const wikiLint = parsed.get('maintenance/wiki_lint_report.json') || {};
-  const graph = parsed.get('maps/wiki_graph.json') || {};
+  const wikiLint = stateJson('maintenance/wiki_lint_report.json', {});
+  const graph = stateJson('maps/wiki_graph.json', {});
   const wikiStructuralStatus = canonicalWikiStatus(wikiLint, graph);
   if (wikiStructuralStatus === 'structurally_broken') issue(issues, 'medium', 'wiki_structurally_broken', 'Wiki graph is structurally broken.', '.knowledge/maintenance/wiki_lint_report.json', { affected_artifacts: ['.knowledge/maintenance/wiki_lint_report.json', '.knowledge/maps/wiki_graph.json'] });
   else if (wikiStructuralStatus !== 'healthy') issue(issues, 'low', 'wiki_lint_has_warnings', `Wiki canonical status is ${wikiStructuralStatus}.`, '.knowledge/maintenance/wiki_lint_report.json', { affected_artifacts: ['.knowledge/maintenance/wiki_lint_report.json', '.knowledge/maps/wiki_graph.json'] });
@@ -304,9 +420,12 @@ function doctorUnlocked(options = {}) {
 
   const externalStatusPath = path.join(stateRoot, 'maintenance', 'external_memory_status.json');
   if (!fs.existsSync(externalStatusPath)) { try { require(path.join(context.systemRoot, 'tools', 'external-memory-status.js'))({ skipLock: true, quiet: true }); } catch {} }
-  const externalStatus = fs.existsSync(externalStatusPath) ? readJson(externalStatusPath, {}) : {};
+  if (!parsed.has(externalStatusPath) && physicalFile(stateRoot, externalStatusPath)) parsed.set(externalStatusPath, safeJson(externalStatusPath, issues, invalidInputs));
+  const externalStatus = stateJson('maintenance/external_memory_status.json', {});
   checks.push({ check: 'external_memory_status', status: externalStatus.generated_at ? 'pass' : 'warn', providers: externalStatus.providers || [] });
-  const manifests = loadProviderManifests(context).filter((manifest) => manifest.layer === 'free_core');
+  let manifests = [];
+  try { manifests = loadProviderManifests(context).filter((manifest) => manifest.layer === 'free_core'); }
+  catch (error) { issue(issues, 'high', 'memory_provider_manifest_invalid', 'Memory provider manifests could not be loaded; inspect their JSON and required fields.', '.knowledge/memory-providers/'); }
   const manifestById = new Map(manifests.map((manifest) => [manifest.id, manifest]));
   const mem0Manifest = manifestById.get('mem0-oss');
   checks.push({ check: 'memory_provider_manifest_mem0', status: mem0Manifest ? 'pass' : 'fail', artifact: '.knowledge/memory-providers/mem0/manifest.json' });
@@ -351,7 +470,7 @@ function doctorUnlocked(options = {}) {
     if (updateStatus && updateStatus.status === 'check_failed') issue(issues, 'low', 'update_check_failed', updateStatus.error || 'Update check failed.', '.knowledge/maintenance/update_status.json');
   }
 
-  const searchIndexExists = fs.existsSync(path.join(stateRoot, 'search', 'index.json'));
+  const searchIndexExists = physicalFile(stateRoot, path.join(stateRoot, 'search', 'index.json'));
   checks.push({ check: 'search_index', status: searchIndexExists ? 'pass' : 'warn', artifact: '.knowledge/search/index.json' });
   if (!searchIndexExists) issue(issues, 'low', 'search_index_missing', 'Search index is missing. Run build-search-index.js for token-efficient knowledge retrieval.', '.knowledge/search/index.json');
 
@@ -369,7 +488,7 @@ function doctorUnlocked(options = {}) {
   // to refresh, or `--strict` in CI to block.
   const secretReportPath = path.join(stateRoot, 'maintenance', 'secret_scan_report.json');
   if (fs.existsSync(secretReportPath)) {
-    const secretReport = readJson(secretReportPath, {});
+    const secretReport = stateJson('maintenance/secret_scan_report.json', {});
     checks.push({ check: 'secret_scan', status: secretReport.status === 'clean' ? 'pass' : 'warn', findings_total: secretReport.findings_total || 0, secret_scan_status: secretReport.status || 'unknown', generated_at: secretReport.generated_at || null });
     if ((secretReport.by_severity || {}).critical) issue(issues, 'critical', 'secret_scan_critical', `${secretReport.by_severity.critical} critical secret finding(s) in last scan.`, '.knowledge/maintenance/secret_scan_report.json');
     else if ((secretReport.by_severity || {}).high) issue(issues, 'high', 'secret_scan_high', `${secretReport.by_severity.high} high-severity secret finding(s) in last scan.`, '.knowledge/maintenance/secret_scan_report.json');
@@ -379,23 +498,41 @@ function doctorUnlocked(options = {}) {
     issue(issues, 'low', 'secret_scan_missing', 'No secret_scan_report.json. Run node .knowledge/tools/scan-secrets.js for a baseline.', '.knowledge/maintenance/secret_scan_report.json');
   }
 
-  const criticality = parsed.get('maps/file_criticality.json') || {};
+  const criticality = stateJson('maps/file_criticality.json', {});
   const criticalFiles = new Set(
     (criticality.files || [])
-      .filter((item) => item && (item.criticality === 'critical' || item.level === 'critical'))
+      .filter((item) => item && (item.classification === 'critical' || item.criticality === 'critical' || item.level === 'critical'))
       .map((item) => String(item.path || item.file || '').replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase())
   );
+  const securityFiles = new Set((criticality.files || []).filter((item) => item.security_sensitive === true).map((item) => String(item.path || item.file || '').replace(/\\/g, '/')));
   for (const finding of issues) {
     if (finding.affected_artifacts.some((artifact) => criticalFiles.has(String(artifact).toLowerCase()))) {
       finding.critical_path = true;
     }
-    if (/secret|security|auth(?:entication|orization)?/i.test(`${finding.code} ${finding.message}`)) {
+    if (/secret|security|auth(?:entication|orization)?/i.test(`${finding.code} ${finding.message}`) ||
+        finding.affected_artifacts.some((artifact) => securityFiles.has(artifact) || /(^|\/)(?:auth(?:entication|orization)?|security|secrets?|credentials)(?=[\/._-]|$)/i.test(artifact))) {
       finding.security_sensitive = true;
     }
   }
-  const staleItems = readJson(path.join(stateRoot, 'maintenance', 'stale_items.json'), { items: [] });
-  const repairQueue = readJson(path.join(stateRoot, 'maintenance', 'repair_queue.json'), { queue: [] });
-  const currentLifecycle = lifecycleById(staleItems, repairQueue);
+  const staleItems = stateJson('maintenance/stale_items.json', { items: [] });
+  const repairQueue = stateJson('maintenance/repair_queue.json', { queue: [] });
+  let queueInputsValid = ['maintenance/stale_items.json', 'maintenance/repair_queue.json']
+    .every((relative) => {
+      const absolute = path.join(stateRoot, relative);
+      if (invalidInputs.has(absolute)) return false;
+      try { fs.lstatSync(absolute); } catch (error) { return error.code === 'ENOENT'; }
+      if (physicalFile(stateRoot, absolute)) return true;
+      issue(issues, 'critical', 'unsafe_queue_artifact', 'Queue state is not a contained physical file; preserve it for manual repair.', stateArtifact(relative), { safe_during_current_task: false });
+      return false;
+    });
+  let currentLifecycle = new Map();
+  if (queueInputsValid) {
+    try { currentLifecycle = lifecycleById(staleItems, repairQueue); }
+    catch (error) {
+      queueInputsValid = false;
+      issue(issues, 'critical', 'invalid_queue_state', 'Existing queue lifecycle identities are invalid; preserve and repair queue evidence before reconciliation.', stateArtifact('maintenance/stale_items.json'), { safe_during_current_task: false });
+    }
+  }
   const pendingTrustClosures = new Map(
     (options.pendingTrustClosures || [])
       .filter((item) =>
@@ -431,6 +568,8 @@ function doctorUnlocked(options = {}) {
   const criticalCount = reconciliationIssues
     .filter((i) => i.severity === 'critical').length;
   const score = scoreFromIssues(reconciliationIssues);
+  const reportStatus = wikiStructuralStatus !== 'structurally_broken' && (pendingRecheck || missingTracked.length)
+    ? 'usable_with_warnings' : statusWithStructure(score, criticalCount, wikiStructuralStatus);
   const report = {
     schema_version: SCHEMA_VERSION,
     generated_at: nowIso(),
@@ -440,7 +579,7 @@ function doctorUnlocked(options = {}) {
     project_knowledge_root: context.projectKnowledgeRoot,
     state_root: context.stateRoot,
     quality_score: score,
-    status: statusWithStructure(score, criticalCount, wikiStructuralStatus),
+    status: reportStatus,
     structural_status: wikiStructuralStatus,
     summary: `${reconciliationIssues.length} issue(s), ${criticalCount} critical, score ${score}/100.`,
     checks,
@@ -448,7 +587,7 @@ function doctorUnlocked(options = {}) {
     findings: reconciliationIssues,
     global: {
       score,
-      status: reconciliationIssues.length ? (score >= 90 ? 'healthy_with_debt' : 'usable_with_warnings') : 'healthy',
+      status: reportStatus !== 'healthy' ? reportStatus : reconciliationIssues.length ? 'healthy_with_debt' : 'healthy',
       findings_open: reconciliationIssues.length
     }
   };
@@ -459,7 +598,7 @@ function doctorUnlocked(options = {}) {
     );
     report.deferred_unrelated_findings = report.task_readiness.excluded_unrelated_findings;
   }
-  const queueProjection = reconcileQueue({
+  const queueProjection = queueInputsValid ? reconcileQueue({
     staleItems,
     repairQueue,
     findings: reconciliationIssues.map((item) => ({
@@ -469,20 +608,27 @@ function doctorUnlocked(options = {}) {
     source: 'doctor',
     agentId: getAgentId(),
     timestamp: report.generated_at
-  });
+  }) : { events: [] };
   report.pending_trust_closures_observed =
     preservedPendingClosures.sort();
-  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'stale_items.json'), staleItems);
-  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'repair_queue.json'), repairQueue);
+  if (queueInputsValid) {
+    writeJsonAtomicContained(path.join(stateRoot, 'maintenance', 'stale_items.json'), staleItems, stateRoot);
+    writeJsonAtomicContained(path.join(stateRoot, 'maintenance', 'repair_queue.json'), repairQueue, stateRoot);
+  }
+  report.queue_reconciliation_status = queueInputsValid ? 'completed' : 'skipped_invalid_input';
   report.queue_transitions = queueProjection.events;
-  writeJsonAtomic(path.join(stateRoot, 'maintenance', 'quality_report.json'), report);
-  try { require(path.join(context.systemRoot, 'tools', 'build-routing-bundle.js'))({ skipLock: true, quiet: true }); } catch (error) { report.routing_bundle_refresh_error = error.message; }
+  writeJsonAtomicContained(path.join(stateRoot, 'maintenance', 'quality_report.json'), report, stateRoot);
+  try { require(path.join(context.systemRoot, 'tools', 'build-routing-bundle.js'))({ skipLock: true, quiet: true }); }
+  catch (error) {
+    report.routing_bundle_refresh_error = error.message;
+    writeJsonAtomicContained(path.join(stateRoot, 'maintenance', 'quality_report.json'), report, stateRoot);
+  }
   appendTeamEvent(context, 'doctor_result', {
     status: report.status,
     quality_score: report.quality_score,
     issues_total: report.issues.length
   });
-  if (queueProjection.events.length) appendNdjson(path.join(stateRoot, 'maintenance', 'events', `${report.generated_at.slice(0, 10)}.ndjson`), { type: 'queue_lifecycle', source: 'doctor', generated_at: report.generated_at, agent_id: getAgentId(), transitions: queueProjection.events });
+  if (queueProjection.events.length) appendNdjsonContained(path.join(stateRoot, 'maintenance', 'events', `${report.generated_at.slice(0, 10)}.ndjson`), { type: 'queue_lifecycle', source: 'doctor', generated_at: report.generated_at, agent_id: getAgentId(), transitions: queueProjection.events }, stateRoot);
   if (!options.quiet) console.log(JSON.stringify(report, null, 2));
   return report;
 }

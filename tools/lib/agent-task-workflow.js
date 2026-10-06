@@ -20,6 +20,8 @@ const { LOCKS } = require('./lock-policy');
 const routing = require('./task-routing');
 const { resolveEffectiveTaskRoutingState, formatTaskRoutingEstimate } = require('./task-routing-state');
 const { systemVersion } = require('./system-version');
+const { coveredTrackedRecheckSources } = require('./queue-lifecycle');
+const { verificationTimeoutMs } = require('./repair-on-touch');
 
 const WORKFLOW_SCHEMA = 'knowledge-agent-task-workflow.v1';
 const RESULT_SCHEMA = 'knowledge-agent-task-result.v1';
@@ -289,9 +291,10 @@ function normalizeTests(context, tests) {
     if (!containedPath(physicalTarget, physicalCwd)) {
       throw error('agent_task_test_cwd_escape', `Test ${index + 1} cwd resolves outside target root.`);
     }
-    const timeoutMs = Number(item.timeout_ms || 120000);
-    if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) throw error('agent_task_test_timeout_invalid', `Test ${index + 1} timeout is invalid.`);
-    return { argv: item.argv, cwd, timeout_ms: Math.trunc(timeoutMs) };
+    let timeoutMs;
+    try { timeoutMs = verificationTimeoutMs(item.timeout_ms); }
+    catch { throw error('agent_task_test_timeout_invalid', `Test ${index + 1} timeout is invalid.`); }
+    return { argv: item.argv, cwd, timeout_ms: timeoutMs };
   });
 }
 function normalizedFinishRequest(context, request) {
@@ -536,6 +539,7 @@ function selectedRepair(plan, sourceFiles) {
     if (item === finding || item.lifecycle_id === finding.lifecycle_id) return false;
     if (['repaired', 'closed', 'resolved'].includes(String(item.status || ''))) return false;
     if (String(item.module_id || '') !== String(finding.module_id || '')) return false;
+    if (coveredTrackedRecheckSources(item, finding, sourceFiles).length) return false;
     const otherArtifacts = cleanArray([item.artifact, ...(item.affected_artifacts || [])]);
     return otherArtifacts.some((other) => artifacts.some((candidate) => artifactOverlap(other, candidate)));
   });
@@ -679,6 +683,12 @@ function finish(context, workflowId, rawRequest, dependencies = {}) {
         changed_files: request.changed_files,
         selected_modules: workflow.route_modules.direct.length ? workflow.route_modules.direct : workflow.route_modules.selected,
         dependency_modules: workflow.route_modules.dependencies,
+        // The immutable task route already defines this repair scope. Global
+        // routing and PR summaries may describe unrelated projects or tasks.
+        scope_source: 'explicit',
+        routing: {},
+        pr_impact: {},
+        critical_path_map: {},
         agent_plan: ['read exact task first-read', 'complete primary task', 'run physical verification', 'apply only an exact safe scoped repair']
       };
       const file = writeRequest(context, workflowId, 'repair-plan', body);
@@ -688,7 +698,10 @@ function finish(context, workflowId, rawRequest, dependencies = {}) {
     const verification = runPhase(context, workflowId, owner, 'verification', () => {
       const body = { task_id: workflow.route.task_scope_hash, session_id: workflow.workflow_id, source_files: request.source_files, tests_to_run: request.tests_to_run };
       const file = writeRequest(context, workflowId, 'verify', body);
-      const run = toolFn(context, 'repair-on-touch.js', ['verify', '--request', file], { sessionId: workflowId, timeoutMs: Math.max(...request.tests_to_run.map((item) => item.timeout_ms)) + 30000 });
+      // The verification runner executes this batch sequentially. Its outer
+      // deadline must cover every effective child budget plus orchestration.
+      const timeoutMs = request.tests_to_run.reduce((total, item) => total + item.timeout_ms, 30000);
+      const run = toolFn(context, 'repair-on-touch.js', ['verify', '--request', file], { sessionId: workflowId, timeoutMs });
       const executions = run.output?.executions || [];
       if (run.output?.status !== 'pass' || !executions.length || executions.some((item) => item.status !== 'pass' || item.exit_code !== 0)) {
         throw error('agent_task_primary_verification_failed', 'Primary task verification failed.', run.output);

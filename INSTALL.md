@@ -53,24 +53,29 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-Replace `codex` with the active runtime when needed.
+Replace `codex` with a supported runtime from the Quick Start table when needed.
+Unlisted agents should follow the [general connection recipe](Quick-Start.md#connect-an-agent-without-a-dedicated-recipe).
 
-Other agents can connect later by running their own `--runtime <agent>` command
+Other supported agents can connect later using their listed runtime identifier
 against the existing `.knowledge/` installation. The `--all --confirm-all` mode
 is only for deliberate multi-integration setup, not first install.
 
 ## Connect Another Agent Later
 
-From the same target repository root:
+For a supported agent from the Quick Start table, use its runtime identifier
+from the same target repository root. Unlisted agents should use the general
+recipe linked above:
 
 ```bash
 node .knowledge/tools/install-check.js --json
-node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
+node .knowledge/tools/install-agent-integrations.js --runtime <supported-runtime>
 node .knowledge/tools/flow.js doctor
 ```
 
-Then the new agent reads `.knowledge/maintenance/routing_bundle.json` and
-`.knowledge/maintenance/handoff_summary.json` before changing code.
+Then the new agent starts meaningful work with `agent-task begin` and reads
+its returned `route.first_read.content`. Global routing and handoff summaries
+remain orientation aids. For an agent without a dedicated adapter, follow the
+[general Quick Start recipe](Quick-Start.md#connect-an-agent-without-a-dedicated-recipe).
 
 If `install-check` reports `source_checkout_in_target_root`, move the source
 checkout outside the target project and rerun the check before import.

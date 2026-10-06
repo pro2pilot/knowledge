@@ -4002,6 +4002,7 @@ function main() {
         'tools/lib/strict-temp-cleanup.js',
         'tools/lib/json-transaction.js',
         'tools/lib/path-context.js',
+        'tools/lib/path-segment.js',
         'tools/lib/git-context.js',
         'tools/lib/export-sanitizer.js',
         'tools/lib/wiki-status.js',

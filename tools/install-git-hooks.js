@@ -3,13 +3,15 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureDir, readJson, writeJsonAtomic, writeFileAtomic } = require('./lib/json-store');
+const { spawnSync } = require('child_process');
+const { readJson, writeJsonAtomicContained, writeFileAtomicContained, assertSafeContainedPath, assertSafeContainmentRoot, ensureContainedDir } = require('./lib/json-store');
 const { withContainedLock } = require('./lib/contained-lock-manager');
 const { LOCKS } = require('./lib/lock-policy');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const knowledgeRoot = path.join(repoRoot, '.knowledge');
-const gitHooksDir = path.join(repoRoot, '.git', 'hooks');
+let gitHooksDir = null;
+let hooksContainmentRoot = null;
 const automationStatusPath = path.join(knowledgeRoot, 'maintenance', 'automation_status.json');
 const hookErrorsPath = path.join(knowledgeRoot, 'maintenance', 'hook_errors.log');
 const GIT_HOOKS_LOCK = Object.freeze({
@@ -27,7 +29,7 @@ function hookBlock(hookName) {
 }
 
 function upsertHook(name) {
-  ensureDir(gitHooksDir);
+  ensureContainedDir(hooksContainmentRoot, gitHooksDir);
   const hookPath = path.join(gitHooksDir, name);
   const block = hookBlock(name);
   let current = fs.existsSync(hookPath) ? fs.readFileSync(hookPath, 'utf8') : '#!/bin/sh\n';
@@ -36,26 +38,56 @@ function upsertHook(name) {
   const next = regex.test(current)
     ? current.replace(regex, block)
     : `${current.replace(/\s*$/, '')}\n\n${block}\n`;
-  writeFileAtomic(hookPath, next);
+  writeFileAtomicContained(hookPath, next, hooksContainmentRoot);
   fs.chmodSync(hookPath, 0o755);
   return hookPath;
 }
 
 function installGitHooks() {
-  if (!fs.existsSync(gitHooksDir)) {
-    throw new Error('No .git/hooks directory found. Run `git init` or use `node .knowledge/tools/init-git-repo.js` first.');
+  const git = (args) => {
+    const result = spawnSync('git', args, { cwd: repoRoot, encoding: 'utf8', windowsHide: true });
+    if (result.status !== 0) throw new Error(`Git metadata is unavailable: ${result.stderr || result.error?.message || 'not a Git repository'}`);
+    return String(result.stdout || '').trim();
+  };
+  if (path.resolve(git(['rev-parse', '--show-toplevel'])) !== repoRoot) throw new Error('Refusing to install hooks outside the current project Git root.');
+  const commonDir = path.resolve(repoRoot, git(['rev-parse', '--git-common-dir']));
+  gitHooksDir = path.resolve(repoRoot, git(['rev-parse', '--git-path', 'hooks']));
+  const inside = (root, candidate) => { const relative = path.relative(root, candidate); return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)); };
+  hooksContainmentRoot = inside(repoRoot, gitHooksDir) ? repoRoot : inside(commonDir, gitHooksDir) ? commonDir : null;
+  if (!hooksContainmentRoot) throw new Error('External core.hooksPath is outside this project and its Git metadata; install the managed hook manually.');
+  assertSafeContainmentRoot(hooksContainmentRoot);
+  assertSafeContainedPath(hooksContainmentRoot, gitHooksDir, { allowMissing: true });
+  const safeFile = (root, file) => {
+    assertSafeContainedPath(root, file, { allowMissing: true });
+    if (!fs.existsSync(file)) return;
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error(`Unsafe Git hook/state file: ${file}`);
+  };
+  const names = ['post-commit', 'post-merge', 'post-checkout'];
+  for (const name of names) {
+    const hook = path.join(gitHooksDir, name);
+    safeFile(hooksContainmentRoot, hook);
+    if (fs.existsSync(hook)) {
+      const first = fs.readFileSync(hook, 'utf8').split(/\r?\n/, 1)[0];
+      if (first.startsWith('#!') && !/^#!\s*(?:\/usr\/bin\/env\s+)?(?:\S*\/)?(?:ba|da|k|z)?sh(?:\s|$)/.test(first)) {
+        throw new Error(`Cannot append a shell managed block to the non-shell hook ${name}.`);
+      }
+    }
   }
+  safeFile(knowledgeRoot, hookErrorsPath);
+  safeFile(knowledgeRoot, automationStatusPath);
   return withContainedLock(GIT_HOOKS_LOCK, () => {
-    ensureDir(path.dirname(hookErrorsPath));
-    if (!fs.existsSync(hookErrorsPath)) fs.writeFileSync(hookErrorsPath, '', 'utf8');
-    const installed = ['post-commit', 'post-merge', 'post-checkout'].map(upsertHook);
-    const status = readJson(automationStatusPath, { mode: 'event-driven' });
+    ensureContainedDir(knowledgeRoot, path.dirname(hookErrorsPath));
+    if (!fs.existsSync(hookErrorsPath)) writeFileAtomicContained(hookErrorsPath, '', knowledgeRoot);
+    const loaded = readJson(automationStatusPath, { mode: 'event-driven' });
+    const status = loaded && typeof loaded === 'object' && !Array.isArray(loaded) ? loaded : { mode: 'event-driven' };
+    const installed = names.map(upsertHook);
     status.hooks_installed = true;
     status.hook_mode = 'managed_block';
     status.hook_errors_log = '.knowledge/maintenance/hook_errors.log';
     status.last_trigger_source = 'install-git-hooks';
     status.last_hooks_installed_at = new Date().toISOString();
-    writeJsonAtomic(automationStatusPath, status);
+    writeJsonAtomicContained(automationStatusPath, status, knowledgeRoot);
     return { installed_hooks: installed.map((p) => path.relative(repoRoot, p).replace(/\\/g, '/')), hook_errors_log: '.knowledge/maintenance/hook_errors.log' };
   });
 }

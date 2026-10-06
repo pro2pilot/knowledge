@@ -3,7 +3,7 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 const repoRoot = process.cwd();
-const result = spawnSync('git', ['init'], { cwd: repoRoot, stdio: 'inherit', shell: true });
+const result = spawnSync('git', ['init'], { cwd: repoRoot, stdio: 'inherit', windowsHide: true });
 if (result.status !== 0) {
   process.exit(result.status || 1);
 }

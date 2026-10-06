@@ -87,33 +87,45 @@ function safeReadRuntimeJson(context, rel, fallback) {
 }
 
 function runGitChecked(targetRoot, args) {
-  return runGit(targetRoot, args, { timeoutMs: 12000 });
+  return runGit(targetRoot, args, { timeoutMs: 12000, preserveStdout: true });
 }
 
 function parseNameStatus(output, staged = false) {
   const rows = [];
-  for (const line of String(output || '').split(/\r?\n/).filter(Boolean)) {
-    const parts = line.split(/\t+/);
-    const code = parts[0] || 'M';
-    const file = normalizeRelative(parts[parts.length - 1]);
+  const parts = String(output || '').split('\0');
+  for (let offset = 0; offset < parts.length; offset += 1) {
+    const code = parts[offset];
+    if (!code) continue;
+    const file = normalizeRelative(parts[++offset]);
     if (!file) continue;
     rows.push({ path: file, status: code, staged });
+    // Both sides of a rename/copy can change the owning module's evidence.
+    if (/^[RC]/.test(code)) {
+      const destination = normalizeRelative(parts[++offset]);
+      if (destination) rows.push({ path: destination, status: code, staged });
+    }
   }
   return rows;
 }
 
 function parseStatus(output) {
   const rows = [];
-  for (const line of String(output || '').split(/\r?\n/).filter(Boolean)) {
+  const records = String(output || '').split('\0');
+  for (let offset = 0; offset < records.length; offset += 1) {
+    const line = records[offset];
+    if (!line) continue;
     const index = line.slice(0, 1);
     const worktree = line.slice(1, 2);
-    let file = normalizeRelative(line.slice(3).replace(/^"|"$/g, '').replace(/\\"/g, '"'));
-    if (file.includes(' -> ')) file = normalizeRelative(file.split(' -> ').pop());
+    const file = normalizeRelative(line.slice(3));
     rows.push({
       path: file,
       status: `${index}${worktree}`.trim() || 'M',
       staged: Boolean(index && index !== ' ' && index !== '?')
     });
+    if (/[RC]/.test(`${index}${worktree}`)) {
+      const original = normalizeRelative(records[++offset]);
+      if (original) rows.push({ path: original, status: `${index}${worktree}`.trim(), staged: Boolean(index && index !== ' ' && index !== '?') });
+    }
   }
   return rows;
 }
@@ -150,39 +162,42 @@ function collectChangedFiles(context, flags) {
   const rows = [];
   const warnings = [];
   if (flags.base || flags.head) {
+    for (const revision of [flags.base, flags.head].filter(Boolean)) {
+      if (typeof revision !== 'string' || revision.startsWith('-') || revision.includes('\0')) throw new Error('Git base/head must be a revision, not an option.');
+    }
     const left = flags.base || 'HEAD';
     const range = flags.head ? `${left}...${flags.head}` : left;
-    const diff = runGitChecked(targetRoot, ['diff', '--name-status', '--diff-filter=ACMRTUXB', range, '--']);
-    if (!diff.ok) warnings.push(diff.stderr || `git diff failed for ${range}`);
+    const diff = runGitChecked(targetRoot, ['diff', '--name-status', '-z', '--diff-filter=ACDMRTUXB', range, '--']);
+    if (!diff.ok) throw new Error(diff.stderr || `git diff failed for ${range}`);
     else rows.push(...parseNameStatus(diff.stdout, false));
     return { files: mergeChanged(rows), warnings };
   }
 
   const hasHead = runGitChecked(targetRoot, ['rev-parse', '--verify', 'HEAD']);
   if (!hasHead.ok) {
-    const status = runGitChecked(targetRoot, ['status', '--porcelain=v1']);
-    if (!status.ok) warnings.push(status.stderr || 'git status failed');
+    const status = runGitChecked(targetRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+    if (!status.ok) throw new Error(status.stderr || 'git status failed');
     else rows.push(...parseStatus(status.stdout));
     return { files: mergeChanged(rows), warnings };
   }
 
-  const unstaged = runGitChecked(targetRoot, ['diff', '--name-status', '--diff-filter=ACMRTUXB', 'HEAD', '--']);
+  const unstaged = runGitChecked(targetRoot, ['diff', '--name-status', '-z', '--diff-filter=ACDMRTUXB', 'HEAD', '--']);
   if (unstaged.ok) rows.push(...parseNameStatus(unstaged.stdout, false));
-  else warnings.push(unstaged.stderr || 'git diff failed');
+  else throw new Error(unstaged.stderr || 'git diff failed');
 
-  const staged = runGitChecked(targetRoot, ['diff', '--cached', '--name-status', '--diff-filter=ACMRTUXB', 'HEAD', '--']);
+  const staged = runGitChecked(targetRoot, ['diff', '--cached', '--name-status', '-z', '--diff-filter=ACDMRTUXB', 'HEAD', '--']);
   if (staged.ok) rows.push(...parseNameStatus(staged.stdout, true));
-  else warnings.push(staged.stderr || 'git diff --cached failed');
+  else throw new Error(staged.stderr || 'git diff --cached failed');
 
-  const untracked = runGitChecked(targetRoot, ['ls-files', '--others', '--exclude-standard']);
+  const untracked = runGitChecked(targetRoot, ['ls-files', '--others', '--exclude-standard', '-z']);
   if (untracked.ok) {
-    rows.push(...String(untracked.stdout || '').split(/\r?\n/).filter(Boolean).map((file) => ({
+    rows.push(...String(untracked.stdout || '').split('\0').filter(Boolean).map((file) => ({
       path: file,
       status: '??',
       staged: false
     })));
   } else {
-    warnings.push(untracked.stderr || 'git ls-files failed');
+    throw new Error(untracked.stderr || 'git ls-files failed');
   }
 
   return { files: mergeChanged(rows), warnings };

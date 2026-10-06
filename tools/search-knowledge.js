@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readJson } = require('./lib/json-store');
+const { readJson, assertSafeContainedPath } = require('./lib/json-store');
 const { resolveKnowledgeContext } = require('./lib/path-context');
 
 const context = resolveKnowledgeContext();
@@ -53,7 +53,7 @@ const SYNONYMS = {
 };
 
 function tokenize(text) {
-  return String(text || '').toLowerCase().match(/[a-zа-яё0-9_./:-]{2,}/gi)?.map((t) => t.toLowerCase()) || [];
+  return String(text || '').normalize('NFC').toLowerCase().match(/[\p{L}\p{M}\p{N}_./:-]{2,}/gu) || [];
 }
 
 function expandTokens(tokens) {
@@ -94,20 +94,39 @@ function parseArgs(argv) {
   let explain = false;
   let kind = null;
   let scope = DEFAULT_SCOPE;
-  for (const arg of argv) {
-    if (arg.startsWith('--limit=')) limit = Math.max(1, Number(arg.slice('--limit='.length)) || 10);
+  let help = false;
+  const contextFlags = new Set(['--system-root', '--target-root', '--project-knowledge-root', '--state-root', '--mode', '--team-root', '--workspace-id', '--agent-id']);
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const key = arg.split('=')[0];
+    const value = () => {
+      if (arg.includes('=')) return arg.slice(arg.indexOf('=') + 1);
+      if (!argv[index + 1] || argv[index + 1].startsWith('--')) throw new Error(`${key} requires a value`);
+      index += 1;
+      return argv[index];
+    };
+    if (contextFlags.has(key)) { value(); }
+    else if (key === '--limit') {
+      limit = Number(value());
+      if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('--limit must be a positive integer');
+    }
     else if (arg === '--json') jsonMode = true;
     else if (arg === '--explain') explain = true;
-    else if (arg.startsWith('--kind=')) kind = arg.slice('--kind='.length);
-    else if (arg.startsWith('--scope=')) scope = arg.slice('--scope='.length);
+    else if (arg === '--help') help = true;
+    else if (key === '--kind') kind = value();
+    else if (key === '--scope') scope = value();
+    else if (arg.startsWith('--')) throw new Error(`Unknown search flag: ${arg}`);
     else queryParts.push(arg);
   }
-  return { query: queryParts.join(' ').trim(), limit, jsonMode, explain, kind, scope };
+  return { query: queryParts.join(' ').trim(), limit, jsonMode, explain, kind, scope, help };
 }
 
 function loadIndex() {
   if (!fs.existsSync(indexPath)) buildIndex({ quiet: true });
-  return readJson(indexPath, { documents: [] });
+  assertSafeContainedPath(context.stateRoot, indexPath);
+  const index = readJson(indexPath);
+  if (!index || !Array.isArray(index.documents)) throw new Error('Search index must contain a documents array. Rebuild the index after reviewing the damaged file.');
+  return index;
 }
 
 function passesScope(doc, scope) {
@@ -119,9 +138,9 @@ function passesScope(doc, scope) {
 }
 
 function scoreDoc(doc, terms) {
-  const pathText = String(doc.path || '').toLowerCase();
-  const titleText = String(doc.title || '').toLowerCase();
-  const snippetText = String(doc.snippet || '').toLowerCase();
+  const pathText = String(doc.path || '').normalize('NFC').toLowerCase();
+  const titleText = String(doc.title || '').normalize('NFC').toLowerCase();
+  const snippetText = String(doc.snippet || '').normalize('NFC').toLowerCase();
   const top = new Map((doc.top_terms || []).map((item) => [item.term, item.count]));
   let score = 0;
   let matchedTerms = 0;
@@ -135,6 +154,9 @@ function scoreDoc(doc, terms) {
     if (local > 0) matchedTerms += 1;
     score += local;
   }
+  // Document-kind priors rank actual matches; they must never manufacture
+  // hits for an unrelated query or a query with no searchable terms.
+  if (matchedTerms === 0) return 0;
   const kindBoost = {
     decision: 2, contradiction: 3, invariant: 2, wiki: 2, cookbook: 2,
     template: 1, glossary: 1, module: 1, external_memory: 1, evidence: 1
@@ -146,7 +168,11 @@ function scoreDoc(doc, terms) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  const { query, limit, jsonMode, explain, kind, scope } = parseArgs(argv);
+  const { query, limit, jsonMode, explain, kind, scope, help } = parseArgs(argv);
+  if (help) {
+    console.log(jsonMode ? JSON.stringify({ usage: usage() }, null, 2) : usage());
+    return [];
+  }
   if (!VALID_SCOPES.includes(scope)) {
     const message = `Invalid --scope=${scope}. Valid: ${VALID_SCOPES.join(', ')}`;
     if (jsonMode) console.log(JSON.stringify({ error: message, valid_scopes: VALID_SCOPES }, null, 2));

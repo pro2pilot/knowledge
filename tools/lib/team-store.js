@@ -3,31 +3,33 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  ensureDir,
   readJson,
-  writeJsonAtomic,
   appendNdjson,
   assertSafeContainmentRoot,
+  assertSafeContainedPath,
+  writeJsonAtomicContained,
   ensureContainedDir
 } = require('./json-store');
 const {
   acquireContainedLock,
+  withContainedLock,
   inspectLockSafety,
   lockPaths
 } = require('./contained-lock-manager');
 const { LOCKS } = require('./lock-policy');
 const { systemVersion } = require('./system-version');
+const { assertSafePathSegment } = require('./path-segment');
 
 function nowIso() {
   return new Date().toISOString();
 }
 
 function repoDir(teamRoot, repoId) {
-  return path.join(teamRoot, 'repos', repoId);
+  return path.join(teamRoot, 'repos', assertSafePathSegment(repoId, 'repoId'));
 }
 
 function workspaceDir(teamRoot, repoId, workspaceId) {
-  return path.join(repoDir(teamRoot, repoId), 'workspaces', workspaceId);
+  return path.join(repoDir(teamRoot, repoId), 'workspaces', assertSafePathSegment(workspaceId, 'workspaceId'));
 }
 
 function workspaceStateDir(teamRoot, repoId, workspaceId) {
@@ -35,7 +37,84 @@ function workspaceStateDir(teamRoot, repoId, workspaceId) {
 }
 
 function eventPath(teamRoot, repoId, date = nowIso().slice(0, 10)) {
-  return path.join(repoDir(teamRoot, repoId), 'events', `${date}.ndjson`);
+  return path.join(repoDir(teamRoot, repoId), 'events', `${assertSafePathSegment(date, 'event date')}.ndjson`);
+}
+
+function prepareTeamRoot(teamRoot) {
+  const root = path.resolve(teamRoot);
+  let ancestor = root;
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  ensureContainedDir(assertSafeContainmentRoot(ancestor), root);
+  return assertSafeContainmentRoot(root);
+}
+
+// A per-repository flow lock cannot protect registry.json shared by every
+// repository, or workspace mutations performed outside a flow. Hold one lock
+// from the first read through the final write. Internal helpers never acquire
+// it again, so registerWorkspace -> initTeam cannot deadlock recursively.
+function withTeamRegistryLock(context, operation) {
+  const root = prepareTeamRoot(context.teamRoot);
+  return withContainedLock({
+    context: { ...context, stateRoot: root },
+    rootKind: 'state',
+    rootPath: root,
+    lockName: 'team-registry',
+    purpose: LOCKS['team-registry'].purpose
+  }, operation);
+}
+
+function assertTeamFile(teamRoot, file) {
+  assertSafeContainedPath(teamRoot, file, { allowMissing: true });
+  if (fs.existsSync(file)) {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) {
+      const error = new Error('Team state must be a physical file with one link.');
+      error.code = 'contained_path_unsafe';
+      throw error;
+    }
+  }
+  return file;
+}
+
+function readTeamJson(teamRoot, file, fallback) {
+  assertTeamFile(teamRoot, file);
+  // Missing state is initialized. Corrupt existing state is never replaced by
+  // an empty fallback, because that would destroy another agent's registry.
+  if (!fs.existsSync(file)) return fallback;
+  const value = readJson(file);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    const error = new Error('Invalid team state: expected a JSON object.');
+    error.code = path.basename(file) === 'registry.json' ? 'team_registry_invalid' : 'team_state_invalid';
+    throw error;
+  }
+  return value;
+}
+
+function assertTeamIdentity(value, expected) {
+  for (const [field, identity] of Object.entries(expected)) {
+    if (Object.prototype.hasOwnProperty.call(value, field) && value[field] !== identity) {
+      const error = new Error(`Team state ${field} does not match its directory identity.`);
+      error.code = 'team_state_identity_mismatch';
+      throw error;
+    }
+  }
+  return value;
+}
+
+function writeTeamJson(teamRoot, file, value) {
+  assertTeamFile(teamRoot, file);
+  return writeJsonAtomicContained(file, value, teamRoot);
+}
+
+function appendTeamNdjson(teamRoot, file, value) {
+  assertTeamFile(teamRoot, file);
+  ensureContainedDir(teamRoot, path.dirname(file));
+  assertTeamFile(teamRoot, file);
+  return appendNdjson(file, value);
 }
 
 function lockPath(teamRoot, repoId, kind = 'flow') {
@@ -63,17 +142,24 @@ function appendTeamEvent(context, type, payload = {}) {
     targetRoot: context.targetRoot || null,
     ...payload
   };
-  appendNdjson(eventPath(context.teamRoot, context.repoId), event);
+  appendTeamNdjson(context.teamRoot, eventPath(context.teamRoot, context.repoId), event);
   return event;
 }
 
 function readRegistry(teamRoot) {
-  return readJson(path.join(teamRoot, 'registry.json'), {
+  if (!fs.existsSync(teamRoot)) return { schema_version: systemVersion(), created_at: nowIso(), updated_at: null, repos: [] };
+  const registry = readTeamJson(teamRoot, path.join(teamRoot, 'registry.json'), {
     schema_version: systemVersion(),
     created_at: nowIso(),
     updated_at: null,
     repos: []
   });
+  if (!registry || typeof registry !== 'object' || Array.isArray(registry) || !Array.isArray(registry.repos)) {
+    const error = new Error('Invalid team registry: expected an object with a repos array.');
+    error.code = 'team_registry_invalid';
+    throw error;
+  }
+  return registry;
 }
 
 function upsertRepoInRegistry(registry, repo) {
@@ -85,13 +171,14 @@ function upsertRepoInRegistry(registry, repo) {
   return registry;
 }
 
-function initTeam(context) {
+function initTeamUnlocked(context) {
   if (context.mode !== 'team') throw new Error('team-init requires team mode context');
   const base = repoDir(context.teamRoot, context.repoId);
-  ensureDir(context.teamRoot);
-  ensureDir(path.join(base, 'locks'));
-  ensureDir(path.join(base, 'events'));
-  ensureDir(path.join(base, 'workspaces'));
+  prepareTeamRoot(context.teamRoot);
+  const directories = ['locks', 'events', 'workspaces'].map((name) => path.join(base, name));
+  for (const directory of directories) assertSafeContainedPath(context.teamRoot, directory, { allowMissing: true });
+  assertTeamFile(context.teamRoot, path.join(base, 'repo.json'));
+  const existing = assertTeamIdentity(readTeamJson(context.teamRoot, path.join(base, 'repo.json'), {}), { repoId: context.repoId });
 
   const registry = upsertRepoInRegistry(readRegistry(context.teamRoot), {
     repoId: context.repoId,
@@ -102,10 +189,10 @@ function initTeam(context) {
     headSha: context.headSha,
     updated_at: nowIso()
   });
-  writeJsonAtomic(path.join(context.teamRoot, 'registry.json'), registry);
+  for (const directory of directories) ensureContainedDir(context.teamRoot, directory);
+  writeTeamJson(context.teamRoot, path.join(context.teamRoot, 'registry.json'), registry);
 
   const repoJsonPath = path.join(base, 'repo.json');
-  const existing = readJson(repoJsonPath, {});
   const repoJson = {
     schema_version: systemVersion(),
     repoId: context.repoId,
@@ -120,25 +207,18 @@ function initTeam(context) {
     updated_at: nowIso(),
     status: 'active'
   };
-  writeJsonAtomic(repoJsonPath, repoJson);
+  writeTeamJson(context.teamRoot, repoJsonPath, repoJson);
   appendTeamEvent(context, 'team_init', { repo: repoJson });
   return { registry, repo: repoJson };
 }
 
-function registerWorkspace(context, extra = {}) {
-  initTeam(context);
+function registerWorkspaceUnlocked(context, extra = {}) {
   const dir = workspaceDir(context.teamRoot, context.repoId, context.workspaceId);
   const state = workspaceStateDir(context.teamRoot, context.repoId, context.workspaceId);
-  ensureDir(dir);
-  ensureDir(path.join(state, 'maintenance'));
-  ensureDir(path.join(state, 'metrics'));
-  ensureDir(path.join(state, 'search'));
-  ensureDir(path.join(state, 'inspector'));
-  ensureDir(path.join(state, 'sessions'));
-  ensureDir(path.join(state, 'maps'));
-
+  prepareTeamRoot(context.teamRoot);
+  assertSafeContainedPath(context.teamRoot, dir, { allowMissing: true });
   const filePath = path.join(dir, 'workspace.json');
-  const existing = readJson(filePath, {});
+  const existing = assertTeamIdentity(readTeamJson(context.teamRoot, filePath, {}), { repoId: context.repoId, workspaceId: context.workspaceId });
   if (existing.status === 'active') {
     if (existing.targetRoot && path.resolve(existing.targetRoot) !== path.resolve(context.targetRoot)) {
       throw new Error(`workspaceId duplicate with different targetRoot: ${context.workspaceId}`);
@@ -147,12 +227,17 @@ function registerWorkspace(context, extra = {}) {
       throw new Error(`workspaceId duplicate with different agentId: ${context.workspaceId}`);
     }
   }
+  initTeamUnlocked(context);
+  ensureContainedDir(context.teamRoot, dir);
+  for (const name of ['maintenance', 'metrics', 'search', 'inspector', 'sessions', 'maps']) {
+    ensureContainedDir(context.teamRoot, path.join(state, name));
+  }
   const duplicateAgentWorkspaces = [];
   const workspacesRoot = path.join(repoDir(context.teamRoot, context.repoId), 'workspaces');
   if (fs.existsSync(workspacesRoot)) {
     for (const id of fs.readdirSync(workspacesRoot)) {
       if (id === context.workspaceId) continue;
-      const candidate = readJson(path.join(workspacesRoot, id, 'workspace.json'), null);
+      const candidate = readTeamJson(context.teamRoot, path.join(workspacesRoot, id, 'workspace.json'), null);
       if (candidate && candidate.status === 'active' && candidate.agentId === context.agentId) {
         duplicateAgentWorkspaces.push(id);
       }
@@ -183,23 +268,33 @@ function registerWorkspace(context, extra = {}) {
     status: 'active',
     warnings
   };
-  writeJsonAtomic(filePath, workspace);
+  writeTeamJson(context.teamRoot, filePath, workspace);
   appendTeamEvent(context, 'workspace_register', { workspace });
   return workspace;
 }
 
-function findWorkspace(teamRoot, workspaceId) {
+function findWorkspace(teamRoot, workspaceId, requestedRepoId = null) {
+  assertSafePathSegment(workspaceId, 'workspaceId');
+  if (requestedRepoId !== null) assertSafePathSegment(requestedRepoId, 'repoId');
   const reposRoot = path.join(teamRoot, 'repos');
   if (!fs.existsSync(reposRoot)) return null;
-  for (const repoId of fs.readdirSync(reposRoot)) {
-    const file = path.join(reposRoot, repoId, 'workspaces', workspaceId, 'workspace.json');
-    if (fs.existsSync(file)) return { repoId, workspace: readJson(file, {}), path: file };
+  assertSafeContainedPath(teamRoot, reposRoot);
+  const matches = [];
+  for (const repoId of requestedRepoId ? [requestedRepoId] : fs.readdirSync(reposRoot)) {
+    const file = path.join(workspaceDir(teamRoot, repoId, workspaceId), 'workspace.json');
+    const workspace = readTeamJson(teamRoot, file, null);
+    if (workspace) matches.push({ repoId, workspace: assertTeamIdentity(workspace, { repoId, workspaceId }), path: file });
   }
-  return null;
+  if (matches.length > 1) {
+    const error = new Error('workspaceId exists in multiple repositories; provide --repo-id.');
+    error.code = 'workspace_id_ambiguous';
+    throw error;
+  }
+  return matches[0] || null;
 }
 
-function unregisterWorkspace(teamRoot, workspaceId) {
-  const found = findWorkspace(teamRoot, workspaceId);
+function unregisterWorkspaceUnlocked(teamRoot, workspaceId, repoId = null) {
+  const found = findWorkspace(teamRoot, workspaceId, repoId);
   if (!found) throw new Error(`Workspace not found: ${workspaceId}`);
   const workspace = {
     ...found.workspace,
@@ -207,8 +302,8 @@ function unregisterWorkspace(teamRoot, workspaceId) {
     archived_at: nowIso(),
     updated_at: nowIso()
   };
-  writeJsonAtomic(found.path, workspace);
-  appendNdjson(eventPath(teamRoot, found.repoId), {
+  writeTeamJson(teamRoot, found.path, workspace);
+  appendTeamNdjson(teamRoot, eventPath(teamRoot, found.repoId), {
     type: 'workspace_unregister',
     generated_at: nowIso(),
     repoId: found.repoId,
@@ -286,15 +381,17 @@ function listTeamStatus(teamRoot) {
   const repos = [];
   const reposRoot = path.join(teamRoot, 'repos');
   if (fs.existsSync(reposRoot)) {
+    assertSafeContainedPath(teamRoot, reposRoot);
     for (const repoId of fs.readdirSync(reposRoot)) {
       const base = path.join(reposRoot, repoId);
-      const repo = readJson(path.join(base, 'repo.json'), { repoId });
+      const repo = assertTeamIdentity(readTeamJson(teamRoot, path.join(base, 'repo.json'), { repoId }), { repoId });
       const workspaces = [];
       const workspacesRoot = path.join(base, 'workspaces');
       if (fs.existsSync(workspacesRoot)) {
+        assertSafeContainedPath(teamRoot, workspacesRoot);
         for (const workspaceId of fs.readdirSync(workspacesRoot)) {
-          const ws = readJson(path.join(workspacesRoot, workspaceId, 'workspace.json'), null);
-          if (ws) workspaces.push(ws);
+          const ws = readTeamJson(teamRoot, path.join(workspacesRoot, workspaceId, 'workspace.json'), null);
+          if (ws) workspaces.push(assertTeamIdentity(ws, { repoId, workspaceId }));
         }
       }
       const flowLock = inspectLockSafety({
@@ -327,9 +424,9 @@ function listTeamStatus(teamRoot) {
   };
 }
 
-function updateWorkspaceFlow(context, flowResult) {
+function updateWorkspaceFlowUnlocked(context, flowResult) {
   if (!context.teamRoot || !context.workspaceId) return null;
-  const found = findWorkspace(context.teamRoot, context.workspaceId);
+  const found = findWorkspace(context.teamRoot, context.workspaceId, context.repoId);
   if (!found) return null;
   const workspace = {
     ...found.workspace,
@@ -339,8 +436,40 @@ function updateWorkspaceFlow(context, flowResult) {
     last_flow: flowResult.flow || flowResult.name || null,
     last_status: flowResult.overall_status || null
   };
-  writeJsonAtomic(found.path, workspace);
+  writeTeamJson(context.teamRoot, found.path, workspace);
   return workspace;
+}
+
+function initTeam(context) {
+  if (context.mode !== 'team') throw new Error('team-init requires team mode context');
+  assertSafePathSegment(context.repoId, 'repoId');
+  if (context.workspaceId !== undefined && context.workspaceId !== null) {
+    assertSafePathSegment(context.workspaceId, 'workspaceId');
+  }
+  return withTeamRegistryLock(context, () => initTeamUnlocked(context));
+}
+
+function registerWorkspace(context, extra = {}) {
+  if (context.mode !== 'team') throw new Error('team-init requires team mode context');
+  assertSafePathSegment(context.repoId, 'repoId');
+  assertSafePathSegment(context.workspaceId, 'workspaceId');
+  return withTeamRegistryLock(context, () => registerWorkspaceUnlocked(context, extra));
+}
+
+function unregisterWorkspace(teamRoot, workspaceId, repoId = null) {
+  assertSafePathSegment(workspaceId, 'workspaceId');
+  if (repoId !== null) assertSafePathSegment(repoId, 'repoId');
+  if (!fs.existsSync(teamRoot)) throw new Error(`Workspace not found: ${workspaceId}`);
+  return withTeamRegistryLock({ teamRoot, workspaceId, repoId },
+    () => unregisterWorkspaceUnlocked(teamRoot, workspaceId, repoId));
+}
+
+function updateWorkspaceFlow(context, flowResult) {
+  if (!context.teamRoot || !context.workspaceId) return null;
+  assertSafePathSegment(context.repoId, 'repoId');
+  assertSafePathSegment(context.workspaceId, 'workspaceId');
+  if (!fs.existsSync(context.teamRoot)) return null;
+  return withTeamRegistryLock(context, () => updateWorkspaceFlowUnlocked(context, flowResult));
 }
 
 module.exports = {

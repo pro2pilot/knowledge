@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { ensureDir, readJson, writeJsonAtomic, getAgentId } = require('./lib/json-store');
+const { ensureContainedDir, readJson, writeJsonAtomicContained, getAgentId } = require('./lib/json-store');
 const { withContainedLock } = require('./lib/contained-lock-manager');
 const { LOCKS } = require('./lib/lock-policy');
 const { resolveKnowledgeContext } = require('./lib/path-context');
@@ -99,19 +99,14 @@ function scanFile(abs) {
   if (rel(abs) === '.knowledge/maintenance/secret_scan_report.json') return [];
   const findings = [];
   for (const rule of RULES) {
+    // Scan every occurrence. A documented placeholder earlier in a file must
+    // not hide a later credential matching the same rule.
+    const pattern = new RegExp(rule.pattern.source, rule.pattern.flags.includes('g') ? rule.pattern.flags : `${rule.pattern.flags}g`);
     let match;
-    rule.pattern.lastIndex = 0;
-    if (rule.pattern.global) {
-      while ((match = rule.pattern.exec(content)) !== null) {
-        const raw = match[0];
-        if (looksLikePlaceholder(raw)) continue;
-        findings.push({ file: rel(abs), rule: rule.id, severity: rule.severity, line: lineNumberOf(content, match.index), masked_value: mask(raw) });
-      }
-    } else {
-      const m = content.match(rule.pattern);
-      if (m && !looksLikePlaceholder(m[0])) {
-        findings.push({ file: rel(abs), rule: rule.id, severity: rule.severity, line: lineNumberOf(content, m.index ?? content.indexOf(m[0])), masked_value: mask(m[0]) });
-      }
+    while ((match = pattern.exec(content)) !== null) {
+      const raw = match[0];
+      if (looksLikePlaceholder(raw)) continue;
+      findings.push({ file: rel(abs), rule: rule.id, severity: rule.severity, line: lineNumberOf(content, match.index), masked_value: mask(raw) });
     }
   }
   return findings;
@@ -169,8 +164,8 @@ function main(argv = process.argv.slice(2)) {
     findings
   };
 
-  ensureDir(path.dirname(reportPath));
-  writeJsonAtomic(reportPath, report);
+  ensureContainedDir(stateRoot, path.dirname(reportPath));
+  writeJsonAtomicContained(reportPath, report, stateRoot);
 
   if (jsonOut) {
     console.log(JSON.stringify(report, null, 2));
@@ -183,7 +178,8 @@ function main(argv = process.argv.slice(2)) {
     }, null, 2));
   }
 
-  if (strict && findings.length > 0) process.exit(1);
+  // Return through withContainedLock so a rejected scan releases ownership.
+  if (strict && findings.length > 0) process.exitCode = 1;
   return report;
 }
 

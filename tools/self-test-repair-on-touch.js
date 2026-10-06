@@ -1517,7 +1517,7 @@ function main() {
       );
     });
     check('64j generated producer dependency closures match recursive literal requires', () => {
-      const releaseRoot = path.dirname(systemRoot);
+      const producerPath = (relative) => path.join(systemRoot, ...relative.replace(/^\.knowledge\//, '').split('/'));
       const producers = [
         '.knowledge/tools/build-search-index.js',
         '.knowledge/tools/build-routing-bundle.js',
@@ -1539,10 +1539,7 @@ function main() {
             continue;
           }
           visited.add(relative);
-          const absolute = path.join(
-            releaseRoot,
-            ...relative.split('/')
-          );
+          const absolute = producerPath(relative);
           assert(
             fs.existsSync(absolute),
             `declared producer dependency is missing: ${relative}`
@@ -1570,8 +1567,8 @@ function main() {
               request
             );
             if (!path.extname(dependency)) dependency += '.js';
-            const dependencyRelative = path.relative(
-              releaseRoot,
+            const dependencyRelative = '.knowledge/' + path.relative(
+              systemRoot,
               dependency
             ).replace(/\\/g, '/');
             assert(
@@ -1593,10 +1590,7 @@ function main() {
         }
         for (const relative of declared) {
           assert(
-            fs.existsSync(path.join(
-              releaseRoot,
-              ...relative.split('/')
-            )),
+            fs.existsSync(producerPath(relative)),
             `producer closure contains a missing path: ${relative}`
           );
         }
@@ -2070,6 +2064,200 @@ function main() {
         }`
       );
     });
+    for (const scenario of [
+      { name: 'invalid-closed', closes: true, elevates: true },
+      { name: 'open', open: true, closes: true, elevates: true },
+      { name: 'related-in-plan', open: true, closes: true, elevates: true, planned: true },
+      { name: 'uncovered-source', open: true, finding: { affected_artifacts: ['.knowledge/freshness.json', 'src/billing.js'] } },
+      { name: 'other-module', open: true, finding: { module_id: 'billing' }, elevates: true },
+      { name: 'critical-path', open: true, finding: { critical_path: true } },
+      { name: 'critical-severity', open: true, finding: { severity: 'critical' } },
+      { name: 'security', open: true, finding: { security_sensitive: true } },
+      { name: 'excluded', open: true, finding: { safe_during_current_task: false } },
+      { name: 'dedicated', open: true, finding: { repair_class: 'manual_review', required_checks: ['dedicated_review'] } },
+      { name: 'different-predicate', open: true, finding: { resolution_predicate: 'dedicated_manual_review_passed' } },
+      { name: 'extra-check', open: true, finding: { required_checks: ['unexecuted_check'] } },
+      { name: 'witness-only', open: true, finding: { affected_artifacts: ['.knowledge/freshness.json'] } },
+      { name: 'unbound-facts', closes: true, unboundFacts: true },
+      { name: 'stale-fact-hash', closes: true, staleFact: true },
+      { name: 'failed-test', failedTest: true }
+    ]) check(`64e related stale recheck: ${scenario.name}`, () => {
+      const relatedRoot = path.join(root, `covered-stale-recheck-${scenario.name}`);
+      fs.cpSync(applyRoot, relatedRoot, { recursive: true });
+      const relatedStateRoot = path.join(relatedRoot, '.knowledge');
+      const relatedQueuePath = path.join(
+        relatedStateRoot,
+        'maintenance',
+        'repair_queue.json'
+      );
+      const relatedStalePath = path.join(
+        relatedStateRoot,
+        'maintenance',
+        'stale_items.json'
+      );
+      const relatedQueue = readJson(relatedQueuePath, { queue: [] });
+      const relatedStale = readJson(relatedStalePath, { items: [] });
+      const relatedFinding = {
+        ...granularFinding({
+          module_id: 'auth',
+          code: 'tracked_file_needs_recheck',
+          artifact: '.knowledge/freshness.json',
+          affected_artifacts: [
+            '.knowledge/freshness.json',
+            'src/auth.js'
+          ],
+          severity: 'medium',
+          repair_class: 'verify_on_touch',
+          required_checks: [
+            'read_current_source',
+            'run_relevant_tests',
+            'compare_existing_claims'
+          ],
+          resolution_predicate:
+            'source_and_relevant_tests_confirm_claim',
+          ...scenario.finding
+        }),
+        occurrence: 1,
+        opened_at: '2026-07-29T11:00:00.000Z'
+      };
+      reconcile({
+        staleItems: relatedStale,
+        repairQueue: relatedQueue,
+        findings: [relatedFinding],
+        source: 'covered-stale-recheck-test',
+        agentId: 'repair-test',
+        timestamp: relatedFinding.opened_at
+      });
+      const staleRelated = relatedStale.items.find((item) =>
+        item.lifecycle_id === relatedFinding.lifecycle_id);
+      const queueRelated = relatedQueue.queue.find((item) =>
+        item.lifecycle_id === relatedFinding.lifecycle_id);
+      const invalidResolutionEvidence = {
+        receipt_id: `KVR-${'0'.repeat(64)}`,
+        receipt_sha256: '0'.repeat(64),
+        receipt_path:
+          `maintenance/verification_receipts/00/${'0'.repeat(64)}.json`,
+        task_id: 'TASK-prior',
+        session_id: 'SESSION-prior'
+      };
+      for (const record of scenario.open ? [] : [staleRelated, queueRelated]) {
+        record.status = 'closed';
+        record.closed_at = '2026-07-29T11:30:00.000Z';
+        record.resolution_evidence = invalidResolutionEvidence;
+      }
+      writeJson(relatedStalePath, relatedStale);
+      writeJson(relatedQueuePath, relatedQueue);
+      if (scenario.planned) {
+        const extraPlan = buildOpportunitiesArtifact({ findings: [relatedFinding], scope: applyScope,
+          policyResolution: applyPolicy, doctorScore: 86, generatedAt: '2026-07-29T12:00:00.000Z', generatedBy: 'test' });
+        for (const planFile of [path.join(relatedStateRoot, repairSessionPlanRelative(applyScope.task_id, applyScope.session_id)),
+          path.join(relatedStateRoot, 'maintenance/repair_opportunities.json')]) {
+          const plan = readJson(planFile);
+          plan.opportunities.push({ ...extraPlan.opportunities[0], status: 'deferred', decision_reason: 'budget_exhausted_max_findings' });
+          plan.summary.findings_considered += 1;
+          plan.summary.findings_deferred += 1;
+          writeJson(planFile, plan);
+        }
+      }
+      const trustPath = path.join(
+        relatedStateRoot,
+        'maintenance',
+        'trust_report.json'
+      );
+      const relatedTrust = readJson(trustPath, {});
+      relatedTrust.module_statuses.find((item) =>
+        item.module_id === 'auth'
+      ).reasons = {
+        changed_or_missing_important_files: [],
+        open_contradictions: [],
+        uncovered_important_files: ['src/auth.js']
+      };
+      writeJson(trustPath, relatedTrust);
+      writeJson(path.join(relatedStateRoot, 'evidence', 'file_facts.json'), {
+        facts: [{ file: 'src/auth.js', evidence: {
+          test: 'tests/auth.test.js', source_sha256: scenario.staleFact ? '0'.repeat(64) : hash(path.join(relatedRoot, 'src/auth.js'))
+        } }]
+      });
+      if (scenario.failedTest) writeText(path.join(relatedRoot, 'tests/auth.test.js'), 'process.exit(1);\n');
+      const makeReceiptArgs = () => receiptInput(relatedRoot, applyFindings[0], applyScope, {
+        verification_source_files: [...applyReceipt.source_files_checked.map((item) => item.path),
+          ...(scenario.unboundFacts ? [] : ['.knowledge/evidence/file_facts.json'])]
+      });
+      if (scenario.failedTest) {
+        let rejected = false;
+        try { createReceipt(makeReceiptArgs(), { finding: applyFindings[0], scope: applyScope,
+          policyResolution: applyPolicy, repoRoot: relatedRoot, stateRoot: relatedStateRoot }); }
+        catch { rejected = true; }
+        assert(rejected, 'failed physical test produced a repair receipt');
+        return;
+      }
+      const relatedReceipt = createReceipt(makeReceiptArgs(), { finding: applyFindings[0], scope: applyScope, policyResolution: applyPolicy,
+        repoRoot: relatedRoot, stateRoot: relatedStateRoot });
+      const clonedReceiptPath = saveReceipt(relatedStateRoot, relatedReceipt).path;
+      const run = spawnSync(
+        process.execPath,
+        [toolPath, 'apply', `--receipt=${clonedReceiptPath}`],
+        {
+          cwd: relatedRoot,
+          env: envFor(relatedRoot),
+          encoding: 'utf8',
+          timeout: 60000,
+          windowsHide: true
+        }
+      );
+      const result = JSON.parse(run.stdout || '{}');
+      const refreshed = readJson(relatedQueuePath, { queue: [] }).queue
+        .find((item) => item.lifecycle_id === relatedFinding.lifecycle_id);
+      assert(
+        Boolean(result.trust_elevated) === Boolean(scenario.elevates) &&
+        (!scenario.elevates || Boolean(result.closed_lifecycle_ids?.includes(relatedFinding.lifecycle_id)) === Boolean(scenario.closes)) &&
+        (scenario.closes
+          ? refreshed?.resolution_evidence?.receipt_id === result.receipt_id
+          : refreshed.status === 'open'),
+        `covered stale recheck scenario ${scenario.name} failed: ${
+          run.stderr || run.stdout
+        }`
+      );
+      if (scenario.planned) assert(result.telemetry?.closure_provenance_status === 'verified',
+        `planned related receipt was rejected by telemetry: ${JSON.stringify(result.telemetry)}`);
+      if (scenario.name === 'open') {
+        const sync = spawnSync(process.execPath, [path.join(systemRoot, 'tools/sync-tracked.js'), '--json'], {
+          cwd: relatedRoot, env: envFor(relatedRoot), encoding: 'utf8', windowsHide: true, timeout: 60000
+        });
+        const afterSync = readJson(trustPath).module_statuses.find((item) => item.module_id === 'auth');
+        assert(sync.status === 0 && afterSync.reasons.uncovered_important_files.length === 0 &&
+          !['suspect', 'low_confidence'].includes(afterSync.trust_status),
+          `sync lost verified file-fact coverage: ${sync.stderr || JSON.stringify(afterSync)}`);
+      }
+      if (scenario.name === 'invalid-closed') {
+        const originalEvidence = JSON.stringify(refreshed.resolution_evidence);
+        const replay = spawnSync(process.execPath, [toolPath, 'apply', `--receipt=${clonedReceiptPath}`], {
+          cwd: relatedRoot, env: envFor(relatedRoot), encoding: 'utf8', windowsHide: true, timeout: 60000
+        });
+        const replayResult = JSON.parse(replay.stdout || '{}');
+        assert(replay.status === 0 && replayResult.idempotent &&
+          replayResult.closed_lifecycle_ids.includes(relatedFinding.lifecycle_id),
+          `related replay failed: ${replay.stderr || replay.stdout}`);
+        assert(JSON.stringify(readJson(relatedQueuePath).queue.find((item) =>
+          item.lifecycle_id === relatedFinding.lifecycle_id).resolution_evidence) === originalEvidence,
+          'valid closure evidence was rewritten during replay');
+
+        // Both projections are altered equally: projection consistency alone
+        // cannot authorize evidence absent from the committed transaction.
+        for (const [file, field] of [[relatedQueuePath, 'queue'], [relatedStalePath, 'items']]) {
+          const doc = readJson(file);
+          doc[field].find((item) => item.lifecycle_id === relatedFinding.lifecycle_id)
+            .resolution_evidence.verified_by = 'forged-actor';
+          writeJson(file, doc);
+        }
+        const forged = spawnSync(process.execPath, [toolPath, 'apply', `--receipt=${clonedReceiptPath}`], {
+          cwd: relatedRoot, env: envFor(relatedRoot), encoding: 'utf8', windowsHide: true, timeout: 60000
+        });
+        const forgedResult = JSON.parse(forged.stdout || '{}');
+        assert(forgedResult.status === 'rejected' && !forgedResult.trust_elevated,
+          `uncommitted related evidence was accepted: ${forged.stdout}`);
+      }
+    });
     check('64f phase two rejects a trust target changed after phase one', () => {
       const phaseRoot = path.join(root, 'phase-two-target-binding');
       fs.cpSync(applyRoot, phaseRoot, { recursive: true });
@@ -2109,7 +2297,10 @@ function main() {
         run.status === 0 &&
         body.phase1?.trust_elevation_pending === true &&
         body.phase2?.status === 'not_eligible' &&
-        body.phase2?.reason === 'module_trust_authority_changed' &&
+        (body.phase2?.reason === 'module_trust_authority_changed' ||
+          (body.phase2?.reason === 'module_closure_provenance_invalid' &&
+            body.phase2?.errors?.includes('source_hash_current_mismatch:.knowledge/modules/auth.json'))) &&
+        body.phase2?.trust_elevated === false &&
         body.card?.current_trust_level === 'suspect',
         `phase-two target drift was accepted: ${run.stderr || run.stdout}`
       );

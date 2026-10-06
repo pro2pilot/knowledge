@@ -5,7 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { parseCliArgs, resolveKnowledgeContext } = require('./lib/path-context');
-const { ensureDir, readJson, writeJsonAtomic, appendNdjson } = require('./lib/json-store');
+const { readJson, writeJsonAtomicContained, appendNdjson, assertSafeContainedPath, ensureContainedDir } = require('./lib/json-store');
+const { assertSafePathSegment } = require('./lib/path-segment');
+const { withContainedLock } = require('./lib/contained-lock-manager');
+const { LOCKS } = require('./lib/lock-policy');
 
 function nowIso() {
   return new Date().toISOString();
@@ -25,6 +28,15 @@ function registryPath(context) {
 
 function eventsPath(context) {
   return path.join(context.stateRoot, 'events', `${nowIso().slice(0, 10)}.ndjson`);
+}
+
+function readRegistry(context) {
+  const target = registryPath(context);
+  if (fs.existsSync(context.stateRoot)) assertSafeContainedPath(context.stateRoot, target, { allowMissing: true });
+  if (!fs.existsSync(target)) return { schema_version: 'knowledge-agent-registry.v1', sessions: [] };
+  const registry = readJson(target);
+  if (!registry || typeof registry !== 'object' || !Array.isArray(registry.sessions)) throw new Error('Agent session registry must contain a sessions array; existing bytes were preserved.');
+  return registry;
 }
 
 function sessionFromFlags(context, flags, existing = {}) {
@@ -51,28 +63,36 @@ function sessionFromFlags(context, flags, existing = {}) {
 }
 
 function writeSession(context, session) {
-  ensureDir(sessionsDir(context));
+  assertSafePathSegment(session.session_id, 'session id');
   const file = path.join(sessionsDir(context), `${session.session_id}.json`);
-  writeJsonAtomic(file, session);
-  const registry = readJson(registryPath(context), { schema_version: 'knowledge-agent-registry.v1', sessions: [] });
+  for (const target of [file, registryPath(context), eventsPath(context)]) {
+    assertSafeContainedPath(context.stateRoot, target, { allowMissing: true });
+  }
+  const registry = readRegistry(context);
   const sessions = (registry.sessions || []).filter((item) => item.session_id !== session.session_id);
   sessions.push(session);
-  writeJsonAtomic(registryPath(context), { ...registry, updated_at: nowIso(), sessions });
+  writeJsonAtomicContained(file, session, context.stateRoot);
+  writeJsonAtomicContained(registryPath(context), { ...registry, updated_at: nowIso(), sessions }, context.stateRoot);
+  ensureContainedDir(context.stateRoot, path.dirname(eventsPath(context)));
+  assertSafeContainedPath(context.stateRoot, eventsPath(context), { allowMissing: true });
   appendNdjson(eventsPath(context), { type: 'agent_session', at: nowIso(), session_id: session.session_id, status: session.status, agent_instance_id: session.agent_instance_id });
   return file;
 }
 
 function findSession(context, flags) {
-  const registry = readJson(registryPath(context), { sessions: [] });
+  const registry = readRegistry(context);
   const sessionId = flags.sessionId || process.env.KNOWLEDGE_SESSION_ID;
-  if (sessionId) return registry.sessions.find((item) => item.session_id === sessionId) || null;
+  if (sessionId) {
+    assertSafePathSegment(sessionId, 'session id');
+    return registry.sessions.find((item) => item.session_id === sessionId) || null;
+  }
   const instance = flags.instance || flags.agentInstanceId || process.env.KNOWLEDGE_AGENT_INSTANCE_ID;
   if (instance) return [...registry.sessions].reverse().find((item) => item.agent_instance_id === instance && item.status !== 'done') || null;
   return [...registry.sessions].reverse().find((item) => item.status === 'running') || null;
 }
 
 function report(context) {
-  const registry = readJson(registryPath(context), { schema_version: 'knowledge-agent-registry.v1', sessions: [] });
+  const registry = readRegistry(context);
   const sessions = registry.sessions || [];
   return {
     ok: true,
@@ -89,6 +109,7 @@ function main(argv = process.argv.slice(2)) {
   const command = parsed.positional[0] || 'report';
   const context = resolveKnowledgeContext({ ...parsed.flags, workspaceId: null, __skipCli: true });
   let result;
+  const execute = () => {
   if (command === 'start') {
     const session = sessionFromFlags(context, parsed.flags, { status: 'running' });
     writeSession(context, session);
@@ -110,6 +131,18 @@ function main(argv = process.argv.slice(2)) {
   } else {
     throw new Error(`Unknown agent-session command: ${command}`);
   }
+  };
+  if (['start', 'heartbeat', 'finish'].includes(command)) {
+    const requestedId = parsed.flags.sessionId || process.env.KNOWLEDGE_SESSION_ID;
+    if (requestedId !== undefined) assertSafePathSegment(requestedId, 'session id');
+    withContainedLock({
+      context,
+      rootKind: 'state',
+      rootPath: context.stateRoot,
+      lockName: 'agent-session',
+      purpose: LOCKS['agent-session'].purpose
+    }, execute);
+  } else execute();
   if (parsed.flags.json || true) console.log(JSON.stringify(result, null, 2));
   return result;
 }

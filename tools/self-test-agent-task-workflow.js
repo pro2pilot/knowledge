@@ -72,13 +72,18 @@ function deps(options = {}) {
   };
   const plan = { status: 'planned', task_readiness: { score: 93 }, opportunities: [
     ...Array.from({ length: selected }, (_, i) => ({ ...finding, lifecycle_id: i ? `LC-${String(i).padStart(16, '1')}` : finding.lifecycle_id })),
-    ...(options.overlap ? [{ lifecycle_id: 'LC-overlap0000000', module_id: 'feature', artifact: 'src/feature.js', affected_artifacts: ['src/feature.js'], repair_class: 'verify_on_touch', status: 'deferred', decision_reason: 'overlapping_open_debt' }] : []),
+    ...(options.overlap ? [{ lifecycle_id: 'LC-overlap0000000', module_id: 'feature', artifact: 'src/feature.js', affected_artifacts: ['src/feature.js'], repair_class: 'verify_on_touch', status: 'deferred', decision_reason: 'overlapping_open_debt', ...(options.related || {}) }] : []),
     { lifecycle_id: 'LC-unrelated000000', module_id: 'other', artifact: 'src/other.js', repair_class: 'verify_on_touch', status: 'deferred', decision_reason: 'outside_task_scope' }
   ] };
   const runTool = (_context, tool, args) => {
     calls.push({ tool, args });
     if (tool === 'agent-session.js') return { record: { tool, duration_ms: 1 }, output: { ok: true, session: { status: args[0] === 'finish' ? 'done' : 'running' } } };
-    if (tool === 'repair-on-touch.js' && args[0] === 'plan') return { record: { tool, duration_ms: 2 }, output: plan };
+    if (tool === 'repair-on-touch.js' && args[0] === 'plan') {
+      const body = JSON.parse(fs.readFileSync(args[args.indexOf('--request') + 1], 'utf8'));
+      check('task_plan_does_not_inherit_unrelated_global_scope', body.scope_source === 'explicit' &&
+        ['routing', 'pr_impact', 'critical_path_map'].every((key) => body[key] && Object.keys(body[key]).length === 0));
+      return { record: { tool, duration_ms: 2 }, output: plan };
+    }
     if (tool === 'repair-on-touch.js' && args[0] === 'verify') {
       if (options.verifyFail) return { record: { tool, duration_ms: 3 }, output: { status: 'fail', executions: [{ execution_id: 'KVE-x', status: 'fail', exit_code: 1, duration_ms: 3 }] } };
       return { record: { tool, duration_ms: 3 }, output: { status: 'pass', executions: [{ execution_id: `KVE-${'1'.repeat(64)}`, status: 'pass', exit_code: 0, duration_ms: 3, execution_sha256: '2'.repeat(64) }] } };
@@ -174,6 +179,22 @@ function run() {
     check('15_identical_finish_is_idempotent', again.completed_at === result.completed_at);
     expectCode('16_changed_finish_request_rejected', () => finish(f1.context, started.workflow_id, request(started, { primary_summary: 'changed' }), d1.dependencies), 'agent_task_finish_request_changed');
   } finally { fs.rmSync(f1.root, { recursive: true, force: true }); }
+
+  for (const [name, overrides, eligible] of [
+    ['covered', {}, true], ['security', { security_sensitive: true }, false],
+    ['critical', { critical_path: true }, false], ['excluded', { safe_during_current_task: false }, false],
+    ['uncovered', { affected_artifacts: ['src/feature.js', 'src/other.js'] }, false]
+  ]) {
+    const fixtureCase = fixture(`related-${name}`);
+    const mocked = deps({ overlap: true, related: { code: 'tracked_file_needs_recheck',
+      artifact: '.knowledge/freshness.json', affected_artifacts: ['.knowledge/freshness.json', 'src/feature.js'],
+      resolution_predicate: 'feature_test_passes', required_checks: ['read_current_source'], ...overrides } });
+    try {
+      const started = begin(fixtureCase.context, { task: 'change feature', modules: ['feature'], paths: ['src/'] }, mocked.dependencies);
+      const result = finish(fixtureCase.context, started.workflow_id, request(started, { run_release_flow: false }), mocked.dependencies);
+      check(`workflow_related_${name}`, Boolean(result.repair.kvr_id) === eligible);
+    } finally { fs.rmSync(fixtureCase.root, { recursive: true, force: true }); }
+  }
 
   const f1a = fixture('doctor-before-route');
   try {

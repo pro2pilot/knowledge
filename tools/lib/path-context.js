@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { detectGitContext } = require('./git-context');
+const { assertSafePathSegment } = require('./path-segment');
 
 function camel(key) {
   return String(key || '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
@@ -97,7 +98,8 @@ function maybeProjectKnowledgeRoot(targetRoot, systemRoot) {
 }
 
 function buildStateRoot(teamRoot, repoId, workspaceId) {
-  return path.join(teamRoot, 'repos', repoId, 'workspaces', workspaceId, 'state');
+  return path.join(teamRoot, 'repos', assertSafePathSegment(repoId, 'repoId'),
+    'workspaces', assertSafePathSegment(workspaceId, 'workspaceId'), 'state');
 }
 
 function disabledGitContext(targetRoot) {
@@ -152,6 +154,7 @@ function resolveKnowledgeContext(options = {}) {
     if (!teamRootRaw) throw new Error('team mode requires --team-root or KNOWLEDGE_TEAM_ROOT');
     if (!workspaceId) throw new Error('team mode requires --workspace-id or KNOWLEDGE_WORKSPACE_ID');
     if (!agentId) throw new Error('team mode requires --agent-id or KNOWLEDGE_AGENT_ID');
+    assertSafePathSegment(workspaceId, 'workspaceId');
   }
 
   const teamRoot = teamRootRaw ? path.resolve(teamRootRaw) : null;

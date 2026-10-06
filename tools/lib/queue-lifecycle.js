@@ -536,6 +536,24 @@ function reconcile({ staleItems, repairQueue, findings = [], source, agentId, ti
   return { events, lifecycle };
 }
 
+function coveredTrackedRecheckSources(record, primary, verifiedPaths, completedChecks = primary?.required_checks || []) {
+  if (!primary || primary.lifecycle_id === record.lifecycle_id ||
+      primary.repair_class !== 'verify_on_touch' ||
+      canonicalModule(primary.module_id) !== canonicalModule(record.module_id) ||
+      record.code !== 'tracked_file_needs_recheck' || record.repair_class !== 'verify_on_touch' ||
+      record.critical_path === true || record.severity === 'critical' ||
+      record.security_sensitive === true || record.safe_during_current_task === false ||
+      dedicatedRequirementFor(record) || dedicatedRequirementFor(primary) ||
+      (record.resolution_predicate && record.resolution_predicate !== primary.resolution_predicate) ||
+      !(record.required_checks || []).every((check) => completedChecks.includes(check))) return [];
+  const sources = Array.from(new Set([
+    record.artifact || record.primary_artifact, ...(record.affected_artifacts || [])
+  ].map(canonicalPath))).filter((item) => item !== '.knowledge/freshness.json');
+  const verified = new Set(verifiedPaths.map(canonicalPath));
+  return sources.length && sources.every((item) =>
+    item !== 'unknown' && item !== '.' && verified.has(item)) ? sources : [];
+}
+
 function closeFindings({
   staleItems,
   repairQueue,
@@ -546,12 +564,16 @@ function closeFindings({
   recertificationId,
   agentId,
   timestamp,
+  refreshClosedLifecycleIds = [],
   verifyDedicatedEvidence = null
 }) {
   const records = lifecycleById(staleItems, repairQueue);
   const requested = Array.from(new Set(lifecycleIds.map(String)));
   const allowed = new Set(allowedCodes.map(canonicalCode));
   const artifacts = new Set(verifiedArtifacts.map(canonicalPath));
+  const refreshClosed = new Set(
+    refreshClosedLifecycleIds.map((lifecycleId) => String(lifecycleId))
+  );
   const evidenceById = new Map();
   const duplicateEvidenceIds = new Set();
   for (const item of (Array.isArray(resolutionEvidence) ? resolutionEvidence : Object.values(resolutionEvidence || {}))) {
@@ -663,8 +685,9 @@ function closeFindings({
       continue;
     }
     verified.push(lifecycleId);
-    if (record.status === 'closed' || record.status === 'resolved') continue;
-    record.status = 'closed';
+    const wasClosed = ['closed', 'resolved'].includes(record.status);
+    if (wasClosed && !refreshClosed.has(lifecycleId)) continue;
+    if (!wasClosed) record.status = 'closed';
     record.closed_at = timestamp;
     record.resolution_evidence = {
       ...evidence,
@@ -686,12 +709,14 @@ function closeFindings({
     for (const source of Object.keys(record.sources || {})) record.sources[source] = { ...record.sources[source], active: false, observed_at: timestamp, agent_id: agentId };
     closed.push(lifecycleId);
     events.push({
-      transition: 'closed',
+      transition: wasClosed ? 'closure_evidence_refreshed' : 'closed',
       lifecycle_id: record.lifecycle_id,
       module_id: record.module_id,
       code: record.code,
       artifact,
-      reason: 'finding_specific_recertification',
+      reason: wasClosed
+        ? 'finding_specific_recertification_evidence_refreshed'
+        : 'finding_specific_recertification',
       recertification_id: recertificationId
     });
   }
@@ -723,6 +748,7 @@ function closeFindings({
 module.exports = {
   reconcile,
   closeFindings,
+  coveredTrackedRecheckSources,
   stableId,
   normalizedFinding,
   canonicalPath,

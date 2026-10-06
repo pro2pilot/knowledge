@@ -74,6 +74,20 @@ const GENERATED_REBUILD_TOOLS = new Set([
   '.knowledge/tools/build-search-index.js',
   '.knowledge/tools/build-wiki-graph.js'
 ]);
+const GENERATED_REBUILD_OUTPUTS = Object.freeze({
+  '.knowledge/tools/build-search-index.js': Object.freeze([
+    '.knowledge/search/index.json'
+  ]),
+  '.knowledge/tools/build-routing-bundle.js': Object.freeze([
+    '.knowledge/maintenance/routing_bundle.json',
+    '.knowledge/maintenance/routing_decision.json',
+    '.knowledge/maintenance/workspace_health_summary.json',
+    '.knowledge/maintenance/maintenance_debt.json'
+  ]),
+  '.knowledge/tools/build-wiki-graph.js': Object.freeze([
+    '.knowledge/maps/wiki_graph.json'
+  ])
+});
 function exactGeneratedProducerArgv(argv, expectedTool = null) {
   if (!Array.isArray(argv)) return false;
   const executable = path.basename(String(argv[0] || ''))
@@ -105,6 +119,7 @@ const GENERATED_REBUILD_DEPENDENCIES = Object.freeze({
     '.knowledge/tools/lib/lock-owner-schema.js',
     '.knowledge/tools/lib/lock-policy.js',
     '.knowledge/tools/lib/path-context.js',
+    '.knowledge/tools/lib/path-segment.js',
     '.knowledge/tools/lib/strict-temp-cleanup.js',
     '.knowledge/tools/lib/system-version.js',
     '.knowledge/tools/lib/token-estimate.js'
@@ -121,6 +136,7 @@ const GENERATED_REBUILD_DEPENDENCIES = Object.freeze({
     '.knowledge/tools/lib/lock-owner-schema.js',
     '.knowledge/tools/lib/lock-policy.js',
     '.knowledge/tools/lib/path-context.js',
+    '.knowledge/tools/lib/path-segment.js',
     '.knowledge/tools/lib/strict-temp-cleanup.js',
     '.knowledge/tools/lib/system-version.js',
     '.knowledge/tools/lib/task-routing.js',
@@ -136,6 +152,7 @@ const GENERATED_REBUILD_DEPENDENCIES = Object.freeze({
     '.knowledge/tools/lib/lock-owner-schema.js',
     '.knowledge/tools/lib/lock-policy.js',
     '.knowledge/tools/lib/path-context.js',
+    '.knowledge/tools/lib/path-segment.js',
     '.knowledge/tools/lib/strict-temp-cleanup.js',
     '.knowledge/tools/lib/system-version.js'
   ])
@@ -699,6 +716,31 @@ function validateExecutionRecord(record) {
   ) {
     errors.push('execution_source_snapshot_before_noncanonical');
   }
+  // A zero exit code only verifies the bytes the command actually ran against.
+  // An ordinary test that rewrites a source (including itself) cannot certify
+  // the replacement bytes. Only the exact outputs of a bounded first-party
+  // producer may change; its code, dependencies and other inputs stay pinned.
+  if (Array.isArray(record.source_snapshot_before) &&
+      Array.isArray(record.source_snapshot)) {
+    const mutableOutputs = new Set(
+      nodeCommand && record.runtime_binding === 'process_exec_path' &&
+      record.environment_profile === 'sanitized_node_no_git' &&
+      record.cwd === '.' && exactGeneratedProducerArgv(record.command_argv)
+        ? GENERATED_REBUILD_OUTPUTS[canonicalPath(record.command_argv[1])] || []
+        : []
+    );
+    const before = new Map(record.source_snapshot_before
+      .filter((item) => item && typeof item === 'object' && item.path)
+      .map((item) => [canonicalPath(item.path), String(item.sha256 || '').toLowerCase()]));
+    const after = new Map(record.source_snapshot
+      .filter((item) => item && typeof item === 'object' && item.path)
+      .map((item) => [canonicalPath(item.path), String(item.sha256 || '').toLowerCase()]));
+    for (const source of new Set([...before.keys(), ...after.keys()])) {
+      if (!mutableOutputs.has(source) && before.get(source) !== after.get(source)) {
+        errors.push(`execution_source_changed_during_verification:${source}`);
+      }
+    }
+  }
   if (
     !Number.isInteger(record.stdout_bytes) ||
     record.stdout_bytes < 0 ||
@@ -801,6 +843,16 @@ function loadExecutionRecord(stateRoot, reference) {
   };
 }
 
+function verificationTimeoutMs(value) {
+  const requested = value === undefined || value === null ? 120000 : Number(value);
+  if (!Number.isFinite(requested) || requested < 1 || requested > 600000) {
+    const error = new Error('Verification timeout must be a finite positive value no greater than 600000 ms');
+    error.code = 'verification_timeout_invalid';
+    throw error;
+  }
+  return Math.min(300000, Math.max(1000, Math.trunc(requested)));
+}
+
 function runVerificationTests({
   stateRoot,
   repoRoot,
@@ -873,7 +925,7 @@ function runVerificationTests({
     const cwdRelative = String(test.cwd || '.').replace(/\\/g, '/');
     const cwd = safeRelativeDirectory(repoRoot, cwdRelative);
     if (!cwd) throw new Error(`Verification cwd is missing or unsafe: ${cwdRelative}`);
-    const timeoutMs = Math.min(300000, Math.max(1000, Number(test.timeout_ms || 120000)));
+    const timeoutMs = verificationTimeoutMs(test.timeout_ms);
     const sourceSnapshotBefore = sourceSnapshot(true);
     rejectNodeExecutableAlias(argv[0]);
     const nodeCommand =
@@ -3096,6 +3148,7 @@ module.exports = {
   saveExecutionRecord,
   loadExecutionRecord,
   runVerificationTests,
+  verificationTimeoutMs,
   executionDigest,
   receiptDigest,
   maintenanceTelemetry,

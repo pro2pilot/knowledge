@@ -19,6 +19,8 @@ const {
   canonicalCode,
   canonicalModule,
   dedicatedRequirementFor,
+  findingOccurrence,
+  coveredTrackedRecheckSources,
   lifecycleById
 } = require('./lib/queue-lifecycle');
 const {
@@ -380,7 +382,7 @@ function reasonHasValues(value) {
   if (value && typeof value === 'object') return Object.values(value).some(reasonHasValues);
   return value !== null && value !== undefined && value !== '' && value !== false && value !== 0;
 }
-function resolveTrustReasons(report, moduleId, verifiedArtifacts = []) {
+function resolveTrustReasons(report, moduleId, verifiedArtifacts = [], receipt = null) {
   report.module_statuses = Array.isArray(report.module_statuses) ? report.module_statuses : [];
   const index = report.module_statuses.findIndex((item) => item.module_id === moduleId);
   const current = index === -1 ? { module_id: moduleId, reasons: {} } : report.module_statuses[index];
@@ -391,6 +393,30 @@ function resolveTrustReasons(report, moduleId, verifiedArtifacts = []) {
   if (Array.isArray(reasons.changed_or_missing_important_files)) {
     reasons.changed_or_missing_important_files = reasons.changed_or_missing_important_files
       .filter((item) => !verified.has(canonicalPath(typeof item === 'string' ? item : item?.path || item?.file)));
+  }
+  if (Array.isArray(reasons.uncovered_important_files)) {
+    // Test success is not file-fact coverage. The register and the source must
+    // both be pinned by this verification; sync-tracked must retain coverage.
+    const sources = new Map((receipt?.source_files_checked || []).map((item) =>
+      [canonicalPath(item.path), String(item.sha256).toLowerCase()]));
+    const factsPath = '.knowledge/evidence/file_facts.json';
+    const covered = new Set();
+    if (sources.has(factsPath)) {
+      const absolute = resolveArtifact(factsPath);
+      if (absolute) {
+        const snapshot = readJsonWithGuard(absolute, { facts: [] }, knowledgeRoot);
+        if (snapshot.guard.expected_sha256 === sources.get(factsPath)) {
+          for (const fact of snapshot.value.facts || []) {
+            const file = canonicalPath(fact.file);
+            if (sources.has(file) && fact.evidence?.source_sha256 === sources.get(file)) {
+              covered.add(file);
+            }
+          }
+        }
+      }
+    }
+    reasons.uncovered_important_files = reasons.uncovered_important_files
+      .filter((item) => !covered.has(canonicalPath(typeof item === 'string' ? item : item?.path || item?.file)));
   }
   const next = { ...current, reasons };
   if (index === -1) report.module_statuses.push(next);
@@ -597,6 +623,14 @@ function validateClosedReceiptSources(receipt, finding, options = {}) {
     ) {
       errors.push('closure_transaction_not_committed');
     }
+    if (
+      options.relatedFinding &&
+      !(manifest?.metadata?.related_lifecycle_ids || []).includes(
+        options.relatedFinding.lifecycle_id
+      )
+    ) {
+      errors.push('related_closure_transaction_not_bound');
+    }
   } catch (error) {
     errors.push(`closure_transaction_invalid:${error.code || 'unavailable'}`);
   }
@@ -629,9 +663,26 @@ function validateClosedReceiptSources(receipt, finding, options = {}) {
         stagedEvidence.receipt_id !== receipt.receipt_id ||
         stagedEvidence.receipt_sha256 !== receipt.content_sha256 ||
         stagedEvidence.task_id !== receipt.task_id ||
-        stagedEvidence.session_id !== receipt.session_id
+        stagedEvidence.session_id !== receipt.session_id ||
+        findingOccurrence(stagedFinding).sha256 !== findingOccurrence(finding).sha256 ||
+        stableJson(stagedEvidence) !== stableJson(finding.resolution_evidence)
       ) {
         errors.push('closure_transaction_evidence_mismatch');
+      }
+      if (options.relatedFinding) {
+        const stagedRelated = stagedRecords.get(
+          options.relatedFinding.lifecycle_id
+        );
+        if (
+          !stagedRelated ||
+          !['closed', 'resolved'].includes(stagedRelated.status) ||
+          findingOccurrence(stagedRelated).sha256 !==
+            findingOccurrence(options.relatedFinding).sha256 ||
+          stableJson(stagedRelated.resolution_evidence) !==
+            stableJson(options.relatedFinding.resolution_evidence)
+        ) {
+          errors.push('related_closure_transaction_evidence_mismatch');
+        }
       }
     } catch {
       errors.push('closure_transaction_evidence_invalid');
@@ -685,15 +736,54 @@ function validateClosedReceiptSources(receipt, finding, options = {}) {
     }
     const retainedReceipt = (
       currentCard?.verification?.receipts || []
-    ).some((item) =>
+    ).find((item) =>
       item?.receipt_id === receipt.receipt_id &&
       item?.finding_id === finding.lifecycle_id
     );
-    if (!retainedReceipt) {
+    // Recertification itself adds receipt/trust bookkeeping to the card. That
+    // exception must not allow unverified edits to its curated claims. Compare
+    // the current claims to the card bytes bound by the committed transaction.
+    let committedCard = null;
+    try {
+      const committedSnapshot = (inspection?.entries || []).find((entry) =>
+        pathIdentity(entry.target) === pathIdentity(absolute));
+      const stagedIdentity = committedSnapshot && (process.platform === 'win32'
+        ? path.resolve(committedSnapshot.staged).toLowerCase()
+        : path.resolve(committedSnapshot.staged));
+      const stagedSnapshot = stagedIdentity && transactionProof?.get(stagedIdentity);
+      committedCard = stagedSnapshot ? parseSnapshotJson(stagedSnapshot) : null;
+    } catch {
+      committedCard = null;
+    }
+    const committedReceipt = (committedCard?.verification?.receipts || []).find((item) =>
+      item?.receipt_id === receipt.receipt_id && item?.finding_id === finding.lifecycle_id);
+    const curatedCard = (card) => {
+      if (!card || typeof card !== 'object' || Array.isArray(card)) return null;
+      const value = JSON.parse(JSON.stringify(card));
+      for (const key of ['current_trust_level', 'verification_status',
+        'last_verified_at', 'last_verified_by', 'last_recertification_at',
+        'last_recertification_by', 'last_recertification_id']) delete value[key];
+      if (value.verification && typeof value.verification === 'object' &&
+          !Array.isArray(value.verification)) {
+        delete value.verification.receipts;
+        if (!Object.keys(value.verification).length) delete value.verification;
+      }
+      return value;
+    };
+    if (!retainedReceipt || !committedReceipt || !committedCard ||
+        stableJson(retainedReceipt) !== stableJson(committedReceipt) ||
+        stableJson(curatedCard(currentCard)) !== stableJson(curatedCard(committedCard))) {
       errors.push(`source_hash_current_mismatch:${relative}`);
     }
   }
   return errors;
+}
+
+function relatedTrackedSources(record, primary, receipt) {
+  if (!['scoped', 'aggressive'].includes(receipt.repair_mode) ||
+      canonicalModule(receipt.module_id) !== canonicalModule(record.module_id)) return [];
+  return coveredTrackedRecheckSources(record, primary,
+    (receipt.source_files_checked || []).map((item) => item.path), receipt.required_checks_completed || []);
 }
 
 function validatePriorModuleClosures(
@@ -703,18 +793,38 @@ function validatePriorModuleClosures(
   guardSnapshots = []
 ) {
   const errors = [];
+  const excludedIds = new Set(
+    Array.isArray(excludeLifecycleId)
+      ? excludeLifecycleId
+      : [excludeLifecycleId]
+  );
   for (const record of records.values()) {
     if (
       canonicalModule(record.module_id) !== canonicalModule(moduleId) ||
-      record.lifecycle_id === excludeLifecycleId ||
+      excludedIds.has(record.lifecycle_id) ||
       !['closed', 'resolved'].includes(record.status)
     ) {
       continue;
     }
     const evidence = record.resolution_evidence || {};
     try {
+      const related = evidence.verifier_type ===
+        'repair_on_touch_related_source_verification';
+      let primaryFinding = record;
+      if (related) {
+        const preliminary = loadReceipt(stateRoot, evidence.receipt_id);
+        primaryFinding = records.get(preliminary.receipt.finding_id);
+        if (
+          !relatedTrackedSources(record, primaryFinding, preliminary.receipt).length ||
+          evidence.verifier_id !== preliminary.receipt.receipt_id
+        ) {
+          const error = new Error('Related closure has no covered primary verification');
+          error.code = 'related_closure_evidence_invalid';
+          throw error;
+        }
+      }
       const loaded = loadReceipt(stateRoot, evidence.receipt_id, {
-        finding: record
+        finding: primaryFinding
       });
       guardSnapshots.push({
         path: loaded.path,
@@ -732,8 +842,8 @@ function validatePriorModuleClosures(
       }
       const sourceErrors = validateClosedReceiptSources(
         loaded.receipt,
-        record,
-        { guardSnapshots }
+        primaryFinding,
+        { guardSnapshots, ...(related ? { relatedFinding: record } : {}) }
       );
       if (sourceErrors.length) {
         const error = new Error(sourceErrors.join(', '));
@@ -1442,7 +1552,8 @@ function finalizeTrustElevation(receipt, result) {
   const trustReasonState = resolveTrustReasons(
     trustReport,
     receipt.module_id,
-    verifiedArtifacts
+    verifiedArtifacts,
+    loaded.receipt
   );
   if (trustReasonState.has_blockers) {
     return {
@@ -1571,6 +1682,7 @@ function priorRepairBudgetUsage(
     wall_time_ms: 0,
     context_percent: 0
   };
+  const countedReceipts = new Set([receipt.receipt_id]);
   for (const record of records.values()) {
     if (!['closed', 'resolved'].includes(record.status)) continue;
     if (record.lifecycle_id === receipt.finding_id) continue;
@@ -1581,8 +1693,10 @@ function priorRepairBudgetUsage(
     ) {
       continue;
     }
+    const related = evidence.verifier_type ===
+      'repair_on_touch_related_source_verification';
     const loaded = loadReceipt(stateRoot, evidence.receipt_id, {
-      finding: record
+      ...(related ? {} : { finding: record })
     });
     guardSnapshots.push({
       path: loaded.path,
@@ -1611,7 +1725,8 @@ function priorRepairBudgetUsage(
       evidence.receipt_sha256 !== loaded.receipt.content_sha256 ||
       evidence.receipt_path !== loaded.relative_path ||
       loaded.receipt.task_id !== receipt.task_id ||
-      loaded.receipt.session_id !== receipt.session_id
+      loaded.receipt.session_id !== receipt.session_id ||
+      (related && loaded.receipt.module_id !== record.module_id)
     ) {
       const error = new Error(
         `Prior repair receipt provenance is invalid: ${record.lifecycle_id}`
@@ -1619,6 +1734,23 @@ function priorRepairBudgetUsage(
       error.code = 'repair_budget_provenance_invalid';
       throw error;
     }
+    // Validate each related closure before deduplication. Sharing a receipt
+    // never authorizes an unrelated or tampered lifecycle record.
+    if (related) {
+      const primary = records.get(loaded.receipt.finding_id);
+      const subset = new Map([[record.lifecycle_id, record]]);
+      if (primary) subset.set(primary.lifecycle_id, primary);
+      const errors = validatePriorModuleClosures(
+        subset, record.module_id, primary?.lifecycle_id, guardSnapshots
+      );
+      if (errors.length) {
+        const error = new Error('Related budget closure provenance is invalid');
+        error.code = 'repair_budget_provenance_invalid';
+        throw error;
+      }
+    }
+    if (countedReceipts.has(evidence.receipt_id)) continue;
+    countedReceipts.add(evidence.receipt_id);
     usage.findings += 1;
     usage.wall_time_ms += Number(
       loaded.receipt.additional_work?.wall_time_ms || 0
@@ -1886,6 +2018,18 @@ function applyVerificationReceipt(receipt, request = {}) {
         )
       )
     ) {
+      const relatedRecords = Array.from(records.values()).filter((record) =>
+        record.lifecycle_id !== finding.lifecycle_id &&
+        record.resolution_evidence?.receipt_id === receipt.receipt_id);
+      const closureErrors = validatePriorModuleClosures(
+        new Map(relatedRecords.concat(finding).map((record) => [record.lifecycle_id, record])),
+        finding.module_id, finding.lifecycle_id
+      );
+      if (closureErrors.length || relatedRecords.some((record) =>
+        !['closed', 'resolved'].includes(record.status) ||
+        !relatedTrackedSources(record, finding, receipt).length)) {
+        return { ...base, status: 'rejected', reason: 'related_closure_evidence_invalid', errors: closureErrors };
+      }
       const generatedRepair = GENERATED_REPAIR_CLASSES.has(
         finding.repair_class
       );
@@ -1914,7 +2058,7 @@ function applyVerificationReceipt(receipt, request = {}) {
         trust_elevation_pending: trustElevationPending,
         trust_elevation_authority:
           plannedFinding?.trust_elevation_authority || null,
-        closed_lifecycle_ids: [finding.lifecycle_id],
+        closed_lifecycle_ids: [finding.lifecycle_id, ...relatedRecords.map((record) => record.lifecycle_id)],
         ...(dedicatedLoaded
           ? { dedicated_receipt_id: dedicatedLoaded.receipt.receipt_id }
           : {})
@@ -2140,13 +2284,43 @@ function applyVerificationReceipt(receipt, request = {}) {
       reason: 'verification_receipt_path_invalid'
     };
   }
-  const resolutionEvidence = [{
-    lifecycle_id: finding.lifecycle_id,
-    code: finding.code,
-    artifact: finding.artifact,
-    predicate: receipt.resolution_predicate,
+  const relatedClosureGuardSnapshots = [];
+  const refreshableRelatedClosureIds = new Set(
+    (safeOnlyGenerated
+      ? []
+      : validatePriorModuleClosures(
+        records,
+        receipt.module_id,
+        finding.lifecycle_id,
+        relatedClosureGuardSnapshots
+      )
+    ).map((item) => item.lifecycle_id)
+  );
+  readSetGuards.push(...relatedClosureGuardSnapshots);
+  const relatedTrackedFindings = Array.from(records.values())
+    .filter((record) => {
+      const isClosed = ['closed', 'resolved'].includes(record.status);
+      if (
+        (isClosed && !refreshableRelatedClosureIds.has(record.lifecycle_id)) ||
+        !relatedTrackedSources(record, finding, receipt).length
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort((left, right) =>
+      String(left.lifecycle_id).localeCompare(String(right.lifecycle_id))
+    );
+  const closureFindings = [finding, ...relatedTrackedFindings];
+  const resolutionEvidence = closureFindings.map((record) => ({
+    lifecycle_id: record.lifecycle_id,
+    code: record.code,
+    artifact: record.artifact,
+    predicate: record.resolution_predicate || receipt.resolution_predicate,
     predicate_result: true,
-    verifier_type: 'repair_on_touch_verification',
+    verifier_type: record.lifecycle_id === finding.lifecycle_id
+      ? 'repair_on_touch_verification'
+      : 'repair_on_touch_related_source_verification',
     verifier_id: receipt.receipt_id,
     verifier_result: 'pass',
     receipt_id: receipt.receipt_id,
@@ -2154,7 +2328,7 @@ function applyVerificationReceipt(receipt, request = {}) {
     receipt_path: relativeReceipt.replace(/\\/g, '/'),
     task_id: receipt.task_id,
     session_id: receipt.session_id,
-    ...(dedicatedLoaded ? {
+    ...(record.lifecycle_id === finding.lifecycle_id && dedicatedLoaded ? {
       dedicated_verifier_type: dedicatedLoaded.receipt.dedicated_verifier_type,
       dedicated_verifier_id: dedicatedLoaded.receipt.dedicated_verifier_id,
       dedicated_predicate: dedicatedLoaded.receipt.dedicated_predicate,
@@ -2163,7 +2337,7 @@ function applyVerificationReceipt(receipt, request = {}) {
       dedicated_receipt_sha256: dedicatedLoaded.receipt.content_sha256,
       dedicated_receipt_path: dedicatedLoaded.relative_path
     } : {})
-  }];
+  }));
   const dedicatedEvidenceVerifier = dedicatedLoaded
     ? ({ evidence }) => verifyDedicatedEvidence({
       stateRoot,
@@ -2175,16 +2349,30 @@ function applyVerificationReceipt(receipt, request = {}) {
   const projection = closeFindings({
     staleItems,
     repairQueue,
-    lifecycleIds: [finding.lifecycle_id],
-    allowedCodes: [finding.code],
-    verifiedArtifacts: (receipt.source_files_checked || []).map((item) => item.path),
+    lifecycleIds: closureFindings.map((record) => record.lifecycle_id),
+    allowedCodes: Array.from(new Set(
+      closureFindings.map((record) => record.code)
+    )),
+    verifiedArtifacts: Array.from(new Set([
+      ...(receipt.source_files_checked || []).map((item) => item.path),
+      ...relatedTrackedFindings.flatMap((record) => [
+        record.artifact,
+        ...(record.affected_artifacts || [])
+      ])
+    ])),
     resolutionEvidence,
     recertificationId: `RCERT-${receipt.content_sha256.slice(0, 20)}`,
     agentId,
     timestamp,
+    refreshClosedLifecycleIds: relatedTrackedFindings
+      .filter((record) => ['closed', 'resolved'].includes(record.status))
+      .map((record) => record.lifecycle_id),
     verifyDedicatedEvidence: dedicatedEvidenceVerifier
   });
-  if (projection.rejected_lifecycle_ids.length || projection.closed_lifecycle_ids.length !== 1) {
+  if (
+    projection.rejected_lifecycle_ids.length ||
+    projection.closed_lifecycle_ids.length !== closureFindings.length
+  ) {
     return {
       ...base,
       status: 'rejected',
@@ -2258,15 +2446,17 @@ function applyVerificationReceipt(receipt, request = {}) {
     : resolveTrustReasons(
       trustReport,
       receipt.module_id,
-      verifiedArtifacts
+      verifiedArtifacts,
+      receipt
     );
   const priorClosureGuardSnapshots = [];
+  const recordsAfterProjection = lifecycleById(staleItems, repairQueue);
   const priorClosureProvenanceErrors = safeOnlyGenerated
     ? []
     : validatePriorModuleClosures(
-      records,
+      recordsAfterProjection,
       receipt.module_id,
-      finding.lifecycle_id,
+      closureFindings.map((record) => record.lifecycle_id),
       priorClosureGuardSnapshots
     );
   const trustElevationPending = Boolean(
@@ -2492,6 +2682,9 @@ function applyVerificationReceipt(receipt, request = {}) {
       type: 'repair_on_touch_recertification',
       lifecycle_id: finding.lifecycle_id,
       receipt_id: receipt.receipt_id,
+      related_lifecycle_ids: relatedTrackedFindings.map((record) =>
+        record.lifecycle_id
+      ),
       dedicated_receipt_id: dedicatedLoaded?.receipt?.receipt_id || null,
       module_id: receipt.module_id,
       task_id: receipt.task_id,

@@ -172,6 +172,10 @@ function collectPythonCandidates(options = {}) {
   if (env.KNOWLEDGE_MEM0_PYTHON) addCandidate(candidates, seen, { command: env.KNOWLEDGE_MEM0_PYTHON, source: 'KNOWLEDGE_MEM0_PYTHON', explicit: true }, platform);
   if (env.MEM0_PYTHON) addCandidate(candidates, seen, { command: env.MEM0_PYTHON, source: 'MEM0_PYTHON', explicit: true }, platform);
 
+  // Explicit selection is authoritative even when unusable. Do not eagerly
+  // run unrelated OS launchers before validating that selected executable.
+  if (candidates.length) return candidates;
+
   const venv = env.VIRTUAL_ENV || '';
   const conda = env.CONDA_PREFIX || '';
   if (venv) addPythonFromDir(candidates, seen, platform === 'win32' ? path.join(venv, 'Scripts') : path.join(venv, 'bin'), 'VIRTUAL_ENV', platform);
