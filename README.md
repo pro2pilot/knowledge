@@ -79,6 +79,9 @@ Extension bundles require a valid signature from a locally trusted publisher.
 See the [3.4.3 release](https://github.com/pro2pilot/knowledge/releases/tag/v3.4.3)
 and [release notes](.release-notes/v3.4.3.md) for details and migration notes.
 
+Agents without a dedicated integration can follow the
+[general connection recipe](Quick-Start.md#connect-an-agent-without-a-dedicated-recipe).
+
 ## Integrated task workflow
 
 For meaningful scoped work, use `agent-task begin` before broad exploration and

@@ -69,6 +69,60 @@ requests it:
 node .knowledge/tools/install-agent-integrations.js --all --confirm-all
 ```
 
+## Connect an agent without a dedicated recipe
+
+An agent does not need a dedicated adapter to use the shared CLI workflow.
+Follow this recipe when its name is absent from the table above.
+
+1. Locate the project root and its installed `.knowledge/`. Run
+   `node .knowledge/tools/install-check.js --json` there. Use the uploaded GitHub
+   Release asset for a fresh install; keep an existing installation and its
+   curated knowledge when connecting another agent.
+2. Check the agent's documented project-instruction convention. If it reads
+   `AGENTS.md`, reuse the existing shared DOT-KNOWLEDGE managed block. If that
+   block is absent, the supported `--runtime agents` alias installs the shared
+   `AGENTS.md` bridge and `.agents/skills/`:
+
+   ```bash
+   node .knowledge/tools/install-agent-integrations.js --runtime agents
+   ```
+
+   This alias uses the existing Codex bridge; it does not declare a new native
+   adapter or prove that an unlisted agent discovers skills automatically.
+   Read `AGENTS.md` explicitly and use skills only if the agent supports them.
+3. If the agent uses another documented instruction file, add a small project
+   bridge there that tells it to read this Quick Start, follow
+   `agent-integrations/_shared/trust-routing.md` and
+   `agent-integrations/_shared/final-report-contract.md`, and execute the CLI
+   from the project root. Preserve existing instructions and other agents'
+   bridges. Do not copy the unresolved `{{...}}` templates or invent a
+   `--runtime <unknown-name>` option. If no persistent convention is documented,
+   put the same bridge in the agent's project instructions or initial prompt
+   and explicitly read these files each session.
+4. For a fresh installation, run `node .knowledge/tools/flow.js import` once
+   before relying on generated state. For an existing installation, run
+   `node .knowledge/tools/flow.js doctor`. External memory is optional; it is
+   not required for connecting an agent.
+5. Start the first real task with `agent-task begin` and an explicit task and
+   scope. Read its returned `route.first_read.content`, preserve the workflow
+   ID and SHA, inspect the selected source/tests, and use `agent-task finish`
+   with actual changed/source files and physical test argv. See
+   [`docs/agent-task-workflow.md`](docs/agent-task-workflow.md) for the finish
+   request. A successful install check alone does not verify engineering work.
+
+For parallel agents, give each a stable `KNOWLEDGE_AGENT_ID` and a separate
+worktree or branch. Confirm which project instruction file the agent actually
+read, record the native task result, and keep Doctor, Task Readiness and deferred
+debt separate from the engineering outcome.
+
+Suggested persistent project bridge:
+
+> Read `.knowledge/Quick-Start.md` and the shared trust-routing and final-report
+> contracts before meaningful work. Current code and tests are the source of
+> truth. Begin with `agent-task begin`, read the exact returned first-read and
+> finish with real source/test evidence. Reuse the existing shared `AGENTS.md`
+> block and preserve other agents' instructions.
+
 ## Connect another agent later
 
 If `.knowledge/` is already installed and a different agent joins this same
@@ -81,14 +135,11 @@ node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
 node .knowledge/tools/flow.js doctor
 ```
 
-Then the new agent starts from:
+Then the new agent starts meaningful work with `agent-task begin` and reads
+the returned `route.first_read.content`. The global routing bundle and handoff
+summary are orientation aids; they do not replace the task-specific first-read.
 
-```txt
-.knowledge/maintenance/routing_bundle.json
-.knowledge/maintenance/handoff_summary.json
-```
-
-OpenClaw uses the `AGENTS.md` plus `.agents/skills/` workspace-skills bridge. Hermes uses an explicit `AGENTS.md` bridge without a vendor folder. Pi and other agents without a confirmed repo-local rules-file convention should read or paste `.knowledge/Quick-Start.md` until their documented convention is confirmed.
+OpenClaw uses the `AGENTS.md` plus `.agents/skills/` workspace-skills bridge. Hermes uses an explicit `AGENTS.md` bridge without a vendor folder. Pi and other unlisted agents should follow the general connection recipe above and confirm their documented project-instruction convention.
 
 ## Required first action
 
@@ -102,11 +153,8 @@ node .knowledge/tools/flow.js import
 node .knowledge/inspector.js
 ```
 
-After setup, read:
-
-```txt
-.knowledge/maintenance/routing_bundle.json
-```
+After setup, use `agent-task begin` for meaningful work and read its returned
+`route.first_read.content`. Use the global routing bundle only for orientation.
 
 For normal meaningful scoped work, use the recommended `agent-task begin` and
 `agent-task finish` workflow at the top of this guide. It owns the task route,

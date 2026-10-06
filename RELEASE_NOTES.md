@@ -1,11 +1,14 @@
 # Release Notes
 
-## v3.4.3 - Covered recheck recovery (unreleased)
+## v3.4.3 - Covered recheck recovery
 
 Fixes related stale-recheck closure, invalid-evidence rebinding, shared KVR
 budget/telemetry accounting and durable file-fact coverage. Detects and safely
 migrates the obsolete root gate, and authenticates extension signatures.
-See [upgrade notes](docs/upgrade-3.4.3.md). Full release certification remains pending.
+Also fixes Windows lock transitions, watcher shutdown, repeated updates,
+fail-closed import, live Mem0 Unicode handling, and oversized Inspector requests.
+See the [full change list](.release-notes/v3.4.3.md) and
+[upgrade notes](docs/upgrade-3.4.3.md).
 
 ## v3.4.1 - Documentation and release-contract corrections
 

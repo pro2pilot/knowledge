@@ -69,8 +69,10 @@ node .knowledge/tools/install-agent-integrations.js --runtime <new-agent>
 node .knowledge/tools/flow.js doctor
 ```
 
-Then the new agent reads `.knowledge/maintenance/routing_bundle.json` and
-`.knowledge/maintenance/handoff_summary.json` before changing code.
+Then the new agent starts meaningful work with `agent-task begin` and reads
+its returned `route.first_read.content`. Global routing and handoff summaries
+remain orientation aids. For an agent without a dedicated adapter, follow the
+[general Quick Start recipe](Quick-Start.md#connect-an-agent-without-a-dedicated-recipe).
 
 If `install-check` reports `source_checkout_in_target_root`, move the source
 checkout outside the target project and rerun the check before import.
