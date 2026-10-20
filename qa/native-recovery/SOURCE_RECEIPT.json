@@ -1,5 +1,5 @@
 {
-  "source_git_commit": "2a87e6e09885ffa5c3501745e3539616c4a32207",
+  "source_git_commit": "eb68877",
   "source_files": {
     ".gitattributes": {
       "bytes": 99,
@@ -1834,8 +1834,8 @@
       "sha256": "1487c533192aace8edb7f47e02d54ca0aa56b8d39cec23fe2f15dc7bd7df6c48"
     },
     "tools/self-test-verification-budget.js": {
-      "bytes": 14527,
-      "sha256": "95fe110f11d940fa4d5465651c9c0153db1008ec60d7bb8f9c25a70c044348a3"
+      "bytes": 19336,
+      "sha256": "7eaf8feb8906b87db928f277cc0e056ee83a9982144be349ffa0d99236bfb1a4"
     },
     "tools/self-test-verification-execution.js": {
       "bytes": 5625,
@@ -1918,5 +1918,5 @@
       "sha256": "941a10b7d48057eb0b2727944bc220bc777133ec3903da68bf68d856001de5e5"
     }
   },
-  "purpose": "physical Linux native recovery current candidate source; Ubuntu22 user and Ubuntu24 root, explicit /tmp owned fixture"
+  "purpose": "current exact source physical Linux user/root, corrected namespace identity test; runtime SHA unchanged b2eb1d..."
 }

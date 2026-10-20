@@ -10,7 +10,50 @@ const runner = require('./lib/verification-supervisor');
 const { removeTempDirStrict } = require('./lib/strict-temp-cleanup');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'k-budget-'));
 const checks = [];
-const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// This function is also serialized into owned fixture children. /proc/self is
+// the inherited observer procfs view; process.pid is namespace-local on Linux.
+function processMarker() {
+  const fs=require('fs');
+  if(process.platform!=='linux')return {platform:process.platform,pid:process.pid};
+  const pid=fs.readlinkSync('/proc/self'),stat=fs.readFileSync('/proc/self/stat','utf8');
+  const tail=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/),ticks=tail[19];
+  const boot=fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim();
+  assertMarker(pid,ticks,boot);
+  return {platform:'linux',observer_pid:Number(pid),namespace_pid:process.pid,start_ticks:ticks,boot_id:boot};
+  function assertMarker(pid,ticks,boot){
+    if(!/^[1-9]\d*$/.test(pid)||!/^\d+$/.test(ticks||'')||BigInt(ticks)<=0n||!/^[a-f0-9-]{36}$/.test(boot))throw Error('Invalid native process marker');
+  }
+}
+function markerExited(marker) {
+  if(marker?.platform==='linux') {
+    assert(Number.isSafeInteger(marker.observer_pid)&&marker.observer_pid>1);
+    assert(/^\d+$/.test(marker.start_ticks||'')&&BigInt(marker.start_ticks)>0n);
+    assert.equal(fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),marker.boot_id,'Marker boot identity changed');
+    let stat;
+    try {stat=fs.readFileSync(`/proc/${marker.observer_pid}/stat`,'utf8');}
+    catch(error){if(['ENOENT','ESRCH'].includes(error.code))return true;throw error;}
+    assert.equal(Number(stat.slice(0,stat.indexOf(' '))),marker.observer_pid);
+    const tail=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/);
+    assert(/^\d+$/.test(tail[19]||''),'Unreadable process birth');
+    return tail[19]!==marker.start_ticks;
+  }
+  assert(marker&&marker.platform===process.platform&&Number.isSafeInteger(marker.pid)&&marker.pid>0);
+  try {process.kill(marker.pid,0);return false;}
+  catch(error){if(error.code==='ESRCH')return true;throw error;}
+}
+const markerSource=`(${processMarker.toString()})()`;
+const readMarker=file=>JSON.parse(fs.readFileSync(file,'utf8'));
+function assertNativeTeardown(teardown){
+  assert.equal(teardown.status,'completed');assert.equal(teardown.active_processes,0);
+  if(process.platform==='linux'){
+    assert.equal(teardown.method,'linux_pid_namespace');assert.equal(teardown.namespace_drained,true);
+    assert.equal(teardown.init_exit_observed,true);assert.equal(teardown.init_reaped,true);
+  }
+}
+const alive=pid=>{
+  assert.notEqual(process.platform,'linux','Linux observations require an exact observer birth marker');
+  return !markerExited({platform:process.platform,pid});
+};
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn, ms = 7000) {
   const end = performance.now() + ms;
@@ -68,6 +111,37 @@ async function synthetic(f, body, timeout = 3000) {
     assert.equal(result.verification_budget.authority_teardown.keeper_exited,true);
     return result.verification_budget;
   });
+  if(process.platform==='linux') await check('live namespace PID2/PID3 markers remain live until actual native namespace close',async f=>{
+    const linux=require('./lib/verification-linux-namespace');
+    const child=f.file('marker-child.cjs',`process.send(${markerSource});setInterval(()=>{},1000);`);
+    const workerFile=f.file('marker-worker.cjs',`const c=require('child_process').spawn(process.execPath,[${JSON.stringify(path.join(f.repo,child))}],{stdio:['ignore','ignore','ignore','ipc']});c.once('message',identity=>process.send({worker:${markerSource},child:identity}));setInterval(()=>{},1000);`);
+    const sentinel=processMarker();assert.equal(markerExited(sentinel),false);
+    const {worker,job}=linux.spawnLinuxContainedWorker(process.execPath,[path.join(f.repo,workerFile)],
+      {stdio:['ignore','ignore','ignore','ipc']},{lifetimeMs:12000});
+    let timer;
+    const markers=new Promise((resolve,reject)=>{
+      worker.once('message',resolve);worker.once('error',reject);
+      timer=setTimeout(()=>reject(Error('Native identity marker was not initialized')),7000);
+    });
+    markers.catch(()=>{});
+    try{
+      await job.ready;job.permit();await job.started;
+      const observed=await markers;clearTimeout(timer);
+      const identities=[observed.worker,observed.child];
+      assert.deepEqual(identities.map(x=>x.namespace_pid),[2,3]);
+      for(const identity of identities){
+        assert.notEqual(identity.observer_pid,identity.namespace_pid,'Observer procfs must expose its own PID view');
+        assert.equal(markerExited(identity),false,'A live exact birth must not become absent from an unrelated namespace PID or a permission error');
+      }
+      assert.equal(markerExited(sentinel),false,'Host sentinel must remain live');
+      const teardown=await job.close(5000);
+      assert.equal(teardown.status,'completed');assert.equal(teardown.active_processes,0);
+      assert.equal(teardown.namespace_drained,true);assert.equal(teardown.init_exit_observed,true);assert.equal(teardown.init_reaped,true);
+      await until(()=>identities.every(markerExited));
+      assert.equal(markerExited(sentinel),false,'Cleanup must not target the host sentinel');
+      return {identities,sentinel,teardown};
+    }finally{clearTimeout(timer);await job.close(5000);}
+  });
   await check('exhausted setup budget starts no worker command and publishes no KVE', f => {
     const p=f.file('probe.js','require("fs").writeFileSync("ran","unexpected");');
     const e=expectTimeout(()=>native.runVerificationTests(f.request([command(p)],1)));
@@ -91,27 +165,28 @@ async function synthetic(f, body, timeout = 3000) {
     return { budget:e.verification_budget, committed:e.completed_executions, teardown:e.teardown };
   });
   await check('per-command deadline kills a TERM-ignoring child within the batch deadline', async f => {
-    const probe=f.file('ignore.js','require("fs").writeFileSync("pid",String(process.pid));process.on("SIGTERM",()=>{});setInterval(()=>{},1000);');
+    const probe=f.file('ignore.js',`require("fs").writeFileSync("pid",JSON.stringify(${markerSource}));process.on("SIGTERM",()=>{});setInterval(()=>{},1000);`);
     const e=expectTimeout(()=>native.runVerificationTests(f.request([command(probe,500)],15000)));
     assert.equal(e.stage,'command');
     assert(e.verification_budget.work_elapsed_ms < e.verification_budget.work_budget_ms,'the shorter command deadline ends work before the batch deadline');
-    const pid=Number(fs.readFileSync(path.join(f.repo,'pid'),'utf8')); await until(()=>!alive(pid));
-    assert.equal(e.teardown.status,'completed'); return { pid, budget:e.verification_budget, teardown:e.teardown };
+    const identity=readMarker(path.join(f.repo,'pid')); await until(()=>markerExited(identity));
+    assertNativeTeardown(e.teardown); return { identity, budget:e.verification_budget, teardown:e.teardown };
   });
   await check('deadline kills owned descendants holding inherited pipes', async f => {
-    const child=f.file('child.js','require("fs").writeFileSync("child-ready",String(process.pid));process.on("SIGTERM",()=>{});setInterval(()=>{},1000);');
-    const probe=f.file('tree.js',`const c=require('child_process').spawn(process.execPath,[${JSON.stringify(child)}],{stdio:'inherit'});require('fs').writeFileSync('pids',JSON.stringify([process.pid,c.pid]));process.on('SIGTERM',()=>{});setInterval(()=>{},1000);`);
+    const child=f.file('child.js',`require("fs").writeFileSync("child-ready",JSON.stringify(${markerSource}));process.on("SIGTERM",()=>{});setInterval(()=>{},1000);`);
+    const probe=f.file('tree.js',`require('child_process').spawn(process.execPath,[${JSON.stringify(child)}],{stdio:'inherit'});require('fs').writeFileSync('pids',JSON.stringify(${markerSource}));process.on('SIGTERM',()=>{});setInterval(()=>{},1000);`);
     const e=expectTimeout(()=>native.runVerificationTests(f.request([command(probe,1000)],15000)));
-    const pids=JSON.parse(fs.readFileSync(path.join(f.repo,'pids'),'utf8')); assert(fs.existsSync(path.join(f.repo,'child-ready')));
-    await until(()=>pids.every(pid=>!alive(pid))); assert.equal(e.teardown.status,'completed'); return {pids,teardown:e.teardown};
+    assert(fs.existsSync(path.join(f.repo,'child-ready')));
+    const identities=[readMarker(path.join(f.repo,'pids')),readMarker(path.join(f.repo,'child-ready'))];
+    await until(()=>identities.every(markerExited)); assertNativeTeardown(e.teardown); return {identities,teardown:e.teardown};
   });
   await check('successful command cannot leave an orphan with detached stdio', async f => {
-    const child=f.file('orphan.js','require("fs").writeFileSync("orphan-ready",String(process.pid));setInterval(()=>{},1000);');
+    const child=f.file('orphan.js',`require("fs").writeFileSync("orphan-ready",JSON.stringify(${markerSource}));setInterval(()=>{},1000);`);
     const probe=f.file('parent.js',`const fs=require('fs');const c=require('child_process').spawn(process.execPath,[${JSON.stringify(child)}],{stdio:'ignore'});c.unref();const i=setInterval(()=>{if(fs.existsSync('orphan-ready')){clearInterval(i);process.exit(0);}},10);`);
     const r=native.runVerificationTests(f.request([command(probe)],15000));
-    const pid=Number(fs.readFileSync(path.join(f.repo,'orphan-ready'),'utf8'));
-    await until(()=>!alive(pid)); assert.equal(r[0].record.status,'pass'); assert.equal(r.verification_budget.teardown.status,'completed');
-    return { pid,teardown:r.verification_budget.teardown };
+    const identity=readMarker(path.join(f.repo,'orphan-ready'));
+    await until(()=>markerExited(identity)); assert.equal(r[0].record.status,'pass'); assertNativeTeardown(r.verification_budget.teardown);
+    return { identity,teardown:r.verification_budget.teardown };
   });
   await check('watchdog preempts synchronous setup in a worker', async f => {
     const r=await synthetic(f,"if(m.type==='run'){while(true){}}",3000);
