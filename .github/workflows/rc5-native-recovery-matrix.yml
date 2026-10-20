@@ -78,7 +78,7 @@ jobs:
           PY
             exit "$rc"
           fi
-          args=(--source "$work/source/.knowledge" --node "$nodebin" --git "$gitbin" --label linux-${{ matrix.identity }}-attempt5 --timeout 1200
+          args=(--source "$work/source/.knowledge" --node "$nodebin" --git "$gitbin" --label linux-${{ matrix.identity }}-attempt6 --timeout 1200
             --only self-test-linux-namespace
             --only tests__verification-native-recovery-linux.test.js
             --only tests__native-linux-execution-contract.test.js

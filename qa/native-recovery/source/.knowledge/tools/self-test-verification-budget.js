@@ -111,7 +111,7 @@ async function synthetic(f, body, timeout = 3000) {
     assert.equal(result.verification_budget.authority_teardown.keeper_exited,true);
     return result.verification_budget;
   });
-  if(process.platform==='linux') await check('live namespace PID2/PID3 markers remain live until actual native namespace close',async f=>{
+  if(process.platform==='linux') await check('live namespace worker and descendant markers remain live until actual native namespace close',async f=>{
     const linux=require('./lib/verification-linux-namespace');
     const child=f.file('marker-child.cjs',`process.send(${markerSource});setInterval(()=>{},1000);`);
     const workerFile=f.file('marker-worker.cjs',`const c=require('child_process').spawn(process.execPath,[${JSON.stringify(path.join(f.repo,child))}],{stdio:['ignore','ignore','ignore','ipc']});c.once('message',identity=>process.send({worker:${markerSource},child:identity}));setInterval(()=>{},1000);`);
@@ -128,7 +128,10 @@ async function synthetic(f, body, timeout = 3000) {
       await job.ready;job.permit();await job.started;
       const observed=await markers;clearTimeout(timer);
       const identities=[observed.worker,observed.child];
-      assert.deepEqual(identities.map(x=>x.namespace_pid),[2,3]);
+      assert.equal(identities[0].namespace_pid,2);
+      // Linux threads consume namespace IDs too; the first Node child is not
+      // necessarily PID3. Observe its real identity rather than guessing it.
+      assert(Number.isSafeInteger(identities[1].namespace_pid)&&identities[1].namespace_pid>2);
       for(const identity of identities){
         assert.notEqual(identity.observer_pid,identity.namespace_pid,'Observer procfs must expose its own PID view');
         assert.equal(markerExited(identity),false,'A live exact birth must not become absent from an unrelated namespace PID or a permission error');

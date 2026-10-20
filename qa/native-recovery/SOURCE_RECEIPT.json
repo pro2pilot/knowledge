@@ -1,5 +1,5 @@
 {
-  "source_git_commit": "eb68877",
+  "source_git_commit": "bc444655d6c037b95292ba9e425f2273fea24ba5",
   "source_files": {
     ".gitattributes": {
       "bytes": 99,
@@ -1834,8 +1834,8 @@
       "sha256": "1487c533192aace8edb7f47e02d54ca0aa56b8d39cec23fe2f15dc7bd7df6c48"
     },
     "tools/self-test-verification-budget.js": {
-      "bytes": 19336,
-      "sha256": "7eaf8feb8906b87db928f277cc0e056ee83a9982144be349ffa0d99236bfb1a4"
+      "bytes": 19585,
+      "sha256": "5da03785dfb56fda5f8e5f6ab1c7fde7a1ed76be1f3268ea7c43a616f20963ad"
     },
     "tools/self-test-verification-execution.js": {
       "bytes": 5625,
@@ -1918,5 +1918,5 @@
       "sha256": "941a10b7d48057eb0b2727944bc220bc777133ec3903da68bf68d856001de5e5"
     }
   },
-  "purpose": "current exact source physical Linux user/root, corrected namespace identity test; runtime SHA unchanged b2eb1d..."
+  "purpose": "final exact source native Linux identity verification; runtime b2eb1d... unchanged"
 }
