@@ -6,7 +6,7 @@ production installation use the [latest published release](https://github.com/pr
 To test this candidate, use its explicitly supplied ZIP and the setup commands
 below. Never substitute GitHub source downloads for a release asset.
 
-This is audit revision `independent-audit.20261020.windows.4.posix-recovery.1`. For this specific audit, select
+This is audit revision `independent-audit.20261020.windows.4.posix-recovery.2`. For this specific audit, select
 `candidate/knowledge-v3.4.4.zip` from the accompanying POSIX/recovery audit handoff and
 verify its new SHA and `audit_revision`; version-only update checks do not
 distinguish it from the original RC5. Linux requires its native prerequisites; macOS remains unsupported. See [audit installation and limits](docs/verification-execution-contract.md).

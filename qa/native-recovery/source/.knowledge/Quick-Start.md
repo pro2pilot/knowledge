@@ -2,10 +2,10 @@
 > release gate has not been run. See the [latest published release](https://github.com/pro2pilot/knowledge/releases/latest)
 > for installation outside candidate testing.
 
-> Audit revision **`independent-audit.20261020.windows.4.posix-recovery.1`**: native verification and the native
+> Audit revision **`independent-audit.20261020.windows.4.posix-recovery.2`**: native verification and the native
 > verification phase of `agent-task finish` require native prerequisites on Linux;
 > macOS remains unsupported.
-> They refuse before probes. Use the exact audit ZIP and SHA from the handoff;
+> Missing native prerequisites refuse before project work starts. Use the exact audit ZIP and SHA from the handoff;
 > see [current candidate limits](docs/verification-execution-contract.md) before following native
 > verification examples in this guide.
 

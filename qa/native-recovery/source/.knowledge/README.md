@@ -6,8 +6,8 @@
 > gate has **not been run** for this candidate. Find the latest published
 > release at [GitHub Releases](https://github.com/pro2pilot/knowledge/releases/latest).
 
-> This copy is audit revision **`independent-audit.20261020.windows.4.posix-recovery.1`**, based on the
-> supplied 3.4.4 RC5 windows.4 candidate. Native verification supports Windows
+> This copy is audit revision **`independent-audit.20261020.windows.4.posix-recovery.2`**, based on the
+> supplied RC5 POSIX recovery audit, preserving the RC4 → RC5 chain. Native verification supports Windows
 > Jobs and Linux PID namespaces when native prerequisites pass. macOS remains
 > unsupported. Identify this derivative by the
 > exact runtime SHA in its new handoff; version `3.4.4` and `RC5` alone do not

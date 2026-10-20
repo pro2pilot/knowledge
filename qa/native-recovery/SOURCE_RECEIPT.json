@@ -1,5 +1,5 @@
 {
-  "source_git_commit": "25c4e8926f39e3f469a83530f4150e5ac66a034d",
+  "source_git_commit": "2a87e6e09885ffa5c3501745e3539616c4a32207",
   "source_files": {
     ".gitattributes": {
       "bytes": 99,
@@ -26,12 +26,12 @@
       "sha256": "22d081222c00bc4ca4567b1ae26e3841ef6bf204ab465095fb2218e675e86051"
     },
     ".release-notes/v3.4.4.md": {
-      "bytes": 7027,
-      "sha256": "fc1759af397dbac51703f07fc2f0ac766b4c39ae6697fbd07607968271228e03"
+      "bytes": 8586,
+      "sha256": "6b9d164b8f8027eade5bac8fdab8696a26b7b375b228c77c5f6b3ee75f2a1a96"
     },
     "INSTALL.md": {
       "bytes": 4830,
-      "sha256": "a74faaa7f9f912ba0cc60e7fdf601faaea25dc6a4ca238a18698ac4401dba5f7"
+      "sha256": "73a4fbc3efd6b66a16567acbfe437401ade3b831de3b3e914b0bec69dbc841f3"
     },
     "LICENSE": {
       "bytes": 11358,
@@ -46,16 +46,16 @@
       "sha256": "771db962164d9ed70f286f12ec27f3cc91eeaedbefa0370ec807629545eb1db7"
     },
     "Quick-Start.md": {
-      "bytes": 30785,
-      "sha256": "33e3e5b76061698eeced2a7b587a8dac0926ef0f18a10b935f3a1476c7dd5a42"
+      "bytes": 30822,
+      "sha256": "04a6a8919c7c93506db615ca92fcbd108c0c8da56b70751b1a46c1d482286097"
     },
     "README.md": {
-      "bytes": 16828,
-      "sha256": "d8c4c2f0b0fca8d5bdc7e885ca04cd7d8c2759aefec881a54dab8877f7364fec"
+      "bytes": 16857,
+      "sha256": "b97b31185c1d67200e8b0f60d9080d17f1da854e0161eb853d9afe48302ed2cb"
     },
     "RELEASE_NOTES.md": {
-      "bytes": 15715,
-      "sha256": "3412e29adeeb81ba1eaec26a1b646bed90da92bcf4fe265deb253968156db6fa"
+      "bytes": 17125,
+      "sha256": "6df7c85226113d6c529ffc84a0ddc1919341e0773ac48fe3191ecbdd8ee9ea1d"
     },
     "SBOM.memory.json": {
       "bytes": 1053,
@@ -650,8 +650,8 @@
       "sha256": "1f1c45986ec50c365a2cd6ce6a049a7d7922c710aef217c5ea2ac7166010e729"
     },
     "docs/verification-execution-contract.md": {
-      "bytes": 9693,
-      "sha256": "1c328eb5ea99377dc525294ca61106bdde129fe744d86b0ce06f28bac5eb8dd1"
+      "bytes": 11158,
+      "sha256": "b7b4f0de40acab58b2e242f4f6d194c152c6cc26d2834ad6ec9146f5a295a9b1"
     },
     "docs/vscode-browser-embedding.md": {
       "bytes": 463,
@@ -787,7 +787,7 @@
     },
     "package.json": {
       "bytes": 8820,
-      "sha256": "ae8e120181f269eb17e8986e53efc738af3f84f3d08c26f65e157c801fa13d94"
+      "sha256": "6e87be4ef8188483e4dbf7abc491d1b93521c3a7d1b32b6d836d1d0a719fb375"
     },
     "release-policy.json": {
       "bytes": 24320,
@@ -1094,8 +1094,8 @@
       "sha256": "b968b55b0eed7fc411222d1bf3b2171a10ac683bf00f1296b910d4fe8f285b25"
     },
     "tests/verification-cleanup-transcript.test.js": {
-      "bytes": 10476,
-      "sha256": "2befa307b8598956bb38575ae3ef54ca86144b9b3d72d9677483e7929382cc98"
+      "bytes": 13466,
+      "sha256": "986bf6c4c9720e33d1964e236afbdaf6f5040a05acc7bdd586d9f85cdaac5c34"
     },
     "tests/verification-control.test.js": {
       "bytes": 38229,
@@ -1474,8 +1474,8 @@
       "sha256": "e3915f6f5e791d88de86ee2556d64c1e0311ec34251edb6496abf05f2f252033"
     },
     "tools/lib/verification-control.js": {
-      "bytes": 43146,
-      "sha256": "08956209c5aa607110acf21a307faeb61a25cb406949e65824b16d3f407fdb4c"
+      "bytes": 43672,
+      "sha256": "efe67b5139871b7d1f5ce61adb2d9b9cf86b487e433f93bd1a2e866261c277c1"
     },
     "tools/lib/verification-execution.js": {
       "bytes": 22159,
@@ -1918,5 +1918,5 @@
       "sha256": "941a10b7d48057eb0b2727944bc220bc777133ec3903da68bf68d856001de5e5"
     }
   },
-  "purpose": "targeted new-runtime physical Linux diagnostic, not final release gate"
+  "purpose": "physical Linux native recovery current candidate source; Ubuntu22 user and Ubuntu24 root, explicit /tmp owned fixture"
 }

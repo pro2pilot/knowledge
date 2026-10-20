@@ -134,6 +134,7 @@ function validate(a,loc) {
       c.spawn_ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || c.spawn_ids[i-1]<id)),'verification_control_corrupt');
     if(c.cleanup_receipt!==null) {
       const receipt=c.cleanup_receipt,{evidence_sha256,...observed}=receipt;
+      assertNativeProofPublicFields(receipt);
       requireThat(validNativeContainerProof({...a,recovery:null},receipt) && evidence_sha256===hash(JSON.stringify(observed)) &&
         Buffer.byteLength(JSON.stringify(receipt))<=16384,'verification_control_corrupt');
     }
@@ -361,10 +362,25 @@ function confirmedCleanup(a,proof) {
 function bindCleanupProof(owner,nativeProof) {
   const observed=inert(nativeProof);
   requireThat(observed && typeof observed==='object' && !Array.isArray(observed),'verification_cleanup_unconfirmed');
+  assertNativeProofPublicFields(observed);
   const proof={...observed,attempt_id:owner.attempt_id,generation:owner.generation,native_return:observed};
   delete proof.evidence_sha256;
   proof.evidence_sha256=hash(JSON.stringify(proof));
   return proof;
+}
+
+// Fixed native adapters return process/container facts. Reject capability and
+// credential field names at every persistence boundary, including the earlier
+// normal receipt. This is a field policy, not a detector for arbitrary secrets.
+function assertNativeProofPublicFields(value,depth=0) {
+  requireThat(depth<=32,'verification_control_corrupt');
+  if(value && typeof value==='object') for(const [key,item] of Object.entries(value)) {
+    const normalized=key.replace(/[^a-z0-9]/gi,'').toLowerCase();
+    requireThat(!['token','ownertoken','controltoken','capabilitytoken','privatekey','privatekeypem','signingprivatekey',
+      'accesstoken','refreshtoken','bearertoken','apikey','authorization','password','clientsecret'].includes(normalized),
+      'verification_native_transcript_sensitive');
+    assertNativeProofPublicFields(item,depth+1);
+  }
 }
 
 function validateTranscript(a,t) {
@@ -387,15 +403,7 @@ function validateTranscript(a,t) {
   // These records contain process observations, never an owner capability or
   // private signing material. Reject forbidden fields instead of redacting a
   // proof and making its saved digest impossible to reproduce.
-  const visit=(value,depth=0)=>{
-    requireThat(depth<=32,'verification_control_corrupt');
-    if(value && typeof value==='object') for(const [key,item] of Object.entries(value)) {
-      const normalized=key.replace(/[^a-z0-9]/gi,'').toLowerCase();
-      requireThat(!['token','ownertoken','privatekey','privatekeypem','signingprivatekey'].includes(normalized),'verification_native_transcript_sensitive');
-      visit(item,depth+1);
-    }
-  };
-  visit(t.payload);
+  assertNativeProofPublicFields(t.payload);
 }
 function transcript(a,proof) {
   const payload={native_return:inert(proof.native_return??proof),bound_proof:inert(proof)};

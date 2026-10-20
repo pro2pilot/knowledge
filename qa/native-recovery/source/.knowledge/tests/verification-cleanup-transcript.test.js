@@ -49,9 +49,10 @@ function nativeReturn(f,descriptor,extra={}) {
     ...extra};
 }
 
-function finishWithNativeTranscript(f,{outcome='failed',extraNativeReturn={},beforeCommit=()=>{}}={}) {
+function finishWithNativeTranscript(f,{outcome='failed',extraNativeReturn={},beforeBind=()=>{},beforeCommit=()=>{}}={}) {
   const {descriptor}=prepareNativeAttempt(f);
   const returned=nativeReturn(f,descriptor,extraNativeReturn);
+  beforeBind(returned);
   const bound=control.bindCleanupProof(f.owner,returned);
   for(const [i,pid] of [2211,2212,2213].entries())
     control.updateAttempt(f.context,f.owner,{type:'process_exit',spawn_id:i+1,pid,
@@ -98,7 +99,17 @@ test('tampering the canonical bound-proof digest fails even when the payload dig
   const raw=JSON.parse(fs.readFileSync(f.file,'utf8'));
   const transcript=raw.cleanup.native_transcript;
   transcript.payload.bound_proof.evidence_sha256='f'.repeat(64);
+  raw.cleanup.evidence_sha256='f'.repeat(64);
   rehashPayload(transcript);
+  fs.writeFileSync(f.file,JSON.stringify(raw));
+  assert.throws(()=>control.readStatus(f.context),{code:'verification_control_corrupt'});
+});
+
+test('changing a bound observation alone fails its canonical digest after outer payload rehash',t=>{
+  const f=fixture(t);finishWithNativeTranscript(f);
+  const raw=JSON.parse(fs.readFileSync(f.file,'utf8'));
+  raw.cleanup.native_transcript.payload.bound_proof.additional_observation='changed';
+  rehashPayload(raw.cleanup.native_transcript);
   fs.writeFileSync(f.file,JSON.stringify(raw));
   assert.throws(()=>control.readStatus(f.context),{code:'verification_control_corrupt'});
 });
@@ -143,11 +154,56 @@ test('oversized native transcript is rejected without releasing the active claim
 test('sensitive native fields are rejected without redaction or claim release',t=>{
   for(const key of ['owner_token','ownerToken','private_key','privateKey']) {
     const f=fixture(t);let before;
-    assert.throws(()=>finishWithNativeTranscript(f,{extraNativeReturn:{[key]:'a'.repeat(64)},beforeCommit:()=>{before=fs.readFileSync(f.file);}}),
+    assert.throws(()=>finishWithNativeTranscript(f,{extraNativeReturn:{[key]:'SYNTHETIC-NONSECRET-marker'},beforeBind:()=>{before=fs.readFileSync(f.file);}}),
       {code:'verification_native_transcript_sensitive'},key);
     assert.deepEqual(fs.readFileSync(f.file),before);
     assert.equal(control.readStatus(f.context).attempt.claimed,true);
     assert.equal(control.readStatus(f.context).attempt.terminal,null);
+  }
+});
+
+const sensitiveNativeObservations=[
+  {ownerToken:'SYNTHETIC-NONSECRET-marker'},
+  {observations:[{access_token:'SYNTHETIC-NONSECRET-marker'}]},
+  {observations:{nested:{'api-key':'SYNTHETIC-NONSECRET-marker'}}},
+  {observations:[{nested:{authorization:'SYNTHETIC-NONSECRET-marker'}}]}
+];
+
+test('cleanup_proven rejects capability fields before receipt persistence or public status exposure',t=>{
+  for(const extra of sensitiveNativeObservations) {
+    const f=fixture(t),{descriptor}=prepareNativeAttempt(f);
+    for(const [i,pid] of [2211,2212,2213].entries())
+      control.updateAttempt(f.context,f.owner,{type:'process_exit',spawn_id:i+1,pid,
+        os_creation_time:birth,method:'process_handle_signaled'});
+    const before=fs.readFileSync(f.file);
+    assert.throws(()=>control.updateAttempt(f.context,f.owner,
+      {type:'cleanup_proven',proof:nativeReturn(f,descriptor,extra)}),
+      {code:'verification_native_transcript_sensitive'},JSON.stringify(extra));
+    assert.deepEqual(fs.readFileSync(f.file),before);
+    const publicAttempt=control.readStatus(f.context).attempt;
+    assert.equal(publicAttempt.containment.cleanup_receipt,null);
+    assert.equal(publicAttempt.cleanup.native_transcript,null);
+    assert.equal(publicAttempt.claimed,true);
+    assert.equal(publicAttempt.terminal,null);
+  }
+});
+
+test('forged sensitive cleanup receipts fail closed on reload even with a valid bound digest',t=>{
+  for(const extra of sensitiveNativeObservations) {
+    const f=fixture(t),{descriptor}=prepareNativeAttempt(f);
+    for(const [i,pid] of [2211,2212,2213].entries())
+      control.updateAttempt(f.context,f.owner,{type:'process_exit',spawn_id:i+1,pid,
+        os_creation_time:birth,method:'process_handle_signaled'});
+    control.updateAttempt(f.context,f.owner,{type:'cleanup_proven',proof:nativeReturn(f,descriptor)});
+    const saved=JSON.parse(fs.readFileSync(f.file,'utf8'));
+    Object.assign(saved.containment.cleanup_receipt.native_return,extra);
+    const {evidence_sha256,...bound}=saved.containment.cleanup_receipt;
+    saved.containment.cleanup_receipt.evidence_sha256=digest(bound);
+    fs.writeFileSync(f.file,JSON.stringify(saved));
+    const before=fs.readFileSync(f.file);
+    assert.throws(()=>control.readStatus(f.context),
+      {code:'verification_native_transcript_sensitive'},JSON.stringify(extra));
+    assert.deepEqual(fs.readFileSync(f.file),before);
   }
 });
 

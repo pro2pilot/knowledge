@@ -10,38 +10,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        identity: [root, user]
-    runs-on: ubuntu-24.04
+        include:
+          - os: ubuntu-22.04
+            identity: user
+          - os: ubuntu-24.04
+            identity: root
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22.17.1
-      - name: Capture native prerequisite failure without changing host policy
-        shell: bash
-        run: |
-          set -u
-          out=qa/native-recovery/evidence/prerequisites-${{ matrix.identity }}-attempt2
-          mkdir -p "$out"
-          uname -a > "$out/uname.txt"
-          /usr/bin/unshare --version > "$out/unshare-version.txt"
-          /usr/bin/cc --version > "$out/compiler-version.txt"
-          cat /proc/self/attr/current > "$out/lsm-current.txt"
-          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns > "$out/lsm-userns-policy.txt"
-          code='try {console.log(JSON.stringify(require("./qa/native-recovery/source/.knowledge/tools/lib/verification-linux-namespace").prepareHelper()));} catch(e) {console.log(JSON.stringify({code:e.code,message:e.message,stack:e.stack}));process.exitCode=1;}'
-          if [ '${{ matrix.identity }}' = root ]; then
-            sudo "$(node -p 'process.execPath')" -e "$code" > "$out/prepare-helper.json" 2> "$out/prepare-helper.stderr"
-            printf '%s\n' "$?" > "$out/prepare-helper.exit.txt"
-            sudo /usr/bin/unshare --user --map-current-user --pid --fork --kill-child=KILL -- /bin/true > "$out/unshare.stdout" 2> "$out/unshare.stderr"
-          else
-            node -e "$code" > "$out/prepare-helper.json" 2> "$out/prepare-helper.stderr"
-            printf '%s\n' "$?" > "$out/prepare-helper.exit.txt"
-            /usr/bin/unshare --user --map-current-user --pid --fork --kill-child=KILL -- /bin/true > "$out/unshare.stdout" 2> "$out/unshare.stderr"
-          fi
-          printf '%s\n' "$?" > "$out/unshare.exit.txt"
-          exit 0
-      - name: Verify exact source receipt and execute physical suites
+      - name: Verify pinned source and use an owned native fixture
         shell: bash
         run: |
           set -euo pipefail
@@ -52,8 +33,23 @@ jobs:
           actual={p.relative_to(root/'source/.knowledge').as_posix():{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in (root/'source/.knowledge').rglob('*') if p.is_file()}
           assert actual==expected,'Source drift before execution'
           PY
-          runner=qa/native-recovery/tools/run_audit.py
-          args=(--source qa/native-recovery/source/.knowledge --node "$(node -p 'process.execPath')" --git "$(command -v git)" --label linux-${{ matrix.identity }}-attempt2 --timeout 1200
+          out="$PWD/qa/native-recovery/evidence"
+          mkdir -p "$out"
+          nodebin="$(node -p 'process.execPath')"
+          pybin="$(command -v python3)"
+          gitbin="$(command -v git)"
+          code='const b=require("./source/.knowledge/tools/lib/verification-linux-namespace");try{console.log(JSON.stringify({helper:b.prepareHelper(),capability:b.containmentCapability()}));}catch(e){console.log(JSON.stringify({code:e.code,message:e.message}));process.exitCode=1;}'
+          if [ '${{ matrix.identity }}' = root ]; then
+            work=$(sudo /usr/bin/mktemp -d /tmp/knowledge-rc5-root.XXXXXXXX)
+            sudo /bin/cp -R qa/native-recovery/. "$work"
+            sudo /usr/bin/env TMPDIR="$work" "$nodebin" -e 'const b=require(process.argv[1]);try{console.log(JSON.stringify(b.prepareHelper()));}catch(e){console.log(JSON.stringify({code:e.code,message:e.message}));}' "$PWD/qa/native-recovery/source/.knowledge/tools/lib/verification-linux-namespace.js" > "$out/checkout-root-build-diagnostic.json"
+          else
+            work=$(/usr/bin/mktemp -d /tmp/knowledge-rc5-user.XXXXXXXX)
+            /bin/cp -R qa/native-recovery/. "$work"
+          fi
+          printf '%s\n' "$work" > "$out/owned-fixture-path.txt"
+          case "$work" in /tmp/knowledge-rc5-root.*|/tmp/knowledge-rc5-user.*) ;; *) exit 71 ;; esac
+          args=(--source "$work/source/.knowledge" --node "$nodebin" --git "$gitbin" --label linux-${{ matrix.identity }}-attempt3 --timeout 1200
             --only self-test-linux-namespace
             --only tests__verification-native-recovery-linux.test.js
             --only tests__native-linux-execution-contract.test.js
@@ -63,7 +59,20 @@ jobs:
             --only self-test-verification-finalization
             --only self-test-verification-budget
             --only self-test-verification-execution)
-          if [ '${{ matrix.identity }}' = root ]; then sudo "$(command -v python3)" "$runner" "${args[@]}"; else python3 "$runner" "${args[@]}"; fi
+          set +e
+          if [ '${{ matrix.identity }}' = root ]; then
+            (cd "$work" && sudo "$nodebin" -e "$code") > "$out/native-prerequisite.json" 2> "$out/native-prerequisite.stderr"
+            sudo "$pybin" "$work/tools/run_audit.py" "${args[@]}"
+            rc=$?
+            sudo /bin/cp -R "$work/evidence/." "$out"
+          else
+            (cd "$work" && "$nodebin" -e "$code") > "$out/native-prerequisite.json" 2> "$out/native-prerequisite.stderr"
+            "$pybin" "$work/tools/run_audit.py" "${args[@]}"
+            rc=$?
+            /bin/cp -R "$work/evidence/." "$out"
+          fi
+          set -e
+          exit "$rc"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

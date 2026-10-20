@@ -1,5 +1,30 @@
 # Release Notes
 
+## v3.4.4 RC5 — Windows recovery and durable cleanup transcripts
+
+Audit revision: `independent-audit.20261020.windows.4.posix-recovery.2`.
+Unpublished audit candidate; the full release gate has not been run.
+
+Windows recovery retains the exact keeper process handle while waiting for a
+concurrent exit, including when TerminateProcess reports access denied during
+termination. A completed authority candidate waits for its independent trusted
+work-completion frame; cancellation and budget expiry still prevent acceptance.
+
+New contained attempts persist the complete bounded native cleanup return and
+the attempt-bound proof atomically with terminal state. Separate digests cover
+the bound proof and transcript payload. Older control records remain readable
+without inventing missing historical transcripts. A malformed or oversized
+transcript retains the resource claim and cannot issue an ACK.
+
+Fresh physical Windows recovery, crash and delayed-progress results are in the
+handoff, with original failures retained. Targeted Linux results and installed
+package checks are reported separately against their exact bytes. macOS remains
+unsupported pending its separate native broker architecture and acceptance;
+Linux does not certify it. The historical second ownerless-lock creator is
+unknown. No publication or update of GitHub main is included.
+
+The following entries describe earlier pinned revisions.
+
 ## v3.4.4 RC5 — Linux containment and fenced native recovery
 
 Audit revision: `independent-audit.20261020.windows.4.posix-recovery.1`.

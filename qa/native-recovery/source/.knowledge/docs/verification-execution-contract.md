@@ -122,6 +122,29 @@ or an unresolved pre-descriptor spawn, remains quarantined. Recovery never
 issues an ACK. Do not delete a claim because a PID disappeared or use a new
 state root to bypass the resource guard.
 
+## Durable native cleanup transcript
+
+New contained attempts use control schema v3. On confirmed terminal cleanup,
+`cleanup.native_transcript` preserves the exact native adapter return separately
+from the proof bound to the attempt, generation, descriptor and recovery ID.
+`payload_sha256` covers the JSON payload; `evidence_sha256` covers the bound
+proof without its own digest field. Both use UTF-8 `JSON.stringify` bytes in
+stored property order. This is local evidence integrity, not a signed OS
+attestation or proof that a privileged writer could not change local state.
+
+The transcript is limited to 64 KiB and the control record to 256 KiB. It is
+written and read back with terminal state before the claim is released; the
+next attempt archives the complete previous record. Missing native returns,
+digest mismatch, oversized data and forbidden capability/private-key fields
+fail closed. No proof is silently truncated or redacted. Historical v1/v2
+control records remain readable with an explicitly absent optional transcript;
+reading history does not manufacture evidence or certify current code.
+
+Windows normal and recovery paths retain their actual native returns. A ready
+candidate and trusted work-completion notice travel on separate channels;
+both are required before acceptance, regardless of arrival order. Waiting for
+the latter remains bounded by work/cancellation and cleanup policies.
+
 ## Evidence and platform limits
 
 New batches use finalization and acceptance schema v3. They retain separate
@@ -150,9 +173,9 @@ private procfs isolation. Runtime capability is checked through actual native
 setup, not inferred solely from an operating-system name.
 
 macOS has no equivalent backend in this candidate and remains explicitly
-unsupported for native verification. Windows recovery changes require a fresh
-Windows kernel run before release. Linux results do not certify macOS or
-Windows. The historical creator of the second ownerless lock remains unknown.
+unsupported for native verification. Physical Windows recovery results are
+recorded in the current handoff; installed and release-gate acceptance remain
+separate checks. Linux results do not certify macOS or Windows. The historical creator of the second ownerless lock remains unknown.
 
 Kernel basis: [Linux PID namespaces](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html),
 [pidfd lifecycle](https://man7.org/linux/man-pages/man2/pidfd_open.2.html), and
