@@ -12,9 +12,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            identity: user
-          - os: ubuntu-24.04
             identity: root
+          - os: ubuntu-22.04
+            identity: installed-user
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -49,7 +49,36 @@ jobs:
           fi
           printf '%s\n' "$work" > "$out/owned-fixture-path.txt"
           case "$work" in /tmp/knowledge-rc5-root.*|/tmp/knowledge-rc5-user.*) ;; *) exit 71 ;; esac
-          args=(--source "$work/source/.knowledge" --node "$nodebin" --git "$gitbin" --label linux-${{ matrix.identity }}-attempt3 --timeout 1200
+          if [ '${{ matrix.identity }}' = installed-user ]; then
+            "$pybin" - "$work" <<'PY'
+          from pathlib import Path
+          import zipfile,hashlib,sys
+          work=Path(sys.argv[1]);asset=work/'runtime/knowledge-v3.4.4.zip'
+          assert hashlib.sha256(asset.read_bytes()).hexdigest()=='b2eb1d3ce8942a176c218c8b102421427eca8ea870f1cfddaa99d5fbd54397c2'
+          with zipfile.ZipFile(asset) as z:
+              names=z.namelist();assert len(names)==415 and len({n.casefold() for n in names})==415
+              assert all(n.startswith('.knowledge/') and '..' not in n.split('/') and '\\' not in n for n in names)
+              for fixture in ['fresh-node','project spaces пример']:
+                  root=work/'installed/fixtures'/fixture;root.mkdir(parents=True)
+                  for name in names:
+                      p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(name))
+          PY
+            set +e
+            "$nodebin" "$work/tools/run-installed.cjs" "$work/installed"
+            rc=$?
+            set -e
+            "$pybin" - "$work" "$out" <<'PY'
+          from pathlib import Path
+          import shutil,sys,json,hashlib
+          work,out=map(Path,sys.argv[1:]);target=out/'installed-linux';target.mkdir(parents=True)
+          for p in (work/'installed').rglob('*'):
+              if p.is_file() and '.knowledge' not in p.relative_to(work/'installed').parts:
+                  q=target/p.relative_to(work/'installed');q.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,q)
+          (target/'ASSET_RECEIPT.json').write_text(json.dumps({'sha256':hashlib.sha256((work/'runtime/knowledge-v3.4.4.zip').read_bytes()).hexdigest(),'scope':'physical Linux installed exact audit ZIP; no source checkout substitution'},indent=2)+'\n')
+          PY
+            exit "$rc"
+          fi
+          args=(--source "$work/source/.knowledge" --node "$nodebin" --git "$gitbin" --label linux-${{ matrix.identity }}-attempt4 --timeout 1200
             --only self-test-linux-namespace
             --only tests__verification-native-recovery-linux.test.js
             --only tests__native-linux-execution-contract.test.js
@@ -61,7 +90,7 @@ jobs:
             --only self-test-verification-execution)
           set +e
           if [ '${{ matrix.identity }}' = root ]; then
-            (cd "$work" && sudo "$nodebin" -e "$code") > "$out/native-prerequisite.json" 2> "$out/native-prerequisite.stderr"
+            sudo "$nodebin" -e 'const b=require(process.argv[1]);try{console.log(JSON.stringify({helper:b.prepareHelper(),capability:b.containmentCapability()}));}catch(e){console.log(JSON.stringify({code:e.code,message:e.message}));process.exitCode=1;}' "$work/source/.knowledge/tools/lib/verification-linux-namespace.js" > "$out/native-prerequisite.json" 2> "$out/native-prerequisite.stderr"
             sudo "$pybin" "$work/tools/run_audit.py" "${args[@]}"
             rc=$?
             sudo /bin/cp -R "$work/evidence/." "$out"
