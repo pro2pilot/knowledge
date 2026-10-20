@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.com/schemas/knowledge-verification-execution.v1.json",
+  "title": "Content-addressed local verification execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "session_id",
+    "command_argv",
+    "command",
+    "cwd",
+    "status",
+    "exit_code",
+    "signal",
+    "timed_out",
+    "duration_ms",
+    "executed_at",
+    "executed_by",
+    "runtime_binding",
+    "runtime_sha256",
+    "environment_profile",
+    "stdout_sha256",
+    "stderr_sha256",
+    "stdout_bytes",
+    "stderr_bytes",
+    "source_snapshot_before",
+    "source_snapshot",
+    "execution_id",
+    "content_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "knowledge-verification-execution.v1"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command_argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "status": {
+      "const": "pass"
+    },
+    "exit_code": {
+      "const": 0
+    },
+    "signal": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timed_out": {
+      "const": false
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "executed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "executed_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_binding": {
+      "enum": [
+        "process_exec_path",
+        "command_argv"
+      ]
+    },
+    "runtime_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "environment_profile": {
+      "enum": [
+        "sanitized_node",
+        "sanitized_node_no_git",
+        "inherited_command"
+      ]
+    },
+    "stdout_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "stderr_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "stdout_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stderr_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source_snapshot": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "source_snapshot_before": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "execution_id": {
+      "type": "string",
+      "pattern": "^KVE-[a-f0-9]{64}$"
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

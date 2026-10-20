@@ -1,0 +1,120 @@
+<svg
+  width="960"
+  height="960"
+  viewBox="0 0 960 960"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">How .knowledge verifies context for AI coding agents</title>
+  <desc id="desc">
+    Any different agent request, current code and tests, and advisory external memory enter the .knowledge trust gate.
+    Route, evidence, and freshness checks return either trusted context and PR review or a repair queue that is verified again.
+  </desc>
+
+  <defs>
+    <marker id="arrowCyan" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L14 7L0 14Z" fill="#159FE3"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L14 7L0 14Z" fill="#10B981"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L14 7L0 14Z" fill="#F59E0B"/>
+    </marker>
+    <linearGradient id="gateGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#159FE3" stop-opacity="0.04"/>
+      <stop offset="0.5" stop-color="#159FE3" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#159FE3" stop-opacity="0.04"/>
+    </linearGradient>
+    <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <style>
+      .sans { font-family: Geist, Inter, Arial, sans-serif; }
+      .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .main { fill: #1F2937; }
+      .muted { fill: #64748B; }
+      .tiny { font-size: 15px; letter-spacing: 0.14em; }
+      .small { font-size: 18px; letter-spacing: 0.01em; }
+      .label { font-size: 29px; font-weight: 650; letter-spacing: -0.02em; }
+      .tag { font-size: 17px; font-weight: 700; letter-spacing: 0.12em; }
+    </style>
+  </defs>
+
+  <rect width="960" height="960" fill="#FFFFFF"/>
+
+  <g opacity="1" stroke="#CBD5E1" stroke-width="1">
+    <path d="M60 120H900"/>
+    <path d="M60 844H900"/>
+    <path d="M480 94V872" stroke-dasharray="3 12"/>
+  </g>
+
+  <g class="sans">
+    <text x="480" y="84" text-anchor="middle" class="main" font-size="52" font-weight="720" letter-spacing="-0.04em">.knowledge</text>
+    <text x="480" y="112" text-anchor="middle" class="muted mono tiny">TRUST LAYER</text>
+  </g>
+
+  <g class="sans">
+    <circle cx="98" cy="256" r="18" stroke="#159FE3" stroke-width="2.4"/>
+    <path d="M89 250H108M89 261H103" stroke="#159FE3" stroke-width="2.7" stroke-linecap="round"/>
+    <text x="136" y="246" class="main label">
+      <tspan x="136" dy="0">Any different</tspan>
+      <tspan x="136" dy="32">agents request</tspan>
+    </text>
+    <text x="136" y="313" class="muted small">what should I trust?</text>
+
+    <circle cx="98" cy="430" r="18" stroke="#10B981" stroke-width="2.4"/>
+    <path d="M88 430L96 438L110 422" stroke="#10B981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="136" y="426" class="main label">Code + tests</text>
+    <text x="136" y="457" fill="#10B981" class="small">source of truth</text>
+
+    <circle cx="98" cy="604" r="18" stroke="#F59E0B" stroke-width="2.4"/>
+    <path d="M87 605C92 597 104 597 109 605C104 613 92 613 87 605Z" stroke="#F59E0B" stroke-width="2.1"/>
+    <text x="136" y="600" class="main label">External memory</text>
+    <text x="136" y="631" fill="#F59E0B" class="small">advisory only</text>
+  </g>
+
+  <path d="M344 266H390C422 266 441 278 458 300" stroke="#159FE3" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M344 430H444" stroke="#10B981" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M344 604H396C427 604 444 594 458 575" stroke="#F59E0B" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="9 10"/>
+
+  <rect x="438" y="188" width="84" height="494" rx="42" fill="url(#gateGlow)" filter="url(#softGlow)" opacity="0.95"/>
+  <path d="M480 188V682" stroke="#159FE3" stroke-width="2.3"/>
+  <circle cx="480" cy="342" r="6.5" fill="#159FE3"/>
+  <circle cx="480" cy="430" r="6.5" fill="#10B981"/>
+  <circle cx="480" cy="518" r="6.5" fill="#F59E0B"/>
+
+  <g class="mono" font-size="18" fill="#94A3B8">
+    <text x="524" y="348">ROUTE</text>
+    <text x="524" y="436">EVIDENCE</text>
+    <text x="524" y="524">FRESHNESS</text>
+  </g>
+
+  <path d="M684 350H740" stroke="#10B981" stroke-width="3.4" stroke-linecap="round" marker-end="url(#arrowGreen)"/>
+  <path d="M684 534H740" stroke="#F59E0B" stroke-width="3.4" stroke-linecap="round" marker-end="url(#arrowAmber)"/>
+
+  <g class="sans">
+    <text x="756" y="332" fill="#10B981" class="tag">TRUSTED</text>
+    <text x="756" y="372" class="main label">
+      <tspan x="756" dy="0">Context +</tspan>
+      <tspan x="756" dy="30">PR review</tspan>
+    </text>
+    <text x="756" y="433" class="muted small">ready to use and verify</text>
+
+    <text x="756" y="516" fill="#F59E0B" class="tag">RECHECK</text>
+    <text x="756" y="554" class="main label">Repair queue</text>
+    <text x="756" y="584" class="muted small">stale / missing / conflict</text>
+  </g>
+
+  <path
+    d="M760 592C760 664 710 696 618 696H560C540 696 528 690 522 672"
+    stroke="#F59E0B"
+    stroke-width="2.9"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <path d="M546 665L504 641L504 689L546 665Z" fill="#F59E0B"/>
+  <text x="640" y="748" text-anchor="middle" class="mono" font-size="17" fill="#F59E0B" letter-spacing="0.06em">REPAIR - VERIFY AGAIN</text>
+</svg>

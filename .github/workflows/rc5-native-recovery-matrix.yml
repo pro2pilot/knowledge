@@ -1,0 +1,52 @@
+name: RC5 physical Linux recovery followup
+on:
+  push:
+    branches: ['codex/rc5-native-recovery-matrix']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        identity: [root, user]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+      - name: Verify exact source receipt and execute physical suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          root=Path('qa/native-recovery'); expected=json.loads((root/'SOURCE_RECEIPT.json').read_text())['source_files']
+          actual={p.relative_to(root/'source/.knowledge').as_posix():{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in (root/'source/.knowledge').rglob('*') if p.is_file()}
+          assert actual==expected,'Source drift before execution'
+          PY
+          runner=qa/native-recovery/tools/run_audit.py
+          args=(--source qa/native-recovery/source/.knowledge --node "$(node -p 'process.execPath')" --git "$(command -v git)" --label linux-${{ matrix.identity }}-attempt1 --timeout 1200
+            --only self-test-linux-namespace
+            --only tests__verification-native-recovery-linux.test.js
+            --only tests__native-linux-execution-contract.test.js
+            --only tests__verification-native-recovery.test.js
+            --only tests__verification-cleanup-transcript.test.js
+            --only tests__verification-finalization-v2.test.js
+            --only self-test-verification-finalization
+            --only self-test-verification-budget
+            --only self-test-verification-execution)
+          if [ '${{ matrix.identity }}' = root ]; then sudo "$(command -v python3)" "$runner" "${args[@]}"; else python3 "$runner" "${args[@]}"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc5-linux-${{ matrix.identity }}-native-evidence
+          path: |
+            qa/native-recovery/evidence
+            qa/native-recovery/SOURCE_RECEIPT.json
+          if-no-files-found: error
+          retention-days: 90
