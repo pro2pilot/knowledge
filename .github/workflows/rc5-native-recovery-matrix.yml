@@ -18,6 +18,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.17.1
+      - name: Capture native prerequisite failure without changing host policy
+        shell: bash
+        run: |
+          set -u
+          out=qa/native-recovery/evidence/prerequisites-${{ matrix.identity }}-attempt2
+          mkdir -p "$out"
+          uname -a > "$out/uname.txt"
+          /usr/bin/unshare --version > "$out/unshare-version.txt"
+          /usr/bin/cc --version > "$out/compiler-version.txt"
+          cat /proc/self/attr/current > "$out/lsm-current.txt"
+          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns > "$out/lsm-userns-policy.txt"
+          code='try {console.log(JSON.stringify(require("./qa/native-recovery/source/.knowledge/tools/lib/verification-linux-namespace").prepareHelper()));} catch(e) {console.log(JSON.stringify({code:e.code,message:e.message,stack:e.stack}));process.exitCode=1;}'
+          if [ '${{ matrix.identity }}' = root ]; then
+            sudo "$(node -p 'process.execPath')" -e "$code" > "$out/prepare-helper.json" 2> "$out/prepare-helper.stderr"
+            printf '%s\n' "$?" > "$out/prepare-helper.exit.txt"
+            sudo /usr/bin/unshare --user --map-current-user --pid --fork --kill-child=KILL -- /bin/true > "$out/unshare.stdout" 2> "$out/unshare.stderr"
+          else
+            node -e "$code" > "$out/prepare-helper.json" 2> "$out/prepare-helper.stderr"
+            printf '%s\n' "$?" > "$out/prepare-helper.exit.txt"
+            /usr/bin/unshare --user --map-current-user --pid --fork --kill-child=KILL -- /bin/true > "$out/unshare.stdout" 2> "$out/unshare.stderr"
+          fi
+          printf '%s\n' "$?" > "$out/unshare.exit.txt"
+          exit 0
       - name: Verify exact source receipt and execute physical suites
         shell: bash
         run: |
@@ -30,7 +53,7 @@ jobs:
           assert actual==expected,'Source drift before execution'
           PY
           runner=qa/native-recovery/tools/run_audit.py
-          args=(--source qa/native-recovery/source/.knowledge --node "$(node -p 'process.execPath')" --git "$(command -v git)" --label linux-${{ matrix.identity }}-attempt1 --timeout 1200
+          args=(--source qa/native-recovery/source/.knowledge --node "$(node -p 'process.execPath')" --git "$(command -v git)" --label linux-${{ matrix.identity }}-attempt2 --timeout 1200
             --only self-test-linux-namespace
             --only tests__verification-native-recovery-linux.test.js
             --only tests__native-linux-execution-contract.test.js
