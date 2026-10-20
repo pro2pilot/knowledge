@@ -1,0 +1,41 @@
+name: RC5 Inspector test follow-up
+on:
+  push:
+    branches: ['codex/knowledge-rc5-inspector-contract']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspector:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          check-latest: false
+      - name: Replay only the corrected Inspector contract
+        shell: bash
+        run: |
+          python knowledge-next-release-matotchka/reports/20261020-native-platforms/inspector-followup/inspector_cell.py \
+            --source knowledge-next-release-matotchka/w20f5/.knowledge \
+            --test knowledge-next-release-matotchka/reports/20261020-native-platforms/inspector-followup/team-inspector-evidence.test.js \
+            --freeze knowledge-next-release-matotchka/reports/20261020-native-platforms/inspector-followup/FREEZE.json \
+            --node "$(node -p 'process.execPath')" \
+            --output "$RUNNER_TEMP/inspector-result" --work "$RUNNER_TEMP/inspector-work"
+      - name: Preserve exact result and input pins
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspector-${{ matrix.os }}
+          path: ${{ runner.temp }}/inspector-result
+          if-no-files-found: error
+          retention-days: 90
