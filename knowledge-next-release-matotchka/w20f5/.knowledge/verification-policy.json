@@ -1,0 +1,12 @@
+{
+  "schema_version": "knowledge-verification-policy.v1",
+  "default_profile": "local",
+  "profiles": {
+    "local": { "work_budget_ms": 120000, "no_progress_ms": 60000, "cleanup_budget_ms": 30000 },
+    "suite": { "work_budget_ms": 1800000, "no_progress_ms": 180000, "cleanup_budget_ms": 60000 },
+    "external": { "work_budget_ms": 600000, "no_progress_ms": 120000, "cleanup_budget_ms": 60000 }
+  },
+  "automatic_work_budget_extension": false,
+  "command_progress_signal": "unavailable",
+  "control_poll_ms": 100
+}

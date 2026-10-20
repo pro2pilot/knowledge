@@ -1,0 +1,74 @@
+name: RC5 Linux/macOS diagnostic matrix
+on:
+  push:
+    branches: ['codex/knowledge-rc5-execution-contract-v4']
+  workflow_dispatch:
+    inputs:
+      freeze_receipt:
+        description: Repository-relative, reviewed freeze receipt path
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    name: ${{ matrix.os }} / Node 22.17.1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            slug: linux-node22
+          - os: macos-15-intel
+            slug: macos-intel-node22
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      KNOWLEDGE_AGENT_ID: rc5-platforms-matrix
+      npm_config_audit: 'false'
+      npm_config_fund: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          check-latest: false
+      - name: Verify freeze and run diagnostic cell
+        id: cell
+        shell: bash
+        env:
+          FREEZE_RECEIPT: ${{ inputs.freeze_receipt || 'knowledge-next-release-matotchka/reports/20261020-native-platforms/CI_FREEZE.json' }}
+        run: |
+          set +e
+          python knowledge-next-release-matotchka/reports/20261020-native-platforms/R20/matrix-preparation/matrix_cell.py \
+            --freeze "$GITHUB_WORKSPACE/$FREEZE_RECEIPT" \
+            --node "$(node -p 'process.execPath')" \
+            --docs "$GITHUB_WORKSPACE/knowledge-next-release-matotchka/reports/20261020-native-platforms/R20/matrix-preparation/verify-docs.test.cjs" \
+            --output "$RUNNER_TEMP/rc5-${{ matrix.slug }}" \
+            --work "$RUNNER_TEMP/rc5-${{ matrix.slug }}-work" \
+            --workspace "$GITHUB_WORKSPACE" \
+            --suite-timeout 900
+          rc=$?
+          echo "cell_exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload raw evidence (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc5-${{ matrix.slug }}-raw-evidence
+          path: |
+            ${{ runner.temp }}/rc5-${{ matrix.slug }}
+            ${{ runner.temp }}/rc5-${{ matrix.slug }}-work
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce FAIL/PARTIAL classification
+        if: always()
+        shell: bash
+        run: |
+          python knowledge-next-release-matotchka/reports/20261020-native-platforms/R20/matrix-preparation/classify_cell.py \
+            --cell "$RUNNER_TEMP/rc5-${{ matrix.slug }}" --controller-exit-code "${{ steps.cell.outputs.cell_exit_code }}"
