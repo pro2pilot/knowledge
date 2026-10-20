@@ -1,4 +1,4 @@
-name: RC5 Darwin RUID native boundary probe
+name: RC5 Darwin credential policy probe
 on:
   push:
     branches: ['codex/rc5-darwin-native-probe']
@@ -11,33 +11,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Compile and run test-owned native fixtures
+      - name: Compile and run owned credential policy cases
         shell: bash
         run: |
           set -euo pipefail
-          src=qa/darwin-asid
-          out="$RUNNER_TEMP/darwin-ruid-probe-results"
+          src=qa/darwin-asid/darwin-credential-policy-probe.c
+          out="$RUNNER_TEMP/darwin-credential-policy-results"
           mkdir -p "$out"
           uname -a > "$out/uname.txt"
           sw_vers > "$out/sw-vers.txt"
-          xcrun --show-sdk-path > "$out/sdk-path.txt"
           xcrun clang --version > "$out/clang-version.txt"
-          shasum -a 256 "$src/darwin-asid-probe.c" "$src/darwin-ruid-probe.c" > "$out/source.sha256"
-          xcrun clang -std=c11 -Wall -Wextra -O2 "$src/darwin-ruid-probe.c" -o "$out/ruid-probe" -lsandbox 2> "$out/compile.stderr"
-          shasum -a 256 "$out/ruid-probe" > "$out/binary.sha256"
-          fixture=$(sudo /usr/bin/mktemp -d /private/tmp/knowledge-asid-probe.XXXXXXXX)
-          case "$fixture" in /private/tmp/knowledge-asid-probe.*) ;; *) exit 71 ;; esac
-          cleanup() {
-            sudo /bin/rm -f "$fixture/suid-probe"
-            sudo /bin/rmdir "$fixture"
-          }
-          trap cleanup EXIT
-          sudo /bin/chmod 0755 "$fixture"
-          sudo /usr/bin/install -o root -g wheel -m 4755 "$out/ruid-probe" "$fixture/suid-probe"
-          /usr/bin/stat -f '%Su %Sg %Sp %N' "$fixture" "$fixture/suid-probe" > "$out/fixture-stat.txt"
-          "$out/ruid-probe" --probe2 "$fixture/suid-probe" > "$out/unprivileged.jsonl" 2> "$out/unprivileged.stderr"
+          shasum -a 256 "$src" > "$out/source.sha256"
+          xcrun clang -std=c11 -Wall -Wextra -O2 "$src" -o "$out/policy-probe" -lsandbox 2> "$out/compile.stderr"
+          shasum -a 256 "$out/policy-probe" > "$out/binary.sha256"
           set +e
-          sudo "$out/ruid-probe" --probe2 "$fixture/suid-probe" > "$out/root.jsonl" 2> "$out/root.stderr"
+          sudo "$out/policy-probe" > "$out/root.jsonl" 2> "$out/root.stderr"
           rc=$?
           set -e
           printf '%s\n' "$rc" > "$out/root.exit-code.txt"
@@ -45,7 +33,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-ruid-native-probe
-          path: ${{ runner.temp }}/darwin-ruid-probe-results
+          name: darwin-credential-policy-probe
+          path: ${{ runner.temp }}/darwin-credential-policy-results
           if-no-files-found: error
           retention-days: 90
