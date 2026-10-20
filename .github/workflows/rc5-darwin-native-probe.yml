@@ -1,4 +1,4 @@
-name: RC5 Darwin native boundary probe
+name: RC5 Darwin RUID native boundary probe
 on:
   push:
     branches: ['codex/rc5-darwin-native-probe']
@@ -16,15 +16,15 @@ jobs:
         run: |
           set -euo pipefail
           src=qa/darwin-asid
-          out="$RUNNER_TEMP/darwin-asid-probe-results"
+          out="$RUNNER_TEMP/darwin-ruid-probe-results"
           mkdir -p "$out"
           uname -a > "$out/uname.txt"
           sw_vers > "$out/sw-vers.txt"
           xcrun --show-sdk-path > "$out/sdk-path.txt"
           xcrun clang --version > "$out/clang-version.txt"
-          shasum -a 256 "$src/darwin-asid-probe.c" > "$out/source.sha256"
-          xcrun clang -std=c11 -Wall -Wextra -O2 "$src/darwin-asid-probe.c" -o "$out/asid-probe" -lsandbox 2> "$out/compile.stderr"
-          shasum -a 256 "$out/asid-probe" > "$out/binary.sha256"
+          shasum -a 256 "$src/darwin-asid-probe.c" "$src/darwin-ruid-probe.c" > "$out/source.sha256"
+          xcrun clang -std=c11 -Wall -Wextra -O2 "$src/darwin-ruid-probe.c" -o "$out/ruid-probe" -lsandbox 2> "$out/compile.stderr"
+          shasum -a 256 "$out/ruid-probe" > "$out/binary.sha256"
           fixture=$(sudo /usr/bin/mktemp -d /private/tmp/knowledge-asid-probe.XXXXXXXX)
           case "$fixture" in /private/tmp/knowledge-asid-probe.*) ;; *) exit 71 ;; esac
           cleanup() {
@@ -33,11 +33,11 @@ jobs:
           }
           trap cleanup EXIT
           sudo /bin/chmod 0755 "$fixture"
-          sudo /usr/bin/install -o root -g wheel -m 4755 "$out/asid-probe" "$fixture/suid-probe"
+          sudo /usr/bin/install -o root -g wheel -m 4755 "$out/ruid-probe" "$fixture/suid-probe"
           /usr/bin/stat -f '%Su %Sg %Sp %N' "$fixture" "$fixture/suid-probe" > "$out/fixture-stat.txt"
-          "$out/asid-probe" --probe "$fixture/suid-probe" 65534 > "$out/unprivileged.jsonl" 2> "$out/unprivileged.stderr"
+          "$out/ruid-probe" --probe2 "$fixture/suid-probe" > "$out/unprivileged.jsonl" 2> "$out/unprivileged.stderr"
           set +e
-          sudo "$out/asid-probe" --probe "$fixture/suid-probe" 65534 > "$out/root.jsonl" 2> "$out/root.stderr"
+          sudo "$out/ruid-probe" --probe2 "$fixture/suid-probe" > "$out/root.jsonl" 2> "$out/root.stderr"
           rc=$?
           set -e
           printf '%s\n' "$rc" > "$out/root.exit-code.txt"
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-asid-native-probe
-          path: ${{ runner.temp }}/darwin-asid-probe-results
+          name: darwin-ruid-native-probe
+          path: ${{ runner.temp }}/darwin-ruid-probe-results
           if-no-files-found: error
           retention-days: 90
