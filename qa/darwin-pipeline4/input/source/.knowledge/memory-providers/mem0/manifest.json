@@ -1,0 +1,76 @@
+{
+  "schema_version": "3.2.7",
+  "id": "mem0-oss",
+  "display_name": "Mem0 OSS",
+  "type": "local",
+  "recommended": true,
+  "recommended_for": ["core", "team", "enterprise"],
+  "positioning": "Recommended optional universal local memory backend for .knowledge free/core.",
+  "license": {
+    "spdx": "Apache-2.0",
+    "url": "https://github.com/mem0ai/mem0/blob/main/LICENSE",
+    "requires_notice": true
+  },
+  "source": {
+    "homepage": "https://docs.mem0.ai/open-source/overview",
+    "repository": "https://github.com/mem0ai/mem0",
+    "package": "https://pypi.org/project/mem0ai/",
+    "version": "2.0.4",
+    "version_pin": "mem0ai==2.0.4",
+    "verified_at": "2026-06-06",
+    "verification_notes": "Official Mem0 OSS docs list pip install mem0ai; PyPI listed mem0ai 2.0.4 as latest on 2026-06-06."
+  },
+  "install": {
+    "mode": "manual",
+    "commands": [
+      "python -m pip install mem0ai==2.0.4",
+      "python -m pip install fastembed==0.5.1"
+    ],
+    "requires_network": true,
+    "requires_user_confirmation": true,
+    "status_report_makes_network_calls": false,
+    "recommended_setup_command": "node .knowledge/tools/memory-provider.js setup mem0-oss --live --json",
+    "configure_openai_embeddings_command": "node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder openai --model text-embedding-3-small --json",
+    "configure_fastembed_embeddings_command": "node .knowledge/tools/memory-provider.js configure-embeddings mem0-oss --embedder fastembed --model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --json",
+    "recipe_command": "node .knowledge/tools/memory-provider.js write-recipe mem0-oss --json",
+    "validator_command": "node .knowledge/tools/memory-provider.js validate-recipe mem0-oss --json"
+  },
+  "embedding_onboarding": {
+    "mode": "agent_guided_recipe",
+    "recipe": "docs/cookbook/10-mem0-embedding-backends.md",
+    "layers": ["llm_provider", "embedding_provider", "vector_store", "history_store"],
+    "choices": ["openai", "fastembed"],
+    "collection_policy": "Do not reuse a Qdrant collection when embedding provider, model, or dimensions change."
+  },
+  "data": {
+    "default_path": "<stateRoot>/external_memory/mem0",
+    "state_dir_name": "mem0",
+    "stores_user_data": true,
+    "scope": "repo"
+  },
+  "adapter": {
+    "contract": "knowledge.memory_adapter.v1",
+    "tool": "tools/memory-mem0.js",
+    "default_mode": "dry-run",
+    "supported_modes": ["dry-run", "test", "live"],
+    "live_requires_explicit_consent": true,
+    "operations": ["health", "remember", "recall", "list", "forget", "export-redacted", "sync-report"],
+    "status_report_makes_network_calls": false,
+    "live_health_auto_detects_python": true,
+    "live_health_discovery_scope": "bounded: explicit overrides, active envs, PATH commands, Windows py/pymanager, and standard install directories",
+    "live_health_installs_packages": false,
+    "output_redacts_memory_text_by_default": true
+  },
+  "trust_policy": {
+    "source_of_truth": false,
+    "trust_effect": "advisory_only",
+    "can_raise_trust": false,
+    "can_overwrite_curated_knowledge": false
+  },
+  "status": {
+    "enabled": false,
+    "installed": false,
+    "version": null,
+    "last_check": null
+  }
+}

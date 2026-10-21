@@ -1,0 +1,23 @@
+# План физического QA pipeline4
+
+Отдельные shipping и QA pins сейчас staged в `qa/darwin-pipeline4/PINS.json`, native sibling завершил review. Runner подготовлен, но физический запуск ещё не выполнялся и требует ручного workflow dispatch на Intel и ARM. Исторические receipts из `qa/darwin-broker` не являются входом этого запуска.
+
+## Порядок для Intel и ARM
+
+1. Взять один и тот же staged source commit и manifest; проверить SHA каждого JS/native source, exact test path, штатный broker build id и отдельный compile-time QA build id. Сохранить private run evidence только в runner temp с режимом 0700. Передавать в public summary лишь точный allowlist: platform, architecture, pin hashes/build ids, stage booleans/exit codes, bounded byte/record counts и cleanup status.
+2. Отдельно собрать полный штатный native source pair и QA-инструментированный pair. Показать, что штатная пара не содержит QA gate define/endpoint. Проверить descriptor каждого бинарника на соответствующий source/stub hashes и режим (`qa_io_enabled:false|true`). Не называть compile PASS backend qualification.
+3. Выполнить один выбранный штатный Node diagnostic script и один quiet `node --test` файл по точным JS pins. Один и тот же canonical script отправить в broker diagnostic CLI: успешный typed result должен совпасть по hash/schema; намеренно неверную команду и изменённый source/copy проверить на отказ до выполнения. Зафиксировать команду/код/результат публично без stdout/stderr; сырые потоки и nonce оставить локально.
+4. Установить только штатную пару в отдельный root-owned fixture и выполнить нормальный launchd baseline. QA gate binary устанавливать отдельно и использовать новый fixture для каждого gate point. Не переносить данные между QA и штатным запуском.
+5. Для active persistence points подключить один launchd socket stream, отправить ARM, дождаться exact ENTERED, запустить typed stop/status наблюдения, и только после проверки поздно отправить RELEASE. До gate снять exact kernel birth для command/authority из protected registry и сверить с marker PID и закреплённым Node image. После SIGINT проверять `stop_latched`, `proof_current:false`, `resources_free:false`, затем отдельно наблюдать точные birth до `absent`/`replaced`; `same_zombie` записывать как остановленный, но не освобождённый. После RELEASE читать свежий status и terminal proof; проверять отсутствие новой admission, permit, ACK или повторного запуска. Невозможность подтвердить потомка помечать `unconfirmed` и сохранять fixture.
+6. Для startup journal gate применить demand activation: очередь ARM через launchd socket до первого service start; на ENTERED проверить `observe` показывает `initializing_or_idle`, `durability_pending:true`, без current allocation/command, затем RELEASE и дождаться штатного завершения replay. Не принимать отсутствие ответа/timeout за доказательство pending.
+7. Bootout exact launchd label, проверить отсутствие сервиса и точные owned process/UID memberships, подтвердить выход root helper и только потом чистить fixture. Любой timeout, неизвестный descendant, отказ bootout/cleanup, malformed gate frame или расхождение pins делает соответствующий результат `unconfirmed`/FAIL и запрещает удалять fixture.
+
+Текущий native gate — compile-time boundary hold вокруг настоящего history read или registry fsync/F_FULLFSYNC. Это воспроизводимый pending-persistence порядок, но не зависание syscall/APFS/device и не mock PASS. Если native hook отсутствует или его review/pin не завершён, D2 не запускать. QA gate binary не должен попадать в shipping inputs.
+
+## Ограничения и доказательства
+
+- Источник должен оставаться закреплённым точным source commit; штатные и QA binary hashes фиксируются независимо на каждой архитектуре.
+- Пропускать приватные stdout/stderr, raw RPC, gate `run_id`, токены, plist/config с путями fixture, raw registry/receipt и node/workspace content из GitHub artifacts. Artifact allowlist фиксирован в workflow и содержит только pins, typed native proofs/readbacks/ordinary exits, binary/runtime hashes, timings и bounded compiler excerpts.
+- Не раздувать синтетический journal до 64 MiB невалидными или фиктивными строками; публиковать измеренные valid record/byte counts и отдельно отрицательные bounds.
+- Hosted Actions `macos-15-intel` / `macos-15` не являются свидетельством пользовательской физической машины; фиксировать предоставленную GitHub архитектуру/образ и не выдавать результат за аппаратную/APFS qualification.
+- Runner использует QA-only gate peer с root-доступом к root-owned socket directory; role observations остаются под обычным test user. D2 source staging готов. Native compile и D2 запуск не выполнялись этим authoring-проходом.

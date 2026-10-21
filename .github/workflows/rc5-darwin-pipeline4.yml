@@ -1,0 +1,63 @@
+name: RC5 Darwin pipeline4 diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/rc5-darwin-broker-matrix
+    paths:
+      - qa/darwin-pipeline4/**
+      - .github/workflows/rc5-darwin-pipeline4.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-darwin-pipeline4-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pipeline4:
+    if: github.ref == 'refs/heads/codex/rc5-darwin-broker-matrix'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            expected_arch: x86_64
+          - runner: macos-15
+            expected_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify frozen inputs and run scoped pipeline4 QA
+        env:
+          EXPECTED_ARCH: ${{ matrix.expected_arch }}
+          PRIVATE_EVIDENCE_ROOT: ${{ runner.temp }}/darwin-pipeline4-private
+          PUBLIC_EVIDENCE_DIR: ${{ runner.temp }}/darwin-pipeline4-public
+          PUBLIC_SUMMARY: ${{ runner.temp }}/darwin-pipeline4-summary.json
+        run: >-
+          python3 qa/darwin-pipeline4/run_pipeline4.py
+          --pins qa/darwin-pipeline4/PINS.json
+          --evidence-root "$PRIVATE_EVIDENCE_ROOT"
+          --public-evidence-dir "$PUBLIC_EVIDENCE_DIR"
+          --summary "$PUBLIC_SUMMARY"
+      - name: Upload allowlisted public evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-pipeline4-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/darwin-pipeline4-public/PINS.json
+            ${{ runner.temp }}/darwin-pipeline4-public/summary.json
+            ${{ runner.temp }}/darwin-pipeline4-public/native-proofs.json
+            ${{ runner.temp }}/darwin-pipeline4-public/compiler-diagnostics.json
+            ${{ runner.temp }}/darwin-pipeline4-public/runtime-binaries.json
+            ${{ runner.temp }}/darwin-pipeline4-summary.json
+          if-no-files-found: ignore

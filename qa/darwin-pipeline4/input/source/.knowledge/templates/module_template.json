@@ -1,0 +1,18 @@
+{
+  "module_id": "template",
+  "name": "",
+  "status": "partial",
+  "purpose": "",
+  "boundaries": { "owns": [], "does_not_own": [], "external_dependencies": [] },
+  "entry_points": [],
+  "key_files": [],
+  "public_interfaces": [],
+  "dependencies": [],
+  "invariants": [],
+  "common_failure_zones": [],
+  "related_decisions": [],
+  "evidence_files": [],
+  "confidence": "low",
+  "last_verified_at": null,
+  "verification_status": "unknown"
+}

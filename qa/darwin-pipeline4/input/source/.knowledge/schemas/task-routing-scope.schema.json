@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-task-routing-scope.v2",
+  "type": "object",
+  "required": ["schema_version", "repository_id", "task", "task_class", "modules", "paths", "scope_source", "task_scope_hash"],
+  "properties": {
+    "schema_version": { "const": "knowledge-routing-scope.v2" },
+    "repository_id": { "type": "string", "minLength": 1 },
+    "task": { "type": "string" },
+    "task_class": { "type": "string", "minLength": 1 },
+    "modules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "paths": { "type": "array", "items": { "type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))(?!/).+" } },
+    "scope_source": { "enum": ["explicit", "agent_plan", "pr_diff", "inferred", "fallback_global"] },
+    "task_scope_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "additionalProperties": true
+}
