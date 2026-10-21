@@ -15,6 +15,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Compile exact preliminary native source
         run: python3 qa/darwin-broker/compile_native.py
       - name: Test pinned portable modules
@@ -29,7 +32,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt19-${{ matrix.os }}
+          name: darwin-native-attempt20-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
@@ -47,7 +50,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-portable-attempt19-ubuntu-22.04
+          name: darwin-portable-attempt20-ubuntu-22.04
           path: |
             qa/darwin-broker/COPY_SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json

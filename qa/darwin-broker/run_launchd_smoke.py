@@ -60,6 +60,12 @@ def checked_fixture(path):
         raise RuntimeError('fixture path escaped the checked /private/tmp prefix')
     return lexical
 
+def label_absent(result, label):
+    # A timeout or arbitrary launchctl error is not evidence of absence.
+    expected = 'Could not find service "' + label + '" in domain for system'
+    lines = result.stderr.decode('utf-8', errors='replace').splitlines()
+    return result.returncode == 113 and lines == ['Bad request.', expected]
+
 def assess_host_postdrop(stdout, exit_code):
     """Validate the fixed probe stages without treating diagnostics as qualification."""
     stages = {}
@@ -116,6 +122,8 @@ record = {'scope': 'launchd startup-method physical probe only', 'backend_certif
           'platform': platform.platform(), 'architecture': platform.machine()}
 fixture = None
 bootstrapped = False
+registration_attempted = False
+root_logs_created = False
 label = None
 descriptor = None
 membership_clear = False
@@ -123,6 +131,9 @@ harness_started = False
 host_probe_attempted = False
 host_probe_processes_reaped = True
 host_uid_scan_clear = True
+groups_probe_attempted = False
+groups_probe_reaped = True
+groups_uid_scan_clear = True
 
 try:
     if platform.system() != 'Darwin' or os.getuid() == 0:
@@ -154,6 +165,13 @@ try:
     broker_source, stub_source, node_source = args.broker.resolve(strict=True), args.stub.resolve(strict=True), args.node.resolve(strict=True)
     if args.broker.is_symlink() or args.stub.is_symlink() or args.node.is_symlink() or not broker_source.is_file() or not stub_source.is_file() or not node_source.is_file():
         raise RuntimeError('broker or resolved Node artifact is not an ordinary file')
+    dependencies = run('node-runtime-dependencies', ['/usr/bin/otool', '-L', str(node_source)], record, 20)
+    lines = dependencies.stdout.decode('utf-8', errors='strict').splitlines()[1:]
+    libraries = [line.strip().split(' (', 1)[0] for line in lines if line.strip()]
+    record['node_runtime_libraries'] = libraries
+    if dependencies.returncode or not libraries or len(libraries) > 64 or not all(
+            item.startswith('/usr/lib/') or item.startswith('/System/Library/') for item in libraries):
+        raise RuntimeError('test runtime must be a complete standalone Node binary with only OS library dependencies')
     origin_source = HERE / 'launch-origin-probe.c'
     if not origin_source.is_file():
         origin_source = SCRIPT_DIR / 'launch-origin-probe.c'
@@ -172,6 +190,14 @@ try:
         raise RuntimeError('ordinary-user host-postdrop-probe compile failed')
     record['host_postdrop_binary_sha256_before_install'] = sha(host_binary)
     record['launch_origin_binary_sha256_before_install'] = sha(origin_binary)
+    groups_source = SCRIPT_DIR / 'kernel-groups-regression.c'
+    groups_binary = OUT / 'kernel-groups-regression'
+    record['kernel_groups_regression_source_sha256'] = sha(groups_source)
+    groups_compile = run('compile-kernel-groups-regression', ['/usr/bin/clang', '-std=c11', '-D_DARWIN_C_SOURCE',
+        '-O2', '-Wall', '-Wextra', '-Wno-deprecated-declarations', str(groups_source), '-o', str(groups_binary)], record, 120)
+    if groups_compile.returncode:
+        raise RuntimeError('kernel groups regression did not compile')
+    record['kernel_groups_regression_binary_sha256'] = sha(groups_binary)
     record['broker_sha256_before_install'] = sha(broker_source)
     record['stub_sha256_before_install'] = sha(stub_source)
     record['stub_source_sha256'] = receipt_stub_sha
@@ -193,8 +219,10 @@ try:
     binary, node, origin_probe = fixture / 'bin/broker', fixture / 'runtime/node', fixture / 'bin/launch-origin-probe'
     stub = fixture / 'bin/knowledge-native-stub'
     host_probe = fixture / 'bin/host-postdrop-probe'
+    groups_probe = fixture / 'bin/kernel-groups-regression'
     for name, source, target in [('broker', broker_source, binary), ('stub', stub_source, stub), ('node', node_source, node),
                                  ('launch-origin-probe', origin_binary, origin_probe),
+                                 ('kernel-groups-regression', groups_binary, groups_probe),
                                  ('host-postdrop-probe', host_binary, host_probe)]:
         assert run('install-' + name, ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0555', str(source), str(target)], record).returncode == 0
         record[name + '_sha256_after_install'] = sha(target)
@@ -202,14 +230,27 @@ try:
                          record['stub_sha256_before_install'] if name == 'stub' else
                          record['node_sha256_before_install'] if name == 'node' else
                          record['launch_origin_binary_sha256_before_install'] if name == 'launch-origin-probe' else
+                         record['kernel_groups_regression_binary_sha256'] if name == 'kernel-groups-regression' else
                          record['host_postdrop_binary_sha256_before_install'])
         if record[name + '_sha256_after_install'] != expected_hash:
             raise RuntimeError(name + ' installed bytes changed')
+    pre_groups = run('pre-kernel-groups-uid-scan', [str(args.uid_scan), '1800000125'], record)
+    if pre_groups.returncode:
+        raise RuntimeError('kernel groups regression UID is not observed unused')
+    groups_probe_attempted = True
+    groups_probe_reaped = False
+    groups_run = run('kernel-groups-regression', ['/usr/bin/sudo', '-n', str(groups_probe), '1800000125'], record, 20)
+    groups_result = json.loads(groups_run.stdout)
+    record['kernel_groups_regression'] = groups_result
+    groups_probe_reaped = groups_result.get('cleanup_confirmed') is True
+    if groups_run.returncode or groups_result.get('status') != 'PASS' or not groups_probe_reaped:
+        raise RuntimeError('kernel group positive/extra-group negative regression failed')
     sock = fixture / 'control/broker.sock'
     stdout, stderr = fixture / 'logs/daemon.stdout.log', fixture / 'logs/daemon.stderr.log'
     for p in [stdout, stderr]:
         assert run('create-' + p.name, ['/usr/bin/sudo', '-n', '/usr/bin/touch', str(p)], record).returncode == 0
         assert run('mode-' + p.name, ['/usr/bin/sudo', '-n', '/bin/chmod', '0600', str(p)], record).returncode == 0
+    root_logs_created = True
     plist_path = fixture / 'launchd/job.plist'
     plist = {'Label': label, 'ProgramArguments': [str(binary), '--serve', '--qualification-mode',
         '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
@@ -218,10 +259,12 @@ try:
     staging = OUT / 'launchd-job.plist'
     staging.write_bytes(plistlib.dumps(plist, fmt=plistlib.FMT_XML, sort_keys=True))
     assert run('install-plist', ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0444', str(staging), str(plist_path)], record).returncode == 0
+    registration_attempted = True
+    bootstrapped = True  # unknown until a checked absence, including timeout
     bootstrap = run('bootstrap-own-label', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'bootstrap', 'system', str(plist_path)], record)
     if bootstrap.returncode != 0:
         loaded = run('check-own-label-after-bootstrap-error', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'print', 'system/' + label], record)
-        bootstrapped = loaded.returncode == 0
+        bootstrapped = not label_absent(loaded, label)
         raise RuntimeError('launchd bootstrap failed; controller harness was not run')
     bootstrapped = True
     deadline = time.monotonic() + 20
@@ -379,18 +422,23 @@ except BaseException as error:
     record['status'] = 'LAUNCHD_PROBE_FAIL'
     record['error'] = str(error)
 finally:
-    if fixture and label and bootstrapped:
+    if fixture and label and registration_attempted:
         stopped = run('bootout-own-label', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'bootout', 'system/' + label], record, 45)
         record['bootout_exit_code'] = stopped.returncode
         time.sleep(1)
         absent = run('verify-own-label-absent', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'print', 'system/' + label], record)
-        bootstrapped = absent.returncode == 0
+        bootstrapped = not label_absent(absent, label)
         record['own_launchd_label_absent'] = not bootstrapped
     if fixture and host_probe_attempted:
         host_scan = run('post-host-probe-uid-scan', [str(args.uid_scan), '1800000124'], record)
         host_uid_scan_clear = host_scan.returncode == 0
         record['host_probe_uid_zero_confirmed'] = host_uid_scan_clear
         record['host_probe_processes_reaped'] = host_probe_processes_reaped
+    if fixture and groups_probe_attempted:
+        groups_scan = run('post-kernel-groups-uid-scan', [str(args.uid_scan), '1800000125'], record)
+        groups_uid_scan_clear = groups_scan.returncode == 0
+        record['kernel_groups_uid_zero_confirmed'] = groups_uid_scan_clear
+        record['kernel_groups_processes_reaped'] = groups_probe_reaped
     if fixture:
         try:
             checked_fixture(fixture)
@@ -426,11 +474,12 @@ finally:
                     record['original_owner_private_output_readback'] = {
                         'readable': False, 'error_type': type(read_error).__name__, 'semantics_only': True}
             # Never remove the fixture until the exact service is booted out and private UID membership is clear.
-            if not bootstrapped and membership_clear and host_probe_processes_reaped and host_uid_scan_clear:
-                outlog = run('collect-own-root-daemon-stdout', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stdout.log')], record)
-                errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
-                if outlog.returncode or errlog.returncode:
-                    raise RuntimeError('could not collect own root daemon logs; fixture retained')
+            if not bootstrapped and membership_clear and host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear:
+                if root_logs_created:
+                    outlog = run('collect-own-root-daemon-stdout', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stdout.log')], record)
+                    errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
+                    if outlog.returncode or errlog.returncode:
+                        raise RuntimeError('could not collect own root daemon logs; fixture retained')
                 removed = run('remove-own-fixture', ['/usr/bin/sudo', '-n', '/bin/rm', '-rf', '--', str(fixture)], record)
                 record['fixture_cleanup_exit'] = removed.returncode
             else:
@@ -438,7 +487,7 @@ finally:
         except BaseException as cleanup_error:
             record['fixture_cleanup_deferred'] = str(cleanup_error)
     record['cleanup_confirmed'] = not fixture or (not bootstrapped and membership_clear and
-        host_probe_processes_reaped and host_uid_scan_clear and record.get('fixture_cleanup_exit') == 0)
+        host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear and record.get('fixture_cleanup_exit') == 0)
     if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and not record['cleanup_confirmed']:
         record['status'] = 'LAUNCHD_STARTUP_OBSERVED_CLEANUP_UNCONFIRMED'
     (OUT / 'LAUNCHD_SMOKE_RESULT.json').write_text(json.dumps(record, indent=2) + '\n')
