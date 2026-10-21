@@ -1,7 +1,7 @@
 {
   "native_sha256": "43c8b28ff07dde7d299cef20897f819c24f74012631ff02fcbfb39a14358c977",
-  "stub_sha256": "e969cfa067da652b8cb62b825ecc85d243addec9c52b522431ba69f9122106e7",
-  "native_commit": "2698b9ae7d0a4ff299420aba555a0d803ea74b10",
+  "stub_sha256": "530ec44217fba691b6de524a75a7110d8c8f9a4b31afe99764be792aabf340ff",
+  "native_commit": "9e9744e0e8410a4fda3d41a269ed76939721d934",
   "source_scope": "experimental committed pinned broker and C-only stub; production guard false; not release certified",
   "base_source_commit": "bc444655d6c037b95292ba9e425f2273fea24ba5",
   "input_path": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r5w\\.knowledge\\tools\\lib\\verification-darwin-broker.m"

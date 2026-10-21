@@ -45,6 +45,14 @@
 #define K_WIRE_MAX (1024u * 1024u)
 #define K_BOOTSTRAP_MS 60000u
 
+/* Darwin's feature-macro getgroups$DARWIN_EXTSN enumerates an account's default
+ * groups via getpwuid/getgrouplist, not the current setgroups kernel state.
+ * A reserved synthetic UID deliberately has no account. Bind the ordinary
+ * public getgroups ABI explicitly, independent of this TU's Darwin extensions.
+ * Apple bsd/man/man2/getgroups.2 documents the two different semantics.
+ * Link/import checks and physical tests must confirm this exact symbol. */
+extern int kernel_getgroups(int, gid_t *) __asm("_getgroups");
+
 struct KUnique { uint8_t uuid[16]; uint64_t uniqueid,parent_uniqueid;
     int32_t pidversion; uint32_t reserved; uint64_t reserved2,reserved3; };
 struct KIdentity { struct proc_bsdinfo bsd; struct KUnique unique; };
@@ -228,12 +236,12 @@ static bool private_credentials(uid_t uid) {
     errno=0;int observed_bytes=proc_pidinfo(getpid(),18,0,&own,sizeof(own));int observation_errno=errno;
     bool observed=observed_bytes==(int)sizeof(own)&&own.bsd.pbi_pid==(uint32_t)getpid()
         &&own.unique.uniqueid>0&&own.unique.pidversion>0;
-    errno=0;int count=getgroups(256,groups);int group_errno=errno;
+    errno=0;int count=kernel_getgroups(256,groups);int group_errno=errno;
     bool ok=observed&&own.bsd.pbi_ruid==uid&&own.bsd.pbi_uid==uid&&own.bsd.pbi_svuid==uid
         &&own.bsd.pbi_rgid==uid&&own.bsd.pbi_gid==uid&&own.bsd.pbi_svgid==uid
         &&count==1&&groups[0]==uid;
     if(!ok){/* Diagnostic comparison only; it does not turn a failed check into admission. */
-        errno=0;int query_count=getgroups(0,NULL);int query_errno=errno;
+        errno=0;int query_count=kernel_getgroups(0,NULL);int query_errno=errno;
         struct proc_bsdinfo bsd={0};errno=0;int bsd_bytes=proc_pidinfo(getpid(),PROC_PIDTBSDINFO,0,&bsd,sizeof(bsd));int bsd_errno=errno;
         bool bsd_matches=bsd_bytes==(int)sizeof(bsd)&&bsd.pbi_pid==(uint32_t)getpid()
             &&bsd.pbi_ruid==uid&&bsd.pbi_uid==uid&&bsd.pbi_svuid==uid
