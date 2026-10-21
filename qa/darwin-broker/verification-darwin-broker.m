@@ -1076,7 +1076,7 @@ static void advanceCleanup(void) {
         @"descriptor_sha256":e[@"descriptor_sha256"],@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,
         @"host_id":gHost,@"boot_id":gBoot,@"task_ruid":e[@"descriptor"][@"task_ruid"],
         @"installation_id":e[@"descriptor"][@"installation_id"],@"allocation_seq":e[@"descriptor"][@"allocation_seq"],
-        @"allocation_sha256":e[@"descriptor"][@"allocation_sha256"],@"uid_history_tuple_verified":@(confirmed&&uidExclusive),
+        @"allocation_sha256":e[@"descriptor"][@"allocation_sha256"],@"uid_history_tuple_verified":@((bool)(confirmed&&uidExclusive)),
         @"admission_closed":e[@"admission_closed"],@"spawn_exclusion_acquired":@(excluded),@"spawn_intents_resolved":@(intents),
         @"kernel_membership_method":@"proc_listpids(PROC_RUID_ONLY,nonnull_buffer);active_and_zombie_lists",
         @"kernel_membership_zero":@(zero),@"registered_authority_exited":@(authorityExited),
