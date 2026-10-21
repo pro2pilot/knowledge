@@ -72,6 +72,10 @@
 #define K_UID_LAST 1900000000u
 #define K_ACCOUNT_POLICY @"admin_reserved_interval_no_runtime_nss.v1"
 #define K_MAX_OWNERS 64u
+/* Independent observation cadence, not semantic progress or a stop SLA.
+ * A full history refresh includes bounded durable I/O; never catch up missed
+ * ticks in a burst. Fresh transition guards remain mandatory independently. */
+#define K_ACTIVE_STATE_REFRESH_MS 5000ull
 #define K_PID_CAP 65536u
 /* Match verification-policy.js. Valid caller budgets are never silently
  * shortened to the earlier one-hour work / one-minute cleanup prototype caps. */
@@ -1401,15 +1405,29 @@ static bool startup(void) {
 static int serve(void) {
     if(!startup()){fprintf(stderr,"broker setup/prerequisite failure: %s (errno=%d)\n",gSetupStage,errno);return 78;}
     signal(SIGTERM,stopSignal);signal(SIGINT,stopSignal);signal(SIGPIPE,SIG_IGN);
+    NSString *observedAttempt=nil;uint64_t nextStateRefresh=0;
     for(;;){@autoreleasepool{
         NSMutableDictionary *e=activeID().length?entryFor(activeID()):nil;
         bool known=e&&validRecordedEntry(e,activeID())&&[e[@"descriptor"][@"boot_id"] isEqual:gBoot]&&[e[@"descriptor"][@"host_id"] isEqual:gHost];
         bool drained=[e[@"state"] isEqual:@"commands_drained"];
+        if(![observedAttempt isEqual:activeID()]){observedAttempt=[activeID() copy];nextStateRefresh=nowMS()+K_ACTIVE_STATE_REFRESH_MS;}
         if(known&&!gClosing&&(![e[@"admission_closed"] boolValue]||drained)){struct KIdentity v;
             int controller=observeExact(e[@"controller"],&v),authority=e[@"authority"]?observeExact(e[@"authority"],&v):1;
             NSString *reason=gStopping?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
                 controller==0||authority==0?@"owner_exited":drained&&nowMS()>=[e[@"cleanup_deadline_ms"] unsignedLongLongValue]?@"cleanup_budget_exceeded":
                 !drained&&nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
+            /* Prioritize already-known stop/owner/deadline facts over disk I/O.
+             * A silent command must not retain cached healthy state forever
+             * merely because no new RPC arrives. Each store is observed even
+             * when another fails; none is healed from cached state. */
+            if(!reason&&nowMS()>=nextStateRefresh){
+                refreshEntryStore();refreshAccountPolicy();refreshUIDHistory();
+                nextStateRefresh=nowMS()+K_ACTIVE_STATE_REFRESH_MS;
+                controller=observeExact(e[@"controller"],&v);authority=e[@"authority"]?observeExact(e[@"authority"],&v):1;
+                reason=gStopping?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
+                    controller==0||authority==0?@"owner_exited":drained&&nowMS()>=[e[@"cleanup_deadline_ms"] unsignedLongLongValue]?@"cleanup_budget_exceeded":
+                    !drained&&nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
+            }
             if([reason isEqual:@"cleanup_budget_exceeded"])e[@"cleanup_budget_exceeded"]=@YES;
             if(reason)closeAdmission(e,reason,[e[@"cleanup_budget_ms"] unsignedLongLongValue]);}
         advanceRun();advanceCleanup();

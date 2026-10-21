@@ -1,0 +1,23 @@
+{
+  "source_commit": "2d336637378c1dbdbb85bb59da5332109ef43f45",
+  "sha256": "7eb33f712872c03ece25e25e283ee94edd6d47fc8aee6348a835cb2aa2ab840f",
+  "bytes": 1294164,
+  "member_sha256": {
+    ".release-notes/v3.4.4.md": "62be7679058445a9b3fb91c4de90ff419a512096dd20cafd56b76e3077eb6392",
+    "INSTALL.md": "24382066731f389e2dec1ec74d46b539aec74efbae1d6140094f9de08a7356e4",
+    "Quick-Start.md": "3e61a29ce6c0cb9b87832b61c1cf58a5b48231740301db1b8f4d01d22488e10c",
+    "README.md": "98969e6ccd7f12a81a45dc97aba868217379f5a3e95d45e958bfc95c99fe3b2c",
+    "RELEASE_NOTES.md": "b3085fb87d5a135a7f388352b63e3589e2fc8f85ba6a6262ebdc802501597505",
+    "docs/agent-task-workflow.md": "a41753e8c0c65d141f1df9bb08495b7a9a7df9343ad90a3cb05e7a4b3ed48047",
+    "docs/native-darwin-broker.md": "3445d14f4561b3dc8ea0faca5bd715056784cff4428c127365d11684d613621d",
+    "docs/upgrade-3.4.4.md": "0a4b23dde7779694404ca0548de45eecd0712251ed538a4da971c8119ab4ab46",
+    "tools/lib/inert-data.js": "c8e31220e83325cbe67a7a9648f7c4e43e728bc38ce737da8db4ffc7ccb28e3f",
+    "tools/lib/verification-darwin-broker.m": "3c7df9d59708faf16930efc732696d92f8eb9b68c953fcbe116751fbdb7dc89e",
+    "tools/lib/verification-darwin-client.js": "22f6b23303631ed6969cd9d334f65b857c9ac72f87c75c9caeb68958e63cae72",
+    "tools/lib/verification-darwin-stub.c": "530ec44217fba691b6de524a75a7110d8c8f9a4b31afe99764be792aabf340ff",
+    "tools/lib/verification-darwin-uid-history.h": "a22bd13c7387958de13bf6fb37bfc99659417b628543973eee41bb60589ed060",
+    "tools/lib/verification-darwin-uid-history.m": "375d5e6cc5964b748ad7c309a1f5d76d4ce2f86bdf3fcd2ffa70209dc165c040",
+    "tools/lib/verification-isolated-copy.js": "1de56e40e7c1bb4d3f5691704065baea9eb56d0f2aa23a5781d7edc10edb36a1"
+  },
+  "scope": "unpublished audit candidate; not release qualified"
+}

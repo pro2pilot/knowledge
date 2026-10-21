@@ -44,6 +44,8 @@ def run(name, argv, record, timeout=30, data=None, native_root=False):
         if isinstance(stderr, str): stderr = stderr.encode()
         p = subprocess.CompletedProcess(argv, None, stdout, stderr)
         timed_out = True
+    if native_root and b'stub describe cleanup_unconfirmed:' in p.stderr:
+        record['root_native_exits_confirmed'] = False
     (OUT / (name + '.stdout.log')).write_bytes(p.stdout)
     (OUT / (name + '.stderr.log')).write_bytes(p.stderr)
     record['commands'].append({'name': name, 'argv': argv, 'exit_code': p.returncode,
@@ -191,6 +193,8 @@ record = {'scope': 'launchd startup-method physical probe only', 'backend_certif
           'platform': platform.platform(), 'architecture': platform.machine()}
 record['root_native_exits_confirmed'] = True
 active_state_run_helper_exit_confirmed = True
+ordinary_helper_image_membership_clear = False
+helper_image_binary = None
 fixture = None
 bootstrapped = False
 registration_attempted = False
@@ -288,6 +292,16 @@ try:
     if groups_compile.returncode:
         raise RuntimeError('kernel groups regression did not compile')
     record['kernel_groups_regression_binary_sha256'] = sha(groups_binary)
+    if args.active_state_fault:
+        helper_image_source = SCRIPT_DIR / 'helper-image-scan.c'
+        helper_image_binary = OUT / 'helper-image-scan'
+        record['helper_image_scan_source_sha256'] = sha(helper_image_source)
+        compiled_image_scan = run('compile-helper-image-scan', ['/usr/bin/clang', '-std=c11',
+            '-D_DARWIN_C_SOURCE', '-O2', '-Wall', '-Wextra', '-Werror', str(helper_image_source),
+            '-o', str(helper_image_binary)], record, 120)
+        if compiled_image_scan.returncode:
+            raise RuntimeError('read-only ordinary helper image observer did not compile')
+        record['helper_image_scan_binary_sha256'] = sha(helper_image_binary)
     admission_binary = None
     if args.m2_scenario:
         admission_source = SCRIPT_DIR / 'admission-flock-probe.c'
@@ -568,9 +582,9 @@ try:
         except (ValueError, TypeError):
             raise RuntimeError('daemon harness returned invalid JSON')
         if args.active_state_fault:
-            active_state_run_helper_exit_confirmed = (
-                result.get('authority_direct_child_pid') is None or
-                result.get('native_run_helper_lifecycle_confirmed') is True)
+            # A missing PID can mean registration failed after Popen, not that
+            # no child existed. This controller never reaps that grandchild.
+            active_state_run_helper_exit_confirmed = False
             record['active_state_run_helper_exit_confirmed'] = active_state_run_helper_exit_confirmed
             record['active_state_run_helper_lifecycle_status'] = result.get(
                 'native_run_helper_lifecycle_status', 'not_started_or_not_reported')
@@ -711,15 +725,58 @@ finally:
                 except (OSError, RuntimeError) as read_error:
                     record['original_owner_private_output_readback'] = {
                         'readable': False, 'error_type': type(read_error).__name__, 'semantics_only': True}
+            # Root startup can finish its direct process while reporting an
+            # unconfirmed --describe descendant. Keep this sticky and distinct
+            # from the ordinary-owner image observation below.
+            if root_logs_created and not bootstrapped:
+                outlog = run('collect-own-root-daemon-stdout', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stdout.log')], record)
+                errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
+                if outlog.returncode or errlog.returncode:
+                    raise RuntimeError('could not collect own root daemon logs; fixture retained')
+                if b'stub describe cleanup_unconfirmed:' in errlog.stdout:
+                    record['root_native_exits_confirmed'] = False
+            # This is quiescent fixture housekeeping, not a reap or production
+            # cleanup proof. No further native broker client is launched here.
+            authority_wait = result.get('authority_wait', {}) if args.active_state_fault and 'result' in locals() else {}
+            if (args.active_state_fault and helper_image_binary and not bootstrapped and membership_clear and
+                    authority_wait.get('actual_wait_completed') is True and
+                    authority_wait.get('direct_child_reaped_by_controller') is True and
+                    record['root_native_exits_confirmed']):
+                until = time.monotonic() + 5
+                consecutive_zero = 0
+                for index in range(12):
+                    if time.monotonic() >= until:
+                        break
+                    checked_fixture(fixture)
+                    if sha(helper_image_binary) != record['helper_image_scan_binary_sha256']:
+                        raise RuntimeError('ordinary image observer bytes changed')
+                    observed = run('ordinary-helper-image-scan-' + str(index),
+                        [str(helper_image_binary), str(binary)], record, min(2, max(0.01, until-time.monotonic())))
+                    try:
+                        value = json.loads(observed.stdout)
+                    except (ValueError, TypeError):
+                        break
+                    valid = (isinstance(value, dict) and
+                        value.get('schema') == 'knowledge-qa-helper-image-observation.v1' and
+                        type(value.get('owner_uid')) is int and value['owner_uid'] == os.getuid() and
+                        value.get('observation_valid') is True and value.get('self_canary') is True and
+                        type(value.get('unknown')) is int and value['unknown'] == 0 and
+                        type(value.get('image_members')) is int and value.get('reaped') is False and
+                        value.get('production_proof') is False)
+                    if not valid or observed.returncode not in (0, 1):
+                        break
+                    consecutive_zero = consecutive_zero + 1 if observed.returncode == 0 and value['image_members'] == 0 else 0
+                    if consecutive_zero == 2:
+                        ordinary_helper_image_membership_clear = True
+                        break
+                    time.sleep(0.05)
+                record['ordinary_helper_image_membership_clear'] = ordinary_helper_image_membership_clear
+                record['ordinary_helper_observation_scope'] = 'two fresh quiescent ordinary-owner image-zero observations; not exact-birth wait, reap or production proof'
+            active_helper_housekeeping_clear = (active_state_run_helper_exit_confirmed or ordinary_helper_image_membership_clear)
             # Never remove the fixture until the exact service is booted out and private UID membership is clear.
             if (not bootstrapped and membership_clear and host_probe_processes_reaped and host_uid_scan_clear and
                     groups_probe_reaped and groups_uid_scan_clear and record['root_native_exits_confirmed'] and
-                    active_state_run_helper_exit_confirmed):
-                if root_logs_created:
-                    outlog = run('collect-own-root-daemon-stdout', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stdout.log')], record)
-                    errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
-                    if outlog.returncode or errlog.returncode:
-                        raise RuntimeError('could not collect own root daemon logs; fixture retained')
+                    active_helper_housekeeping_clear):
                 if history_files:
                     captured = run('collect-own-uid-history', ['/usr/bin/sudo', '-n', '/usr/bin/tar',
                         '-cf', '-', '-C', str(fixture), 'anchors', 'allocator'], record)
@@ -739,7 +796,8 @@ finally:
             record['fixture_cleanup_deferred'] = str(cleanup_error)
     record['cleanup_confirmed'] = not fixture or (not bootstrapped and membership_clear and
         host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear and
-        record['root_native_exits_confirmed'] and active_state_run_helper_exit_confirmed and
+        record['root_native_exits_confirmed'] and
+        (active_state_run_helper_exit_confirmed or ordinary_helper_image_membership_clear) and
         record.get('fixture_cleanup_exit') == 0)
     if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and not record['cleanup_confirmed']:
         record['status'] = 'LAUNCHD_STARTUP_OBSERVED_CLEANUP_UNCONFIRMED'
