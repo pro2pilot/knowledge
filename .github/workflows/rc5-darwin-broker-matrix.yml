@@ -19,13 +19,13 @@ jobs:
         run: python3 qa/darwin-broker/compile_native.py
       - name: Compile read-only UID observer
         run: /usr/bin/clang -std=c11 -O2 -Wall -Wextra qa/darwin-broker/uid-scan.c -o qa/darwin-broker/evidence/uid-scan
-      - name: Trace test-owned child Mach cleanup
+      - name: Test C-only rights cleanup and host credential drop
         if: always()
         run: python3 qa/darwin-broker/run_launchd_smoke.py --host-probe-only --expected-source-sha=a699a968f11125f8a16282d9c43c44286fe1d4d5d1a2ddcb7571a506bea7dc87
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt14-${{ matrix.os }}
+          name: darwin-native-attempt15-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
