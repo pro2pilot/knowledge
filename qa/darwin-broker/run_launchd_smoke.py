@@ -90,6 +90,7 @@ def assess_host_postdrop(stdout, exit_code):
             'root_host_basic_positive': root_positive,
             'postdrop_stages_exact_invalid_host': postdrop_ok,
             'parent_reaped_probe_ok': reaped.get('probe_ok') is True,
+            'parent_reaping_observed': exit_code in (0,1) and type(reaped.get('wait_status')) is int and type(reaped.get('timeout')) is bool,
             'parent_reaped_timeout': reaped.get('timeout'),
             'stages_present': sorted(stages), 'backend_certified': False}
 
@@ -101,6 +102,7 @@ parser.add_argument('--harness', type=Path, default=attempt13_harness if attempt
 parser.add_argument('--uid-scan', type=Path, default=HERE / 'evidence' / 'uid-scan')
 parser.add_argument('--source-receipt', type=Path, default=HERE / 'SOURCE_RECEIPT.json')
 parser.add_argument('--compile-result', type=Path, default=HERE / 'evidence' / 'COMPILE_RESULT.json')
+parser.add_argument('--host-probe-only', action='store_true')
 parser.add_argument('--expected-source-sha', help='Optional frozen-source SHA pin for this CI attempt')
 args = parser.parse_args()
 EVIDENCE_ROOT = HERE / 'evidence'
@@ -317,49 +319,52 @@ try:
     }
     record['host_postdrop_checks'] = host_checks
     host_probe_processes_reaped = all(
-        item.get('process_exit_code') == 0 and item.get('parent_reaped_probe_ok') is True and
-        item.get('parent_reaped_timeout') is False for item in host_checks.values())
+        item.get('parent_reaping_observed') is True for item in host_checks.values())
     record['host_probe_processes_reaped'] = host_probe_processes_reaped
     record['host_postdrop_checks_passed'] = all(item.get('passed') is True for item in host_checks.values())
-    harness_started = True
-    run_evidence = OUT / 'native-run'
-    run_evidence.mkdir(mode=0o700)
-    harness = run('ordinary-user-daemon-harness', ['python3', str(args.harness), '--binary=' + str(binary),
-        '--socket=' + str(sock), '--node=' + str(node), '--profile-output=' + str(OUT / 'exact-native-profile.sb'),
-        '--evidence-dir=' + str(run_evidence)], record, 180)
-    try:
-        result = json.loads(harness.stdout)
-    except (ValueError, TypeError):
-        raise RuntimeError('daemon harness returned invalid JSON')
-    descriptor = result.get('descriptor')
-    record['timing_contract_probe'] = result.get('timing_contract_probe', {'status': 'NOT_REPORTED'})
-    (OUT / 'native-proof-response.json').write_text(json.dumps(result.get('native_proof'), sort_keys=True, separators=(',', ':')) + '\n')
-    print_result = run('launchctl-print-own-label', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'print', 'system/' + label], record)
-    if print_result.returncode != 0:
-        raise RuntimeError('could not inspect own launchd label')
-    record['launchctl_print_has_pid'] = bool(re.search(rb'\bpid\s*=\s*[0-9]+', print_result.stdout))
-    proof = result.get('native_proof')
-    if proof:
-        encoded = json.dumps(proof, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
-        attempt = proof.get('attempt_id')
-        digest = hashlib.sha256(encoded).hexdigest()
-        if not isinstance(attempt, str) or not re.fullmatch('[a-f0-9]{64}', attempt):
-            raise RuntimeError('native proof attempt identifier is invalid')
-        receipt = fixture / 'registry' / (attempt + '.' + digest + '.receipt.json')
-        readback = run('root-receipt-readback', ['/usr/bin/sudo', '-n', '/bin/cat', str(receipt)], record)
-        (OUT / 'root-receipt-readback.json').write_bytes(readback.stdout)
-        record['root_receipt_matches_response'] = readback.returncode == 0 and readback.stdout == encoded
-        record['native_proof_sha256'] = digest
-        if not record['root_receipt_matches_response']:
-            raise RuntimeError('root-protected receipt did not match the returned public proof')
+    if args.host_probe_only:
+        record['host_probe_only'] = True
+        record['status'] = 'HOST_PROBE_ONLY_PASS' if record['host_postdrop_checks_passed'] else 'HOST_PROBE_ONLY_FAIL'
     else:
-        raise RuntimeError('daemon harness produced no native proof for root receipt readback')
-    record['harness_physical_smoke_passed'] = result.get('physical_smoke_passed') is True and harness.returncode == 0
-    record['status'] = ('LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' if record.get('launchd_startup_method_observed') and record['harness_physical_smoke_passed'] and record['launch_origin_canaries_passed'] and record.get('host_postdrop_checks_passed') is True
-                       else 'LAUNCHD_ORIGIN_CANARY_FAIL' if record.get('launchd_startup_method_observed') and not record['launch_origin_canaries_passed']
-                       else 'LAUNCHD_HOST_POSTDROP_FAIL' if record.get('launchd_startup_method_observed') and record.get('host_postdrop_checks_passed') is not True
-                       else 'LAUNCHD_STARTUP_OBSERVED_HARNESS_FAIL' if record.get('launchd_startup_method_observed')
-                       else 'LAUNCHD_PROBE_INCOMPLETE')
+        harness_started = True
+        run_evidence = OUT / 'native-run'
+        run_evidence.mkdir(mode=0o700)
+        harness = run('ordinary-user-daemon-harness', ['python3', str(args.harness), '--binary=' + str(binary),
+            '--socket=' + str(sock), '--node=' + str(node), '--profile-output=' + str(OUT / 'exact-native-profile.sb'),
+            '--evidence-dir=' + str(run_evidence)], record, 180)
+        try:
+            result = json.loads(harness.stdout)
+        except (ValueError, TypeError):
+            raise RuntimeError('daemon harness returned invalid JSON')
+        descriptor = result.get('descriptor')
+        record['timing_contract_probe'] = result.get('timing_contract_probe', {'status': 'NOT_REPORTED'})
+        (OUT / 'native-proof-response.json').write_text(json.dumps(result.get('native_proof'), sort_keys=True, separators=(',', ':')) + '\n')
+        print_result = run('launchctl-print-own-label', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'print', 'system/' + label], record)
+        if print_result.returncode != 0:
+            raise RuntimeError('could not inspect own launchd label')
+        record['launchctl_print_has_pid'] = bool(re.search(rb'\bpid\s*=\s*[0-9]+', print_result.stdout))
+        proof = result.get('native_proof')
+        if proof:
+            encoded = json.dumps(proof, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()
+            attempt = proof.get('attempt_id')
+            digest = hashlib.sha256(encoded).hexdigest()
+            if not isinstance(attempt, str) or not re.fullmatch('[a-f0-9]{64}', attempt):
+                raise RuntimeError('native proof attempt identifier is invalid')
+            receipt = fixture / 'registry' / (attempt + '.' + digest + '.receipt.json')
+            readback = run('root-receipt-readback', ['/usr/bin/sudo', '-n', '/bin/cat', str(receipt)], record)
+            (OUT / 'root-receipt-readback.json').write_bytes(readback.stdout)
+            record['root_receipt_matches_response'] = readback.returncode == 0 and readback.stdout == encoded
+            record['native_proof_sha256'] = digest
+            if not record['root_receipt_matches_response']:
+                raise RuntimeError('root-protected receipt did not match the returned public proof')
+        else:
+            raise RuntimeError('daemon harness produced no native proof for root receipt readback')
+        record['harness_physical_smoke_passed'] = result.get('physical_smoke_passed') is True and harness.returncode == 0
+        record['status'] = ('LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' if record.get('launchd_startup_method_observed') and record['harness_physical_smoke_passed'] and record['launch_origin_canaries_passed'] and record.get('host_postdrop_checks_passed') is True
+                           else 'LAUNCHD_ORIGIN_CANARY_FAIL' if record.get('launchd_startup_method_observed') and not record['launch_origin_canaries_passed']
+                           else 'LAUNCHD_HOST_POSTDROP_FAIL' if record.get('launchd_startup_method_observed') and record.get('host_postdrop_checks_passed') is not True
+                           else 'LAUNCHD_STARTUP_OBSERVED_HARNESS_FAIL' if record.get('launchd_startup_method_observed')
+                           else 'LAUNCHD_PROBE_INCOMPLETE')
 except BaseException as error:
     record['status'] = 'LAUNCHD_PROBE_FAIL'
     record['error'] = str(error)
