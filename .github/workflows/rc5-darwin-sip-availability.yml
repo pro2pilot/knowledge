@@ -1,0 +1,45 @@
+name: RC5 hosted Darwin SIP availability
+on:
+  push:
+    branches: ['codex/rc5-darwin-broker-matrix']
+    paths: ['.github/workflows/rc5-darwin-sip-availability.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-26-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 3
+    steps:
+      - name: Read actual SIP state without changing system configuration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, platform, subprocess
+          from pathlib import Path
+          commands = []
+          for argv in (['/usr/bin/sw_vers', '-productVersion'], ['/usr/bin/csrutil', 'status']):
+              r = subprocess.run(argv, capture_output=True, timeout=20, check=False)
+              commands.append({'argv': argv, 'exit_code': r.returncode,
+                  'stdout': r.stdout.decode('utf-8', errors='strict'),
+                  'stderr': r.stderr.decode('utf-8', errors='strict')})
+          text = commands[1]['stdout'].strip()
+          state = 'enabled' if text == 'System Integrity Protection status: enabled.' else (
+              'disabled' if text == 'System Integrity Protection status: disabled.' else 'unknown')
+          result = {'scope': 'hosted runner SIP availability only; no broker or user work executed',
+              'machine': platform.machine(), 'commands': commands, 'sip_state': state,
+              'backend_certified': False, 'system_configuration_changed': False}
+          Path('SIP_AVAILABILITY.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(result))
+          if any(c['exit_code'] != 0 for c in commands):
+              raise SystemExit(1)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sip-availability-${{ matrix.os }}
+          path: SIP_AVAILABILITY.json
