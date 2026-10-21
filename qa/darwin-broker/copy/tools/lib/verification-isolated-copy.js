@@ -9,6 +9,11 @@ const { copyInertData } = require('./inert-data');
 const SCHEMA = 'knowledge-isolated-copy-manifest.v1';
 const DEFAULTS = Object.freeze({ max_files: 20000, max_bytes: 1073741824, max_file_bytes: 67108864 });
 const CAPS = Object.freeze({ max_files: 50000, max_bytes: 2147483648, max_file_bytes: 268435456 });
+const KNOWLEDGE_SOURCE_DIRS = new Set(['tools', 'tests', 'docs', 'models', 'schemas', 'templates',
+  'agent-integrations', 'commands', 'skills', 'assets', 'flows', 'github-action-templates', 'memory-providers', '.release-notes']);
+const KNOWLEDGE_SOURCE_FILES = new Set(['package.json', 'config.yaml', 'verification-policy.json', 'install-manifest.json',
+  'release-policy.json', 'lock-policy.json', 'README.md', 'INSTALL.md', 'QUICK_START.md', 'RELEASE_NOTES.md', 'SECURITY.md',
+  'LICENSE', 'LICENSE.md', 'NOTICE', 'inspector.js', 'inspector.cmd', 'inspector.ps1']);
 const sha = body => crypto.createHash('sha256').update(body).digest('hex');
 const compareNames = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 function failure(code, message, details) {
@@ -46,10 +51,14 @@ function inside(root, file) {
   return rel === '' || (!path.isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${path.sep}`));
 }
 function exclusion(name) {
-  const parts = name.split('/'), leaf = parts.at(-1);
-  if (parts.includes('.git')) return 'git_metadata';
-  if (parts.some(p => ['.aws', '.ssh', '.gnupg', '.codex', '.claude', '.azure'].includes(p))) return 'agent_or_credential_state';
-  if (parts[0] === '.knowledge' && ['maintenance', 'sessions', 'routing', 'metrics', 'dist', 'runtime-cache', 'native-bin'].includes(parts[1])) return 'knowledge_runtime_state';
+  const parts = name.split('/'), folded = parts.map(p => p.toLowerCase()), leaf = parts.at(-1);
+  if (folded.includes('.git')) return 'git_metadata';
+  if (folded.some(p => ['.aws', '.ssh', '.gnupg', '.codex', '.claude', '.azure'].includes(p))) return 'agent_or_credential_state';
+  // Unknown .knowledge roots are state by default. An ever-growing denylist
+  // otherwise imports leases, UI caches or future signing/control material.
+  for (let i = 0; i < parts.length - 1; i++) if (folded[i] === '.knowledge' &&
+      !KNOWLEDGE_SOURCE_DIRS.has(parts[i + 1]) &&
+      !(parts.length === i + 2 && KNOWLEDGE_SOURCE_FILES.has(parts[i + 1]))) return 'knowledge_runtime_state';
   if (parts.includes('node_modules') && parts.includes('.cache')) return 'dependency_cache';
   if (/^\.env(?:\.|$)/i.test(leaf) && !/\.(?:example|sample|template)$/i.test(leaf)) return 'secret_configuration';
   if (/^(?:id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|credentials|credentials\.json|\.npmrc|\.netrc)$/i.test(leaf) || /\.(?:pem|p12|pfx|key)$/i.test(leaf)) return 'sensitive_file';

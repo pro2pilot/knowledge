@@ -7,7 +7,11 @@ permissions:
   contents: read
 jobs:
   native:
-    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -15,7 +19,7 @@ jobs:
         run: python3 qa/darwin-broker/compile_native.py
       - name: Verify source copy primitives on macOS
         if: always()
-        run: node --test qa/darwin-broker/copy/tests/verification-isolated-copy.test.js qa/darwin-broker/copy/tests/verification-darwin-client.test.js > qa/darwin-broker/evidence/copy-tests.tap 2>&1
+        run: python3 qa/darwin-broker/verify_copy_pins.py
       - name: Native isolated-copy positive control
         if: always()
         run: python3 qa/darwin-broker/run_native_smoke.py
@@ -25,10 +29,22 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt5
+          name: darwin-native-attempt6-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
             qa/darwin-broker/evidence/*.log
             qa/darwin-broker/evidence/*.tap
             qa/darwin-broker/evidence/*.sb
+  portable-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact copy/client source on Linux
+        run: python3 qa/darwin-broker/verify_copy_pins.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: darwin-copy-attempt6-linux
+          path: qa/darwin-broker/evidence/*

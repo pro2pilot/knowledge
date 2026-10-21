@@ -260,6 +260,31 @@ test('enforces file-count and byte limits and stops at a finite checkpoint', asy
   assert.equal(checkpoints, 3);
 });
 
+test('copies declared Knowledge sources and refuses leases, caches, and unknown state roots', async t => {
+  const root = makeTemp(t), project = projectAt(root);
+  const accepted = ['.knowledge/tools/check.js', '.knowledge/docs/guide.md', '.knowledge/package.json'];
+  const excluded = ['.knowledge/locks/v1/sync.lock/owner.json', '.knowledge/inspector/data.json',
+    '.knowledge/search/index.json', '.knowledge/freshness.json', '.knowledge/events/receipt.json',
+    '.knowledge/modules/module.json', '.knowledge/external_memory/providers.json', '.knowledge/future-state/secret.json',
+    'nested/.Knowledge/locks/owner.json', 'nested/.SSH/key.txt'];
+  for (const name of [...accepted, ...excluded]) {
+    fs.mkdirSync(path.dirname(path.join(project, name)), { recursive: true });
+    fs.writeFileSync(path.join(project, name), 'fixture');
+  }
+  const plan = await copy.planProject(project, { required: accepted });
+  assert.deepEqual(plan.files.map(file => file.path).sort(), accepted.sort());
+  const sent = [];
+  await copy.transferProject(plan, async message => sent.push(message));
+  assert(sent.some(message => message.op === 'seal'));
+  assert(!sent.some(message => excluded.includes(message.path)));
+  for (const name of excluded) {
+    await assert.rejects(copy.planProject(project, { required: [name] }), {
+      code: 'verification_copy_required_source_excluded'
+    });
+    assert.equal(fs.readFileSync(path.join(project, name), 'utf8'), 'fixture');
+  }
+});
+
 test('accepts exact file and total byte limits, including an empty file', async t => {
   const root = makeTemp(t);
   const project = projectAt(root);

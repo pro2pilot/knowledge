@@ -181,8 +181,18 @@ static int members(uid_t uid, pid_t *pids) {
  * the literal /private/tmp sticky ancestor is accepted for explicit CI roots.
  * Its child must already be root-owned and non-writable by group/other. */
 static bool safeRootACL(NSString *path) {
-    errno=0;acl_t acl=acl_get_file(path.fileSystemRepresentation,ACL_TYPE_EXTENDED);
-    if(!acl)return errno==ENOATTR||errno==ENOTSUP;
+    /* acl_get_file conflates a missing FILESEC_ACL property with ENOENT.
+     * Query metadata explicitly so a missing object is never accepted as an
+     * empty ACL. lstatx also avoids following a replaced final component. */
+    filesec_t metadata=filesec_init();if(!metadata)return false;
+    struct stat observed;int present=0;acl_t acl=NULL;
+    bool fetched=lstatx_np(path.fileSystemRepresentation,&observed,metadata)==0
+        &&!S_ISLNK(observed.st_mode)&&observed.st_uid==0
+        &&filesec_query_property(metadata,FILESEC_ACL,&present)==0;
+    if(fetched&&present)fetched=filesec_get_property(metadata,FILESEC_ACL,&acl)==0&&acl!=NULL;
+    filesec_free(metadata);
+    if(!fetched)return false;
+    if(!present)return true;
     acl_entry_t entry;int next=ACL_FIRST_ENTRY;bool safe=true;
     while(acl_get_entry(acl,next,&entry)==0){next=ACL_NEXT_ENTRY;acl_tag_t tag;acl_permset_t permissions;
         if(acl_get_tag_type(entry,&tag)||acl_get_permset(entry,&permissions)){safe=false;break;}

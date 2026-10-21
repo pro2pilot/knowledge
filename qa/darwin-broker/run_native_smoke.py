@@ -52,6 +52,22 @@ try:
     daemon_argv = ['/usr/bin/sudo', '-n', str(binary), '--serve', '--qualification-mode',
                    '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
                    '--workspaces=' + str(fixture / 'workspaces'), '--runtime=' + str(node)]
+    assert run('unsafe-acl-install', ['/usr/bin/sudo', '-n', '/bin/chmod', '+a',
+               'user:' + str(os.getuid()) + ' allow add_file', str(fixture / 'bin')]) == 0
+    rejected = None
+    try:
+        with (OUT / 'unsafe-acl.stdout.log').open('wb') as stdout, (OUT / 'unsafe-acl.stderr.log').open('wb') as stderr:
+            rejected = subprocess.Popen(daemon_argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+            try:
+                record['unsafe_acl_daemon_exit'] = rejected.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                run('stop-own-acl-probe', ['/usr/bin/sudo', '-n', '/bin/kill', '-TERM', str(rejected.pid)])
+                rejected.wait(timeout=10)
+                raise RuntimeError('native daemon accepted ordinary-user write ACL')
+        assert record['unsafe_acl_daemon_exit'] == 78, 'unexpected unsafe ACL result'
+        record['unsafe_acl_rejected_before_work'] = True
+    finally:
+        assert run('unsafe-acl-remove', ['/usr/bin/sudo', '-n', '/bin/chmod', '-N', str(fixture / 'bin')]) == 0
     with (OUT / 'daemon.stdout.log').open('wb') as stdout, (OUT / 'daemon.stderr.log').open('wb') as stderr:
         daemon = subprocess.Popen(daemon_argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
         record['daemon_launcher_pid'] = daemon.pid
