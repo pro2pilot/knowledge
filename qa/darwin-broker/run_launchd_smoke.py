@@ -170,9 +170,16 @@ parser.add_argument('--m2-scenario', choices=('normal', 'interrupt_drain'),
                     help='Use the two-phase harness and an owned native admission-lock probe')
 parser.add_argument('--uid-registry-fault', choices=('unlink', 'corrupt'),
                     help='Run only the owned active-reservation entry-store fault check')
+parser.add_argument('--active-state-fault', choices=('policy-unlink', 'registry-unlink'),
+                    help='Run the active monitor regression for one exact owned-state unlink')
 parser.add_argument('--check-init-cli', action='store_true')
 args = parser.parse_args()
-if args.check_init_cli and (args.m2_scenario != 'normal' or args.uid_registry_fault or args.host_probe_only):
+controller_modes = sum(bool(value) for value in
+    (args.m2_scenario, args.uid_registry_fault, args.active_state_fault, args.host_probe_only))
+if controller_modes > 1:
+    parser.error('M2, UID-registry-fault, active-state-fault, and host-probe controllers are exclusive')
+if args.check_init_cli and (args.m2_scenario != 'normal' or args.uid_registry_fault or
+                            args.active_state_fault or args.host_probe_only):
     parser.error('--check-init-cli requires the normal M2 scenario')
 EVIDENCE_ROOT = HERE / 'evidence'
 if EVIDENCE_ROOT.is_symlink() or not EVIDENCE_ROOT.is_dir():
@@ -231,7 +238,7 @@ try:
             account_policy not in (None, 'admin_reserved_interval_no_runtime_nss.v1')):
         raise RuntimeError('account-policy compile/source metadata differs or is unsupported')
     if (history_files != compile_result.get('uid_history_files', {}) or
-            (args.uid_registry_fault and len(history_files) != 2)):
+            ((args.uid_registry_fault or args.active_state_fault) and len(history_files) != 2)):
         raise RuntimeError('UID-history compile/source metadata differs or fault test lacks the component')
     if args.uid_registry_fault and args.m2_scenario:
         raise RuntimeError('fault test and normal two-phase scenarios are distinct controller runs')
@@ -537,7 +544,9 @@ try:
         harness_started = True
         run_evidence = OUT / 'native-run'
         run_evidence.mkdir(mode=0o700)
-        harness_argv = ['python3', str(args.harness), '--binary=' + str(binary),
+        selected_harness = (SCRIPT_DIR / 'active-state-fault-harness.py'
+                            if args.active_state_fault else args.harness)
+        harness_argv = ['python3', str(selected_harness), '--binary=' + str(binary),
             '--socket=' + str(sock), '--node=' + str(node), '--profile-output=' + str(OUT / 'exact-native-profile.sb'),
             '--evidence-dir=' + str(run_evidence)]
         if args.m2_scenario:
@@ -546,7 +555,10 @@ try:
         if args.uid_registry_fault:
             harness_argv += ['--fault=' + args.uid_registry_fault]
             record['uid_registry_fault'] = args.uid_registry_fault
-        record['harness_source_sha256'] = sha(args.harness)
+        if args.active_state_fault:
+            harness_argv += ['--fault=' + args.active_state_fault]
+            record['active_state_fault'] = args.active_state_fault
+        record['harness_source_sha256'] = sha(selected_harness)
         harness = run('ordinary-user-daemon-harness', harness_argv, record, 180)
         try:
             result = json.loads(harness.stdout)
@@ -594,10 +606,34 @@ try:
                     raise RuntimeError('entry-store fault was not explicitly an unconfirmed current result')
                 record['current_proof_persistence_confirmed'] = False
                 record['receipt_scope'] = 'diagnostic readback only; current registry commit intentionally unconfirmed'
+            elif args.active_state_fault:
+                if (proof.get('state') != 'cleanup_unconfirmed' or
+                        proof.get('native_cleanup_facts_confirmed') is not False or
+                        proof.get('cleanup_confirmed') is not False or
+                        proof.get('capability_qualified') is not False or
+                        result.get('physical_smoke_passed') is not True or
+                        result.get('post_wait_status', {}).get('admission_closed') is not True or
+                        result.get('post_wait_status', {}).get('state') != 'cleanup_unconfirmed' or
+                        result.get('immutable_primary_observation', {}).get('oracle_passed') is not True):
+                    raise RuntimeError('active-state fault did not preserve the expected unconfirmed monitor result')
+                record['current_proof_persistence_confirmed'] = False
+                record['receipt_scope'] = 'diagnostic readback only; current state commit intentionally unconfirmed'
             elif not record['root_receipt_matches_response']:
                 raise RuntimeError('root-protected receipt did not match the returned public proof')
         else:
-            raise RuntimeError('daemon harness produced no native proof for root receipt readback')
+            if args.active_state_fault:
+                record['native_proof_available'] = False
+                record['active_state_fault_expected_result'] = False
+            else:
+                raise RuntimeError('daemon harness produced no native proof for root receipt readback')
+        if args.active_state_fault:
+            record['native_proof_available'] = bool(proof)
+            record['active_state_fault_expected_result'] = bool(
+                proof and proof.get('state') == 'cleanup_unconfirmed' and
+                proof.get('native_cleanup_facts_confirmed') is False and
+                proof.get('cleanup_confirmed') is False and
+                result.get('post_wait_status', {}).get('admission_closed') is True and
+                result.get('immutable_primary_observation', {}).get('oracle_passed') is True)
         record['harness_physical_smoke_passed'] = result.get('physical_smoke_passed') is True and harness.returncode == 0
         record['status'] = ('LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' if record.get('launchd_startup_method_observed') and record['harness_physical_smoke_passed'] and record['launch_origin_canaries_passed'] and record.get('host_postdrop_checks_passed') is True
                            else 'LAUNCHD_ORIGIN_CANARY_FAIL' if record.get('launchd_startup_method_observed') and not record['launch_origin_canaries_passed']
