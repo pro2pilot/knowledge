@@ -1,12 +1,12 @@
 {
-  "source_commit": "d2c06afb6e9388f66d15b0a03c8c0f25f1f84ef6",
+  "source_commit": "2698b9ae7d0a4ff299420aba555a0d803ea74b10",
   "scope": "byte-pinned standalone modules; no native admission",
   "files": {
     "copy/tests/verification-darwin-client.test.js": "74199a540274924a5ac6b28e4216407d487d1bbd705cfe0a4a79243d53169918",
     "copy/tests/verification-isolated-copy.test.js": "363570dc62c2ad8f340c7e542a74af5c7d4d7e9388b9aa1240a7485e606e305f",
     "copy/tools/lib/inert-data.js": "c8e31220e83325cbe67a7a9648f7c4e43e728bc38ce737da8db4ffc7ccb28e3f",
     "copy/tools/lib/verification-darwin-broker.m": "43c8b28ff07dde7d299cef20897f819c24f74012631ff02fcbfb39a14358c977",
-    "copy/tools/lib/verification-darwin-stub.c": "d876fa8cb5228b8c1bd3d19a17bbe2185efd6cdc71abfbf7cbc58f90b8459f50",
+    "copy/tools/lib/verification-darwin-stub.c": "e969cfa067da652b8cb62b825ecc85d243addec9c52b522431ba69f9122106e7",
     "copy/tools/lib/verification-darwin-client.js": "8d9587d452d37e59736e12305a9066647229b3a651b19b72426938ce393530ae",
     "copy/tools/lib/verification-isolated-copy.js": "1de56e40e7c1bb4d3f5691704065baea9eb56d0f2aa23a5781d7edc10edb36a1"
   }
