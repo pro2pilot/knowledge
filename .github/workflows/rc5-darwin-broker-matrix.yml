@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   native:
-    if: ${{ !contains(github.event.head_commit.message, '[sip-probe-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[sip-probe-only]') && !contains(github.event.head_commit.message, '[stop-guard-only]') }}
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +65,7 @@ jobs:
             qa/darwin-broker/evidence/launchd-smoke-*/**/*
             qa/darwin-broker/evidence/uid-history/**/*
   portable:
-    if: ${{ !contains(github.event.head_commit.message, '[sip-probe-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[sip-probe-only]') && !contains(github.event.head_commit.message, '[stop-guard-only]') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:

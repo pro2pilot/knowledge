@@ -1,0 +1,17 @@
+{
+  "account_policy_id": "admin_reserved_interval_no_runtime_nss.v1",
+  "audit_revision": "independent-audit.20261021.darwin-prototype.3.audit.1",
+  "capability_qualified": false,
+  "native_commit": null,
+  "native_sha256": "5d3f239b7465ed6c32b333c053099c66c32b755e63abd990da6132712b902b91",
+  "parent_source_commit": "2d336637378c1dbdbb85bb59da5332109ef43f45",
+  "source_commit": null,
+  "source_scope": "reviewed working broker stop guards; exact SHA only; no native qualification",
+  "stub_sha256": "99c79ec48f5ce79b0282af23a7a78f7a22ce4950cdbf94062438fc0e6ed78a04",
+  "transport_header_sha256": "7c5a5907ea6f243d4c5ff3d84ff727f481167a41074489daf5e034b6c4e96ab8",
+  "uid_history_files": {
+    "verification-darwin-uid-history.h": "a22bd13c7387958de13bf6fb37bfc99659417b628543973eee41bb60589ed060",
+    "verification-darwin-uid-history.m": "375d5e6cc5964b748ad7c309a1f5d76d4ce2f86bdf3fcd2ffa70209dc165c040"
+  },
+  "source_base_commit": "de6854239d4f5ee499e43cf27e9386945b000dbb"
+}

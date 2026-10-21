@@ -1,0 +1,37 @@
+name: RC5 Darwin stop guard regression
+on:
+  push:
+    branches: ['codex/rc5-darwin-broker-matrix']
+    paths: ['qa/darwin-stop/**', '.github/workflows/rc5-darwin-stop-guard.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ordinary-foundation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile exact broker and inert stub description as ordinary user
+        run: python3 qa/darwin-stop/native/compile_native.py
+      - name: Reproduce five pre-fix failures and verify corrected producer functions
+        if: always()
+        run: python3 qa/darwin-stop/run_comparison.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: darwin-stop-guard-${{ matrix.os }}
+          path: |
+            qa/darwin-stop/INPUTS.json
+            qa/darwin-stop/native/SOURCE_RECEIPT.json
+            qa/darwin-stop/native/evidence/*.json
+            qa/darwin-stop/native/evidence/*.log
+            qa/darwin-stop/comparison/**/*.json
+            qa/darwin-stop/comparison/**/*.log
+            qa/darwin-stop/comparison/**/*.stdout
+            qa/darwin-stop/comparison/**/*.stderr
+            qa/darwin-stop/comparison/**/*.m
