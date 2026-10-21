@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import platform
+import pwd
 import re
 import shutil
 import subprocess
@@ -52,8 +53,10 @@ try:
     daemon_argv = ['/usr/bin/sudo', '-n', str(binary), '--serve', '--qualification-mode',
                    '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
                    '--workspaces=' + str(fixture / 'workspaces'), '--runtime=' + str(node)]
+    owner_name = pwd.getpwuid(os.getuid()).pw_name
+    assert re.fullmatch('[A-Za-z0-9_.-]+', owner_name)
     assert run('unsafe-acl-install', ['/usr/bin/sudo', '-n', '/bin/chmod', '+a',
-               'user:' + str(os.getuid()) + ' allow add_file', str(fixture / 'bin')]) == 0
+               'user:' + owner_name + ' allow add_file', str(fixture / 'bin')]) == 0, 'unable_to_install_own_acl_negative_fixture'
     rejected = None
     try:
         with (OUT / 'unsafe-acl.stdout.log').open('wb') as stdout, (OUT / 'unsafe-acl.stderr.log').open('wb') as stderr:
