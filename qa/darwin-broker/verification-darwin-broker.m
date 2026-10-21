@@ -1,7 +1,7 @@
 /*
  * Explicitly installed macOS isolated-copy verification broker.
  *
- * Build: clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation 
+ * Build: clang -fobjc-arc -Wall -Wextra -Wno-deprecated-declarations -framework Foundation
  *   -DKNOWLEDGE_BROKER_SOURCE_SHA='"<sha256 of this source>"' this.m -o broker
  *
  * This source is NOT a qualified containment backend. The production gate is
@@ -69,12 +69,14 @@ _Static_assert(sizeof(struct KUnique) == 56, "Darwin proc unique ABI");
 typedef int (*KSignalToken)(const audit_token_t *, int);
 static KSignalToken gSignalToken;
 static NSString *gExecutable, *gBinarySHA, *gRegistryPath, *gSocketPath, *gWorkspaceRoot;
+static NSString *gPrintWorkspace;
 static NSString *gBoot, *gHost;
 static NSArray<NSString *> *gRuntimes;
 static NSDictionary<NSString *,NSString *> *gRuntimePins;
 static NSMutableDictionary *gRegistry;
 static int gRegistryFD = -1, gGlobalLock = -1, gWorkspaceFD = -1, gListen = -1;
 static bool gQualificationMode, gPoisoned;
+static NSString *gQuarantineReason;
 static volatile sig_atomic_t gStopping;
 
 static uint64_t nowMS(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
@@ -216,6 +218,25 @@ static NSMutableDictionary *entries(void) { return gRegistry[@"attempts"]; }
 static NSMutableDictionary *entryFor(NSString *attempt) { id e=entries()[attempt];
     return [e isKindOfClass:NSMutableDictionary.class]?e:nil; }
 static NSString *activeID(void) { return gRegistry[@"active_attempt"]; }
+static bool validRecordedIdentity(id identity) {
+    if(![identity isKindOfClass:NSDictionary.class])return false;
+    for(NSString *key in @[@"pid",@"start_sec",@"start_usec",@"ruid",@"pidversion"])
+        if(!numericField(identity[key]))return false;
+    return [identity[@"pid"] unsignedLongLongValue]>1&&[identity[@"pid"] unsignedLongLongValue]<=INT_MAX
+        &&isString(identity[@"unique_id"],20)&&[identity[@"unique_id"] unsignedLongLongValue]>0;
+}
+static bool validRecordedEntry(NSMutableDictionary *e,NSString *id) {
+    NSDictionary *d=e[@"descriptor"];if(![d isKindOfClass:NSDictionary.class])return false;
+    return hex64(id)&&[d[@"boundary_id"] isEqual:id]&&[d[@"attempt_id"] isEqual:id]
+        &&[d[@"backend"] isEqual:@"darwin_private_ruid"]&&[d[@"source_sha256"] isEqual:@KNOWLEDGE_BROKER_SOURCE_SHA]
+        &&[d[@"workspace_path"] isEqual:[gWorkspaceRoot stringByAppendingPathComponent:id]]
+        &&numericField(d[@"task_ruid"])&&[d[@"task_ruid"] unsignedLongLongValue]>=K_UID_FIRST
+        &&[d[@"task_ruid"] unsignedLongLongValue]<K_UID_LAST&&[d[@"task_gid"] isEqual:d[@"task_ruid"]]
+        &&numericField(e[@"owner_uid"])&&[e[@"owner_uid"] unsignedLongLongValue]>0
+        &&[e[@"owner_uid"] unsignedLongLongValue]<K_UID_FIRST&&[d[@"owner_uid"] isEqual:e[@"owner_uid"]]
+        &&hex64(e[@"descriptor_sha256"])&&[e[@"descriptor_sha256"] isEqual:sha(jsonData(d))]
+        &&validRecordedIdentity(e[@"controller"])&&(!e[@"authority"]||validRecordedIdentity(e[@"authority"]));
+}
 static bool validRelative(NSString *path) {
     if(!isString(path,4096)||[path isAbsolutePath])return false;
     for(NSString *s in [path componentsSeparatedByString:@"/"])
@@ -384,15 +405,19 @@ static int admissionFD(NSMutableDictionary *e) {
         ||[saved[@"device"] unsignedLongLongValue]!=(uint64_t)st.st_dev||[saved[@"inode"] unsignedLongLongValue]!=(uint64_t)st.st_ino){
         close(fd);return -1;}return fd;
 }
-static NSString *sandboxProfile(void) {
+static NSString *sbplString(NSString *text) {
+    NSString *array=[[NSString alloc] initWithData:jsonData(@[text]) encoding:NSUTF8StringEncoding];
+    return [array substringWithRange:NSMakeRange(1,array.length-2)];
+}
+static NSString *sandboxProfile(NSString *workspace) {
     NSMutableString *p=[NSMutableString stringWithString:@"(version 1) (deny default) (allow file-read*) (allow process-fork) "];
     /* JSON quoting is compatible with these SBPL string literals. Newlines and
      * control bytes in administrator runtime/workspace paths are rejected. */
     NSMutableArray *rules=[NSMutableArray array];
-    for(NSString *runtime in gRuntimes){NSData *d=jsonData(@[runtime]);NSString *s=[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-        [rules addObject:[NSString stringWithFormat:@"(literal %@)",[s substringWithRange:NSMakeRange(1,s.length-2)]]];}
-    [p appendFormat:@"(allow process-exec %@ (subpath (param \"WORKSPACE\"))) ",[rules componentsJoinedByString:@" "]];
-    [p appendString:@"(allow file-write* (subpath (param \"WORKSPACE\"))) (deny file-link) (allow sysctl-read) (allow process-info* (target self))"];
+    for(NSString *runtime in utf8Sorted(gRuntimes))
+        [rules addObject:[NSString stringWithFormat:@"(literal %@)",sbplString(runtime)]];
+    [p appendFormat:@"(allow process-exec %@ (subpath %@)) ",[rules componentsJoinedByString:@" "],sbplString(workspace)];
+    [p appendFormat:@"(allow file-write* (subpath %@)) (deny file-link) (allow sysctl-read) (allow process-info* (target self))",sbplString(workspace)];
     return p;
 }
 static bool runtimeAllowed(NSString *path) { return isString(path,4096) && gRuntimePins[path]
@@ -409,7 +434,7 @@ static bool launchRun(NSMutableDictionary *e,NSDictionary *q,int client) {
     NSString *workspace=e[@"descriptor"][@"workspace_path"];
     clean[@"HOME"]=workspace;clean[@"TMPDIR"]=workspace;
     NSDictionary *config=@{@"argv":argv,@"env":clean,@"cwd":[cwd isEqual:@"."]?workspace:[workspace stringByAppendingPathComponent:cwd],
-        @"workspace":workspace,@"uid":e[@"descriptor"][@"task_ruid"],@"profile":sandboxProfile()};
+        @"workspace":workspace,@"uid":e[@"descriptor"][@"task_ruid"],@"profile":sandboxProfile(workspace)};
     NSData *data=jsonData(config);if(!data||data.length>K_MAX_FRAME)return false;
     int lock=admissionFD(e),cfg[2]={-1,-1},ready[2]={-1,-1},gate[2]={-1,-1},out[2]={-1,-1},err[2]={-1,-1};
     bool ok=lock>=0&&flock(lock,LOCK_EX|LOCK_NB)==0;
@@ -472,11 +497,12 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
         if(count==0&&!getpwuid((uid_t)next)&&!getgrgid((gid_t)next)){uid=(uid_t)next;break;}}
     free(pids);if(!uid||gPoisoned)return failure(@"UID_RESERVATION_UNAVAILABLE");
     NSString *id=randomHex(),*token=randomHex();uint64_t budget=MIN(MAX([q[@"work_budget_ms"] unsignedLongLongValue],(uint64_t)1),(uint64_t)3600000);
+    NSString *workspacePath=[gWorkspaceRoot stringByAppendingPathComponent:id];
     NSDictionary *descriptor=@{@"schema":@"knowledge-darwin-private-ruid-descriptor.v1",@"backend":@"darwin_private_ruid",
         @"boundary_id":id,@"attempt_id":id,@"attempt_nonce":q[@"attempt_nonce"],@"task_ruid":@(uid),@"task_gid":@(uid),
         @"owner_uid":@(peer->owner),@"host_id":gHost,@"boot_id":gBoot,@"mode":@"isolated_copy",
-        @"workspace_path":[gWorkspaceRoot stringByAppendingPathComponent:id],@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,
-        @"broker_binary_sha256":gBinarySHA,@"allowed_runtimes":gRuntimePins,@"profile_sha256":sha([sandboxProfile() dataUsingEncoding:NSUTF8StringEncoding]),
+        @"workspace_path":workspacePath,@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,
+        @"broker_binary_sha256":gBinarySHA,@"allowed_runtimes":gRuntimePins,@"profile_sha256":sha([sandboxProfile(workspacePath) dataUsingEncoding:NSUTF8StringEncoding]),
         @"capability_qualified":@(kCapabilityQualified),@"qualification_mode":@(gQualificationMode),
         @"scope":@"private_command_ruid_plus_exact_registered_authority;trusted_controller_and_persistent_broker_excluded"};
     NSMutableDictionary *e=[@{@"descriptor":descriptor,@"descriptor_sha256":sha(jsonData(descriptor)),@"owner_uid":@(peer->owner),
@@ -508,7 +534,8 @@ static NSDictionary *statusReply(NSMutableDictionary *e) {
     NSMutableDictionary *r=[@{@"ok":@YES,@"schema":K_SCHEMA,@"attempt_id":e[@"descriptor"][@"attempt_id"],
         @"descriptor":e[@"descriptor"],@"descriptor_sha256":e[@"descriptor_sha256"],@"state":e[@"state"],
         @"admission_closed":e[@"admission_closed"],@"spawn_intent":e[@"spawn_intent"],
-        @"authority_spawn_intent":e[@"authority_spawn_intent"],@"capability_qualified":@(kCapabilityQualified)} mutableCopy];
+        @"authority_spawn_intent":e[@"authority_spawn_intent"],@"capability_qualified":@(kCapabilityQualified),
+        @"sandbox_profile":sandboxProfile(e[@"descriptor"][@"workspace_path"])} mutableCopy];
     if(e[@"proof"])r[@"proof"]=e[@"proof"];return r;
 }
 static void handleClient(int fd) {
@@ -518,7 +545,7 @@ static void handleClient(int fd) {
     else if([op isEqual:@"probe"])reply=@{@"ok":@YES,@"schema":K_SCHEMA,@"capability_qualified":@(kCapabilityQualified),
         @"qualification_mode":@(gQualificationMode),@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,@"binary_sha256":gBinarySHA,
         @"host_id":gHost,@"boot_id":gBoot,@"allowed_runtimes":gRuntimePins,@"registry_healthy":@(!gPoisoned)};
-    else if(gPoisoned)reply=failure(@"REGISTRY_DURABILITY_UNCONFIRMED");
+    else if(gPoisoned)reply=failure(gQuarantineReason?:@"REGISTRY_DURABILITY_UNCONFIRMED");
     else if([op isEqual:@"prepare"])reply=prepare(q,&peer);
     else if([op isEqual:@"lookup"]){NSMutableDictionary *found=nil;
         if(hex64(q[@"attempt_nonce"]))for(NSMutableDictionary *e in entries().allValues)
@@ -662,8 +689,8 @@ static int nativeChild(void) {
     if(!args||!environment)return 128;
     for(NSUInteger i=0;i<argv.count;i++)args[i]=strdup([argv[i] UTF8String]);
     NSUInteger i=0;for(NSString *key in env)environment[i++]=strdup([[NSString stringWithFormat:@"%@=%@",key,env[key]] UTF8String]);
-    char *profile=strdup([q[@"profile"] UTF8String]),*workspace=strdup([q[@"workspace"] fileSystemRepresentation]),*cwd=strdup([q[@"cwd"] fileSystemRepresentation]);
-    if(!profile||!workspace||!cwd)return 129;
+    char *profile=strdup([q[@"profile"] UTF8String]),*cwd=strdup([q[@"cwd"] fileSystemRepresentation]);
+    if(!profile||!cwd)return 129;
     /* Remove imported bootstrap/registered/exception capabilities. Destroy all
      * remaining inherited non-self Mach rights before untrusted exec. */
     mach_port_t task=mach_task_self(),thread=mach_thread_self();
@@ -679,12 +706,16 @@ static int nativeChild(void) {
         if(mach_port_destroy(task,names[n])!=KERN_SUCCESS)return 132;
     vm_deallocate(task,(vm_address_t)names,nn*sizeof(*names));vm_deallocate(task,(vm_address_t)types,nt*sizeof(*types));
     mach_port_deallocate(task,thread);
-    const char *parameters[]={"WORKSPACE",workspace,NULL};char *sandboxError=NULL;
-    if(sandbox_init_with_parameters(profile,0,parameters,&sandboxError)!=0){if(sandboxError)sandbox_free_error(sandboxError);return 133;}
-    if(setgroups(0,NULL)||setgid(uid)||setuid(uid))return 134;
+    char *sandboxError=NULL;
+    /* Public SDK entrypoint: workspace/runtime paths are already correctly
+     * escaped literal SBPL strings, not unbound private parameter API calls. */
+    if(sandbox_init(profile,0,&sandboxError)!=0){if(sandboxError)sandbox_free_error(sandboxError);return 133;}
+    gid_t privateGroup=(gid_t)uid;
+    if(setgroups(1,&privateGroup)||setgid(privateGroup)||setuid(uid))return 134;
     struct KIdentity own;
+    gid_t actualGroups[2]={0,0};int groupCount=getgroups(2,actualGroups);
     if(!freshIdentity(getpid(),&own)||own.bsd.pbi_ruid!=uid||own.bsd.pbi_uid!=uid||own.bsd.pbi_svuid!=uid
-        ||own.bsd.pbi_rgid!=uid||own.bsd.pbi_gid!=uid||own.bsd.pbi_svgid!=uid||getgroups(0,NULL)!=0)return 135;
+        ||own.bsd.pbi_rgid!=uid||own.bsd.pbi_gid!=uid||own.bsd.pbi_svgid!=uid||groupCount!=1||actualGroups[0]!=privateGroup)return 135;
     if(chdir(cwd))return 136;
     struct rlimit core={0,0};if(setrlimit(RLIMIT_CORE,&core))return 137;
     /* The only root-owned FD has now completed its purpose. UID membership is
@@ -722,6 +753,7 @@ static bool startup(void) {
     if(fd>=0){struct stat st;if(fstat(fd,&st)||st.st_uid!=0||st.st_nlink!=1||!S_ISREG(st.st_mode)||(st.st_mode&0077)){close(fd);return false;}
         gRegistry=[parseJSON(readFD(fd,K_MAX_JSON)) mutableCopy];close(fd);
         if(![gRegistry[@"schema"] isEqual:K_SCHEMA]||![gRegistry[@"attempts"] isKindOfClass:NSMutableDictionary.class]
+            ||![gRegistry[@"active_attempt"] isKindOfClass:NSString.class]||!numericField(gRegistry[@"next_uid"])
             ||![gRegistry[@"installation_id"] isKindOfClass:NSString.class])return false;
     }else if(errno==ENOENT)gRegistry=[@{@"schema":K_SCHEMA,@"next_uid":@(K_UID_FIRST),@"attempts":[NSMutableDictionary dictionary],
         @"active_attempt":@"",@"installation_id":randomHex()} mutableCopy];else return false;
@@ -730,8 +762,9 @@ static bool startup(void) {
     NSMutableDictionary *pins=[NSMutableDictionary dictionary];
     for(NSString *runtime in gRuntimes){NSString *digest=protectedFileSHA(runtime);if(!digest)return false;pins[runtime]=digest;}gRuntimePins=pins;
     if(activeID().length){NSMutableDictionary *e=entryFor(activeID());
-        if(!e||![e[@"descriptor"][@"boot_id"] isEqual:gBoot]||![e[@"descriptor"][@"host_id"] isEqual:gHost]){
-            gPoisoned=true; /* unknown boot/ownership never grants kill authority */
+        if(!e||!validRecordedEntry(e,activeID())||![e[@"descriptor"][@"boot_id"] isEqual:gBoot]||![e[@"descriptor"][@"host_id"] isEqual:gHost]){
+            gPoisoned=true;gQuarantineReason=@"REGISTRY_DESCRIPTOR_BOOT_HOST_OR_OWNERSHIP_UNKNOWN";
+            /* unknown boot/ownership never grants kill authority */
         }else closeAdmission(e,@"daemon_restart",[e[@"cleanup_budget_ms"] unsignedLongLongValue]);}
     struct sockaddr_un addr={0};addr.sun_family=AF_UNIX;
     if(strlen(gSocketPath.fileSystemRepresentation)>=sizeof(addr.sun_path))return false;
@@ -796,17 +829,27 @@ int main(int argc,char **argv) {@autoreleasepool {
     gWorkspaceRoot=@"/Library/Application Support/KnowledgeVerification/workspaces";
     NSMutableArray *runtimes=[NSMutableArray array];NSString *mode=nil;
     for(int i=1;i<argc;i++){NSString *s=@(argv[i]);
-        if([@[@"--serve",@"--request",@"--run",@"--internal-child"] containsObject:s]){if(mode)return 64;mode=s;}
+        if([@[@"--serve",@"--request",@"--run",@"--internal-child",@"--print-profile"] containsObject:s]){if(mode)return 64;mode=s;}
         else if([s isEqual:@"--qualification-mode"])gQualificationMode=true;
         else if([s hasPrefix:@"--registry="])gRegistryPath=[s substringFromIndex:11];
         else if([s hasPrefix:@"--socket="])gSocketPath=[s substringFromIndex:9];
         else if([s hasPrefix:@"--workspaces="])gWorkspaceRoot=[s substringFromIndex:13];
+        else if([s hasPrefix:@"--workspace="])gPrintWorkspace=[s substringFromIndex:12];
         else if([s hasPrefix:@"--runtime="])[runtimes addObject:[s substringFromIndex:10]];
         else return 64;
     }
     for(NSString *path in [runtimes arrayByAddingObjectsFromArray:@[gRegistryPath,gSocketPath,gWorkspaceRoot]])
         if([path rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound)return 64;
     gRuntimes=runtimes;
+    if([mode isEqual:@"--print-profile"]){
+        if(gQualificationMode||!runtimes.count||!isString(gPrintWorkspace,4096)||![gPrintWorkspace isAbsolutePath]
+            ||![[gPrintWorkspace stringByStandardizingPath] isEqual:gPrintWorkspace]
+            ||[gPrintWorkspace rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound)return 64;
+        for(NSString *runtime in runtimes)if(![runtime isAbsolutePath]||![[runtime stringByStandardizingPath] isEqual:runtime])return 64;
+        NSData *profile=[sandboxProfile(gPrintWorkspace) dataUsingEncoding:NSUTF8StringEncoding];
+        return exactIO(1,(void *)profile.bytes,profile.length,true)?0:74;
+    }
+    if(gPrintWorkspace)return 64;
     if([mode isEqual:@"--internal-child"])return argc==2?nativeChild():64;
     if([mode isEqual:@"--serve"])return runtimes.count?serve():64;
     if(gQualificationMode||runtimes.count)return 64;
