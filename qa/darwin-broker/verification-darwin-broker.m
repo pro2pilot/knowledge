@@ -23,6 +23,8 @@
 #include <libproc.h>
 #include <limits.h>
 #include <mach/mach.h>
+#include <mach/host_priv.h>
+#include <mach/host_special_ports.h>
 #include <mach/task_special_ports.h>
 #include <membership.h>
 #include <math.h>
@@ -614,7 +616,7 @@ static void handleClient(int fd) {
     if(!q||!isString(op,64)||!requestTypes(q)||![q[@"source_sha256"] isEqual:@KNOWLEDGE_BROKER_SOURCE_SHA])reply=failure(@"PROTOCOL_OR_SOURCE_PIN_MISMATCH");
     else if([op isEqual:@"probe"])reply=@{@"ok":@YES,@"schema":K_SCHEMA,@"capability_qualified":@(kCapabilityQualified),
         @"qualification_mode":@(gQualificationMode),@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,@"binary_sha256":gBinarySHA,
-        @"host_id":gHost,@"boot_id":gBoot,@"allowed_runtimes":gRuntimePins,@"registry_healthy":@(!gPoisoned)};
+        @"host_id":gHost,@"boot_id":gBoot,@"allowed_runtimes":gRuntimePins,@"registry_healthy":@((bool)!gPoisoned)};
     else if(gPoisoned)reply=failure(gQuarantineReason?:@"REGISTRY_DURABILITY_UNCONFIRMED");
     else if([op isEqual:@"prepare"])reply=prepare(q,&peer);
     else if([op isEqual:@"lookup"]){NSMutableDictionary *found=nil;
@@ -747,7 +749,7 @@ static void advanceCleanup(void) {
         @"authority_identity":e[@"authority"]?:NSNull.null,@"controller_identity":e[@"controller"],
         @"controller_excluded_from_boundary":@YES,@"persistent_broker_excluded_from_boundary":@YES,
         @"native_cleanup_facts_confirmed":@(confirmed),@"capability_qualified":@(kCapabilityQualified),
-        @"cleanup_confirmed":@(confirmed&&kCapabilityQualified),@"state":state,@"receipt_kind":@"root_registry_not_os_signed_attestation",
+        @"cleanup_confirmed":@((bool)(confirmed&&kCapabilityQualified)),@"state":state,@"receipt_kind":@"root_registry_not_os_signed_attestation",
         @"observed_monotonic_ms":@(nowMS())};
     /* No env, output, tokens, arbitrary paths, or source contents in receipts. */
     if(jsonData(proof).length>65536){gPoisoned=true;confirmed=false;}
@@ -805,12 +807,24 @@ static int nativeChild(void) {
     /* Remove imported bootstrap/registered/exception capabilities. Destroy all
      * remaining inherited non-self Mach rights before untrusted exec. */
     mach_port_t task=mach_task_self(),thread=mach_thread_self();
-    mach_port_t access=MACH_PORT_NULL;
-    if(task_get_special_port(task,TASK_ACCESS_PORT,&access)!=KERN_SUCCESS||access!=MACH_PORT_NULL)return 130;
-    if(task_set_special_port(task,TASK_HOST_PORT,MACH_PORT_NULL)!=KERN_SUCCESS||mach_host_self()!=MACH_PORT_NULL
-        ||task_set_special_port(task,TASK_BOOTSTRAP_PORT,MACH_PORT_NULL)!=KERN_SUCCESS
-        ||mach_ports_register(task,NULL,0)!=KERN_SUCCESS
-        ||task_set_exception_ports(task,EXC_MASK_ALL,MACH_PORT_NULL,EXCEPTION_DEFAULT,THREAD_STATE_NONE)!=KERN_SUCCESS)return 130;
+    mach_port_t access=MACH_PORT_NULL; kern_return_t kr;
+    kr=task_get_special_port(task,TASK_ACCESS_PORT,&access);
+    if(kr!=KERN_SUCCESS||access!=MACH_PORT_NULL){fprintf(stderr,"native setup stage=task-access rc=%d nonnull=%d\n",kr,access!=MACH_PORT_NULL);return 130;}
+    mach_port_t inheritedHost=mach_host_self(),plainHost=MACH_PORT_NULL;
+    kr=host_get_special_port(inheritedHost,HOST_LOCAL_NODE,HOST_PORT,&plainHost);
+    if(kr!=KERN_SUCCESS||!MACH_PORT_VALID(plainHost)){fprintf(stderr,"native setup stage=plain-host rc=%d\n",kr);return 130;}
+    kr=task_set_special_port(task,TASK_HOST_PORT,plainHost);
+    if(kr!=KERN_SUCCESS){fprintf(stderr,"native setup stage=host-replace rc=%d\n",kr);return 130;}
+    kernel_boot_info_t hostBuffer;
+    if(host_get_boot_info(mach_host_self(),hostBuffer)==KERN_SUCCESS||host_get_boot_info(inheritedHost,hostBuffer)==KERN_SUCCESS){
+        fprintf(stderr,"native setup stage=host-privilege-retained\n");return 130;
+    }
+    kr=task_set_special_port(task,TASK_BOOTSTRAP_PORT,MACH_PORT_NULL);
+    if(kr!=KERN_SUCCESS){fprintf(stderr,"native setup stage=bootstrap-clear rc=%d\n",kr);return 130;}
+    kr=mach_ports_register(task,NULL,0);
+    if(kr!=KERN_SUCCESS){fprintf(stderr,"native setup stage=registered-clear rc=%d\n",kr);return 130;}
+    kr=task_set_exception_ports(task,EXC_MASK_ALL,MACH_PORT_NULL,EXCEPTION_DEFAULT,THREAD_STATE_NONE);
+    if(kr!=KERN_SUCCESS){fprintf(stderr,"native setup stage=exception-clear rc=%d\n",kr);return 130;}
     mach_port_name_array_t names=NULL;mach_port_type_array_t types=NULL;mach_msg_type_number_t nn=0,nt=0;
     if(mach_port_names(task,&names,&nn,&types,&nt)!=KERN_SUCCESS||nn!=nt)return 131;
     for(mach_msg_type_number_t n=0;n<nn;n++)if(names[n]!=task&&names[n]!=thread)

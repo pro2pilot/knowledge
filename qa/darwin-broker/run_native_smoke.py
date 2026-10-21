@@ -71,6 +71,20 @@ try:
         record['unsafe_acl_rejected_before_work'] = True
     finally:
         assert run('unsafe-acl-remove', ['/usr/bin/sudo', '-n', '/bin/chmod', '-N', str(fixture / 'bin')]) == 0
+    production_argv = [arg for arg in daemon_argv if arg != '--qualification-mode']
+    with (OUT / 'production-daemon.stdout.log').open('wb') as stdout, (OUT / 'production-daemon.stderr.log').open('wb') as stderr:
+        daemon = subprocess.Popen(production_argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+        until = time.monotonic() + 15
+        while time.monotonic() < until and not sock.exists() and daemon.poll() is None:
+            time.sleep(.05)
+        assert sock.exists(), 'production guard fixture daemon did not start'
+        assert run('production-guard', ['python3', str(HERE / 'probe_production_guard.py'), str(binary), str(sock)]) == 0
+        run('stop-own-production-daemon', ['/usr/bin/sudo', '-n', '/bin/kill', '-TERM', str(daemon.pid)])
+        assert daemon.wait(timeout=30) == 0
+        record['production_guard_passed'] = True
+        # The daemon intentionally leaves a root-owned socket pathname behind.
+        # Startup replaces that own socket; do not mistake its stale entry for readiness.
+        assert run('remove-own-production-socket', ['/usr/bin/sudo', '-n', '/bin/rm', '--', str(sock)]) == 0
     with (OUT / 'daemon.stdout.log').open('wb') as stdout, (OUT / 'daemon.stderr.log').open('wb') as stderr:
         daemon = subprocess.Popen(daemon_argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
         record['daemon_launcher_pid'] = daemon.pid
