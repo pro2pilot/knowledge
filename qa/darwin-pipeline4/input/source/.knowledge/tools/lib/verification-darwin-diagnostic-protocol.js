@@ -118,6 +118,7 @@ function facts(value, binding, terminal) {
   if (value?.ok !== true || value.attempt_id !== binding.attempt_id ||
       value.descriptor_sha256 !== binding.descriptor_sha256 || value.allocation_tuple_verified_current !== true ||
       value.registry_healthy !== true || value.observation_cached === true || value.cleanup_budget_exceeded !== false ||
+      value.abort_latched !== false || terminal && value.planned_terminal !== true ||
       !['commands_complete', 'close_requested'].includes(value.stop_reason) ||
       !p || p.schema !== (terminal ? 'knowledge-darwin-private-ruid-proof.v1' : 'knowledge-darwin-command-drain-proof.v1') ||
       p.attempt_id !== binding.attempt_id || p.descriptor_sha256 !== binding.descriptor_sha256 ||
@@ -125,6 +126,7 @@ function facts(value, binding, terminal) {
         'host_id', 'boot_id', 'account_policy_id', 'account_policy_sha256', 'task_ruid']
         .some(key => p[key] !== d[key]) || p.capability_qualified !== false ||
       p.uid_history_tuple_verified !== true ||
+      p.abort_latched !== false || terminal && p.planned_terminal !== true ||
       value[terminal ? 'proof_sha256' : 'command_drain_sha256'] !== digest(p) ||
       p.terminal_cleanup !== terminal || p.kernel_membership_zero !== true ||
       p.admission_closed !== true || p.spawn_exclusion_acquired !== true || p.spawn_intents_resolved !== true ||

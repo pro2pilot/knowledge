@@ -55,8 +55,8 @@ Write a private request file, replacing all example paths:
 ```json
 {
   "report_only": true,
-  "repoRoot": "/Users/example/fixture",
-  "stateRoot": "/Users/example/fixture/.knowledge",
+  "repoRoot": "/absolute/fixture",
+  "stateRoot": "/absolute/fixture/.knowledge",
   "test": {"argv": ["node", "--test", "sample.test.js"], "cwd": ".", "timeout_ms": 30000},
   "sourceFiles": ["sample.test.js"],
   "nativeExecution": {"darwin": {
@@ -128,9 +128,20 @@ hash. This is injected waiting before a syscall, not evidence of actual kernel
 D-state or APFS failure. Shipping builds have no enabled gate. Neither build
 can change `capability_qualified=false`.
 
+The diagnostic distinguishes generation-bound planned terminal intent from a
+monotonic abort fence. Only the exact controller may request planned close after
+drain; cancellation, owner uncertainty and expiry dominate that intent. Terminal
+retirement is synchronized with stop admission without holding a mutex over I/O.
+A late unrecorded change retains an unconfirmed claim in memory and attempts
+a durable downgrade. If that compensating registry write fails after an earlier
+clear committed, retention in memory/OFD does not prove the abort survives a
+crash/restart; this remains a production durability/replay blocker. Diagnostic
+recovery never turns this observation into successful work. Old-boot lookup
+remains historical and cannot assert a current allocation observation.
+
 Production common-control/KVE-v3/KVF/ACK-v4 integration, durable finalization and
-replay remain open. Planned terminal teardown and abort need distinct acceptance
-fences before production integration. OPEN-L2 Windows/macOS common-lock recovery,
+replay remain open. This diagnostic fence still needs fault qualification and
+production acceptance/replay rules before integration. OPEN-L2 Windows/macOS common-lock recovery,
 OPEN-L3 atomic initial owner publication, reboot/unknown-scope recovery, fresh
 installed platform qualification and SIP-enabled macOS checks remain open.
 The historical second ownerless-lock cause remains unknown. Hosted GitHub

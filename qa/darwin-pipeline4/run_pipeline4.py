@@ -432,6 +432,8 @@ class Runner:
                        probe.get("qa_persistence_gate") is (kind == "qa") and
                        probe.get("qa_build_id") == (self.pins["qa"]["build_id"] if kind == "qa" else None),
                        "service_pair_mode_mismatch_" + kind)
+            self.records.append({"name": "service_pair_probe_verified", "service_kind": kind,
+                "source_pin_verified": True, "qualification_mode": True, "backend_qualified": False})
         else:
             self.check(not self.label_exists(timeout=2), "demand_service_started_before_socket_connect")
         return {"binary": binary, "stub": stub, "node": node, "socket": sock,
@@ -604,6 +606,31 @@ class Runner:
                     "authority_method": self.safe_cli_text(result.get("authority_exit_method", ""))}}
         self.check(not self.has_secret_key(diagnostic_attempt), name + "_diagnostic_attempt_public_unsafe")
         self.diagnostic_attempts.append(diagnostic_attempt)
+        early_failure_proof_exported = False
+        if isinstance(result, dict) and result.get("status") == "failed":
+            terminal_observation = result.get("native_terminal_observation")
+            if isinstance(terminal_observation, dict):
+                observation_fields = ("state", "stop_reason", "admission_closed",
+                    "allocation_tuple_verified_current", "registry_healthy",
+                    "cleanup_budget_exceeded", "proof_sha256", "command_drain_sha256",
+                    "proof_current")
+                safe_observation = {key: terminal_observation[key]
+                    for key in observation_fields if key in terminal_observation}
+                observed_proof = terminal_observation.get("proof")
+                if observed_proof is not None:
+                    safe_observation["proof"] = observed_proof
+                authority_exit = result.get("authority_exit")
+                safe_authority_exit = ({key: authority_exit.get(key) for key in ("exit_code", "signal")
+                    if key in authority_exit} if isinstance(authority_exit, dict) else None)
+                failure_proof = {"name": name + "-unexpected-failure-observation",
+                    "status": "failed", "reason": self.safe_cli_text(result.get("reason", "")),
+                    "native_terminal_observation": safe_observation,
+                    "authority_exit": safe_authority_exit,
+                    "timings_ms": self.measured_timings_ms(result)}
+                self.check(not self.has_secret_key(failure_proof),
+                    name + "_unexpected_failure_proof_public_unsafe")
+                self.diagnostic_proofs.append(failure_proof)
+                early_failure_proof_exported = True
         expect_cli_exit = 0 if expected_status == "diagnostic_completed" else 1
         self.check(p.returncode == expect_cli_exit and isinstance(result, dict) and
                    result.get("status") == expected_status and
@@ -666,8 +693,9 @@ class Runner:
                     "proof": observed_proof,
                     "authority_exit": result.get("authority_exit"),
                     "timings_ms": self.measured_timings_ms(result)}
-                self.check(not self.has_secret_key(failure_proof), name + "_failure_proof_public_unsafe")
-                self.diagnostic_proofs.append(failure_proof)
+                if not early_failure_proof_exported:
+                    self.check(not self.has_secret_key(failure_proof), name + "_failure_proof_public_unsafe")
+                    self.diagnostic_proofs.append(failure_proof)
         # The complete result (which may contain private bindings) remains in the
         # private raw output file. Only this typed subset escapes into summary.
         self.diagnostic_summary = {"name": name, "status": result["status"],
@@ -1276,7 +1304,7 @@ class Runner:
             {"scenario": "qa_complete_source_compile", "status": "PASS" if "qa" in compile_names else "NOT_RUN"},
             {"scenario": "foundation_boolean_json_type_regression",
                 "status": self.boolean_wire_record.get("status", "NOT_RUN") if isinstance(self.boolean_wire_record, dict) else "NOT_RUN"},
-            {"scenario": "normal_root_launchd_baseline", "status": "PASS" if "probe-shipping-pair" in record_names else "NOT_RUN"},
+            {"scenario": "normal_root_launchd_baseline", "status": "PASS" if any(row.get("name") == "service_pair_probe_verified" and row.get("service_kind") == "shipping" for row in self.records) else "NOT_RUN"},
             {"scenario": "d1_single_node_script", "status": diagnostic_names.get("d1-script", "NOT_RUN")},
             {"scenario": "d1_single_quiet_node_test", "status": diagnostic_names.get("d1-node-test", "NOT_RUN")},
             {"scenario": "d1_failing_command", "status": diagnostic_names.get("d1-failing-command", "NOT_RUN")},

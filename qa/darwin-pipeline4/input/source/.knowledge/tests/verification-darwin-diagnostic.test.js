@@ -48,10 +48,10 @@ function facts(b, terminal) {
     spawn_exclusion_acquired: true, spawn_intents_resolved: true, native_cleanup_facts_confirmed: true,
     cleanup_confirmed: false, registered_authority_exited: true, native_command_drain_facts_confirmed: true,
     command_drain_confirmed: false, registered_authority_alive: true, spawn_exclusion_held_until_terminal: true,
-    uid_history_tuple_verified: true, cleanup_budget_exceeded: false };
+    uid_history_tuple_verified: true, cleanup_budget_exceeded: false, abort_latched: false, planned_terminal: terminal };
   return { ok: true, attempt_id: b.attempt_id, descriptor_sha256: b.descriptor_sha256,
     allocation_tuple_verified_current: true, registry_healthy: true, cleanup_budget_exceeded: false,
-    stop_reason: 'commands_complete',
+    stop_reason: 'commands_complete', abort_latched: false, planned_terminal: terminal,
     state: terminal ? 'closed' : 'commands_drained', [terminal ? 'proof' : 'command_drain_proof']: p,
     [terminal ? 'proof_sha256' : 'command_drain_sha256']: wire.digest(p) };
 }
@@ -104,9 +104,22 @@ test('cached observation and diagnostic facts never become qualified closure', (
   const b = binding();
   for (const terminal of [false, true]) {
     const good = facts(b, terminal); assert.ok(wire.facts(good, b, terminal));
+    const proofKey = terminal ? 'proof' : 'command_drain_proof';
+    const digestKey = terminal ? 'proof_sha256' : 'command_drain_sha256';
+    const lateAbort = clone(good); lateAbort[proofKey].abort_latched = true;
+    lateAbort[digestKey] = wire.digest(lateAbort[proofKey]);
+    assert.throws(() => wire.facts(lateAbort, b, terminal));
+    if (terminal) {
+      const absentIntent = clone(good); absentIntent.planned_terminal = false;
+      assert.throws(() => wire.facts(absentIntent, b, terminal));
+      const missingProofIntent = clone(good); missingProofIntent.proof.planned_terminal = false;
+      missingProofIntent.proof_sha256 = wire.digest(missingProofIntent.proof);
+      assert.throws(() => wire.facts(missingProofIntent, b, terminal));
+    }
     for (const mutate of [x => { x.observation_cached = true; }, x => { x.cleanup_budget_exceeded = true; },
       x => { x.registry_healthy = false; }, x => { x.allocation_tuple_verified_current = false; },
-      x => { x.stop_reason = 'daemon_stopping'; },
+      x => { x.stop_reason = 'daemon_stopping'; }, x => { x.abort_latched = true; },
+      x => { x[terminal ? 'proof' : 'command_drain_proof'].abort_latched = true; },
       x => { x[terminal ? 'proof' : 'command_drain_proof'].capability_qualified = true; },
       x => { x[terminal ? 'proof' : 'command_drain_proof'].kernel_membership_zero = false; },
       x => { x[terminal ? 'proof' : 'command_drain_proof'].source_sha256 = hex('0'); },

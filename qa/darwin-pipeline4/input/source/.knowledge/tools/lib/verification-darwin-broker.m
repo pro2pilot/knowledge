@@ -559,7 +559,9 @@ static bool validRecordedIdentity(id identity) {
 }
 static bool validRecordedEntry(NSMutableDictionary *e,NSString *id) {
     NSDictionary *d=e[@"descriptor"];uint64_t allocationSequence=0;if(![d isKindOfClass:NSDictionary.class])return false;
-    return hex64(id)&&[d[@"boundary_id"] isEqual:id]&&[d[@"attempt_id"] isEqual:id]
+    return (!e[@"abort_latched"]||booleanField(e[@"abort_latched"]))
+        &&(!e[@"planned_terminal"]||booleanField(e[@"planned_terminal"]))
+        &&hex64(id)&&[d[@"boundary_id"] isEqual:id]&&[d[@"attempt_id"] isEqual:id]
         &&[d[@"backend"] isEqual:@"darwin_private_ruid"]&&[d[@"source_sha256"] isEqual:@KNOWLEDGE_BROKER_SOURCE_SHA]
         &&[d[@"transport_header_sha256"] isEqual:@KNOWLEDGE_DARWIN_TRANSPORT_HEADER_SHA]
         &&[d[@"stub_source_sha256"] isEqual:@KNOWLEDGE_DARWIN_STUB_SOURCE_SHA]
@@ -776,7 +778,7 @@ struct KObservation {
     uint64_t generation,work_deadline,command_deadline,cleanup_deadline,cleanup_budget,stop_started,stop_deadline;
     char attempt[65]; uid_t owner,private_uid;
     struct KExactBirth controller,authority,stub,command;
-    bool valid,admission_closed,drain_only;
+    bool valid,admission_closed,drain_only,planned_terminal,abort_latched;
 };
 static struct KObservation gObservation;
 static uint64_t gObservationGeneration; /* actor only */
@@ -798,11 +800,18 @@ static int observeBirth(struct KExactBirth saved,struct KIdentity *fresh) {
     if(freshIdentity((pid_t)saved.identity.bsd.pbi_pid,fresh))return sameObservedBirth(&saved.identity,fresh)?1:0;
     return errno==ESRCH?0:-1;
 }
-static bool latchGeneration(uint64_t generation,uint64_t budget) {
+static bool latchGenerationMode(uint64_t generation,uint64_t budget,bool planned,bool authorityExitOnly) {
     uint64_t started=nowMS();bool matched=false;
     pthread_mutex_lock(&gObservationMutex);
     if(gObservation.valid&&gObservation.generation==generation){
-        matched=true;atomic_store_explicit(&gStopGeneration,generation,memory_order_release);
+        /* A kernel observation may precede a newly queued planned close. Decide
+         * exact authority absence using the latest same-generation intent. */
+        if(authorityExitOnly&&gObservation.planned_terminal&&!gObservation.abort_latched){
+            pthread_mutex_unlock(&gObservationMutex);return false;
+        }
+        matched=true;
+        if(planned)gObservation.planned_terminal=true;else gObservation.abort_latched=true;
+        atomic_store_explicit(&gStopGeneration,generation,memory_order_release);
         if(!gObservation.stop_started)gObservation.stop_started=started;
         uint64_t bounded=MAX(1ull,MIN(MIN(budget,K_MAX_CLEANUP_MS),gObservation.cleanup_budget));
         uint64_t deadline=gObservation.stop_started+bounded;
@@ -810,6 +819,9 @@ static bool latchGeneration(uint64_t generation,uint64_t budget) {
         if(!gObservation.stop_deadline||deadline<gObservation.stop_deadline)gObservation.stop_deadline=deadline;
     }
     pthread_mutex_unlock(&gObservationMutex);return matched;
+}
+static bool latchGeneration(uint64_t generation,uint64_t budget) {
+    return latchGenerationMode(generation,budget,false,false);
 }
 static struct KObservation observationCopy(void) {
     pthread_mutex_lock(&gObservationMutex);struct KObservation v=gObservation;
@@ -819,6 +831,16 @@ static bool stoppedAttempt(NSMutableDictionary *e) {
     struct KObservation v=observationCopy();NSString *attempt=e[@"descriptor"][@"attempt_id"];
     return v.valid&&attempt&&[attempt isEqual:@(v.attempt)]
         &&atomic_load_explicit(&gStopGeneration,memory_order_acquire)==v.generation;
+}
+static bool abortedAttempt(NSMutableDictionary *e) {
+    struct KObservation v=observationCopy();NSString *attempt=e[@"descriptor"][@"attempt_id"];
+    return gStopping||[e[@"abort_latched"] boolValue]
+        ||(attempt&&[attempt isEqual:@(v.attempt)]&&v.abort_latched);
+}
+static bool plannedAttempt(NSMutableDictionary *e) {
+    struct KObservation v=observationCopy();NSString *attempt=e[@"descriptor"][@"attempt_id"];
+    return !abortedAttempt(e)&&([e[@"planned_terminal"] boolValue]
+        ||(v.valid&&attempt&&[attempt isEqual:@(v.attempt)]&&v.planned_terminal));
 }
 static bool currentPeerAlive(void) {
     if(!gCurrentWork)return true;struct KIdentity native,parent;
@@ -964,16 +986,19 @@ static void publishState(void) {
     struct KObservation next={0},prior=observationCopy();
     next.generation=prior.generation;strlcpy(next.attempt,prior.attempt,sizeof(next.attempt));
     next.stop_started=prior.stop_started;next.stop_deadline=prior.stop_deadline;
-    if(known&&active.length){
-        const char *attempt=[active UTF8String];
+    next.planned_terminal=prior.planned_terminal;next.abort_latched=prior.abort_latched;
+    if(known&&(active.length||gClosing==e)){
+        const char *attempt=[e[@"descriptor"][@"attempt_id"] UTF8String];
         next.generation=prior.generation&&!strcmp(prior.attempt,attempt)?prior.generation:++gObservationGeneration;
-        if(next.generation!=prior.generation){next.stop_started=0;next.stop_deadline=0;}
+        if(next.generation!=prior.generation){next.stop_started=0;next.stop_deadline=0;next.planned_terminal=false;next.abort_latched=false;}
         strlcpy(next.attempt,attempt,sizeof(next.attempt));next.valid=true;
         next.owner=[e[@"owner_uid"] unsignedIntValue];next.private_uid=[e[@"descriptor"][@"task_ruid"] unsignedIntValue];
         next.work_deadline=[e[@"work_deadline_ms"] unsignedLongLongValue];
         next.command_deadline=gRun.pid?gRun.deadline:0;
         next.cleanup_deadline=[e[@"cleanup_deadline_ms"] unsignedLongLongValue];
         next.cleanup_budget=[e[@"cleanup_budget_ms"] unsignedLongLongValue];
+        next.planned_terminal=next.planned_terminal||[e[@"planned_terminal"] boolValue];
+        next.abort_latched=next.abort_latched||[e[@"abort_latched"] boolValue];
         next.admission_closed=[e[@"admission_closed"] boolValue];next.drain_only=gDrainOnly||[e[@"state"] isEqual:@"commands_drained"];
         exactFromJSON(e[@"controller"],&next.controller);exactFromJSON(e[@"authority"],&next.authority);
         exactFromJSON(e[@"launch_stub"],&next.stub);exactFromJSON(e[@"command_identity"],&next.command);
@@ -982,7 +1007,9 @@ static void publishState(void) {
     pthread_mutex_lock(&gObservationMutex);
     /* A reactor/observer may have latched while the actor built this copy. */
     if(next.valid&&gObservation.valid&&next.generation==gObservation.generation){
-        next.stop_started=gObservation.stop_started;next.stop_deadline=gObservation.stop_deadline;}
+        next.stop_started=gObservation.stop_started;next.stop_deadline=gObservation.stop_deadline;
+        next.planned_terminal=next.planned_terminal||gObservation.planned_terminal;
+        next.abort_latched=next.abort_latched||gObservation.abort_latched;}
     gObservation=next;pthread_mutex_unlock(&gObservationMutex);
     NSDictionary *entry=nil,*status=nil;
     if(known){
@@ -1015,12 +1042,14 @@ static void *stopObserver(void *unused) {
         struct KObservation v=observationCopy();
         if(v.valid){struct KIdentity identity;uint64_t now=nowMS();
             bool latched=atomic_load_explicit(&gStopGeneration,memory_order_acquire)==v.generation;
-            bool owners=observeBirth(v.controller,&identity)==1
-                &&(!v.authority.present||observeBirth(v.authority,&identity)==1);
+            int controllerSeen=observeBirth(v.controller,&identity),authoritySeen=v.authority.present?observeBirth(v.authority,&identity):1;
             bool expired=(!v.admission_closed&&now>=v.work_deadline)
                 ||(v.command_deadline&&now>=v.command_deadline)
-                ||(v.drain_only&&v.cleanup_deadline&&now>=v.cleanup_deadline);
-            if(gStopping||!owners||expired)latched=latchGeneration(v.generation,K_MAX_CLEANUP_MS)||latched;
+                ||(v.admission_closed&&v.cleanup_deadline&&now>=v.cleanup_deadline);
+            if(gStopping||controllerSeen!=1||authoritySeen!=1||expired){
+                bool authorityExitOnly=!gStopping&&controllerSeen==1&&authoritySeen==0&&!expired;
+                latched=latchGenerationMode(v.generation,K_MAX_CLEANUP_MS,false,authorityExitOnly)||latched;
+            }
             /* Repeat forever after latch: a child can publish after the
              * check-to-posix_spawn race. No cached UID-wide action is allowed. */
             if(latched||(v.admission_closed&&v.drain_only)){
@@ -1041,7 +1070,11 @@ static bool closeAdmission(NSMutableDictionary *e,NSString *reason,uint64_t budg
      * before persistence so stalled restart closure still has exact stop. */
     publishState();
     if(!gDrainOnly){struct KObservation v=observationCopy();
-        if(v.valid&&[e[@"descriptor"][@"attempt_id"] isEqual:@(v.attempt)])latchGeneration(v.generation,budget);}
+        if(v.valid&&[e[@"descriptor"][@"attempt_id"] isEqual:@(v.attempt)])
+            latchGenerationMode(v.generation,budget,[reason isEqual:@"close_requested"]&&plannedAttempt(e),false);
+    }
+    if(abortedAttempt(e))e[@"abort_latched"]=@YES;
+    if(plannedAttempt(e))e[@"planned_terminal"]=@YES;
     bool durable=!gPoisoned;
     /* Disk failure poisons positive proof, never the ability to stop work. */
     if(gPendingFD>=0){close(gPendingFD);gPendingFD=-1;}
@@ -1166,7 +1199,7 @@ static bool walkCopy(int directory,NSString *prefix,NSMutableDictionary *e,NSMut
 }
 static NSDictionary *readbackCopy(NSMutableDictionary *e,struct KPeer *peer) {
     NSString *phase=e[@"state"];bool sealed=[phase isEqual:@"sealed"],drained=[phase isEqual:@"commands_drained"],closed=[phase isEqual:@"closed"];
-    if((!sealed&&!drained&&!closed)||(!isController(e,peer)&&!isAuthority(e,peer))||gPendingFD>=0||e[@"pending_copy"])
+    if(abortedAttempt(e)||(!sealed&&!drained&&!closed)||(!isController(e,peer)&&!isAuthority(e,peer))||gPendingFD>=0||e[@"pending_copy"])
         return failure(@"COPY_READBACK_INVALID_PHASE_OR_ROLE");
     if(![e[@"manifest"] isKindOfClass:NSDictionary.class]||![e[@"directories"] isKindOfClass:NSDictionary.class]
         ||[e[@"manifest"] count]>K_MAX_FILES||[e[@"directories"] count]>K_MAX_FILES
@@ -1203,7 +1236,7 @@ static NSDictionary *readbackCopy(NSMutableDictionary *e,struct KPeer *peer) {
     if(current>=0)close(current);if(workspace>=0)close(workspace);
     /* Fresh allocation and clock/owner guards AFTER the last potentially slow
      * read. The OFD stays held across this final check and reply construction. */
-    if(ok)ok=validUIDAllocation(e)&&!gPoisoned&&currentPeerAlive()
+    if(ok)ok=validUIDAllocation(e)&&!gPoisoned&&!abortedAttempt(e)&&currentPeerAlive()
         &&(!gCurrentWork||!atomic_load_explicit(&gCurrentWork->cancelled,memory_order_acquire));
     if(ok&&sealed)ok=!workStopped(e)&&![e[@"admission_closed"] boolValue];
     if(ok&&drained){struct KIdentity identity;ok=!gStopping&&!stoppedAttempt(e)&&nowMS()<[e[@"cleanup_deadline_ms"] unsignedLongLongValue]
@@ -1418,7 +1451,8 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
         @"scope":@"private_command_ruid_plus_exact_registered_authority;trusted_controller_and_persistent_broker_excluded"};
     NSMutableDictionary *e=[@{@"descriptor":descriptor,@"descriptor_sha256":sha(jsonData(descriptor)),@"owner_uid":@(peer->owner),
         @"token_sha256":sha([token dataUsingEncoding:NSUTF8StringEncoding]),@"controller":identityJSON(&peer->parent),@"state":@"reserved",
-        @"admission_closed":@NO,@"spawn_intent":@NO,@"authority_spawn_intent":@NO,@"files":@0,@"bytes":@0,
+        @"admission_closed":@NO,@"abort_latched":@NO,@"planned_terminal":@NO,
+        @"spawn_intent":@NO,@"authority_spawn_intent":@NO,@"files":@0,@"bytes":@0,
         @"manifest":[NSMutableDictionary dictionary],@"directories":[NSMutableDictionary dictionary],
         @"work_started_monotonic_ms":@(started),@"work_budget_ms":@(budget),
         @"work_deadline_ms":@(deadline),@"cleanup_budget_ms":q[@"cleanup_budget_ms"]} mutableCopy];
@@ -1463,7 +1497,8 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
 
 static NSDictionary *statusReply(NSMutableDictionary *e) {
     refreshAccountPolicy();
-    bool allocationVerified=validUIDAllocation(e);
+    bool currentScope=[e[@"descriptor"][@"boot_id"] isEqual:gBoot]&&[e[@"descriptor"][@"host_id"] isEqual:gHost];
+    bool allocationVerified=currentScope&&validUIDAllocation(e);
     NSMutableDictionary *r=[@{@"ok":@YES,@"schema":K_SCHEMA,@"attempt_id":e[@"descriptor"][@"attempt_id"],
         @"descriptor":e[@"descriptor"],@"descriptor_sha256":e[@"descriptor_sha256"],@"state":e[@"state"],
         @"admission_closed":e[@"admission_closed"],@"spawn_intent":e[@"spawn_intent"],
@@ -1474,15 +1509,18 @@ static NSDictionary *statusReply(NSMutableDictionary *e) {
         @"cleanup_started_monotonic_ms":e[@"cleanup_started_monotonic_ms"]?:NSNull.null,
         @"cleanup_deadline_monotonic_ms":e[@"cleanup_deadline_ms"]?:NSNull.null,
         @"cleanup_budget_exceeded":e[@"cleanup_budget_exceeded"]?:@NO,
-        @"stop_reason":e[@"stop_reason"]?:NSNull.null,@"registry_healthy":@((bool)!gPoisoned),
+        @"stop_reason":e[@"stop_reason"]?:NSNull.null,@"abort_latched":@((bool)abortedAttempt(e)),
+        @"planned_terminal":@((bool)plannedAttempt(e)),@"registry_healthy":@((bool)!gPoisoned),
         @"registry_quarantine_reason":gQuarantineReason?:NSNull.null,
         @"entry_store_loaded":@(gEntryStoreLoaded),@"uid_history":uidHistoryStatus(false),@"account_policy":accountPolicyStatus(),
         @"allocation_tuple_verified_current":@(allocationVerified),@"stop_latched":@((bool)(gStopping||stoppedAttempt(e))),
         @"sandbox_profile":sandboxProfile(e[@"descriptor"][@"workspace_path"])} mutableCopy];
     if(e[@"proof"]){r[@"proof"]=e[@"proof"];if(e[@"receipt_sha256"])r[@"proof_sha256"]=e[@"receipt_sha256"];}
-    if(e[@"command_drain_proof"]&&!gStopping&&!stoppedAttempt(e)){
+    if(e[@"command_drain_proof"]&&!abortedAttempt(e)&&!stoppedAttempt(e)){
         r[@"command_drain_proof"]=e[@"command_drain_proof"];
         if(e[@"command_drain_sha256"])r[@"command_drain_sha256"]=e[@"command_drain_sha256"];}
+    if(!currentScope){r[@"observation_current_scope"]=@NO;r[@"proof_current"]=@NO;
+        r[@"planned_terminal"]=@NO;[r removeObjectForKey:@"proof_sha256"];[r removeObjectForKey:@"command_drain_sha256"];}
     return r;
 }
 static void latchQueuedClose(struct KPeer peer,NSDictionary *q) {
@@ -1496,8 +1534,13 @@ static void latchQueuedClose(struct KPeer peer,NSDictionary *q) {
     bool role=bound&&(sameBirth(entry[@"controller"],&peer.parent)
         ||([entry[@"authority"] isKindOfClass:NSDictionary.class]&&sameBirth(entry[@"authority"],&peer.parent)));
     if(role){struct KObservation v=observationCopy();
-        if(v.valid&&[entry[@"attempt_id"] isEqual:@(v.attempt)]&&v.generation==[cached[@"writer_generation"] unsignedLongLongValue])
-            latchGeneration(v.generation,[q[@"cleanup_budget_ms"] unsignedLongLongValue]);}
+        if(v.valid&&[entry[@"attempt_id"] isEqual:@(v.attempt)]&&v.generation==[cached[@"writer_generation"] unsignedLongLongValue]){
+            struct KIdentity authority;
+            bool planned=[q[@"op"] isEqual:@"close"]&&sameBirth(entry[@"controller"],&peer.parent)
+                &&[cached[@"state"] isEqual:@"commands_drained"]&&v.authority.present
+                &&observeBirth(v.authority,&authority)==1;
+            latchGenerationMode(v.generation,[q[@"cleanup_budget_ms"] unsignedLongLongValue],planned,false);
+        }}
 }
 static bool fastRequest(int token,struct KPeer peer,NSDictionary *q) {
     NSString *op=q[@"op"];if(![op isEqual:@"observe"]&&![op isEqual:@"stop"])return false;
@@ -1519,6 +1562,8 @@ static bool fastRequest(int token,struct KPeer peer,NSDictionary *q) {
         else{
             NSMutableDictionary *r=[cached mutableCopy];
             r[@"durability_pending"]=@(atomic_load_explicit(&gWriterPending,memory_order_acquire));
+            r[@"abort_latched"]=@((bool)(gStopping||v.abort_latched));
+            r[@"planned_terminal"]=@((bool)(v.planned_terminal&&!v.abort_latched&&!gStopping));
             r[@"stop_latched"]=@((bool)(v.valid&&[q[@"attempt_id"] isEqual:@(v.attempt)]
                 &&atomic_load_explicit(&gStopGeneration,memory_order_acquire)==v.generation));
             if([op isEqual:@"stop"]){
@@ -1530,7 +1575,7 @@ static bool fastRequest(int token,struct KPeer peer,NSDictionary *q) {
                 if(!validDuration(q[@"cleanup_budget_ms"],K_MAX_CLEANUP_MS))reply=failure(@"INVALID_CLEANUP_BUDGET");
                 else if(!role&&!capability)reply=failure(@"STOP_ROLE_OR_CAPABILITY_AUTHENTICATION_FAILED");
                 else if(!generation||!latchGeneration(v.generation,[q[@"cleanup_budget_ms"] unsignedLongLongValue]))reply=failure(@"STOP_GENERATION_NOT_CURRENT");
-                else{r[@"stop_latched"]=@YES;r[@"state"]=@"cleanup_pending";r[@"admission_closed"]=@YES;
+                else{r[@"stop_latched"]=@YES;r[@"abort_latched"]=@YES;r[@"planned_terminal"]=@NO;r[@"state"]=@"cleanup_pending";r[@"admission_closed"]=@YES;
                     r[@"terminal_cleanup"]=@NO;r[@"writer_pending"]=r[@"durability_pending"];reply=r;}
             }else reply=r;
         }
@@ -1638,6 +1683,7 @@ static void handleClient(int fd,struct KPeer peer,NSDictionary *q) {
     }
     /* State I/O may have observed a stop after the dispatch check. Do not
      * publish a new positive work reply from that stopped transition. */
+    if([op isEqual:@"readback_copy"]&&[reply[@"ok"] boolValue]&&abortedAttempt(entryFor(q[@"attempt_id"])))reply=failure(@"COPY_READBACK_ABORTED");
     if(!stopOrReadOperation&&![op isEqual:@"readback_copy"]&&[reply[@"ok"] boolValue]){
         NSMutableDictionary *current=activeID().length?entryFor(activeID()):nil;
         if(workStopped(current)){if(current)closeAdmission(current,@"stopped_during_transition",[current[@"cleanup_budget_ms"] unsignedLongLongValue]);
@@ -1766,6 +1812,29 @@ static void advanceRun(void) {
         /* Retire the completed command deadline before any queued disk I/O. */
         publishState();}
 }
+/* Linearize terminal retirement against acknowledged stop requests. There is
+ * no filesystem I/O under this mutex. After retirement fast stop cannot ACK
+ * this generation. A detected late change retains the claim instead. */
+static bool retireTerminalObservation(NSMutableDictionary *e,NSDictionary *proof) {
+    bool retired=false;pthread_mutex_lock(&gObservationMutex);
+    bool current=gObservation.valid&&[e[@"descriptor"][@"attempt_id"] isEqual:@(gObservation.attempt)];
+    bool abort=gStopping||gObservation.abort_latched||[e[@"abort_latched"] boolValue];
+    bool recorded=abort==[proof[@"abort_latched"] boolValue]&&abort==[e[@"abort_latched"] boolValue];
+    bool timeRecorded=nowMS()<gCloseDeadline||[proof[@"cleanup_budget_exceeded"] boolValue];
+    if(current&&recorded&&timeRecorded){gObservation.valid=false;retired=true;}
+    pthread_mutex_unlock(&gObservationMutex);return retired;
+}
+static bool retainAbortedClaim(NSMutableDictionary *e,NSString *priorActive) {
+    e[@"abort_latched"]=@YES;e[@"planned_terminal"]=@NO;e[@"state"]=@"cleanup_unconfirmed";
+    if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
+    NSMutableDictionary *historical=[e[@"proof"] mutableCopy];
+    if(historical){historical[@"abort_latched"]=@YES;historical[@"planned_terminal"]=@NO;
+        historical[@"state"]=@"cleanup_unconfirmed";historical[@"native_cleanup_facts_confirmed"]=@NO;
+        historical[@"cleanup_confirmed"]=@NO;historical[@"uid_history_tuple_verified"]=@NO;e[@"proof"]=historical;}
+    [e removeObjectForKey:@"receipt_sha256"];[e removeObjectForKey:@"receipt_name"];
+    if(priorActive.length)gRegistry[@"active_attempt"]=priorActive;
+    return persist();
+}
 static void advanceCleanup(void) {
     if(!gClosing)return;NSMutableDictionary *e=gClosing;int lock=acquireCleanupBarrier(e);bool excluded=lock>=0;
     /* Every UID-wide signal and positive boundary proof requires current disk
@@ -1802,7 +1871,7 @@ static void advanceCleanup(void) {
         bool ownerAlive=controllerObserved==1&&authorityObserved==1;
         bool drainFacts=uidExclusive&&excluded&&zero&&observed&&intents&&!gRun.pid&&ownerAlive&&!gPoisoned;
         if(!ownerAlive||gStopping||stoppedAttempt(e)||gPoisoned||!uidExclusive||nowMS()>=gCloseDeadline){
-            NSString *reason=(gStopping||stoppedAttempt(e))?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":
+            NSString *reason=(gStopping||stoppedAttempt(e))?(plannedAttempt(e)?@"close_requested":@"daemon_stopping"):gPoisoned?@"registry_durability_unconfirmed":
                 !uidExclusive?@"uid_history_or_allocation_unconfirmed":!ownerAlive?@"drain_owner_exit_or_observation_unconfirmed":@"cleanup_budget_exceeded";
             if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
             closeAdmission(e,reason,[e[@"cleanup_budget_ms"] unsignedLongLongValue]);
@@ -1822,7 +1891,8 @@ static void advanceCleanup(void) {
             @"spawn_intents_resolved":@YES,@"kernel_membership_zero":@YES,@"registered_authority_alive":@YES,
             @"authority_identity":e[@"authority"],@"cleanup_started_monotonic_ms":e[@"cleanup_started_monotonic_ms"],
             @"cleanup_deadline_monotonic_ms":e[@"cleanup_deadline_ms"],@"observed_monotonic_ms":@(nowMS()),
-            @"native_command_drain_facts_confirmed":@YES,@"capability_qualified":@(kCapabilityQualified),
+            @"native_command_drain_facts_confirmed":@YES,@"abort_latched":@((bool)abortedAttempt(e)),
+            @"planned_terminal":@((bool)plannedAttempt(e)),@"capability_qualified":@(kCapabilityQualified),
             @"command_drain_confirmed":@(kCapabilityQualified),@"terminal_cleanup":@NO,
             @"receipt_kind":@"root_registry_not_os_signed_attestation"};
         NSData *bytes=jsonData(proof);NSString *digest=sha(bytes);
@@ -1869,7 +1939,8 @@ static void advanceCleanup(void) {
         @"kernel_membership_zero":@(zero),@"registered_authority_exited":@(authorityExited),
         @"authority_identity":e[@"authority"]?:NSNull.null,@"controller_identity":e[@"controller"],
         @"controller_excluded_from_boundary":@YES,@"persistent_broker_excluded_from_boundary":@YES,
-        @"native_cleanup_facts_confirmed":@(confirmed),@"capability_qualified":@(kCapabilityQualified),
+        @"native_cleanup_facts_confirmed":@(confirmed),@"abort_latched":@((bool)abortedAttempt(e)),
+        @"planned_terminal":@((bool)plannedAttempt(e)),@"capability_qualified":@(kCapabilityQualified),
         @"cleanup_confirmed":@((bool)(confirmed&&kCapabilityQualified)),@"state":state,@"receipt_kind":@"root_registry_not_os_signed_attestation",
         @"phase":@"terminal",@"terminal_cleanup":@YES,
         @"command_drain_sha256":e[@"command_drain_sha256"]?:NSNull.null,
@@ -1882,7 +1953,8 @@ static void advanceCleanup(void) {
      * original cleanup epoch is never extended by persistence/readback. */
     NSString *priorActive=activeID();bool durable=false,registryDurable=false;
     NSDictionary *reply=nil;
-    for(unsigned publication=0;publication<2;publication++){
+    for(unsigned publication=0;publication<3;publication++){
+    if(abortedAttempt(e)||[proof[@"abort_latched"] boolValue]){e[@"abort_latched"]=@YES;e[@"planned_terminal"]=@NO;}
     if(jsonData(proof).length>65536){gPoisoned=true;confirmed=false;}
     NSString *receipt=[NSString stringWithFormat:@"%@.%@.receipt.json",e[@"descriptor"][@"attempt_id"],sha(jsonData(proof))];
     durable=saveJSON(receipt,proof);
@@ -1939,7 +2011,7 @@ static void advanceCleanup(void) {
     if(nowMS()>=gCloseDeadline&&![proof[@"cleanup_budget_exceeded"] boolValue]){
         e[@"cleanup_budget_exceeded"]=@YES;
         NSMutableDictionary *expired=[proof mutableCopy];expired[@"cleanup_budget_exceeded"]=@YES;proof=expired;
-        if(publication==0&&durable&&registryDurable&&!gPoisoned)continue;
+        if(publication<2&&durable&&registryDurable&&!gPoisoned)continue;
         /* A stale false receipt may exist only as historical evidence when
          * its late replacement cannot be durably published. Do not expose
          * that earlier receipt as the current result or release the claim. */
@@ -1950,7 +2022,23 @@ static void advanceCleanup(void) {
         if(priorActive.length)gRegistry[@"active_attempt"]=priorActive;
         reply=failure(@"CLEANUP_LATE_RECEIPT_DURABILITY_UNCONFIRMED");
     }
+    /* An abort observed during durable receipt/index I/O invalidates a
+     * pre-abort receipt as current. Publish a new immutable cause-bound one.
+     * At most deadline and abort can each change false -> true once. */
+    if(abortedAttempt(e)&&![proof[@"abort_latched"] boolValue]){
+        e[@"abort_latched"]=@YES;
+        NSMutableDictionary *aborted=[proof mutableCopy];aborted[@"abort_latched"]=@YES;aborted[@"planned_terminal"]=@NO;proof=aborted;
+        if(publication<2&&durable&&registryDurable&&!gPoisoned)continue;
+        registryDurable=retainAbortedClaim(e,priorActive);
+        reply=failure(@"CLEANUP_ABORT_RECEIPT_UNCONFIRMED");confirmed=false;durable=false;
+    }
     break;
+    }
+    if(durable&&confirmed&&registryDurable&&!retireTerminalObservation(e,proof)){
+        /* An accepted abort between final I/O and retirement must survive
+         * restart. Do not retire or release the exclusion for a stale proof. */
+        registryDurable=retainAbortedClaim(e,priorActive);confirmed=false;durable=false;
+        reply=failure(@"CLEANUP_LATE_TERMINAL_STATE_UNCONFIRMED");
     }
     if(gCloseWaiter>=0){sendJSON(gCloseWaiter,reply);finishTransport(gCloseWaiter);gCloseWaiter=-1;}
     if(lock>=0)close(lock);
@@ -2167,7 +2255,7 @@ static void *lifecycleActor(void *unused) {
         if(![observedAttempt isEqual:activeID()]){observedAttempt=[activeID() copy];nextStateRefresh=nowMS()+K_ACTIVE_STATE_REFRESH_MS;}
         if(known&&!gClosing&&(![e[@"admission_closed"] boolValue]||drained)){struct KIdentity v;
             int controller=observeExact(e[@"controller"],&v),authority=e[@"authority"]?observeExact(e[@"authority"],&v):1;
-            NSString *reason=(gStopping||stoppedAttempt(e))?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
+            NSString *reason=(gStopping||stoppedAttempt(e))?(plannedAttempt(e)?@"close_requested":@"daemon_stopping"):gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
                 controller==0||authority==0?@"owner_exited":drained&&nowMS()>=[e[@"cleanup_deadline_ms"] unsignedLongLongValue]?@"cleanup_budget_exceeded":
                 !drained&&nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
             /* Prioritize already-known stop/owner/deadline facts over disk I/O.
@@ -2178,7 +2266,7 @@ static void *lifecycleActor(void *unused) {
                 refreshEntryStore();refreshAccountPolicy();refreshUIDHistory();
                 nextStateRefresh=nowMS()+K_ACTIVE_STATE_REFRESH_MS;
                 controller=observeExact(e[@"controller"],&v);authority=e[@"authority"]?observeExact(e[@"authority"],&v):1;
-                reason=(gStopping||stoppedAttempt(e))?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
+                reason=(gStopping||stoppedAttempt(e))?(plannedAttempt(e)?@"close_requested":@"daemon_stopping"):gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
                     controller==0||authority==0?@"owner_exited":drained&&nowMS()>=[e[@"cleanup_deadline_ms"] unsignedLongLongValue]?@"cleanup_budget_exceeded":
                     !drained&&nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
             }

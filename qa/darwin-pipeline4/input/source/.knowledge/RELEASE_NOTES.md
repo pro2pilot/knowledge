@@ -14,6 +14,10 @@ drain/readback/terminal lifecycle and observes ordinary controller exit. Typed
 command results and complete actual copy readbacks replace transport exit or
 cached manifests as diagnostic facts. Full proofs and indexed digests are kept
 in its disjoint private diagnostic records. It creates no production KVE/KVF/ACK.
+The diagnostic wrapper snapshots the genuine Node host environment without
+broadening admission for caller objects. Probe transport uses default Buffer
+output with JSON string input, and native logical response fields are explicitly
+boxed as JSON booleans. Invalid numeric substitutes remain rejected.
 See [invocation, timing and limits](docs/darwin-diagnostic-pipeline.md).
 
 Production Darwin integration, unknown descendants during stalled storage,

@@ -128,8 +128,9 @@ results and historical investigations. Current Windows evidence and remaining li
 Linux native verification now uses PID namespaces; macOS remains unsupported.
 
 The Darwin prototype has independent history and policy bindings, cached numeric
-ACL identities, and fresh storage guards. CI25's targeted native M984 install, normal,
-pending and fault scenarios passed on Intel and ARM as scoped CI results. The M3c7
+ACL identities, and fresh storage guards. Historical CI25 results for the M984 install, normal,
+pending and fault scenarios passed on Intel and ARM for those exact historical bytes.
+Those PASS results do not verify this revision. The historical M3c7
 five-second autonomous monitor requires independent slow/load qualification; these
 targeted results do not qualify stock-SIP hosts or connect the broker to common
 verification/KVE/ACK. The Darwin prototype remains diagnostic-only, with no

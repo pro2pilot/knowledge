@@ -65,13 +65,13 @@
     },
     {
       "path": ".knowledge/README.md",
-      "sha256": "7fbdc5ae1e5708bd5da0a9a1334b646cd0615d5dec1cf2cd089cc0c419554772",
-      "bytes": 18905
+      "sha256": "2b32d1fe8ce2c8687c7af2be809f57d9673a2fe5ceaf6dd480312f98822be71f",
+      "bytes": 18985
     },
     {
       "path": ".knowledge/RELEASE_NOTES.md",
-      "sha256": "33907ea8d7d190523bf94e355abb13e3542ad72dde7c4c377bb53ca213005843",
-      "bytes": 25643
+      "sha256": "da044dfa75e6d84e162f7ad1b736d84261b96feae760716090f406e492f3f2e9",
+      "bytes": 25945
     },
     {
       "path": ".knowledge/SBOM.memory.json",
@@ -665,8 +665,8 @@
     },
     {
       "path": ".knowledge/docs/darwin-diagnostic-pipeline.md",
-      "sha256": "e731c8058240cf3d0b0c94a309f481a3d0563ee39f5710cb24d8f9ef685430ca",
-      "bytes": 8021
+      "sha256": "2aadcd4fda780c4a3271e15ba1fc6316047485a28405b0ee24306d02a1a40042",
+      "bytes": 8806
     },
     {
       "path": ".knowledge/docs/evaluation-harness.md",
@@ -1440,8 +1440,8 @@
     },
     {
       "path": ".knowledge/tests/verification-darwin-diagnostic.test.js",
-      "sha256": "c56dfc8151fb49386c0483f5eb491950237adb4497c8f7f9208d40a335cbdbe6",
-      "bytes": 9972
+      "sha256": "60efb1402943d204c674811e6b64edadcb66168f7fef49eb7d9bd53ae11eb594",
+      "bytes": 10947
     },
     {
       "path": ".knowledge/tests/verification-darwin-transport.test.js",
@@ -1950,8 +1950,8 @@
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-broker.m",
-      "sha256": "484af50a2f66bd1dec4a0ae20e349b3863c98c130a5176936991b199a0350dc2",
-      "bytes": 173876
+      "sha256": "96cacb4e5351b6e43a83b755dd0ec2cd9852ca8e6833143fc385938cd0998e38",
+      "bytes": 180539
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-client.js",
@@ -1960,8 +1960,8 @@
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-diagnostic-protocol.js",
-      "sha256": "1bfe429ca51f2fd6b81542c974872dc9f01dadd35c991c807032fad0471612e7",
-      "bytes": 10327
+      "sha256": "61466ca4f556c9b6035dedd326763ca3f7ae483a02ffa13d5265d1ba16b8aa90",
+      "bytes": 10491
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-diagnostic.js",
