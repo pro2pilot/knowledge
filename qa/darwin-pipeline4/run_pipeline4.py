@@ -116,6 +116,7 @@ class Runner:
         self.compile_counter = 0
         self.fixture_counter = 0
         self.compiler_diagnostics = []
+        self.diagnostic_attempts = []
         self.runtime_pins = []
         self.installed_bindings = []
         self.diagnostic_proofs = []
@@ -169,6 +170,30 @@ class Runner:
                                   (str(self.fixture or ""), "<fixture>")):
             if path:
                 text = text.replace(path, replacement)
+        return "\n".join(line[:300] for line in text.splitlines()[:8])[:1600]
+
+    def safe_cli_text(self, value):
+        text = str(value)
+        for path, replacement in ((str(self.source or ""), "<pinned-source>"),
+                                  (str(self.evidence), "<private-evidence>"),
+                                  (str(self.fixture or ""), "<fixture>")):
+            if path:
+                text = text.replace(path, replacement)
+        text = re.sub(r"\b[a-fA-F0-9]{24,64}\b", "<opaque-hex>", text)
+        text = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
+                      "<redacted-token>", text)
+        return text[:500]
+
+    def safe_cli_stderr(self, data):
+        text = data.decode("utf-8", errors="replace")
+        for path, replacement in ((str(self.source or ""), "<pinned-source>"),
+                                  (str(self.evidence), "<private-evidence>"),
+                                  (str(self.fixture or ""), "<fixture>")):
+            if path:
+                text = text.replace(path, replacement)
+        text = re.sub(r"\b[a-fA-F0-9]{24,64}\b", "<opaque-hex>", text)
+        text = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
+                      "<redacted-token>", text)
         return "\n".join(line[:300] for line in text.splitlines()[:8])[:1600]
 
     def sudo(self, *argv, **kwargs):
@@ -520,6 +545,39 @@ class Runner:
                      timeout=timeout)
         try: result = json.loads(p.stdout)
         except Exception: result = None
+        try: stderr_json = json.loads(p.stderr)
+        except Exception: stderr_json = None
+        diagnostic_attempt = {"name": name, "attempted": True, "status": "FAIL",
+            "expected_status": expected_status,
+            "cli_exit_code": p.returncode, "timed_out": p.returncode is None,
+            "stdout_bytes": len(p.stdout), "stdout_sha256": sha_bytes(p.stdout),
+            "stdout_typed_json": isinstance(result, dict),
+            "stderr_bytes": len(p.stderr), "stderr_sha256": sha_bytes(p.stderr),
+            "stderr_json_parsed": isinstance(stderr_json, dict),
+            "stderr_json_code": None, "stderr_json_reason": None,
+            "stderr_excerpt": None if isinstance(stderr_json, dict) else self.safe_cli_stderr(p.stderr),
+            "typed_result": None}
+        if isinstance(stderr_json, dict):
+            nested_error = stderr_json.get("error")
+            diagnostic_attempt["stderr_json_code"] = self.safe_cli_text(
+                stderr_json.get("code", nested_error.get("code") if isinstance(nested_error, dict) else "") or "")
+            diagnostic_attempt["stderr_json_reason"] = self.safe_cli_text(
+                stderr_json.get("reason", nested_error.get("reason", nested_error.get("message", ""))
+                    if isinstance(nested_error, dict) else "") or "")
+        if isinstance(result, dict):
+            command = result.get("command") if isinstance(result.get("command"), dict) else {}
+            authority_exit = result.get("authority_exit") if isinstance(result.get("authority_exit"), dict) else {}
+            diagnostic_attempt["typed_result"] = {
+                "status": self.safe_cli_text(result.get("status", "")),
+                "reason": self.safe_cli_text(result.get("reason", "")),
+                "code": self.safe_cli_text(result.get("code", "")),
+                "role_exit": {"command_exit_code": command.get("exit_code"),
+                    "command_signal": self.safe_cli_text(command.get("signal", "")),
+                    "authority_exit_code": authority_exit.get("exit_code"),
+                    "authority_signal": self.safe_cli_text(authority_exit.get("signal", "")),
+                    "authority_method": self.safe_cli_text(result.get("authority_exit_method", ""))}}
+        self.check(not self.has_secret_key(diagnostic_attempt), name + "_diagnostic_attempt_public_unsafe")
+        self.diagnostic_attempts.append(diagnostic_attempt)
         expect_cli_exit = 0 if expected_status == "diagnostic_completed" else 1
         self.check(p.returncode == expect_cli_exit and isinstance(result, dict) and
                    result.get("status") == expected_status and
@@ -598,6 +656,7 @@ class Runner:
             "two_phase_drain_close_proofs": two_phase,
             "producer_writeback_absent": result.get("kve_created") is False and
                 result.get("kvf_created") is False and result.get("ack_created") is False})
+        diagnostic_attempt["status"] = "PASS"
         return result
 
     def reservation_binding(self, project):
@@ -1153,9 +1212,8 @@ class Runner:
     def public_summary(self):
         record_names = {row.get("name") for row in self.records}
         compile_names = {row.get("kind") for row in self.binary_history}
-        diagnostic_names = {row.get("name"): ("PASS" if
-            row.get("diagnostic_status") == row.get("expected_status") else "FAIL")
-            for row in self.records if "diagnostic_status" in row}
+        diagnostic_names = {row.get("name"): row.get("status", "FAIL")
+                            for row in self.diagnostic_attempts}
         scenarios = [
             {"scenario": "shipping_complete_source_compile", "status": "PASS" if "shipping" in compile_names else "NOT_RUN"},
             {"scenario": "qa_complete_source_compile", "status": "PASS" if "qa" in compile_names else "NOT_RUN"},
@@ -1193,6 +1251,7 @@ class Runner:
             "birth_observer_pin": getattr(self, "birth_observer_pin", None),
             "native_allocations": self.native_allocations,
             "native_diagnostic_proofs": self.diagnostic_proofs,
+            "diagnostic_attempts": self.diagnostic_attempts,
             "scenario_matrix": scenarios,
             "stages": [{k: v for k, v in row.items() if k != "root_command"}
                        for row in self.records],
