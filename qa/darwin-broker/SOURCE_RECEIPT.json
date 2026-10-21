@@ -1,5 +1,6 @@
 {
-  "native_sha256": "e400c9cc9251deda09b590a8e8224240b1294438aea3857e8f1936cfad1c56ed",
+  "native_sha256": "9a07c92a0df842843412fd59aab695b488174bbcbe077a7762242408001eaa76",
+  "native_commit": "5d74773",
   "source_scope": "preliminary unqualified native source; not committed release bytes",
   "base_source_commit": "bc444655d6c037b95292ba9e425f2273fea24ba5",
   "input_path": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r5-darwin-native\\.knowledge\\tools\\lib\\verification-darwin-broker.m"

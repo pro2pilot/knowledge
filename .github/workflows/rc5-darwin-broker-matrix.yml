@@ -16,12 +16,19 @@ jobs:
       - name: Verify source copy primitives on macOS
         if: always()
         run: node --test qa/darwin-broker/copy/tests/verification-isolated-copy.test.js > qa/darwin-broker/evidence/copy-tests.tap 2>&1
+      - name: Native isolated-copy positive control
+        if: always()
+        run: python3 qa/darwin-broker/run_native_smoke.py
+      - name: Audit-only credential and host-port probes
+        if: always()
+        run: python3 qa/darwin-broker/run_security_probes.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-compile-attempt2
+          name: darwin-native-attempt3
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
             qa/darwin-broker/evidence/*.log
             qa/darwin-broker/evidence/*.tap
+            qa/darwin-broker/evidence/*.sb
