@@ -28,11 +28,11 @@ jobs:
         run: /usr/bin/clang -std=c11 -O2 -Wall -Wextra qa/darwin-broker/uid-scan.c -o qa/darwin-broker/evidence/uid-scan
       - name: Test installed pinned broker and C stub
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py --expected-source-sha=43c8b28ff07dde7d299cef20897f819c24f74012631ff02fcbfb39a14358c977
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/daemon-harness-m2.py --expected-source-sha=397001bc3a7714bc95d0d04bb6944b4fe77dbbb40b5b9fd4423685476e4a3f96
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt20-${{ matrix.os }}
+          name: darwin-native-attempt21-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-portable-attempt20-ubuntu-22.04
+          name: darwin-portable-attempt21-ubuntu-22.04
           path: |
             qa/darwin-broker/COPY_SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json

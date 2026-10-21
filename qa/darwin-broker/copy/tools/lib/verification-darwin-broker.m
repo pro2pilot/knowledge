@@ -327,6 +327,11 @@ static bool validRecordedEntry(NSMutableDictionary *e,NSString *id) {
         &&numericField(e[@"work_started_monotonic_ms"])&&numericField(e[@"work_deadline_ms"])
         &&[e[@"work_deadline_ms"] unsignedLongLongValue]==[e[@"work_started_monotonic_ms"] unsignedLongLongValue]+[e[@"work_budget_ms"] unsignedLongLongValue]
         &&booleanField(e[@"admission_closed"])&&booleanField(e[@"spawn_intent"])&&booleanField(e[@"authority_spawn_intent"])
+        &&(![e[@"admission_closed"] boolValue]||(numericField(e[@"cleanup_started_monotonic_ms"])
+            &&numericField(e[@"cleanup_deadline_ms"])&&booleanField(e[@"cleanup_budget_exceeded"])
+            &&[e[@"cleanup_deadline_ms"] unsignedLongLongValue]>[e[@"cleanup_started_monotonic_ms"] unsignedLongLongValue]
+            &&[e[@"cleanup_deadline_ms"] unsignedLongLongValue]-[e[@"cleanup_started_monotonic_ms"] unsignedLongLongValue]
+                <=[e[@"cleanup_budget_ms"] unsignedLongLongValue]))
         &&validRecordedIdentity(e[@"controller"])&&(!e[@"authority"]||validRecordedIdentity(e[@"authority"]));
 }
 static bool validRelative(NSString *path) {
@@ -485,13 +490,13 @@ static size_t gRunConfigOffset;
 static NSMutableDictionary *gClosing;
 static uint64_t gCloseDeadline;
 static int gCloseWaiter=-1;
+static bool gDrainOnly;
+static int gCleanupBarrier=-1;
+static NSString *gCleanupAttempt;
 static void stopSignal(int sig) {(void)sig;gStopping=1;}
 static bool closeAdmission(NSMutableDictionary *e,NSString *reason,uint64_t budget) {
+    gDrainOnly=false; /* cancellation, crash, recovery and ordinary close are terminal */
     bool durable=!gPoisoned;
-    if(![e[@"admission_closed"] boolValue]){e[@"admission_closed"]=@YES;e[@"state"]=@"closing";
-        e[@"stop_reason"]=reason;e[@"closed_monotonic_ms"]=@(nowMS());
-        durable=persist();
-    }
     /* Disk failure poisons positive proof, never the ability to stop work. */
     if(gPendingFD>=0){close(gPendingFD);gPendingFD=-1;}
     if(gRun.config>=0){close(gRun.config);gRun.config=-1;gRunConfig=nil;}
@@ -500,8 +505,15 @@ static bool closeAdmission(NSMutableDictionary *e,NSString *reason,uint64_t budg
      * stop path. An invalid stored value cannot grant an unbounded wait. */
     uint64_t profile=[e[@"cleanup_budget_ms"] unsignedLongLongValue];
     uint64_t bounded=budget>=1&&budget<=K_MAX_CLEANUP_MS&&profile>=1&&profile<=K_MAX_CLEANUP_MS?MIN(budget,profile):1;
-    uint64_t deadline=nowMS()+bounded;
-    gCloseDeadline=gClosing==e?MIN(gCloseDeadline,deadline):deadline;gClosing=e;return durable;
+    uint64_t started=nowMS(),deadline=started+bounded;
+    if(e[@"cleanup_deadline_ms"])deadline=MIN(deadline,[e[@"cleanup_deadline_ms"] unsignedLongLongValue]);
+    if(!e[@"cleanup_started_monotonic_ms"]){e[@"cleanup_started_monotonic_ms"]=@(started);e[@"cleanup_budget_exceeded"]=@NO;}
+    e[@"cleanup_deadline_ms"]=@(deadline);
+    if(![e[@"admission_closed"] boolValue]){e[@"stop_reason"]=reason;e[@"closed_monotonic_ms"]=@(started);}
+    else if(![reason isEqual:@"close_requested"]&&![reason isEqual:@"recovery_requested"])e[@"stop_reason"]=reason;
+    e[@"admission_closed"]=@YES;e[@"state"]=@"closing";
+    durable=persist()&&durable;
+    gCloseDeadline=deadline;gClosing=e;return durable;
 }
 static int admissionFD(NSMutableDictionary *e) {
     NSString *name=[NSString stringWithFormat:@"%@.admission",e[@"descriptor"][@"boundary_id"]];
@@ -510,6 +522,18 @@ static int admissionFD(NSMutableDictionary *e) {
     if(fd<0)return -1;if(!saved||fstat(fd,&st)||!S_ISREG(st.st_mode)||st.st_uid!=0||st.st_nlink!=1||(st.st_mode&0077)
         ||[saved[@"device"] unsignedLongLongValue]!=(uint64_t)st.st_dev||[saved[@"inode"] unsignedLongLongValue]!=(uint64_t)st.st_ino){
         close(fd);return -1;}return fd;
+}
+static int acquireCleanupBarrier(NSMutableDictionary *e) {
+    NSString *attempt=e[@"descriptor"][@"attempt_id"];
+    int fresh=admissionFD(e);if(fresh<0)return -1;
+    if(gCleanupBarrier>=0){struct stat old,current;
+        bool same=[gCleanupAttempt isEqual:attempt]&&fstat(gCleanupBarrier,&old)==0&&fstat(fresh,&current)==0
+            &&old.st_dev==current.st_dev&&old.st_ino==current.st_ino;
+        close(fresh);return same?fcntl(gCleanupBarrier,F_DUPFD_CLOEXEC,32):-1;
+    }
+    if(flock(fresh,LOCK_EX|LOCK_NB)){close(fresh);return -1;}
+    gCleanupBarrier=fcntl(fresh,F_DUPFD_CLOEXEC,32);
+    if(gCleanupBarrier<0){close(fresh);return -1;}gCleanupAttempt=attempt;return fresh;
 }
 static NSString *sbplString(NSString *text) {
     NSString *array=[[NSString alloc] initWithData:jsonData(@[text]) encoding:NSUTF8StringEncoding];
@@ -712,9 +736,13 @@ static NSDictionary *statusReply(NSMutableDictionary *e) {
         @"work_budget_ms":e[@"work_budget_ms"]?:NSNull.null,@"cleanup_budget_ms":e[@"cleanup_budget_ms"],
         @"work_started_monotonic_ms":e[@"work_started_monotonic_ms"]?:NSNull.null,
         @"work_deadline_monotonic_ms":e[@"work_deadline_ms"],
+        @"cleanup_started_monotonic_ms":e[@"cleanup_started_monotonic_ms"]?:NSNull.null,
+        @"cleanup_deadline_monotonic_ms":e[@"cleanup_deadline_ms"]?:NSNull.null,
+        @"cleanup_budget_exceeded":e[@"cleanup_budget_exceeded"]?:@NO,
         @"stop_reason":e[@"stop_reason"]?:NSNull.null,@"registry_healthy":@((bool)!gPoisoned),
         @"sandbox_profile":sandboxProfile(e[@"descriptor"][@"workspace_path"])} mutableCopy];
-    if(e[@"proof"])r[@"proof"]=e[@"proof"];return r;
+    if(e[@"proof"])r[@"proof"]=e[@"proof"];
+    if(e[@"command_drain_proof"])r[@"command_drain_proof"]=e[@"command_drain_proof"];return r;
 }
 static void handleClient(int fd) {
     struct KPeer peer;if(!authenticate(fd,&peer)){sendJSON(fd,failure(@"PEER_AUTHENTICATION_FAILED"));close(fd);return;}
@@ -741,7 +769,16 @@ static void handleClient(int fd) {
         else if(publicOperation){
             if([op isEqual:@"status"]||[e[@"state"] isEqual:@"closed"])reply=statusReply(e);
             else if(!validDuration(q[@"cleanup_budget_ms"],K_MAX_CLEANUP_MS))reply=failure(@"INVALID_CLEANUP_BUDGET");
-            else if(gCloseWaiter>=0)reply=failure(@"CLEANUP_BUSY");
+            else if(gCloseWaiter>=0&&gDrainOnly){
+                /* A waiting drain reply cannot block explicit terminal stop.
+                 * Reject that phase's waiter, then bind the bounded terminal
+                 * reply to this caller. No second waiter list or new epoch. */
+                int interrupted=gCloseWaiter;gCloseWaiter=-1;
+                bool durable=closeAdmission(e,[op isEqual:@"recover"]?@"recovery_during_command_drain":@"terminal_stop_during_command_drain",
+                    [q[@"cleanup_budget_ms"] unsignedLongLongValue]);
+                sendJSON(interrupted,failure(@"COMMAND_DRAIN_INTERRUPTED_BY_TERMINAL_STOP"));close(interrupted);
+                if(durable){gCloseWaiter=fd;return;}else reply=failure(@"ADMISSION_CLOSE_DURABILITY_FAILED");
+            }else if(gCloseWaiter>=0)reply=failure(@"CLEANUP_BUSY");
             else if(closeAdmission(e,[op isEqual:@"recover"]?@"recovery_requested":@"close_requested",[q[@"cleanup_budget_ms"] unsignedLongLongValue])){
                 gCloseWaiter=fd;return;
             }else reply=failure(@"ADMISSION_CLOSE_DURABILITY_FAILED");
@@ -773,6 +810,13 @@ static void handleClient(int fd) {
         }else if([op isEqual:@"permit"]&&isController(e,&peer)&&[e[@"state"] isEqual:@"sealed"]
             &&e[@"authority"]&&![e[@"authority_spawn_intent"] boolValue]){
             e[@"state"]=@"permitted";reply=persist()?@{@"ok":@YES}:failure(@"PERMIT_DURABILITY_FAILED");
+        }else if([op isEqual:@"drain_commands"]&&isAuthority(e,&peer)&&[e[@"state"] isEqual:@"permitted"]){
+            if(gCloseWaiter>=0)reply=failure(@"CLEANUP_BUSY");
+            else if(!validDuration(q[@"cleanup_budget_ms"],K_MAX_CLEANUP_MS))reply=failure(@"INVALID_CLEANUP_BUDGET");
+            else if(closeAdmission(e,@"commands_complete",[q[@"cleanup_budget_ms"] unsignedLongLongValue])){
+                gDrainOnly=true;e[@"state"]=@"draining_commands";
+                if(persist()){gCloseWaiter=fd;return;}else reply=failure(@"COMMAND_DRAIN_DURABILITY_FAILED");
+            }else reply=failure(@"ADMISSION_CLOSE_DURABILITY_FAILED");
         }else if([op isEqual:@"run"]&&isAuthority(e,&peer)&&[e[@"state"] isEqual:@"permitted"]){
             if(gRun.pid)reply=failure(@"COMMAND_BUSY");else if(launchRun(e,q,fd))return;else reply=failure(@"COMMAND_REJECTED");
         }else reply=failure(@"INVALID_TRANSITION");
@@ -830,7 +874,7 @@ static void advanceRun(void) {
         gRun=(struct KRun){.client=-1,.out=-1,.err=-1,.ready=-1,.gate=-1,.config=-1};}
 }
 static void advanceCleanup(void) {
-    if(!gClosing)return;NSMutableDictionary *e=gClosing;int lock=admissionFD(e);bool excluded=false;
+    if(!gClosing)return;NSMutableDictionary *e=gClosing;int lock=acquireCleanupBarrier(e);bool excluded=lock>=0;
     /* A captured, exact owned launch stub may still hold the barrier before
      * credential drop. Never infer its exit from a private-UID zero scan. */
     bool stubObserved=true;
@@ -840,7 +884,6 @@ static void advanceCleanup(void) {
         else if(stub.bsd.pbi_ruid==0){if(!signalExact(e[@"launch_stub"],0))stubObserved=false;}
         else if(stub.bsd.pbi_ruid!=[e[@"descriptor"][@"task_ruid"] unsignedIntValue])stubObserved=false;
     }
-    if(lock>=0)excluded=flock(lock,LOCK_EX|LOCK_NB)==0;
     bool zero=false,authorityExited=!e[@"authority"],observed=stubObserved;
     pid_t *pids=calloc(K_PID_CAP,sizeof(pid_t));int count=-1;
     if(excluded&&pids){count=members([e[@"descriptor"][@"task_ruid"] unsignedIntValue],pids);zero=count==0;
@@ -850,12 +893,57 @@ static void advanceCleanup(void) {
             audit_token_t t={{0}};t.val[5]=v.bsd.pbi_pid;t.val[7]=(uint32_t)v.unique.pidversion;
             int rc=gSignalToken(&t,SIGKILL);if(rc!=0&&rc!=ESRCH)observed=false;}}
     free(pids);
-    if(e[@"authority"]){struct KIdentity v;int rc=observeExact(e[@"authority"],&v);
+    int authorityObserved=e[@"authority"]?-1:0;
+    if(e[@"authority"]){struct KIdentity v;int rc=observeExact(e[@"authority"],&v);authorityObserved=rc;
         authorityExited=rc==0;if(rc<0)observed=false;
-        if(rc==1&&!signalExact(e[@"authority"],[e[@"owner_uid"] unsignedIntValue]))observed=false;}
+        if(!gDrainOnly&&rc==1&&!signalExact(e[@"authority"],[e[@"owner_uid"] unsignedIntValue]))observed=false;}
     bool intents=![e[@"spawn_intent"] boolValue]&&![e[@"authority_spawn_intent"] boolValue];
+    if(gDrainOnly){struct KIdentity controller;int controllerObserved=observeExact(e[@"controller"],&controller);
+        bool ownerAlive=controllerObserved==1&&authorityObserved==1;
+        bool drainFacts=excluded&&zero&&observed&&intents&&!gRun.pid&&ownerAlive&&!gPoisoned;
+        if(!ownerAlive||gStopping||gPoisoned||nowMS()>=gCloseDeadline){
+            NSString *reason=gStopping?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":
+                !ownerAlive?@"drain_owner_exit_or_observation_unconfirmed":@"cleanup_budget_exceeded";
+            if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
+            closeAdmission(e,reason,[e[@"cleanup_budget_ms"] unsignedLongLongValue]);
+            /* Full cleanup in the next scheduler turn, with the SAME epoch. */
+            if(lock>=0)close(lock);return;
+        }
+        if(!drainFacts){if(lock>=0)close(lock);return;}
+        NSDictionary *proof=@{@"schema":@"knowledge-darwin-command-drain-proof.v1",@"phase":@"commands_drained",
+            @"attempt_id":e[@"descriptor"][@"attempt_id"],@"descriptor_sha256":e[@"descriptor_sha256"],
+            @"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,@"host_id":gHost,@"boot_id":gBoot,
+            @"task_ruid":e[@"descriptor"][@"task_ruid"],@"admission_closed":@YES,
+            @"spawn_exclusion_acquired":@YES,@"spawn_exclusion_held_until_terminal":@YES,
+            @"spawn_intents_resolved":@YES,@"kernel_membership_zero":@YES,@"registered_authority_alive":@YES,
+            @"authority_identity":e[@"authority"],@"cleanup_started_monotonic_ms":e[@"cleanup_started_monotonic_ms"],
+            @"cleanup_deadline_monotonic_ms":e[@"cleanup_deadline_ms"],@"observed_monotonic_ms":@(nowMS()),
+            @"native_command_drain_facts_confirmed":@YES,@"capability_qualified":@(kCapabilityQualified),
+            @"command_drain_confirmed":@(kCapabilityQualified),@"terminal_cleanup":@NO,
+            @"receipt_kind":@"root_registry_not_os_signed_attestation"};
+        NSData *bytes=jsonData(proof);NSString *digest=sha(bytes);
+        NSString *receipt=[NSString stringWithFormat:@"%@.%@.command-drain.json",e[@"descriptor"][@"attempt_id"],digest];
+        bool durable=bytes.length<=65536&&saveJSON(receipt,proof);
+        if(durable){e[@"command_drain_proof"]=proof;e[@"command_drain_sha256"]=digest;
+            e[@"command_drain_receipt_name"]=receipt;e[@"state"]=@"commands_drained";durable=persist();}
+        if(!durable){closeAdmission(e,@"command_drain_durability_failed",[e[@"cleanup_budget_ms"] unsignedLongLongValue]);
+            if(lock>=0)close(lock);return;}
+        /* Slow receipt I/O cannot turn an expired epoch or owner loss into a
+         * positive current phase. Retain the old receipt only as history. */
+        struct KIdentity currentOwner;
+        if(nowMS()>=gCloseDeadline||observeExact(e[@"controller"],&currentOwner)!=1
+            ||observeExact(e[@"authority"],&currentOwner)!=1){
+            if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
+            closeAdmission(e,@"drain_completion_expired_or_owner_unconfirmed",[e[@"cleanup_budget_ms"] unsignedLongLongValue]);
+            if(lock>=0)close(lock);return;
+        }
+        if(gCloseWaiter>=0){sendJSON(gCloseWaiter,statusReply(e));close(gCloseWaiter);gCloseWaiter=-1;}
+        /* Keep the shared OFD in gCleanupBarrier, and keep active_attempt. */
+        if(lock>=0)close(lock);gClosing=nil;gDrainOnly=false;return;
+    }
     bool facts=excluded&&zero&&authorityExited&&observed&&intents&&!gRun.pid;
     if(!facts&&nowMS()<gCloseDeadline){if(lock>=0)close(lock);return;}
+    if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
     bool confirmed=facts&&!gPoisoned;NSString *state=confirmed?@"closed":@"cleanup_unconfirmed";
     NSDictionary *proof=@{@"schema":@"knowledge-darwin-private-ruid-proof.v1",@"attempt_id":e[@"descriptor"][@"attempt_id"],
         @"descriptor_sha256":e[@"descriptor_sha256"],@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,
@@ -867,6 +955,10 @@ static void advanceCleanup(void) {
         @"controller_excluded_from_boundary":@YES,@"persistent_broker_excluded_from_boundary":@YES,
         @"native_cleanup_facts_confirmed":@(confirmed),@"capability_qualified":@(kCapabilityQualified),
         @"cleanup_confirmed":@((bool)(confirmed&&kCapabilityQualified)),@"state":state,@"receipt_kind":@"root_registry_not_os_signed_attestation",
+        @"phase":@"terminal",@"terminal_cleanup":@YES,
+        @"command_drain_sha256":e[@"command_drain_sha256"]?:NSNull.null,
+        @"cleanup_started_monotonic_ms":e[@"cleanup_started_monotonic_ms"],@"cleanup_deadline_monotonic_ms":e[@"cleanup_deadline_ms"],
+        @"cleanup_budget_exceeded":e[@"cleanup_budget_exceeded"],
         @"observed_monotonic_ms":@(nowMS())};
     /* No env, output, tokens, arbitrary paths, or source contents in receipts. */
     if(jsonData(proof).length>65536){gPoisoned=true;confirmed=false;}
@@ -878,7 +970,9 @@ static void advanceCleanup(void) {
     bool registryDurable=persist();
     NSDictionary *reply=registryDurable?statusReply(e):failure(@"CLEANUP_RECEIPT_DURABILITY_UNCONFIRMED");
     if(gCloseWaiter>=0){sendJSON(gCloseWaiter,reply);close(gCloseWaiter);gCloseWaiter=-1;}
-    if(lock>=0)close(lock);gClosing=nil;
+    if(lock>=0)close(lock);
+    if(durable&&confirmed&&registryDurable&&gCleanupBarrier>=0){close(gCleanupBarrier);gCleanupBarrier=-1;gCleanupAttempt=nil;}
+    gClosing=nil;gDrainOnly=false;
 }
 
 static NSString *sysctlString(const char *name) { size_t n=0;if(sysctlbyname(name,NULL,&n,NULL,0)||n<2||n>4096)return nil;
@@ -1015,10 +1109,13 @@ static int serve(void) {
     for(;;){@autoreleasepool{
         NSMutableDictionary *e=activeID().length?entryFor(activeID()):nil;
         bool known=e&&validRecordedEntry(e,activeID())&&[e[@"descriptor"][@"boot_id"] isEqual:gBoot]&&[e[@"descriptor"][@"host_id"] isEqual:gHost];
-        if(known&&!gClosing&&![e[@"admission_closed"] boolValue]){struct KIdentity v;
+        bool drained=[e[@"state"] isEqual:@"commands_drained"];
+        if(known&&!gClosing&&(![e[@"admission_closed"] boolValue]||drained)){struct KIdentity v;
             int controller=observeExact(e[@"controller"],&v),authority=e[@"authority"]?observeExact(e[@"authority"],&v):1;
             NSString *reason=gStopping?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":controller<0||authority<0?@"owner_observation_unconfirmed":
-                controller==0||authority==0?@"owner_exited":nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
+                controller==0||authority==0?@"owner_exited":drained&&nowMS()>=[e[@"cleanup_deadline_ms"] unsignedLongLongValue]?@"cleanup_budget_exceeded":
+                !drained&&nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
+            if([reason isEqual:@"cleanup_budget_exceeded"])e[@"cleanup_budget_exceeded"]=@YES;
             if(reason)closeAdmission(e,reason,[e[@"cleanup_budget_ms"] unsignedLongLongValue]);}
         advanceRun();advanceCleanup();
         if(gStopping&&!gClosing&&!gRun.pid)break;
