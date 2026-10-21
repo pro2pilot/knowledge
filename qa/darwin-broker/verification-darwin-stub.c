@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/acl.h>
 #include <sys/file.h>
+#include <sys/proc_info.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -223,10 +224,23 @@ static bool bound_fds(const struct Config *c) {
         &&(uint64_t)workspace.st_dev==c->workspace_device&&(uint64_t)workspace.st_ino==c->workspace_inode;
 }
 static bool private_credentials(uid_t uid) {
-    struct KIdentity own;gid_t groups[2]={0,0};
-    return fresh(getpid(),&own)&&own.bsd.pbi_ruid==uid&&own.bsd.pbi_uid==uid&&own.bsd.pbi_svuid==uid
+    struct KIdentity own={0};gid_t groups[2]={0,0};
+    errno=0;int observed_bytes=proc_pidinfo(getpid(),18,0,&own,sizeof(own));int observation_errno=errno;
+    bool observed=observed_bytes==(int)sizeof(own)&&own.bsd.pbi_pid==(uint32_t)getpid()
+        &&own.unique.uniqueid>0&&own.unique.pidversion>0;
+    errno=0;int count=getgroups(2,groups);int group_errno=errno;
+    bool ok=observed&&own.bsd.pbi_ruid==uid&&own.bsd.pbi_uid==uid&&own.bsd.pbi_svuid==uid
         &&own.bsd.pbi_rgid==uid&&own.bsd.pbi_gid==uid&&own.bsd.pbi_svgid==uid
-        &&getgroups(2,groups)==1&&groups[0]==uid;
+        &&count==1&&groups[0]==uid;
+    if(!ok){/* Diagnostic comparison only; it does not turn a failed check into admission. */
+        struct proc_bsdinfo bsd={0};errno=0;int bsd_bytes=proc_pidinfo(getpid(),PROC_PIDTBSDINFO,0,&bsd,sizeof(bsd));int bsd_errno=errno;
+        bool bsd_matches=bsd_bytes==(int)sizeof(bsd)&&bsd.pbi_pid==(uint32_t)getpid()
+            &&bsd.pbi_ruid==uid&&bsd.pbi_uid==uid&&bsd.pbi_svuid==uid
+            &&bsd.pbi_rgid==uid&&bsd.pbi_gid==uid&&bsd.pbi_svgid==uid;
+        fprintf(stderr,"native C stub private-credential observation: combined_bytes=%d expected_bytes=%zu combined_observed=%s observation_errno=%d bsd_bytes=%d bsd_errno=%d bsd_credentials_match=%s groups_count=%d groups_errno=%d\n",
+            observed_bytes,sizeof(own),observed?"true":"false",observation_errno,bsd_bytes,bsd_errno,bsd_matches?"true":"false",count,group_errno);
+    }
+    return ok;
 }
 /* Only for this reviewed tiny C image. New task spaces inherit SEND slots,
  * not arbitrary RECEIVE rights. There are no descriptor-bearing inputs or
@@ -305,7 +319,11 @@ static int launch(void) {
         ||(access!=MACH_PORT_NULL&&(!MACH_PORT_VALID(access)||mach_port_type(task,access,&type)!=KERN_SUCCESS||!(type&MACH_PORT_TYPE_SEND))))return 130;
     if(!scrub_names())return 132;
     char *sandbox_error=NULL;if(sandbox_init(c.profile,0,&sandbox_error)){if(sandbox_error)sandbox_free_error(sandbox_error);return 133;}
-    gid_t group=c.uid;if(setgroups(1,&group)||setgid(group)||setuid(c.uid)||!private_credentials(c.uid))return 134;
+    gid_t group=c.uid;
+    if(setgroups(1,&group)){fprintf(stderr,"native C stub credential stage=setgroups errno=%d\n",errno);return 134;}
+    if(setgid(group)){fprintf(stderr,"native C stub credential stage=setgid errno=%d\n",errno);return 134;}
+    if(setuid(c.uid)){fprintf(stderr,"native C stub credential stage=setuid errno=%d\n",errno);return 134;}
+    if(!private_credentials(c.uid))return 134;
     if(!ordinary_host()||!scrub_names())return 135;
     if(!isolated_cwd(14,c.cwd))return 136;close(14);
     struct rlimit core={0,0};if(setrlimit(RLIMIT_CORE,&core))return 137;
