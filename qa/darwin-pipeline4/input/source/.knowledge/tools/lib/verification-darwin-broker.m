@@ -993,7 +993,7 @@ static void publishState(void) {
             @"descriptor":e[@"descriptor"],@"descriptor_sha256":e[@"descriptor_sha256"],@"state":e[@"state"],
             @"admission_closed":e[@"admission_closed"],@"spawn_intent":e[@"spawn_intent"],
             @"authority_spawn_intent":e[@"authority_spawn_intent"],@"observation_cached":@YES,
-            @"allocation_tuple_verified_current":@NO,@"registry_healthy":@NO,@"registry_health_cached":@(!gPoisoned),
+            @"allocation_tuple_verified_current":@NO,@"registry_healthy":@NO,@"registry_health_cached":@((bool)!gPoisoned),
             @"cleanup_confirmed":@NO,@"resources_free":@NO,@"capability_qualified":@(kCapabilityQualified),
             @"work_deadline_monotonic_ms":e[@"work_deadline_ms"],
             @"cleanup_deadline_monotonic_ms":e[@"cleanup_deadline_ms"]?:NSNull.null,
@@ -1477,7 +1477,7 @@ static NSDictionary *statusReply(NSMutableDictionary *e) {
         @"stop_reason":e[@"stop_reason"]?:NSNull.null,@"registry_healthy":@((bool)!gPoisoned),
         @"registry_quarantine_reason":gQuarantineReason?:NSNull.null,
         @"entry_store_loaded":@(gEntryStoreLoaded),@"uid_history":uidHistoryStatus(false),@"account_policy":accountPolicyStatus(),
-        @"allocation_tuple_verified_current":@(allocationVerified),@"stop_latched":@(gStopping||stoppedAttempt(e)),
+        @"allocation_tuple_verified_current":@(allocationVerified),@"stop_latched":@((bool)(gStopping||stoppedAttempt(e))),
         @"sandbox_profile":sandboxProfile(e[@"descriptor"][@"workspace_path"])} mutableCopy];
     if(e[@"proof"]){r[@"proof"]=e[@"proof"];if(e[@"receipt_sha256"])r[@"proof_sha256"]=e[@"receipt_sha256"];}
     if(e[@"command_drain_proof"]&&!gStopping&&!stoppedAttempt(e)){
@@ -1519,8 +1519,8 @@ static bool fastRequest(int token,struct KPeer peer,NSDictionary *q) {
         else{
             NSMutableDictionary *r=[cached mutableCopy];
             r[@"durability_pending"]=@(atomic_load_explicit(&gWriterPending,memory_order_acquire));
-            r[@"stop_latched"]=@(v.valid&&[q[@"attempt_id"] isEqual:@(v.attempt)]
-                &&atomic_load_explicit(&gStopGeneration,memory_order_acquire)==v.generation);
+            r[@"stop_latched"]=@((bool)(v.valid&&[q[@"attempt_id"] isEqual:@(v.attempt)]
+                &&atomic_load_explicit(&gStopGeneration,memory_order_acquire)==v.generation));
             if([op isEqual:@"stop"]){
                 bool role=sameBirth(entry[@"controller"],&peer.parent)
                     ||([entry[@"authority"] isKindOfClass:NSDictionary.class]&&sameBirth(entry[@"authority"],&peer.parent));
@@ -1756,7 +1756,7 @@ static void advanceRun(void) {
             @"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,@"transport_header_sha256":@KNOWLEDGE_DARWIN_TRANSPORT_HEADER_SHA,
             @"installation_id":e[@"descriptor"][@"installation_id"],@"allocation_seq":e[@"descriptor"][@"allocation_seq"],
             @"allocation_sha256":e[@"descriptor"][@"allocation_sha256"],@"host_id":gHost,@"boot_id":gBoot,
-            @"timed_out":@(nowMS()>=gRun.deadline),@"stop_latched":@(gStopping||stoppedAttempt(e)),
+            @"timed_out":@((bool)(nowMS()>=gRun.deadline)),@"stop_latched":@((bool)(gStopping||stoppedAttempt(e))),
             @"exit_code":WIFEXITED(gRun.status)?@(WEXITSTATUS(gRun.status)):(id)NSNull.null,
             @"signal":WIFSIGNALED(gRun.status)?@(WTERMSIG(gRun.status)):(id)NSNull.null,
             @"admission_closed":e[@"admission_closed"],@"capability_qualified":@(kCapabilityQualified)});finishTransport(gRun.client);}

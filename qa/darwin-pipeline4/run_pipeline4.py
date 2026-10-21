@@ -8,6 +8,7 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import plistlib
@@ -110,6 +111,8 @@ class Runner:
         self.account_policy = None
         self.project_roots = []
         self.project_app_pins = {}
+        self.fixture_source_layout = []
+        self.boolean_wire_record = None
         self.task_uids = set()
         self.binaries = {}
         self.binary_history = []
@@ -471,38 +474,45 @@ class Runner:
                    name + "_typed_result_invalid")
         return value
 
-    def copy_source_tree(self, project):
+    def copy_source_tree(self, project, full_runtime=True):
         target = project / ".knowledge"
         target.mkdir(mode=0o700)
-        for row in self.pins["files"]:
-            rel = Path(row["path"])
-            if not rel.parts or rel.parts[0] != ".knowledge":
-                continue
-            src = self.source / rel
-            st = src.lstat()
-            resolved = src.resolve(strict=True)
-            if not resolved.is_relative_to(self.source) or not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode) or st.st_size != row["bytes"] or sha_file(src) != row["sha256"]:
-                raise QAError("project_source_changed_during_copy")
-            dst = target.joinpath(*rel.parts[1:])
-            dst.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            fd = os.open(str(src), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-            try:
-                pieces = []
-                remaining = st.st_size + 1
-                while remaining:
-                    chunk = os.read(fd, min(1024 * 1024, remaining))
-                    if not chunk: break
-                    pieces.append(chunk)
-                    remaining -= len(chunk)
-                copied = b"".join(pieces)
-            finally:
-                os.close(fd)
-            self.check(len(copied) == st.st_size == row["bytes"] and sha_bytes(copied) == row["sha256"],
-                       "project_source_readback_mismatch")
-            private_file(dst, copied)
-        # Diagnostics are read-only except for their own private state roots.
-        (project / "fixtures").mkdir(mode=0o700)
-        self.project_roots.append(project)
+        copied_count = 0
+        if full_runtime:
+            for row in self.pins["files"]:
+                rel = Path(row["path"])
+                if not rel.parts or rel.parts[0] != ".knowledge":
+                    continue
+                src = self.source / rel
+                st = src.lstat()
+                resolved = src.resolve(strict=True)
+                if not resolved.is_relative_to(self.source) or not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode) or st.st_size != row["bytes"] or sha_file(src) != row["sha256"]:
+                    raise QAError("project_source_changed_during_copy")
+                dst = target.joinpath(*rel.parts[1:])
+                dst.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                fd = os.open(str(src), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                try:
+                    pieces = []
+                    remaining = st.st_size + 1
+                    while remaining:
+                        chunk = os.read(fd, min(1024 * 1024, remaining))
+                        if not chunk: break
+                        pieces.append(chunk)
+                        remaining -= len(chunk)
+                    copied = b"".join(pieces)
+                finally:
+                    os.close(fd)
+                self.check(len(copied) == st.st_size == row["bytes"] and sha_bytes(copied) == row["sha256"],
+                           "project_source_readback_mismatch")
+                private_file(dst, copied)
+                copied_count += 1
+            self.check(copied_count == len(self.pins["files"]), "full_source_copy_count_mismatch")
+            # Diagnostics are read-only except for their own private state roots.
+            (project / "fixtures").mkdir(mode=0o700)
+            self.project_roots.append(project)
+        self.fixture_source_layout.append({"project_id": project.name,
+            "kind": "full_source_copy" if full_runtime else "state_only",
+            "source_files": copied_count})
         return target
 
     def verify_pins_unchanged(self):
@@ -521,7 +531,18 @@ class Runner:
             self.check(path.is_file() and not path.is_symlink() and sha_file(path) == expected,
                        "original_project_source_mutated_during_run")
 
-    def run_diagnostic(self, info, project, argv, sources, name, timeout=180,
+    @staticmethod
+    def measured_timings_ms(value):
+        names = ("work_elapsed_ms", "cleanup_elapsed_ms", "elapsed_ms", "monitor_elapsed_ms")
+        measured = {}
+        for name in names:
+            number = value.get(name) if isinstance(value, dict) else None
+            valid_integer = type(number) is int and number >= 0
+            valid_float = type(number) is float and math.isfinite(number) and number >= 0
+            measured[name] = number if valid_integer or valid_float else None
+        return measured
+
+    def run_diagnostic(self, info, project, argv, sources, name, timeout=480,
                    expected_status="diagnostic_completed"):
         for source_name, script_bytes in sources.items():
             script = project / source_name
@@ -543,6 +564,8 @@ class Runner:
         cli = self.source / self.pins["diagnostic_cli"]
         p = self.run(name + "-diagnostic-cli", [str(node), str(cli), str(request_path)],
                      timeout=timeout)
+        outer_record = self.records[-1] if self.records else {}
+        runner_process_elapsed = self.measured_timings_ms({"elapsed_ms": outer_record.get("elapsed_ms")})["elapsed_ms"]
         try: result = json.loads(p.stdout)
         except Exception: result = None
         try: stderr_json = json.loads(p.stderr)
@@ -556,6 +579,8 @@ class Runner:
             "stderr_json_parsed": isinstance(stderr_json, dict),
             "stderr_json_code": None, "stderr_json_reason": None,
             "stderr_excerpt": None if isinstance(stderr_json, dict) else self.safe_cli_stderr(p.stderr),
+            "timings_ms": self.measured_timings_ms(result),
+            "runner_observed_process_elapsed_ms": runner_process_elapsed,
             "typed_result": None}
         if isinstance(stderr_json, dict):
             nested_error = stderr_json.get("error")
@@ -571,6 +596,7 @@ class Runner:
                 "status": self.safe_cli_text(result.get("status", "")),
                 "reason": self.safe_cli_text(result.get("reason", "")),
                 "code": self.safe_cli_text(result.get("code", "")),
+                "timings_ms": self.measured_timings_ms(result),
                 "role_exit": {"command_exit_code": command.get("exit_code"),
                     "command_signal": self.safe_cli_text(command.get("signal", "")),
                     "authority_exit_code": authority_exit.get("exit_code"),
@@ -619,7 +645,8 @@ class Runner:
                 "authority_exit": authority_exit,
                 "authority_exit_method": result.get("authority_exit_method"),
                 "command_result": {key: result.get("command", {}).get(key)
-                    for key in ("ok", "exit_code", "signal", "timed_out", "stop_latched", "admission_closed")}}
+                    for key in ("ok", "exit_code", "signal", "timed_out", "stop_latched", "admission_closed")},
+                "timings_ms": self.measured_timings_ms(result)}
             self.check(not self.has_secret_key(proof_record), name + "_public_proof_contains_secret_key")
             self.diagnostic_proofs.append(proof_record)
         elif expected_status == "failed":
@@ -637,7 +664,8 @@ class Runner:
                     "terminal_state": terminal_observation.get("state"),
                     "admission_closed": terminal_observation.get("admission_closed"),
                     "proof": observed_proof,
-                    "authority_exit": result.get("authority_exit")}
+                    "authority_exit": result.get("authority_exit"),
+                    "timings_ms": self.measured_timings_ms(result)}
                 self.check(not self.has_secret_key(failure_proof), name + "_failure_proof_public_unsafe")
                 self.diagnostic_proofs.append(failure_proof)
         # The complete result (which may contain private bindings) remains in the
@@ -646,6 +674,7 @@ class Runner:
             "report_only": True, "production_acceptance": False,
             "capability_qualified": False, "command_exit_code": result.get("command", {}).get("exit_code"),
             "command_signal": result.get("command", {}).get("signal"),
+            "timings_ms": self.measured_timings_ms(result),
             "cleanup_status": result.get("cleanup_status", "native_terminal_confirmed"),
             "kve_created": False, "kvf_created": False, "ack_created": False}
         self.records.append({"name": name, "diagnostic_status": result["status"],
@@ -857,6 +886,21 @@ class Runner:
         self.check(result.returncode == 0, "uid_scan_compile_failed")
         self.uid_scan = output
 
+    def compile_boolean_wire(self):
+        source = self.workspace / "qa/darwin-pipeline4/boolean-wire.m"
+        digest = sha_file(source)
+        output = self.evidence / "boolean-wire"
+        compile_result = self.run("compile-boolean-wire", ["/usr/bin/clang", "-x", "objective-c",
+            "-fobjc-arc", "-Wall", "-Wextra", "-Werror", "-framework", "Foundation",
+            "-framework", "CoreFoundation", str(source), "-o", str(output)], timeout=60)
+        self.check(compile_result.returncode == 0, "boolean_wire_compile_failed")
+        execution = self.run("run-boolean-wire", [str(output)], timeout=15)
+        self.check(execution.returncode == 0, "boolean_wire_json_type_regression_failed")
+        self.boolean_wire_record = {"status": "PASS", "source_sha256": digest,
+            "compile_exit_code": compile_result.returncode, "run_exit_code": execution.returncode,
+            "boolean_fields_verified": 5, "truth_values_checked": 2, "numeric_control_verified": True,
+            "stdout_bytes": len(execution.stdout), "stdout_sha256": sha_bytes(execution.stdout)}
+
     def fixture_registry_snapshot(self):
         registry = self.fixture / "registry/registry.json"
         reader = ("import os,stat,sys; p=sys.argv[1]; "
@@ -1054,6 +1098,7 @@ class Runner:
             "csrutil_stdout_sha256": sha_bytes(sip.stdout), "csrutil_exit_code": sip.returncode}
         self.load_pins()
         self.compile_uid_scan()
+        self.compile_boolean_wire()
         self.compile_birth_observer()
         self.compile_pair(False)
         self.fixture_path()
@@ -1062,21 +1107,30 @@ class Runner:
         project.mkdir(mode=0o700)
         self.copy_source_tree(project)
         script = b"'use strict';\nconsole.log('pipeline4-diagnostic-script-ok');\n"
-        test = b"'use strict';\nconst test=require('node:test');\nconst assert=require('node:assert/strict');\ntest('pipeline4 diagnostic test',()=>assert.equal(2+2,4));\n"
         self.run_diagnostic(normal, project, ["node", "fixtures/main.js"],
                         {"fixtures/main.js": script}, "d1-script")
-        self.run_diagnostic(normal, project, ["node", "--test", "fixtures/main.test.js"],
+        project_test = self.evidence / "project-d1-node-test"
+        project_test.mkdir(mode=0o700)
+        self.copy_source_tree(project_test, full_runtime=False)
+        test = b"'use strict';\nconst test=require('node:test');\nconst assert=require('node:assert/strict');\ntest('pipeline4 diagnostic test',()=>assert.equal(2+2,4));\n"
+        self.run_diagnostic(normal, project_test, ["node", "--test", "fixtures/main.test.js"],
                         {"fixtures/main.test.js": test}, "d1-node-test")
+        project_failing = self.evidence / "project-d1-failing-command"
+        project_failing.mkdir(mode=0o700)
+        self.copy_source_tree(project_failing, full_runtime=False)
         failing = b"'use strict';\nprocess.exitCode=7;\n"
-        result = self.run_diagnostic(normal, project, ["node", "fixtures/failing.js"],
+        result = self.run_diagnostic(normal, project_failing, ["node", "fixtures/failing.js"],
                         {"fixtures/failing.js": failing}, "d1-failing-command",
                         expected_status="command_failed")
         self.check(result.get("command", {}).get("exit_code") == 7,
                    "failing_command_exit_not_preserved")
+        project_mutation = self.evidence / "project-d1-copy-mutation"
+        project_mutation.mkdir(mode=0o700)
+        self.copy_source_tree(project_mutation, full_runtime=False)
         original = b"'use strict';\nmodule.exports='pinned-copy';\n"
         mutation = ("'use strict';\nconst fs=require('node:fs');\n"+
                     "fs.writeFileSync('fixtures/source.js','mutated');\n").encode()
-        result = self.run_diagnostic(normal, project, ["node", "fixtures/mutate.js"],
+        result = self.run_diagnostic(normal, project_mutation, ["node", "fixtures/mutate.js"],
                         {"fixtures/source.js": original, "fixtures/mutate.js": mutation},
                         "d1-copy-mutation", expected_status="failed")
         self.check(result.get("reason") == "COPY_READBACK_UNCONFIRMED", "copy_mutation_not_refused")
@@ -1089,7 +1143,7 @@ class Runner:
         qa = self.setup_fixture("qa", run_at_load=True)
         project2 = self.evidence / "project-d2"
         project2.mkdir(mode=0o700)
-        self.copy_source_tree(project2)
+        self.copy_source_tree(project2, full_runtime=False)
         script2 = ("'use strict';\nconst fs=require('node:fs');\n"+
                    "fs.writeFileSync('ready.marker',JSON.stringify({pid:process.pid})+'\\n',{flag:'wx',mode:0o600});\n"+
                    "setInterval(()=>{},1000);\n").encode()
@@ -1109,6 +1163,7 @@ class Runner:
         # the private evidence directory. The reservation and copied marker are
         # observed before the QA persistence point is armed.
         script = project / "fixtures/long.js"
+        script.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         script.write_bytes(script_bytes)
         self.project_app_pins[script] = sha_bytes(script_bytes)
         request = {"report_only": True, "repoRoot": str(project), "stateRoot": str(project / ".knowledge"),
@@ -1195,7 +1250,8 @@ class Runner:
             "readbacks": result.get("readbacks"),
             "native_terminal_proof": observed_terminal.get("proof") if isinstance(observed_terminal, dict) else None,
             "terminal_state": observed_terminal.get("state") if isinstance(observed_terminal, dict) else None,
-            "authority_exit": result.get("authority_exit")}
+            "authority_exit": result.get("authority_exit"),
+            "timings_ms": self.measured_timings_ms(result)}
         self.check(not self.has_secret_key(failed_proof), "d2_failure_proof_public_unsafe")
         self.diagnostic_proofs.append(failed_proof)
         self.diagnostic_summary = {"name": "d2-active-cancel", "status": "failed_as_expected",
@@ -1204,9 +1260,10 @@ class Runner:
             "kve_created": False, "kvf_created": False, "ack_created": False,
             "direct_monitor_sigint": True, "process_exit_code": proc.returncode if proc.returncode >= 0 else None,
             "process_signal": -proc.returncode if proc.returncode < 0 else None,
-            "elapsed_ms": round((time.monotonic() - monitor_started) * 1000, 3)}
+            "timings_ms": self.measured_timings_ms(result),
+            "runner_observed_monitor_process_elapsed_ms": round((time.monotonic() - monitor_started) * 1000, 3)}
         self.records.append({"name": "active_command_late_release_fence", "cli_exit_code": proc.returncode,
-            "elapsed_ms": round((time.monotonic() - monitor_started) * 1000, 3),
+            "runner_observed_monitor_process_elapsed_ms": round((time.monotonic() - monitor_started) * 1000, 3),
             "stop_latched_before_release": True, "positive_completion_after_stop": False})
 
     def public_summary(self):
@@ -1217,6 +1274,8 @@ class Runner:
         scenarios = [
             {"scenario": "shipping_complete_source_compile", "status": "PASS" if "shipping" in compile_names else "NOT_RUN"},
             {"scenario": "qa_complete_source_compile", "status": "PASS" if "qa" in compile_names else "NOT_RUN"},
+            {"scenario": "foundation_boolean_json_type_regression",
+                "status": self.boolean_wire_record.get("status", "NOT_RUN") if isinstance(self.boolean_wire_record, dict) else "NOT_RUN"},
             {"scenario": "normal_root_launchd_baseline", "status": "PASS" if "probe-shipping-pair" in record_names else "NOT_RUN"},
             {"scenario": "d1_single_node_script", "status": diagnostic_names.get("d1-script", "NOT_RUN")},
             {"scenario": "d1_single_quiet_node_test", "status": diagnostic_names.get("d1-node-test", "NOT_RUN")},
@@ -1246,12 +1305,14 @@ class Runner:
                 for k, v in self.binaries.items()}),
             "compiled_pairs": self.binary_history,
             "compiler_diagnostics": self.compiler_diagnostics,
+            "boolean_wire_regression": self.boolean_wire_record,
             "runtime_pins": self.runtime_pins,
             "installed_bindings": self.installed_bindings,
             "birth_observer_pin": getattr(self, "birth_observer_pin", None),
             "native_allocations": self.native_allocations,
             "native_diagnostic_proofs": self.diagnostic_proofs,
             "diagnostic_attempts": self.diagnostic_attempts,
+            "fixture_source_layout": self.fixture_source_layout,
             "scenario_matrix": scenarios,
             "stages": [{k: v for k, v in row.items() if k != "root_command"}
                        for row in self.records],

@@ -80,7 +80,7 @@ test('transport exit or stdout JSON cannot replace a typed command result', () =
   for (const changed of [{ ok: true, exit_code: 0 }, { ...good, command_sha256: hex('0') },
     { ...good, attempt_id: hex('0') }, { ...good, command_ordinal: 2 }, { ...good, allocation_seq: '13' },
     { ...good, capability_qualified: true }, { ...good, signal: 'SIGTERM' }, { ...good, signal: 9 },
-    { ...good, exit_code: null }, { ...good, output: 'PASS' }]) {
+    { ...good, exit_code: null }, { ...good, timed_out: 0 }, { ...good, stop_latched: 1 }, { ...good, output: 'PASS' }]) {
     assert.throws(() => wire.commandResult(changed, b, command), { code: 'darwin_diagnostic_command_result_invalid' });
   }
   for (const changed of [{ ...good, exit_code: 1 }, { ...good, timed_out: true },
