@@ -3,14 +3,14 @@
   "scope": "ordinary compile and inert Foundation regression only",
   "before_sha256": "4acb9ba3315ec7c4ff412b3106f214910c2f54ba9445889dfe84986a975457d1",
   "after_sha256": "5d3f239b7465ed6c32b333c053099c66c32b755e63abd990da6132712b902b91",
-  "helper_sha256": "d39df03f81f4b2689e0074e8034e29d8d879cf221815b9108caf3b574ef57a57",
+  "helper_sha256": "8889282799ebead2880682daec324bba165b1fcd79453408d8b954f8e12d1a8b",
   "backend_qualified": false,
   "source_commit_declared_base": "de6854239d4f5ee499e43cf27e9386945b000dbb",
   "files": [
     {
       "path": "qa/darwin-stop/helper.py",
-      "sha256": "d39df03f81f4b2689e0074e8034e29d8d879cf221815b9108caf3b574ef57a57",
-      "bytes": 22279
+      "sha256": "8889282799ebead2880682daec324bba165b1fcd79453408d8b954f8e12d1a8b",
+      "bytes": 22256
     },
     {
       "path": "qa/darwin-stop/before.m",

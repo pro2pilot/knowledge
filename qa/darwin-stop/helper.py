@@ -15,6 +15,7 @@ import subprocess
 
 PRELUDE = r'''
 #import <Foundation/Foundation.h>
+#include <mach/message.h>
 #include <CommonCrypto/CommonDigest.h>
 #include <math.h>
 #include <stdbool.h>
@@ -43,7 +44,6 @@ PRELUDE = r'''
 static const bool kCapabilityQualified=false;
 struct KIdentity {struct {unsigned pbi_ruid,pbi_pid;} bsd;struct {int pidversion;} unique;};
 struct KPeer {uid_t owner;struct KIdentity parent;};
-typedef struct {unsigned val[8];} audit_token_t;
 static unsigned scenario,consumes,saves,commits,status_reads,close_calls,observations;
 static unsigned member_calls,path_child_calls,unexpected_fs_calls,uid_burn_count;
 static uid_t next_candidate_uid;
