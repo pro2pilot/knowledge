@@ -1,0 +1,23 @@
+name: RC5 Darwin native broker qualification
+on:
+  push:
+    branches: ['codex/rc5-darwin-broker-matrix']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile exact preliminary native source
+        run: python3 qa/darwin-broker/compile_native.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: darwin-native-compile-attempt1
+          path: |
+            qa/darwin-broker/SOURCE_RECEIPT.json
+            qa/darwin-broker/evidence/*.json
+            qa/darwin-broker/evidence/*.log
