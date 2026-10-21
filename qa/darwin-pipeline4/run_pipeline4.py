@@ -885,14 +885,18 @@ class Runner:
         self.require_test_utility()
         self.d2_attempted["startup_replay"] = True
         def pending(_entered):
-            self.check(self.label_exists(timeout=5) and self.broker_pid == _entered.get("broker_pid"),
+            expected_pid = _entered.get("broker_pid")
+            self.check(self.label_exists(timeout=5) and self.broker_pid == expected_pid,
                        "startup_gate_broker_identity_mismatch")
-            observed = self.native_request(info, {"op": "observe",
-                "source_sha256": self.binaries["qa"]["source_sha256"]}, "observe-startup-pending")
+            observed, probe_attempt = self.observe_startup_pending(info, expected_pid)
             self.check(observed.get("state") == "initializing_or_idle" and
                        observed.get("durability_pending") is True and
                        observed.get("allocation_tuple_verified_current") is False,
                        "startup_pending_observation_invalid")
+            self.records.append({"name": "startup_pending_typed_observation",
+                "probe_attempt": probe_attempt, "state": observed["state"],
+                "durability_pending": observed["durability_pending"],
+                "allocation_tuple_verified_current": observed["allocation_tuple_verified_current"]})
         gate = persistence_gate_as_root(str(info["qa_socket"]), uuid.uuid4().hex + "00000000000000000000000000000000",
             "history_journal_read", self.pins["qa"]["build_id"], pending,
             str(Path(__file__).with_name("persistence_gate.py")))
@@ -907,6 +911,60 @@ class Runner:
                    probe.get("qa_build_id") == self.pins["qa"]["build_id"],
                    "startup_service_qa_pair_mismatch")
         self.verify_pins_unchanged()
+
+    def observe_startup_pending(self, info, expected_pid):
+        image = str(info["binary"])
+        captured = self.sudo(str(self.birth_observer), str(expected_pid),
+            name="capture-startup-broker-birth", timeout=5)
+        try: candidate = json.loads(captured.stdout)
+        except Exception: candidate = None
+        self.check(captured.returncode == 0 and isinstance(candidate, dict) and
+            candidate.get("state") == "same_running" and candidate.get("pid") == expected_pid and
+            candidate.get("ruid") == 0 and candidate.get("image") == image,
+            "startup_broker_birth_capture_invalid")
+        identity = {key: candidate[key] for key in
+            ("pid", "unique_id", "start_sec", "start_usec")}
+        self.capture_birth(identity, 0, image)
+        request = {"op": "observe", "source_sha256": self.binaries["qa"]["source_sha256"]}
+        deadline = time.monotonic() + 15
+        for attempt in range(1, 9):
+            self.check(self.label_exists(timeout=3) and self.broker_pid == expected_pid,
+                       "startup_broker_pid_changed_during_observe_retry")
+            birth = self.compare_birth(identity)
+            self.check(birth.get("state") == "same_running" and birth.get("ruid") == 0 and
+                       birth.get("image") == image,
+                       "startup_broker_birth_changed_during_observe_retry")
+            listener_path = Path(info["socket"])
+            try:
+                listener_stat = listener_path.lstat()
+            except FileNotFoundError:
+                self.records.append({"name": "startup_listener_readiness", "attempt": attempt,
+                    "state": "not_published"})
+                if attempt < 8 and time.monotonic() < deadline:
+                    time.sleep(.2)
+                    continue
+                break
+            self.check(stat.S_ISSOCK(listener_stat.st_mode) and not stat.S_ISLNK(listener_stat.st_mode) and
+                       listener_stat.st_uid == 0 and stat.S_IMODE(listener_stat.st_mode) == 0o666 and
+                       listener_path.parent.resolve(strict=True) == (self.fixture / "control").resolve(strict=True),
+                       "startup_listener_socket_identity_invalid")
+            self.records.append({"name": "startup_listener_readiness", "attempt": attempt,
+                "state": "published_root_fixture_socket", "owner_verified": True,
+                "mode_verified": True, "parent_verified": True})
+            stage = "observe-startup-pending-%02d" % attempt
+            result = self.run(stage, [str(info["binary"]), "--request",
+                "--socket=" + str(info["socket"])], timeout=3, data=canonical(request))
+            try: observed = json.loads(result.stdout)
+            except Exception: observed = None
+            if result.returncode == 0 and isinstance(observed, dict) and observed.get("ok") is True:
+                return observed, attempt
+            if result.returncode != 78 or result.stdout != b"" or result.stderr != b"":
+                self.check(False, "observe-startup-pending_typed_result_invalid")
+            if attempt < 8 and time.monotonic() < deadline:
+                time.sleep(.2)
+                continue
+            break
+        self.check(False, "startup_listener_not_ready_after_bounded_retry")
 
     def compile_uid_scan(self):
         source = self.workspace / "qa/darwin-broker/uid-scan.c"
