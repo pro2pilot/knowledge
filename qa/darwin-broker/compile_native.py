@@ -14,6 +14,13 @@ OUT.mkdir(exist_ok=False)
 source = ROOT / 'verification-darwin-broker.m'
 stub_source = ROOT / 'verification-darwin-stub.c'
 expected = json.loads((ROOT / 'SOURCE_RECEIPT.json').read_bytes())
+history_files = {}
+if 'uid_history_files' in expected:
+    for name, pin in expected['uid_history_files'].items():
+        assert name in ('verification-darwin-uid-history.h', 'verification-darwin-uid-history.m')
+        assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == pin
+        history_files[name] = pin
+    assert len(history_files) == 2
 digest = hashlib.sha256(source.read_bytes()).hexdigest()
 assert digest == expected['native_sha256']
 stub_digest = hashlib.sha256(stub_source.read_bytes()).hexdigest()
@@ -22,6 +29,10 @@ argv = ['/usr/bin/clang', '-fobjc-arc', '-Wall', '-Wextra', '-Wno-deprecated-dec
         '-framework', 'Foundation', '-DKNOWLEDGE_BROKER_SOURCE_SHA="' + digest + '"',
         '-DKNOWLEDGE_DARWIN_STUB_SOURCE_SHA="' + stub_digest + '"',
         str(source), '-o', str(OUT / 'knowledge-native-broker')]
+if history_files:
+    argv[1:1] = ['-DKNOWLEDGE_DARWIN_UID_HISTORY_HEADER_SHA="' + history_files['verification-darwin-uid-history.h'] + '"',
+                 '-DKNOWLEDGE_DARWIN_UID_HISTORY_SOURCE_SHA="' + history_files['verification-darwin-uid-history.m'] + '"',
+                 '-I' + str(ROOT), str(ROOT / 'verification-darwin-uid-history.m')]
 start = time.monotonic()
 with (OUT / 'compile.stdout.log').open('wb') as stdout, (OUT / 'compile.stderr.log').open('wb') as stderr:
     result = subprocess.run(argv, stdout=stdout, stderr=stderr, timeout=120)
@@ -62,10 +73,13 @@ record = {'scope': 'preliminary native clang compile only; no backend qualificat
           'exit_code': code, 'stub_exit_code': stub_result.returncode if stub_result else None,
           'stub_source_sha256': stub_digest, 'stub_pair_description': pair_describe,
           'broker_binary_sha256': broker_digest, 'stub_binary_sha256': stub_binary_digest,
+          'uid_history_files': history_files,
           'kernel_groups_import_verified': kernel_groups_import_verified,
           'elapsed_ms': round((time.monotonic()-start)*1000, 3),
           'platform': platform.platform(), 'machine': platform.machine(), 'source_sha256': digest,
-          'source_unchanged': hashlib.sha256(source.read_bytes()).hexdigest() == digest and hashlib.sha256(stub_source.read_bytes()).hexdigest() == stub_digest,
+          'source_unchanged': (hashlib.sha256(source.read_bytes()).hexdigest() == digest and
+              hashlib.sha256(stub_source.read_bytes()).hexdigest() == stub_digest and
+              all(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == pin for name, pin in history_files.items())),
           'backend_certified': False}
 for channel in ['stdout', 'stderr']:
     record[channel + '_sha256'] = hashlib.sha256((OUT / f'compile.{channel}.log').read_bytes()).hexdigest()

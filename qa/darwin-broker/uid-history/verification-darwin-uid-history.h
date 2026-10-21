@@ -59,6 +59,9 @@ NS_ASSUME_NONNULL_BEGIN
                                                  boot:(NSString *)bootID
                                                 error:(NSError * _Nullable * _Nullable)error;
 - (BOOL)confirmRegistryCheckpointWithError:(NSError * _Nullable * _Nullable)error;
+/* Disk refresh of an already healthy ready instance. A quarantined instance is
+ * never healed automatically. healthy alone is cached state, not a fresh read. */
+- (BOOL)refreshCurrentCheckpointWithError:(NSError * _Nullable * _Nullable)error;
 
 /* Verifies this exact consumed tuple under currently matching J/head/registry.
  * Does NOT prove account absence, immutable credentials or process finality.

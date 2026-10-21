@@ -1,8 +1,12 @@
 {
-  "native_sha256": "397001bc3a7714bc95d0d04bb6944b4fe77dbbb40b5b9fd4423685476e4a3f96",
+  "native_sha256": "70553d6b69211001cfd91502e6aad4270078115ae92abf08812a96dee81fe74d",
   "stub_sha256": "530ec44217fba691b6de524a75a7110d8c8f9a4b31afe99764be792aabf340ff",
-  "native_commit": "1341ad69fa8925935c637076386f2477b5491400",
+  "native_commit": "9ed1e15d7b4c06590538caae47209397bbef3438",
   "source_scope": "experimental committed pinned broker and C-only stub; production guard false; not release certified",
   "base_source_commit": "bc444655d6c037b95292ba9e425f2273fea24ba5",
-  "input_path": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r5w\\.knowledge\\tools\\lib\\verification-darwin-broker.m"
+  "input_path": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r5w\\.knowledge\\tools\\lib\\verification-darwin-broker.m",
+  "uid_history_files": {
+    "verification-darwin-uid-history.h": "a22bd13c7387958de13bf6fb37bfc99659417b628543973eee41bb60589ed060",
+    "verification-darwin-uid-history.m": "375d5e6cc5964b748ad7c309a1f5d76d4ce2f86bdf3fcd2ffa70209dc165c040"
+  }
 }

@@ -10,6 +10,19 @@ const { test } = require('node:test');
 const client = require('../tools/lib/verification-darwin-client');
 const SOURCE = path.join(__dirname, '../tools/lib/verification-darwin-broker.m');
 const STUB_SOURCE = path.join(__dirname, '../tools/lib/verification-darwin-stub.c');
+const sourceHash = file => crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../tools/lib', file))).digest('hex');
+function historyMetadata() {
+  const host_id = '00000000-0000-0000-0000-000000000001';
+  return { host_id, boot_id: 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', entry_store_loaded: true,
+    registry_quarantine_reason: null,
+    uid_history: { healthy_cached: true, reason: 'HEALTHY', health_source: 'disk_refresh_attempt',
+      last_refresh_attempt_started_monotonic_ms: 123,
+      installation_id_cached: '1'.repeat(64),
+      checkpoint_cached: { schema: 'knowledge-darwin-uid-checkpoint.v1', installation_id: '1'.repeat(64),
+        host_id, seq: '0', tip_sha256: '0'.repeat(64), next_uid: 1000000000 },
+      header_sha256: sourceHash('verification-darwin-uid-history.h'),
+      source_sha256: sourceHash('verification-darwin-uid-history.m') } };
+}
 
 test('configuration is explicit, inert, strict, and normalizes copy limits', () => {
   assert.deepEqual(client.config(), { darwin: { enabled: false } });
@@ -67,7 +80,7 @@ test('reply decoder rejects oversized, malformed, unknown, and mistyped protocol
   assert.throws(() => client.decodeReply(Buffer.from('{"schema":"knowledge-darwin-broker.v1","ok":true,"source_sha256":"' + '0'.repeat(64) + '","extra":1}')),
     { code: 'verification_darwin_protocol_invalid' });
 
-  const validShape = Buffer.from(JSON.stringify({ schema: client.SCHEMA, ok: true, source_sha256: '0'.repeat(64),
+  const validShape = Buffer.from(JSON.stringify({ ...historyMetadata(), schema: client.SCHEMA, ok: true, source_sha256: '0'.repeat(64),
     capability_qualified: false, qualification_mode: false, registry_healthy: true, binary_sha256: '0'.repeat(64),
     stub_source_sha256: '0'.repeat(64), stub_binary_sha256: '0'.repeat(64), stub_wire_version: 'KVS1', allowed_runtimes: {} }));
   const expectedFailure = fs.existsSync(SOURCE)
@@ -77,7 +90,7 @@ test('reply decoder rejects oversized, malformed, unknown, and mistyped protocol
   if (fs.existsSync(SOURCE)) {
     const source_sha256 = crypto.createHash('sha256').update(fs.readFileSync(SOURCE)).digest('hex');
     const stub_source_sha256 = crypto.createHash('sha256').update(fs.readFileSync(STUB_SOURCE)).digest('hex');
-    const unqualified = { schema: client.SCHEMA, ok: true, source_sha256,
+    const unqualified = { ...historyMetadata(), schema: client.SCHEMA, ok: true, source_sha256,
       capability_qualified: false, qualification_mode: false, registry_healthy: true, binary_sha256: '0'.repeat(64),
       stub_source_sha256, stub_binary_sha256: '0'.repeat(64), stub_wire_version: 'KVS1', allowed_runtimes: {} };
     const decoded = client.decodeReply(Buffer.from(JSON.stringify(unqualified)));
@@ -91,6 +104,35 @@ test('reply decoder rejects oversized, malformed, unknown, and mistyped protocol
       assert.throws(() => client.decodeReply(Buffer.from(JSON.stringify({ ...unqualified, ...patch }))),
         { code: 'verification_darwin_protocol_invalid' });
     }
+    for (const patch of [
+      { entry_store_loaded: 'true' }, { host_id: null }, { boot_id: [] }, { registry_quarantine_reason: 1 },
+      { registry_quarantine_reason: 'raw unexpected detail' },
+      { registry_quarantine_reason: 'ENTRY_STORE_MISSING_OR_CHANGED' },
+      { uid_history: { ...unqualified.uid_history, healthy_cached: 'true' } },
+      { uid_history: { ...unqualified.uid_history, health_source: 'heartbeat' } },
+      { uid_history: { ...unqualified.uid_history, last_refresh_attempt_started_monotonic_ms: true } },
+      { uid_history: { ...unqualified.uid_history, checkpoint_cached: null } },
+      { uid_history: { ...unqualified.uid_history, checkpoint_cached: {
+        ...unqualified.uid_history.checkpoint_cached, installation_id: '2'.repeat(64) } } },
+      { uid_history: { ...unqualified.uid_history, checkpoint_cached: {
+        ...unqualified.uid_history.checkpoint_cached, host_id: '00000000-0000-0000-0000-000000000002' } } },
+      { uid_history: { ...unqualified.uid_history, checkpoint_cached: {
+        ...unqualified.uid_history.checkpoint_cached, seq: '00' } } },
+      { uid_history: { ...unqualified.uid_history, checkpoint_cached: {
+        ...unqualified.uid_history.checkpoint_cached, next_uid: 1000000001 } } }
+    ]) assert.throws(() => client.decodeReply(Buffer.from(JSON.stringify({ ...unqualified, ...patch }))),
+      { code: 'verification_darwin_protocol_invalid' });
+    for (const field of ['header_sha256', 'source_sha256']) {
+      assert.throws(() => client.decodeReply(Buffer.from(JSON.stringify({ ...unqualified,
+        uid_history: { ...unqualified.uid_history, [field]: '0'.repeat(64) } }))),
+      { code: 'verification_darwin_uid_source_pin_mismatch' });
+    }
+    const quarantined = { ...unqualified, registry_healthy: false, entry_store_loaded: false,
+      registry_quarantine_reason: 'ENTRY_STORE_MISSING_OR_CHANGED',
+      uid_history: { ...unqualified.uid_history, healthy_cached: false, reason: 'REGISTRY_CHECKPOINT_MISMATCH',
+        health_source: 'cached_quarantine', checkpoint_cached: null, installation_id_cached: null,
+        last_refresh_attempt_started_monotonic_ms: null } };
+    assert.equal(client.decodeReply(Buffer.from(JSON.stringify(quarantined))).uid_history.healthy_cached, false);
   }
 });
 

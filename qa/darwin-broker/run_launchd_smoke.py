@@ -113,6 +113,8 @@ parser.add_argument('--host-probe-only', action='store_true')
 parser.add_argument('--expected-source-sha', help='Optional frozen-source SHA pin for this CI attempt')
 parser.add_argument('--m2-scenario', choices=('normal', 'interrupt_drain'),
                     help='Use the two-phase harness and an owned native admission-lock probe')
+parser.add_argument('--uid-registry-fault', choices=('unlink', 'corrupt'),
+                    help='Run only the owned active-reservation entry-store fault check')
 args = parser.parse_args()
 EVIDENCE_ROOT = HERE / 'evidence'
 if EVIDENCE_ROOT.is_symlink() or not EVIDENCE_ROOT.is_dir():
@@ -164,6 +166,12 @@ try:
     record['compile_result_source_sha256'] = compile_result['source_sha256']
     record['compile_result_status'] = compile_result['status']
     record['compile_result_source_unchanged'] = compile_result['source_unchanged']
+    history_files = source_receipt.get('uid_history_files', {})
+    if (history_files != compile_result.get('uid_history_files', {}) or
+            (args.uid_registry_fault and len(history_files) != 2)):
+        raise RuntimeError('UID-history compile/source metadata differs or fault test lacks the component')
+    if args.uid_registry_fault and args.m2_scenario:
+        raise RuntimeError('fault test and normal two-phase scenarios are distinct controller runs')
     broker_source, stub_source, node_source = args.broker.resolve(strict=True), args.stub.resolve(strict=True), args.node.resolve(strict=True)
     if args.broker.is_symlink() or args.stub.is_symlink() or args.node.is_symlink() or not broker_source.is_file() or not stub_source.is_file() or not node_source.is_file():
         raise RuntimeError('broker or resolved Node artifact is not an ordinary file')
@@ -229,10 +237,13 @@ try:
     checked_fixture(fixture)
     suffix = fixture.name.rsplit('.', 1)[1].replace('_', '')
     label = 'org.knowledgekit.rc5.launchd-smoke.' + suffix
-    for name in ['bin', 'runtime', 'control', 'registry', 'workspaces', 'logs', 'launchd']:
+    fixture_dirs = ['bin', 'runtime', 'control', 'registry', 'workspaces', 'logs', 'launchd']
+    if history_files:
+        fixture_dirs += ['allocator', 'anchors']
+    for name in fixture_dirs:
         p = fixture / name
         p.mkdir()
-        mode = '0700' if name in ('registry', 'logs', 'launchd') else '0711'
+        mode = '0700' if name in ('registry', 'logs', 'launchd', 'allocator') else '0755' if name == 'anchors' else '0711'
         assert run('protect-dir-' + name, ['/usr/bin/sudo', '-n', '/usr/sbin/chown', '0:0', str(p)], record).returncode == 0
         assert run('mode-dir-' + name, ['/usr/bin/sudo', '-n', '/bin/chmod', mode, str(p)], record).returncode == 0
     assert run('protect-fixture', ['/usr/bin/sudo', '-n', '/usr/sbin/chown', '0:0', str(fixture)], record).returncode == 0
@@ -285,6 +296,39 @@ try:
         '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
         '--workspaces=' + str(fixture / 'workspaces'), '--runtime=' + str(node)],
         'RunAtLoad': True, 'KeepAlive': False, 'StandardOutPath': str(stdout), 'StandardErrorPath': str(stderr)}
+    if history_files:
+        history_options = ['--allocator=' + str(fixture / 'allocator'), '--anchors=' + str(fixture / 'anchors')]
+        plist['ProgramArguments'] += history_options
+        init_argv = [str(binary), '--init-install', '--qualification-mode',
+            '--confirm-reserved-uid-range=1000000000:1900000000',
+            '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
+            '--workspaces=' + str(fixture / 'workspaces'), '--runtime=' + str(node), *history_options]
+        initialized = run('explicit-native-init', ['/usr/bin/sudo', '-n', *init_argv], record, 60)
+        if initialized.returncode or json.loads(initialized.stdout).get('ok') is not True:
+            raise RuntimeError('explicit own-fixture native initialization failed')
+        init_files = [fixture / name for name in ('anchors/install.json', 'anchors/uid-head.json',
+                                                  'allocator/consumed.journal', 'registry/registry.json')]
+        init_before = {}
+        for i, path in enumerate(init_files):
+            observed = run('init-before-' + str(i), ['/usr/bin/sudo', '-n', '/bin/cat', str(path)], record)
+            if observed.returncode:
+                raise RuntimeError('initialized own state could not be read back')
+            init_before[str(path.relative_to(fixture))] = hashlib.sha256(observed.stdout).hexdigest()
+        reinitialized = run('refuse-native-reinit', ['/usr/bin/sudo', '-n', *init_argv], record, 30)
+        if (reinitialized.returncode != 78 or reinitialized.stdout or
+                not reinitialized.stderr.startswith(b'explicit init failed:')):
+            raise RuntimeError('existing own-fixture UID history did not produce the expected native refusal')
+        init_after = {}
+        for i, path in enumerate(init_files):
+            observed = run('init-after-' + str(i), ['/usr/bin/sudo', '-n', '/bin/cat', str(path)], record)
+            if observed.returncode:
+                raise RuntimeError('native reinit refusal did not preserve its state')
+            init_after[str(path.relative_to(fixture))] = hashlib.sha256(observed.stdout).hexdigest()
+        if init_before != init_after:
+            raise RuntimeError('native reinit refusal modified existing own-fixture state bytes')
+        record['explicit_uid_history_init'] = True
+        record['existing_uid_history_reinit_refused'] = True
+        record['uid_history_init_files_unchanged_on_reinit'] = init_after
     staging = OUT / 'launchd-job.plist'
     staging.write_bytes(plistlib.dumps(plist, fmt=plistlib.FMT_XML, sort_keys=True))
     assert run('install-plist', ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0444', str(staging), str(plist_path)], record).returncode == 0
@@ -305,6 +349,17 @@ try:
     record['launchd_startup_method_observed'] = startup_print.returncode == 0 and bool(re.search(rb'\bpid\s*=\s*[0-9]+', startup_print.stdout))
     if not record['launchd_startup_method_observed']:
         raise RuntimeError('launchd did not report an active PID for its own label before harness')
+    public_probe = run('public-native-probe', [str(binary), '--request', '--socket=' + str(sock)],
+        record, 20, data=b'{"op":"probe"}')
+    probe = json.loads(public_probe.stdout)
+    if (public_probe.returncode or probe.get('ok') is not True or
+            probe.get('source_sha256') != receipt_sha or
+            probe.get('binary_sha256') != record['broker_sha256_before_install'] or
+            probe.get('stub_source_sha256') != receipt_stub_sha or
+            probe.get('stub_binary_sha256') != record['stub_sha256_before_install'] or
+            probe.get('capability_qualified') is not False):
+        raise RuntimeError('actual public native probe differs from the compiled diagnostic pair')
+    record['public_native_probe_bound_to_compile'] = True
     pid_match = re.search(rb'\bpid\s*=\s*([0-9]+)', startup_print.stdout)
     if not pid_match:
         raise RuntimeError('own launchd label did not expose a decimal PID')
@@ -417,6 +472,9 @@ try:
         if args.m2_scenario:
             harness_argv += ['--scenario=' + args.m2_scenario, '--admission-probe=' + str(admission_probe)]
             record['m2_scenario'] = args.m2_scenario
+        if args.uid_registry_fault:
+            harness_argv += ['--fault=' + args.uid_registry_fault]
+            record['uid_registry_fault'] = args.uid_registry_fault
         record['harness_source_sha256'] = sha(args.harness)
         harness = run('ordinary-user-daemon-harness', harness_argv, record, 180)
         try:
@@ -431,6 +489,10 @@ try:
                 descriptor.get('stub_binary_sha256') != record['stub_sha256_before_install'] or
                 descriptor.get('stub_wire_version') != 'KVS1'):
             raise RuntimeError('actual native harness descriptor differs from the fresh source/binary pair')
+        if history_files and (
+                descriptor.get('uid_history_header_sha256') != history_files.get('verification-darwin-uid-history.h') or
+                descriptor.get('uid_history_source_sha256') != history_files.get('verification-darwin-uid-history.m')):
+            raise RuntimeError('actual native descriptor UID sources differ from the fresh compile pair')
         record['harness_actual_pair_matches_compile'] = True
         record['timing_contract_probe'] = result.get('timing_contract_probe', {'status': 'NOT_REPORTED'})
         (OUT / 'native-proof-response.json').write_text(json.dumps(result.get('native_proof'), sort_keys=True, separators=(',', ':')) + '\n')
@@ -450,7 +512,15 @@ try:
             (OUT / 'root-receipt-readback.json').write_bytes(readback.stdout)
             record['root_receipt_matches_response'] = readback.returncode == 0 and readback.stdout == encoded
             record['native_proof_sha256'] = digest
-            if not record['root_receipt_matches_response']:
+            if args.uid_registry_fault:
+                if (proof.get('state') != 'cleanup_unconfirmed' or
+                        proof.get('native_cleanup_facts_confirmed') is not False or
+                        proof.get('cleanup_confirmed') is not False or
+                        result.get('proof_current_persistence_confirmed') is not False):
+                    raise RuntimeError('entry-store fault was not explicitly an unconfirmed current result')
+                record['current_proof_persistence_confirmed'] = False
+                record['receipt_scope'] = 'diagnostic readback only; current registry commit intentionally unconfirmed'
+            elif not record['root_receipt_matches_response']:
                 raise RuntimeError('root-protected receipt did not match the returned public proof')
         else:
             raise RuntimeError('daemon harness produced no native proof for root receipt readback')
@@ -522,6 +592,16 @@ finally:
                     errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
                     if outlog.returncode or errlog.returncode:
                         raise RuntimeError('could not collect own root daemon logs; fixture retained')
+                if history_files:
+                    captured = run('collect-own-uid-history', ['/usr/bin/sudo', '-n', '/usr/bin/tar',
+                        '-cf', '-', '-C', str(fixture), 'anchors', 'allocator'], record)
+                    if captured.returncode or not captured.stdout or len(captured.stdout) > 128 * 1024 * 1024:
+                        raise RuntimeError('could not preserve own UID history; fixture retained')
+                    archive = OUT / 'native-uid-history.tar'
+                    archive.write_bytes(captured.stdout)
+                    record['native_uid_history_archive'] = {'path': str(archive),
+                        'bytes': len(captured.stdout), 'sha256': hashlib.sha256(captured.stdout).hexdigest(),
+                        'scope': 'own synthetic anchors/allocator only; active registry before fault retained as hash/size only'}
                 removed = run('remove-own-fixture', ['/usr/bin/sudo', '-n', '/bin/rm', '-rf', '--', str(fixture)], record)
                 record['fixture_cleanup_exit'] = removed.returncode
             else:

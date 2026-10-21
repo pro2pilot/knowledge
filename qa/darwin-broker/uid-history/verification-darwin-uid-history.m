@@ -342,6 +342,10 @@ static BOOL KVEmpty(int fd){int copy=dup(fd);if(copy<0)return NO;DIR *dir=fdopen
     if(!_pending||_closed||![_marker[@"state"] isEqual:@"ready"])return KVFail(error,@"NO_PENDING_CHECKPOINT");
     if(![self reloadAgreed:YES error:error])return NO;_healthy=YES;_pending=NO;_reason=@"HEALTHY";return YES;
 }
+- (BOOL)refreshCurrentCheckpointWithError:(NSError **)error {
+    if(!self.healthy||![_marker[@"state"] isEqual:@"ready"])return KVFail(error,_reason?:@"NOT_HEALTHY");
+    return [self reloadAgreed:YES error:error];
+}
 - (BOOL)validReservationForUID:(uint32_t)uid attempt:(NSString *)attemptID sequence:(NSString *)sequence sha256:(NSString *)sha256 error:(NSError **)error {
     if(!self.healthy)return KVFail(error,_reason?:@"NOT_HEALTHY");
     uint64_t seq=0;if(!KVHex(attemptID)||!KVHex(sha256)||!KVDecimal(sequence,KVMaxRecords,&seq)||!seq

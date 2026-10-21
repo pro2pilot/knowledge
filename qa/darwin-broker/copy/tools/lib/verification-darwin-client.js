@@ -11,6 +11,8 @@ const SCHEMA = 'knowledge-darwin-broker.v1';
 const MAX_REPLY_BYTES = 64 * 1024;
 const SOURCE_FILE = path.join(__dirname, 'verification-darwin-broker.m');
 const STUB_SOURCE_FILE = path.join(__dirname, 'verification-darwin-stub.c');
+const UID_HEADER_FILE = path.join(__dirname, 'verification-darwin-uid-history.h');
+const UID_SOURCE_FILE = path.join(__dirname, 'verification-darwin-uid-history.m');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const invalid = code => Object.assign(new Error(code), { code });
 const exact = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
@@ -87,12 +89,20 @@ function decodeReply(buffer) {
   catch { throw invalid('verification_darwin_protocol_invalid'); }
   const allowed = ['schema', 'ok', 'source_sha256', 'capability_qualified', 'qualification_mode',
     'binary_sha256', 'stub_source_sha256', 'stub_binary_sha256', 'stub_wire_version',
-    'host_id', 'boot_id', 'allowed_runtimes', 'registry_healthy', 'error'];
+    'host_id', 'boot_id', 'allowed_runtimes', 'registry_healthy', 'registry_quarantine_reason',
+    'entry_store_loaded', 'uid_history', 'error'];
   if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).some(key => !allowed.includes(key)) ||
       value.schema !== SCHEMA || typeof value.ok !== 'boolean' || !/^[a-f0-9]{64}$/.test(value.source_sha256 || '')) {
     throw invalid('verification_darwin_protocol_invalid');
   }
   if (value.ok && (typeof value.capability_qualified !== 'boolean' || typeof value.registry_healthy !== 'boolean' ||
+      typeof value.entry_store_loaded !== 'boolean' ||
+      !(value.registry_quarantine_reason === null || typeof value.registry_quarantine_reason === 'string' &&
+        /^[A-Z0-9_]{1,128}$/.test(value.registry_quarantine_reason)) ||
+      value.registry_healthy === true && value.registry_quarantine_reason !== null ||
+      typeof value.host_id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value.host_id) ||
+      typeof value.boot_id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value.boot_id) ||
+      !validUIDHistory(value.uid_history, value.host_id) ||
       typeof value.qualification_mode !== 'boolean' || value.stub_wire_version !== 'KVS1' ||
       !/^[a-f0-9]{64}$/.test(value.stub_source_sha256 || '') || !/^[a-f0-9]{64}$/.test(value.stub_binary_sha256 || '') ||
       !value.allowed_runtimes || Array.isArray(value.allowed_runtimes) || typeof value.allowed_runtimes !== 'object' ||
@@ -104,7 +114,32 @@ function decodeReply(buffer) {
   if (value.ok && value.stub_source_sha256 !== bundledSourceHash(STUB_SOURCE_FILE)) {
     throw invalid('verification_darwin_stub_source_pin_mismatch');
   }
+  if (value.ok && (value.uid_history.header_sha256 !== bundledSourceHash(UID_HEADER_FILE) ||
+      value.uid_history.source_sha256 !== bundledSourceHash(UID_SOURCE_FILE))) {
+    throw invalid('verification_darwin_uid_source_pin_mismatch');
+  }
   return value;
+}
+
+function validUIDHistory(history, host) {
+  const hex = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  if (!exact(history, ['healthy_cached', 'reason', 'health_source', 'last_refresh_attempt_started_monotonic_ms',
+    'installation_id_cached', 'checkpoint_cached', 'header_sha256', 'source_sha256']) ||
+      typeof history.healthy_cached !== 'boolean' || typeof history.reason !== 'string' ||
+      !/^[A-Z0-9_]{1,128}$/.test(history.reason) ||
+      !['disk_refresh_attempt', 'cached_unchecked', 'cached_quarantine'].includes(history.health_source) ||
+      !hex(history.header_sha256) || !hex(history.source_sha256) ||
+      !(history.last_refresh_attempt_started_monotonic_ms === null ||
+        Number.isSafeInteger(history.last_refresh_attempt_started_monotonic_ms) &&
+        history.last_refresh_attempt_started_monotonic_ms >= 0) ||
+      !(history.installation_id_cached === null || hex(history.installation_id_cached))) return false;
+  const cp = history.checkpoint_cached;
+  if (cp !== null && (!exact(cp, ['schema', 'installation_id', 'host_id', 'seq', 'tip_sha256', 'next_uid']) ||
+      cp.schema !== 'knowledge-darwin-uid-checkpoint.v1' || cp.installation_id !== history.installation_id_cached ||
+      !hex(cp.installation_id) || cp.host_id !== host || typeof cp.seq !== 'string' ||
+      !/^(?:0|[1-9][0-9]{0,5})$/.test(cp.seq) || Number(cp.seq) > 100000 ||
+      !hex(cp.tip_sha256) || !Number.isSafeInteger(cp.next_uid) || cp.next_uid !== 1000000000 + Number(cp.seq))) return false;
+  return !history.healthy_cached || cp !== null && history.reason === 'HEALTHY';
 }
 
 function protectedBrokerHash(binaryPath) {
@@ -152,6 +187,9 @@ function containmentCapability(value) {
     if (reply.capability_qualified !== true) return unavailable('broker_unqualified');
     if (reply.qualification_mode !== false) return unavailable('broker_diagnostic_mode');
     if (reply.registry_healthy !== true) return unavailable('broker_registry_unhealthy');
+    if (reply.entry_store_loaded !== true || reply.uid_history.healthy_cached !== true ||
+        reply.uid_history.health_source !== 'disk_refresh_attempt' ||
+        reply.uid_history.last_refresh_attempt_started_monotonic_ms === null) return unavailable('broker_uid_history_unhealthy');
     if (reply.binary_sha256 !== binary_sha256) return unavailable('broker_binary_pin_mismatch');
     // An administrator installs a protected byte-identical runtime copy. Its
     // pathname deliberately differs from the ordinary user's executable.
@@ -161,6 +199,9 @@ function containmentCapability(value) {
     return { platform: process.platform, backend: 'darwin_private_ruid', status: 'available',
       source_sha256, binary_sha256, stub_source_sha256: reply.stub_source_sha256,
       stub_binary_sha256: reply.stub_binary_sha256, stub_wire_version: reply.stub_wire_version,
+      uid_history_header_sha256: reply.uid_history.header_sha256,
+      uid_history_source_sha256: reply.uid_history.source_sha256,
+      installation_id: reply.uid_history.installation_id_cached,
       runtime_path, host_id: reply.host_id, boot_id: reply.boot_id };
   } catch (error) {
     return unavailable(/^[a-z0-9_]{1,96}$/.test(error?.code || '') ? error.code : 'broker_probe_unavailable');

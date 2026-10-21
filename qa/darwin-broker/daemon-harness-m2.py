@@ -566,6 +566,25 @@ def controller(args):
                 proof_binding["host_id"] != probe.get("host_id") or
                 proof_binding["boot_id"] != probe.get("boot_id")):
             raise RuntimeError("prepared descriptor and broker probe identity pins disagree")
+        if 'uid_history' in probe:
+            history = probe['uid_history']
+            if (probe.get('registry_healthy') is not True or probe.get('entry_store_loaded') is not True or
+                    not isinstance(history, dict) or history.get('healthy_cached') is not True or
+                    history.get('health_source') != 'disk_refresh_attempt'):
+                raise RuntimeError('UID-backed source did not report a fresh healthy entry/history store')
+            for key in ('installation_id', 'allocation_seq', 'allocation_sha256'):
+                if type(descriptor.get(key)) is not str:
+                    raise RuntimeError('UID reservation binding field is missing or has a wrong type')
+                proof_binding[key] = descriptor[key]
+            if (not re.fullmatch('[a-f0-9]{64}', descriptor['installation_id']) or
+                    not re.fullmatch('[1-9][0-9]*', descriptor['allocation_seq']) or
+                    not re.fullmatch('[a-f0-9]{64}', descriptor['allocation_sha256']) or
+                    descriptor['installation_id'] != history.get('installation_id_cached') or
+                    descriptor.get('uid_history_header_sha256') != history.get('header_sha256') or
+                    descriptor.get('uid_history_source_sha256') != history.get('source_sha256')):
+                raise RuntimeError('UID tuple/source pins disagree with the installed native history')
+            proof_binding['uid_history_tuple_verified'] = True
+            result['uid_history_initial_probe'] = history
         expected_uid = prepared["descriptor"]["task_ruid"]
         code = ("'use strict'; const fs=require('fs');"
                 "if(process.getuid()!==" + str(expected_uid) +
