@@ -48,6 +48,7 @@ jobs:
           --evidence-root "$PRIVATE_EVIDENCE_ROOT"
           --public-evidence-dir "$PUBLIC_EVIDENCE_DIR"
           --summary "$PUBLIC_SUMMARY"
+          --only-d2
       - name: Upload allowlisted public evidence only
         if: always()
         uses: actions/upload-artifact@v4

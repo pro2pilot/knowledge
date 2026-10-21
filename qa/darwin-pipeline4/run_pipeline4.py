@@ -91,12 +91,14 @@ def public_file(path, data):
 
 
 class Runner:
-    def __init__(self, pins_path, evidence_root, expected_arch, public_evidence_dir):
+    def __init__(self, pins_path, evidence_root, expected_arch, public_evidence_dir, only_d2=False):
         self.pins_path = Path(pins_path).absolute()
         self.workspace = Path.cwd().resolve(strict=True)
         self.evidence = Path(evidence_root)
         self.public_evidence_dir = Path(public_evidence_dir)
         self.expected_arch = expected_arch
+        self.only_d2 = bool(only_d2)
+        self.d2_attempted = {"active_runtime": False, "startup_replay": False}
         self.records = []
         self.fixture = None
         self.fixture_initialized = False
@@ -761,7 +763,7 @@ class Runner:
         self.check(isinstance(workspace, str) and Path(workspace).parent.resolve(strict=True) == expected_parent,
                    "workspace_path_outside_fixture")
         marker = Path(workspace) / "ready.marker"
-        marker_probe = self.sudo("/usr/bin/test", "-f", str(marker), name="confirm-active-private-marker")
+        marker_probe = self.sudo("/bin/test", "-f", str(marker), name="confirm-active-private-marker")
         self.check(marker_probe.returncode == 0, "active_marker_missing")
         observe = {"op": "observe", "source_sha256": self.binaries["qa"]["source_sha256"],
                    "attempt_id": binding["attempt_id"], "descriptor_sha256": binding["descriptor_sha256"]}
@@ -880,6 +882,8 @@ class Runner:
             "resource_free_claimed": False})
 
     def startup_gate(self, info):
+        self.require_test_utility()
+        self.d2_attempted["startup_replay"] = True
         def pending(_entered):
             self.check(self.label_exists(timeout=5) and self.broker_pid == _entered.get("broker_pid"),
                        "startup_gate_broker_identity_mismatch")
@@ -913,6 +917,11 @@ class Runner:
             str(source), "-o", str(output)], timeout=60)
         self.check(result.returncode == 0, "uid_scan_compile_failed")
         self.uid_scan = output
+
+    def require_test_utility(self):
+        utility = Path("/bin/test")
+        self.check(utility.is_file() and os.access(utility, os.X_OK),
+                   "darwin_test_utility_missing")
 
     def compile_boolean_wire(self):
         source = self.workspace / "qa/darwin-pipeline4/boolean-wire.m"
@@ -1128,41 +1137,42 @@ class Runner:
         self.compile_uid_scan()
         self.compile_boolean_wire()
         self.compile_birth_observer()
-        self.compile_pair(False)
-        self.fixture_path()
-        normal = self.setup_fixture("shipping")
-        project = self.evidence / "project-d1"
-        project.mkdir(mode=0o700)
-        self.copy_source_tree(project)
-        script = b"'use strict';\nconsole.log('pipeline4-diagnostic-script-ok');\n"
-        self.run_diagnostic(normal, project, ["node", "fixtures/main.js"],
-                        {"fixtures/main.js": script}, "d1-script")
-        project_test = self.evidence / "project-d1-node-test"
-        project_test.mkdir(mode=0o700)
-        self.copy_source_tree(project_test, full_runtime=False)
-        test = b"'use strict';\nconst test=require('node:test');\nconst assert=require('node:assert/strict');\ntest('pipeline4 diagnostic test',()=>assert.equal(2+2,4));\n"
-        self.run_diagnostic(normal, project_test, ["node", "--test", "fixtures/main.test.js"],
-                        {"fixtures/main.test.js": test}, "d1-node-test")
-        project_failing = self.evidence / "project-d1-failing-command"
-        project_failing.mkdir(mode=0o700)
-        self.copy_source_tree(project_failing, full_runtime=False)
-        failing = b"'use strict';\nprocess.exitCode=7;\n"
-        result = self.run_diagnostic(normal, project_failing, ["node", "fixtures/failing.js"],
-                        {"fixtures/failing.js": failing}, "d1-failing-command",
-                        expected_status="command_failed")
-        self.check(result.get("command", {}).get("exit_code") == 7,
-                   "failing_command_exit_not_preserved")
-        project_mutation = self.evidence / "project-d1-copy-mutation"
-        project_mutation.mkdir(mode=0o700)
-        self.copy_source_tree(project_mutation, full_runtime=False)
-        original = b"'use strict';\nmodule.exports='pinned-copy';\n"
-        mutation = ("'use strict';\nconst fs=require('node:fs');\n"+
-                    "fs.writeFileSync('fixtures/source.js','mutated');\n").encode()
-        result = self.run_diagnostic(normal, project_mutation, ["node", "fixtures/mutate.js"],
-                        {"fixtures/source.js": original, "fixtures/mutate.js": mutation},
-                        "d1-copy-mutation", expected_status="failed")
-        self.check(result.get("reason") == "COPY_READBACK_UNCONFIRMED", "copy_mutation_not_refused")
-        self.verify_pins_unchanged()
+        if not self.only_d2:
+            self.compile_pair(False)
+            self.fixture_path()
+            normal = self.setup_fixture("shipping")
+            project = self.evidence / "project-d1"
+            project.mkdir(mode=0o700)
+            self.copy_source_tree(project)
+            script = b"'use strict';\nconsole.log('pipeline4-diagnostic-script-ok');\n"
+            self.run_diagnostic(normal, project, ["node", "fixtures/main.js"],
+                            {"fixtures/main.js": script}, "d1-script")
+            project_test = self.evidence / "project-d1-node-test"
+            project_test.mkdir(mode=0o700)
+            self.copy_source_tree(project_test, full_runtime=False)
+            test = b"'use strict';\nconst test=require('node:test');\nconst assert=require('node:assert/strict');\ntest('pipeline4 diagnostic test',()=>assert.equal(2+2,4));\n"
+            self.run_diagnostic(normal, project_test, ["node", "--test", "fixtures/main.test.js"],
+                            {"fixtures/main.test.js": test}, "d1-node-test")
+            project_failing = self.evidence / "project-d1-failing-command"
+            project_failing.mkdir(mode=0o700)
+            self.copy_source_tree(project_failing, full_runtime=False)
+            failing = b"'use strict';\nprocess.exitCode=7;\n"
+            result = self.run_diagnostic(normal, project_failing, ["node", "fixtures/failing.js"],
+                            {"fixtures/failing.js": failing}, "d1-failing-command",
+                            expected_status="command_failed")
+            self.check(result.get("command", {}).get("exit_code") == 7,
+                       "failing_command_exit_not_preserved")
+            project_mutation = self.evidence / "project-d1-copy-mutation"
+            project_mutation.mkdir(mode=0o700)
+            self.copy_source_tree(project_mutation, full_runtime=False)
+            original = b"'use strict';\nmodule.exports='pinned-copy';\n"
+            mutation = ("'use strict';\nconst fs=require('node:fs');\n"+
+                        "fs.writeFileSync('fixtures/source.js','mutated');\n").encode()
+            result = self.run_diagnostic(normal, project_mutation, ["node", "fixtures/mutate.js"],
+                            {"fixtures/source.js": original, "fixtures/mutate.js": mutation},
+                            "d1-copy-mutation", expected_status="failed")
+            self.check(result.get("reason") == "COPY_READBACK_UNCONFIRMED", "copy_mutation_not_refused")
+            self.verify_pins_unchanged()
         # A separate QA service fixture ensures the gate binary path macro and
         # its protected socket are rooted in this own disposable service.
         self.cleanup()
@@ -1190,6 +1200,7 @@ class Runner:
         # Start the diagnostic directly while retaining its stdout/stderr in
         # the private evidence directory. The reservation and copied marker are
         # observed before the QA persistence point is armed.
+        self.require_test_utility()
         script = project / "fixtures/long.js"
         script.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         script.write_bytes(script_bytes)
@@ -1209,6 +1220,7 @@ class Runner:
         proc = subprocess.Popen([str(info["node"]), str(cli), str(request_path)], stdin=subprocess.DEVNULL,
             stdout=stdout, stderr=stderr, shell=False)
         self.active_monitor = proc
+        self.d2_attempted["active_runtime"] = True
         monitor_started = time.monotonic()
         binding_ready = threading.Event()
         marker_ready = threading.Event()
@@ -1226,7 +1238,7 @@ class Runner:
                         workspace = Path(descriptor["workspace_path"])
                         if workspace.parent.resolve(strict=True) != (self.fixture / "workspaces").resolve(strict=True):
                             raise QAError("workspace_path_outside_fixture")
-                        marker = self.sudo("/usr/bin/test", "-f", str(workspace / "ready.marker"),
+                        marker = self.sudo("/bin/test", "-f", str(workspace / "ready.marker"),
                                            name="poll-private-command-marker", timeout=5)
                         if marker.returncode == 0:
                             marker_data = self.sudo("/bin/cat", str(workspace / "ready.marker"),
@@ -1246,6 +1258,19 @@ class Runner:
         watcher = threading.Thread(target=watch_binding, daemon=True)
         watcher.start()
         watcher.join(180)
+        if proc.poll() is not None:
+            early_result = None
+            try: early_result = json.loads((self.evidence / "d2-active.stdout.raw").read_bytes())
+            except Exception: pass
+            if isinstance(early_result, dict) and early_result.get("status") == "failed":
+                early_projection = {"name": "d2-active-early-cli-failure",
+                    "status": "failed", "reason": self.safe_cli_text(early_result.get("reason", "")),
+                    "exit_code": proc.returncode if proc.returncode >= 0 else None,
+                    "signal": -proc.returncode if proc.returncode < 0 else None,
+                    "timings_ms": self.measured_timings_ms(early_result),
+                    "runner_elapsed_ms": round((time.monotonic() - monitor_started) * 1000, 3)}
+                self.check(not self.has_secret_key(early_projection), "d2_early_failure_public_unsafe")
+                self.diagnostic_proofs.append(early_projection)
         self.check(not watcher.is_alive() and not failures and binding_ready.is_set() and marker_ready.is_set(),
                    "active_reservation_marker_not_observed")
         binding = self.active_binding
@@ -1299,6 +1324,10 @@ class Runner:
         compile_names = {row.get("kind") for row in self.binary_history}
         diagnostic_names = {row.get("name"): row.get("status", "FAIL")
                             for row in self.diagnostic_attempts}
+        active_d2_status = ("PASS" if "active_runtime_history_gate" in record_names else
+            ("FAIL" if self.d2_attempted["active_runtime"] else "NOT_RUN"))
+        startup_d2_status = ("PASS" if "startup_history_gate" in record_names else
+            ("FAIL" if self.d2_attempted["startup_replay"] else "NOT_RUN"))
         scenarios = [
             {"scenario": "shipping_complete_source_compile", "status": "PASS" if "shipping" in compile_names else "NOT_RUN"},
             {"scenario": "qa_complete_source_compile", "status": "PASS" if "qa" in compile_names else "NOT_RUN"},
@@ -1309,8 +1338,8 @@ class Runner:
             {"scenario": "d1_single_quiet_node_test", "status": diagnostic_names.get("d1-node-test", "NOT_RUN")},
             {"scenario": "d1_failing_command", "status": diagnostic_names.get("d1-failing-command", "NOT_RUN")},
             {"scenario": "d1_isolated_copy_mutation_refused", "status": diagnostic_names.get("d1-copy-mutation", "NOT_RUN")},
-            {"scenario": "d2_runtime_history_read_cancel_exact_births_late_release", "status": "PASS" if "active_runtime_history_gate" in record_names else "NOT_RUN"},
-            {"scenario": "d2_startup_history_replay_pending", "status": "PASS" if "startup_history_gate" in record_names else "NOT_RUN"},
+            {"scenario": "d2_runtime_history_read_cancel_exact_births_late_release", "status": active_d2_status},
+            {"scenario": "d2_startup_history_replay_pending", "status": startup_d2_status},
             {"scenario": "command_deadline_while_persistence_gate_held", "status": "NOT_RUN"},
             {"scenario": "short_cleanup_budget_during_long_stall", "status": "NOT_RUN"},
             {"scenario": "registry_file_fsync_gate", "status": "NOT_RUN"},
@@ -1348,6 +1377,8 @@ class Runner:
             "github_actions_runner": os.environ.get("GITHUB_ACTIONS") == "true",
             "host_security_observation": self.host_security,
             "physical_hardware_qualification": False,
+            "run_selection": "d2_only" if self.only_d2 else "all",
+            "d2_attempted": dict(self.d2_attempted),
             "diagnostic": self.diagnostic_summary,
             "backend_qualified": False, "native_os_origin_qualified": False,
             "artifact_scope": "public allowlisted summary; raw evidence remains private"}
@@ -1389,9 +1420,12 @@ def main():
     parser.add_argument("--evidence-root", required=True)
     parser.add_argument("--public-evidence-dir", required=True)
     parser.add_argument("--summary", required=True)
+    parser.add_argument("--only-d2", action="store_true",
+                        help="run D2 persistence-gate scenarios without repeating D1")
     args = parser.parse_args()
     expected_arch = os.environ.get("EXPECTED_ARCH", "")
-    runner = Runner(args.pins, args.evidence_root, expected_arch, args.public_evidence_dir)
+    runner = Runner(args.pins, args.evidence_root, expected_arch, args.public_evidence_dir,
+                    only_d2=args.only_d2)
     try:
         runner.execute()
     except BaseException as error:
