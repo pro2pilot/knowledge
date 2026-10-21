@@ -10,6 +10,7 @@ const { limits } = require('./verification-isolated-copy');
 const SCHEMA = 'knowledge-darwin-broker.v1';
 const MAX_REPLY_BYTES = 64 * 1024;
 const SOURCE_FILE = path.join(__dirname, 'verification-darwin-broker.m');
+const STUB_SOURCE_FILE = path.join(__dirname, 'verification-darwin-stub.c');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const invalid = code => Object.assign(new Error(code), { code });
 const exact = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
@@ -64,13 +65,13 @@ function nativeEnv(source = process.env) {
   return result;
 }
 
-function bundledSourceHash() {
+function bundledSourceHash(file = SOURCE_FILE) {
   try {
-    const stat = fs.lstatSync(SOURCE_FILE);
+    const stat = fs.lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 2 * 1024 * 1024) {
       throw invalid('verification_darwin_source_unavailable');
     }
-    return hash(fs.readFileSync(SOURCE_FILE));
+    return hash(fs.readFileSync(file));
   } catch (error) {
     if (error.code === 'verification_darwin_source_unavailable') throw error;
     throw invalid('verification_darwin_source_unavailable');
@@ -85,18 +86,24 @@ function decodeReply(buffer) {
   try { value = copyInertData(value, null, MAX_REPLY_BYTES); }
   catch { throw invalid('verification_darwin_protocol_invalid'); }
   const allowed = ['schema', 'ok', 'source_sha256', 'capability_qualified', 'qualification_mode',
-    'binary_sha256', 'host_id', 'boot_id', 'allowed_runtimes', 'registry_healthy', 'error'];
+    'binary_sha256', 'stub_source_sha256', 'stub_binary_sha256', 'stub_wire_version',
+    'host_id', 'boot_id', 'allowed_runtimes', 'registry_healthy', 'error'];
   if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).some(key => !allowed.includes(key)) ||
       value.schema !== SCHEMA || typeof value.ok !== 'boolean' || !/^[a-f0-9]{64}$/.test(value.source_sha256 || '')) {
     throw invalid('verification_darwin_protocol_invalid');
   }
   if (value.ok && (typeof value.capability_qualified !== 'boolean' || typeof value.registry_healthy !== 'boolean' ||
+      typeof value.qualification_mode !== 'boolean' || value.stub_wire_version !== 'KVS1' ||
+      !/^[a-f0-9]{64}$/.test(value.stub_source_sha256 || '') || !/^[a-f0-9]{64}$/.test(value.stub_binary_sha256 || '') ||
       !value.allowed_runtimes || Array.isArray(value.allowed_runtimes) || typeof value.allowed_runtimes !== 'object' ||
       !/^[a-f0-9]{64}$/.test(value.binary_sha256 || ''))) throw invalid('verification_darwin_protocol_invalid');
   if (!value.ok && (typeof value.error !== 'string' || !/^[A-Z0-9_]{1,96}$/.test(value.error))) {
     throw invalid('verification_darwin_protocol_invalid');
   }
   if (value.source_sha256 !== bundledSourceHash()) throw invalid('verification_darwin_source_pin_mismatch');
+  if (value.ok && value.stub_source_sha256 !== bundledSourceHash(STUB_SOURCE_FILE)) {
+    throw invalid('verification_darwin_stub_source_pin_mismatch');
+  }
   return value;
 }
 
@@ -152,7 +159,9 @@ function containmentCapability(value) {
       path.posix.isAbsolute(file) && !file.includes('\0') && reply.allowed_runtimes[file] === runtime_sha256);
     if (!runtime_path) return unavailable('runtime_pin_mismatch');
     return { platform: process.platform, backend: 'darwin_private_ruid', status: 'available',
-      source_sha256, binary_sha256, runtime_path, host_id: reply.host_id, boot_id: reply.boot_id };
+      source_sha256, binary_sha256, stub_source_sha256: reply.stub_source_sha256,
+      stub_binary_sha256: reply.stub_binary_sha256, stub_wire_version: reply.stub_wire_version,
+      runtime_path, host_id: reply.host_id, boot_id: reply.boot_id };
   } catch (error) {
     return unavailable(/^[a-z0-9_]{1,96}$/.test(error?.code || '') ? error.code : 'broker_probe_unavailable');
   }

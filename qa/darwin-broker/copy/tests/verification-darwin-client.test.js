@@ -9,6 +9,7 @@ const { test } = require('node:test');
 
 const client = require('../tools/lib/verification-darwin-client');
 const SOURCE = path.join(__dirname, '../tools/lib/verification-darwin-broker.m');
+const STUB_SOURCE = path.join(__dirname, '../tools/lib/verification-darwin-stub.c');
 
 test('configuration is explicit, inert, strict, and normalizes copy limits', () => {
   assert.deepEqual(client.config(), { darwin: { enabled: false } });
@@ -67,20 +68,29 @@ test('reply decoder rejects oversized, malformed, unknown, and mistyped protocol
     { code: 'verification_darwin_protocol_invalid' });
 
   const validShape = Buffer.from(JSON.stringify({ schema: client.SCHEMA, ok: true, source_sha256: '0'.repeat(64),
-    capability_qualified: false, registry_healthy: true, binary_sha256: '0'.repeat(64), allowed_runtimes: {} }));
+    capability_qualified: false, qualification_mode: false, registry_healthy: true, binary_sha256: '0'.repeat(64),
+    stub_source_sha256: '0'.repeat(64), stub_binary_sha256: '0'.repeat(64), stub_wire_version: 'KVS1', allowed_runtimes: {} }));
   const expectedFailure = fs.existsSync(SOURCE)
     ? 'verification_darwin_source_pin_mismatch'
     : 'verification_darwin_source_unavailable';
   assert.throws(() => client.decodeReply(validShape), { code: expectedFailure });
   if (fs.existsSync(SOURCE)) {
     const source_sha256 = crypto.createHash('sha256').update(fs.readFileSync(SOURCE)).digest('hex');
+    const stub_source_sha256 = crypto.createHash('sha256').update(fs.readFileSync(STUB_SOURCE)).digest('hex');
     const unqualified = { schema: client.SCHEMA, ok: true, source_sha256,
-      capability_qualified: false, registry_healthy: true, binary_sha256: '0'.repeat(64), allowed_runtimes: {} };
+      capability_qualified: false, qualification_mode: false, registry_healthy: true, binary_sha256: '0'.repeat(64),
+      stub_source_sha256, stub_binary_sha256: '0'.repeat(64), stub_wire_version: 'KVS1', allowed_runtimes: {} };
     const decoded = client.decodeReply(Buffer.from(JSON.stringify(unqualified)));
     assert.equal(Object.getPrototypeOf(decoded), null);
     assert.deepEqual(JSON.parse(JSON.stringify(decoded)), unqualified);
     // Parsing an honest negative capability never changes it into an admission.
     assert.equal(client.decodeReply(Buffer.from(JSON.stringify(unqualified))).capability_qualified, false);
+    assert.throws(() => client.decodeReply(Buffer.from(JSON.stringify({ ...unqualified, stub_source_sha256: '0'.repeat(64) }))),
+      { code: 'verification_darwin_stub_source_pin_mismatch' });
+    for (const patch of [{ stub_wire_version: 'KVS2' }, { stub_binary_sha256: null }, { qualification_mode: 'false' }]) {
+      assert.throws(() => client.decodeReply(Buffer.from(JSON.stringify({ ...unqualified, ...patch }))),
+        { code: 'verification_darwin_protocol_invalid' });
+    }
   }
 });
 

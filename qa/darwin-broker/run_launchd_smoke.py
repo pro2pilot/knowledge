@@ -96,6 +96,7 @@ def assess_host_postdrop(stdout, exit_code):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--broker', type=Path, default=HERE / 'evidence' / 'knowledge-native-broker')
+parser.add_argument('--stub', type=Path, default=HERE / 'evidence' / 'knowledge-native-stub')
 parser.add_argument('--node', type=Path, default=Path(shutil.which('node')).resolve() if shutil.which('node') else None)
 attempt13_harness = SCRIPT_DIR / 'native' / 'daemon-harness-attempt13.py'
 parser.add_argument('--harness', type=Path, default=attempt13_harness if attempt13_harness.is_file() else HERE / 'daemon-harness.py')
@@ -133,20 +134,25 @@ try:
     source_receipt = json.loads(args.source_receipt.read_bytes())
     compile_result = json.loads(args.compile_result.read_bytes())
     receipt_sha = source_receipt.get('native_sha256')
+    receipt_stub_sha = source_receipt.get('stub_sha256')
     if not isinstance(receipt_sha, str) or not re.fullmatch('[a-f0-9]{64}', receipt_sha):
         raise RuntimeError('SOURCE_RECEIPT does not contain a valid native source SHA')
     if args.expected_source_sha and receipt_sha != args.expected_source_sha:
         raise RuntimeError('SOURCE_RECEIPT differs from the explicit frozen-source pin')
+    if not isinstance(receipt_stub_sha, str) or not re.fullmatch('[a-f0-9]{64}', receipt_stub_sha):
+        raise RuntimeError('SOURCE_RECEIPT lacks the frozen C stub source pin')
     if (compile_result.get('source_sha256') != receipt_sha or compile_result.get('status') != 'PASS' or
             compile_result.get('exit_code') != 0 or compile_result.get('source_unchanged') is not True):
         raise RuntimeError('fresh COMPILE_RESULT does not confirm a successful unchanged pinned source build')
+    if compile_result.get('stub_source_sha256') != receipt_stub_sha or compile_result.get('stub_exit_code') != 0:
+        raise RuntimeError('fresh COMPILE_RESULT does not confirm the paired C stub')
     record['source_receipt_native_sha256'] = receipt_sha
     record['source_pin_origin'] = 'SOURCE_RECEIPT plus fresh COMPILE_RESULT'
     record['compile_result_source_sha256'] = compile_result['source_sha256']
     record['compile_result_status'] = compile_result['status']
     record['compile_result_source_unchanged'] = compile_result['source_unchanged']
-    broker_source, node_source = args.broker.resolve(strict=True), args.node.resolve(strict=True)
-    if args.broker.is_symlink() or args.node.is_symlink() or not broker_source.is_file() or not node_source.is_file():
+    broker_source, stub_source, node_source = args.broker.resolve(strict=True), args.stub.resolve(strict=True), args.node.resolve(strict=True)
+    if args.broker.is_symlink() or args.stub.is_symlink() or args.node.is_symlink() or not broker_source.is_file() or not stub_source.is_file() or not node_source.is_file():
         raise RuntimeError('broker or resolved Node artifact is not an ordinary file')
     origin_source = HERE / 'launch-origin-probe.c'
     if not origin_source.is_file():
@@ -167,6 +173,8 @@ try:
     record['host_postdrop_binary_sha256_before_install'] = sha(host_binary)
     record['launch_origin_binary_sha256_before_install'] = sha(origin_binary)
     record['broker_sha256_before_install'] = sha(broker_source)
+    record['stub_sha256_before_install'] = sha(stub_source)
+    record['stub_source_sha256'] = receipt_stub_sha
     record['node_sha256_before_install'] = sha(node_source)
     record['broker_input_path'] = str(broker_source)
     record['node_input_path'] = str(node_source)
@@ -183,13 +191,15 @@ try:
     assert run('protect-fixture', ['/usr/bin/sudo', '-n', '/usr/sbin/chown', '0:0', str(fixture)], record).returncode == 0
     assert run('mode-fixture', ['/usr/bin/sudo', '-n', '/bin/chmod', '0711', str(fixture)], record).returncode == 0
     binary, node, origin_probe = fixture / 'bin/broker', fixture / 'runtime/node', fixture / 'bin/launch-origin-probe'
+    stub = fixture / 'bin/knowledge-native-stub'
     host_probe = fixture / 'bin/host-postdrop-probe'
-    for name, source, target in [('broker', broker_source, binary), ('node', node_source, node),
+    for name, source, target in [('broker', broker_source, binary), ('stub', stub_source, stub), ('node', node_source, node),
                                  ('launch-origin-probe', origin_binary, origin_probe),
                                  ('host-postdrop-probe', host_binary, host_probe)]:
         assert run('install-' + name, ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0555', str(source), str(target)], record).returncode == 0
         record[name + '_sha256_after_install'] = sha(target)
         expected_hash = (record['broker_sha256_before_install'] if name == 'broker' else
+                         record['stub_sha256_before_install'] if name == 'stub' else
                          record['node_sha256_before_install'] if name == 'node' else
                          record['launch_origin_binary_sha256_before_install'] if name == 'launch-origin-probe' else
                          record['host_postdrop_binary_sha256_before_install'])
@@ -433,7 +443,9 @@ finally:
         record['status'] = 'LAUNCHD_STARTUP_OBSERVED_CLEANUP_UNCONFIRMED'
     (OUT / 'LAUNCHD_SMOKE_RESULT.json').write_text(json.dumps(record, indent=2) + '\n')
 print(json.dumps(record))
-raise SystemExit(0 if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and
-                 record.get('launch_origin_canaries_passed') and record.get('host_postdrop_checks_passed') and
-                 record.get('host_probe_processes_reaped') and record.get('host_probe_uid_zero_confirmed') and
-                 record['cleanup_confirmed'] else 1)
+raise SystemExit(0 if (
+    (args.host_probe_only and record['status'] == 'HOST_PROBE_ONLY_PASS' and record['cleanup_confirmed']) or
+    (not args.host_probe_only and record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and
+     record.get('launch_origin_canaries_passed') and record.get('host_postdrop_checks_passed') and
+     record.get('host_probe_processes_reaped') and record.get('host_probe_uid_zero_confirmed') and
+     record['cleanup_confirmed'])) else 1)

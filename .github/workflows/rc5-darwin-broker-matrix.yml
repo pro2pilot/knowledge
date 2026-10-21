@@ -17,15 +17,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compile exact preliminary native source
         run: python3 qa/darwin-broker/compile_native.py
+      - name: Test pinned portable modules
+        run: python3 qa/darwin-broker/verify_copy_pins.py
+      - name: Test bounded C wire parser
+        run: python3 qa/darwin-broker/check_stub_wire.py
       - name: Compile read-only UID observer
         run: /usr/bin/clang -std=c11 -O2 -Wall -Wextra qa/darwin-broker/uid-scan.c -o qa/darwin-broker/evidence/uid-scan
-      - name: Test C-only rights cleanup and host credential drop
+      - name: Test installed pinned broker and C stub
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py --host-probe-only --expected-source-sha=a699a968f11125f8a16282d9c43c44286fe1d4d5d1a2ddcb7571a506bea7dc87
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --expected-source-sha=43c8b28ff07dde7d299cef20897f819c24f74012631ff02fcbfb39a14358c977
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt15-${{ matrix.os }}
+          name: darwin-native-attempt16-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
@@ -33,3 +37,19 @@ jobs:
             qa/darwin-broker/evidence/*.tap
             qa/darwin-broker/evidence/*.sb
             qa/darwin-broker/evidence/launchd-smoke-*/**/*
+  portable:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test exact pinned portable modules
+        run: python3 qa/darwin-broker/verify_copy_pins.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: darwin-portable-attempt16-ubuntu-22.04
+          path: |
+            qa/darwin-broker/COPY_SOURCE_RECEIPT.json
+            qa/darwin-broker/evidence/*.json
+            qa/darwin-broker/evidence/*.log
+            qa/darwin-broker/evidence/*.tap
