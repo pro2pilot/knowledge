@@ -29,6 +29,8 @@ stub_argv = []
 stub_result = None
 pair_describe = None
 kernel_groups_import_verified = False
+broker_digest = None
+stub_binary_digest = None
 if result.returncode == 0:
     broker_digest = hashlib.sha256((OUT / 'knowledge-native-broker').read_bytes()).hexdigest()
     stub_argv = ['/usr/bin/clang', '-std=c11', '-D_DARWIN_C_SOURCE', '-O2', '-Wall', '-Wextra',
@@ -39,6 +41,7 @@ if result.returncode == 0:
     with (OUT / 'compile-stub.stdout.log').open('wb') as stdout, (OUT / 'compile-stub.stderr.log').open('wb') as stderr:
         stub_result = subprocess.run(stub_argv, stdout=stdout, stderr=stderr, timeout=120)
     if stub_result.returncode == 0:
+        stub_binary_digest = hashlib.sha256((OUT / 'knowledge-native-stub').read_bytes()).hexdigest()
         symbols = subprocess.run(['/usr/bin/nm', '-u', str(OUT / 'knowledge-native-stub')], capture_output=True, timeout=10)
         (OUT / 'stub-symbols.stdout.log').write_bytes(symbols.stdout)
         (OUT / 'stub-symbols.stderr.log').write_bytes(symbols.stderr)
@@ -58,6 +61,7 @@ record = {'scope': 'preliminary native clang compile only; no backend qualificat
           'status': 'PASS' if code == 0 else 'FAIL', 'argv': argv, 'stub_argv': stub_argv,
           'exit_code': code, 'stub_exit_code': stub_result.returncode if stub_result else None,
           'stub_source_sha256': stub_digest, 'stub_pair_description': pair_describe,
+          'broker_binary_sha256': broker_digest, 'stub_binary_sha256': stub_binary_digest,
           'kernel_groups_import_verified': kernel_groups_import_verified,
           'elapsed_ms': round((time.monotonic()-start)*1000, 3),
           'platform': platform.platform(), 'machine': platform.machine(), 'source_sha256': digest,

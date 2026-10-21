@@ -111,6 +111,8 @@ parser.add_argument('--source-receipt', type=Path, default=HERE / 'SOURCE_RECEIP
 parser.add_argument('--compile-result', type=Path, default=HERE / 'evidence' / 'COMPILE_RESULT.json')
 parser.add_argument('--host-probe-only', action='store_true')
 parser.add_argument('--expected-source-sha', help='Optional frozen-source SHA pin for this CI attempt')
+parser.add_argument('--m2-scenario', choices=('normal', 'interrupt_drain'),
+                    help='Use the two-phase harness and an owned native admission-lock probe')
 args = parser.parse_args()
 EVIDENCE_ROOT = HERE / 'evidence'
 if EVIDENCE_ROOT.is_symlink() or not EVIDENCE_ROOT.is_dir():
@@ -165,6 +167,15 @@ try:
     broker_source, stub_source, node_source = args.broker.resolve(strict=True), args.stub.resolve(strict=True), args.node.resolve(strict=True)
     if args.broker.is_symlink() or args.stub.is_symlink() or args.node.is_symlink() or not broker_source.is_file() or not stub_source.is_file() or not node_source.is_file():
         raise RuntimeError('broker or resolved Node artifact is not an ordinary file')
+    if (sha(broker_source) != compile_result.get('broker_binary_sha256') or
+            sha(stub_source) != compile_result.get('stub_binary_sha256') or
+            compile_result.get('stub_pair_description') != {
+                'schema': 'knowledge-darwin-stub.v1',
+                'broker_binary_sha256': sha(broker_source),
+                'broker_source_sha256': receipt_sha, 'stub_source_sha256': receipt_stub_sha,
+                'capability_qualified': False}):
+        raise RuntimeError('supplied native executable bytes do not match the fresh compile pair')
+    record['actual_binary_pair_matches_compile'] = True
     dependencies = run('node-runtime-dependencies', ['/usr/bin/otool', '-L', str(node_source)], record, 20)
     lines = dependencies.stdout.decode('utf-8', errors='strict').splitlines()[1:]
     libraries = [line.strip().split(' (', 1)[0] for line in lines if line.strip()]
@@ -198,6 +209,16 @@ try:
     if groups_compile.returncode:
         raise RuntimeError('kernel groups regression did not compile')
     record['kernel_groups_regression_binary_sha256'] = sha(groups_binary)
+    admission_binary = None
+    if args.m2_scenario:
+        admission_source = SCRIPT_DIR / 'admission-flock-probe.c'
+        admission_binary = OUT / 'admission-flock-probe'
+        record['admission_probe_source_sha256'] = sha(admission_source)
+        compiled_admission = run('compile-admission-probe', ['/usr/bin/clang', '-std=c11',
+            '-O2', '-Wall', '-Wextra', '-Werror', str(admission_source), '-o', str(admission_binary)], record, 120)
+        if compiled_admission.returncode:
+            raise RuntimeError('owned admission-lock probe did not compile')
+        record['admission_probe_binary_sha256'] = sha(admission_binary)
     record['broker_sha256_before_install'] = sha(broker_source)
     record['stub_sha256_before_install'] = sha(stub_source)
     record['stub_source_sha256'] = receipt_stub_sha
@@ -234,6 +255,14 @@ try:
                          record['host_postdrop_binary_sha256_before_install'])
         if record[name + '_sha256_after_install'] != expected_hash:
             raise RuntimeError(name + ' installed bytes changed')
+    admission_probe = None
+    if admission_binary:
+        admission_probe = fixture / 'bin/admission-flock-probe'
+        assert run('install-admission-probe', ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0',
+            '-g', '0', '-m', '0555', str(admission_binary), str(admission_probe)], record).returncode == 0
+        record['admission_probe_installed_sha256'] = sha(admission_probe)
+        if record['admission_probe_installed_sha256'] != record['admission_probe_binary_sha256']:
+            raise RuntimeError('owned admission-lock probe bytes changed at install')
     pre_groups = run('pre-kernel-groups-uid-scan', [str(args.uid_scan), '1800000125'], record)
     if pre_groups.returncode:
         raise RuntimeError('kernel groups regression UID is not observed unused')
@@ -382,14 +411,27 @@ try:
         harness_started = True
         run_evidence = OUT / 'native-run'
         run_evidence.mkdir(mode=0o700)
-        harness = run('ordinary-user-daemon-harness', ['python3', str(args.harness), '--binary=' + str(binary),
+        harness_argv = ['python3', str(args.harness), '--binary=' + str(binary),
             '--socket=' + str(sock), '--node=' + str(node), '--profile-output=' + str(OUT / 'exact-native-profile.sb'),
-            '--evidence-dir=' + str(run_evidence)], record, 180)
+            '--evidence-dir=' + str(run_evidence)]
+        if args.m2_scenario:
+            harness_argv += ['--scenario=' + args.m2_scenario, '--admission-probe=' + str(admission_probe)]
+            record['m2_scenario'] = args.m2_scenario
+        record['harness_source_sha256'] = sha(args.harness)
+        harness = run('ordinary-user-daemon-harness', harness_argv, record, 180)
         try:
             result = json.loads(harness.stdout)
         except (ValueError, TypeError):
             raise RuntimeError('daemon harness returned invalid JSON')
         descriptor = result.get('descriptor')
+        if (not isinstance(descriptor, dict) or result.get('source_sha256') != receipt_sha or
+                descriptor.get('source_sha256') != receipt_sha or
+                descriptor.get('broker_binary_sha256') != record['broker_sha256_before_install'] or
+                descriptor.get('stub_source_sha256') != receipt_stub_sha or
+                descriptor.get('stub_binary_sha256') != record['stub_sha256_before_install'] or
+                descriptor.get('stub_wire_version') != 'KVS1'):
+            raise RuntimeError('actual native harness descriptor differs from the fresh source/binary pair')
+        record['harness_actual_pair_matches_compile'] = True
         record['timing_contract_probe'] = result.get('timing_contract_probe', {'status': 'NOT_REPORTED'})
         (OUT / 'native-proof-response.json').write_text(json.dumps(result.get('native_proof'), sort_keys=True, separators=(',', ':')) + '\n')
         print_result = run('launchctl-print-own-label', ['/usr/bin/sudo', '-n', '/bin/launchctl', 'print', 'system/' + label], record)

@@ -1,0 +1,10 @@
+{
+  "scope": "pre-integration native UID-history component only; not broker qualification",
+  "component_commit": "8681df1294f8be34c4f87e4f5cfc657c3ece33b0",
+  "files": {
+    "verification-darwin-uid-history.h": "9759f83c8025e22c9eff7713b31c27959fb4effe053d462c5ce354a0aaa60f08",
+    "verification-darwin-uid-history.m": "0826264b2f0768fd47d49ee8ff18f45b57e6739c606e66781e18663937e686b4",
+    "uid-history-native-selftest.m": "2f01f390eddee78c5dccd31c83a715f63a1b65314c3b92f3cf7ef4feeadf7f2f"
+  },
+  "capability_qualified": false
+}
