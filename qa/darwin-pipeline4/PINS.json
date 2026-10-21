@@ -1435,8 +1435,8 @@
     },
     {
       "path": ".knowledge/tests/verification-darwin-client.test.js",
-      "sha256": "81ad1481a64bde1b21c8b11ca751720aa993d1c6af8fddecda1925efc7f84e84",
-      "bytes": 15622
+      "sha256": "b6eebc9fba1792051d03bbcb878584b3094e36560c75840186fd2c8eab090f11",
+      "bytes": 16880
     },
     {
       "path": ".knowledge/tests/verification-darwin-diagnostic.test.js",
@@ -1955,8 +1955,8 @@
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-client.js",
-      "sha256": "59466e6b4fae8034989bb27bae635ac44b9afc986958ce2e0c36108eca08fed6",
-      "bytes": 15805
+      "sha256": "992498e71b8b4171a020326cccb4458e91fe374e6c8d2a214c47f17a362dd482",
+      "bytes": 16859
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-diagnostic-protocol.js",

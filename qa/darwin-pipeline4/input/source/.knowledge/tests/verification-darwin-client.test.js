@@ -67,6 +67,27 @@ test('native environment removes dynamic loader and script injection variables w
   assert.deepEqual({ ...client.nativeEnv(input) }, { PATH: '/usr/bin', HOME: '/Users/test' });
   assert.deepEqual(input, before);
   assert.throws(() => client.nativeEnv({ PATH: 7 }), { code: 'verification_darwin_environment_invalid' });
+  let invoked = false;
+  assert.throws(() => client.nativeEnv({ get PATH() { invoked = true; return '/tmp'; } }),
+    { code: 'verification_darwin_environment_invalid' });
+  assert.equal(invoked, false);
+  assert.throws(() => client.nativeEnv(new Proxy({}, { ownKeys() { invoked = true; return []; } })),
+    { code: 'verification_darwin_environment_invalid' });
+  assert.equal(invoked, false);
+});
+
+test('the actual native process environment is accepted without weakening caller data admission', () => {
+  const before = Object.getOwnPropertyDescriptors(process.env);
+  const result = client.nativeEnv();
+  assert.equal(Object.getPrototypeOf(result), null);
+  // Never dump host environment values into a failing TAP assertion.
+  assert.equal(JSON.stringify(Object.getOwnPropertyDescriptors(process.env)) === JSON.stringify(before), true,
+    'host environment unchanged');
+  assert.ok(Object.values(result).every(value => typeof value === 'string'));
+  assert.ok(Object.keys(result).every(key => !/^(?:DYLD_|LD_)/i.test(key) &&
+    !/^(?:NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV)$/i.test(key)));
+  assert.throws(() => client.nativeEnv(Object.assign(Object.create({ custom: true }), { PATH: '/bin' })),
+    { code: 'verification_darwin_environment_invalid' });
 });
 
 test('reply decoder rejects oversized, malformed, unknown, and mistyped protocol bodies', () => {

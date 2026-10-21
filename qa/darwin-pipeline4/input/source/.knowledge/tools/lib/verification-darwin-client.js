@@ -20,14 +20,33 @@ const STUB_SOURCE_FILE = path.join(__dirname, 'verification-darwin-stub.c');
 const UID_HEADER_FILE = path.join(__dirname, 'verification-darwin-uid-history.h');
 const UID_SOURCE_FILE = path.join(__dirname, 'verification-darwin-uid-history.m');
 const TRANSPORT_HEADER_FILE = path.join(__dirname, 'verification-darwin-transport.h');
+const HOST_ENVIRONMENT = process.env;
+const { isProxy } = require('node:util').types;
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const invalid = code => Object.assign(new Error(code), { code });
 const exact = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
   Object.keys(value).sort().join(',') === [...keys].sort().join(',');
 
-function nativeEnv(source = process.env) {
+function nativeEnv(source = HOST_ENVIRONMENT) {
   let data;
-  try { data = copyInertData(source, null, 1024 * 1024); }
+  try {
+    // Node's genuine process.env has a native exotic prototype, unlike public
+    // caller data. Snapshot only this captured host capability through own
+    // DATA descriptors; never broaden inert admission for arbitrary objects.
+    if (source === HOST_ENVIRONMENT) {
+      if (isProxy(source)) throw invalid('verification_darwin_environment_invalid');
+      const descriptors = Object.getOwnPropertyDescriptors(source), snapshot = Object.create(null);
+      for (const key of Reflect.ownKeys(descriptors)) {
+        const descriptor = descriptors[key];
+        if (typeof key !== 'string' || !Object.hasOwn(descriptor, 'value') ||
+            !descriptor.enumerable || typeof descriptor.value !== 'string') {
+          throw invalid('verification_darwin_environment_invalid');
+        }
+        Object.defineProperty(snapshot, key, { value: descriptor.value, enumerable: true });
+      }
+      data = copyInertData(snapshot, null, 1024 * 1024);
+    } else data = copyInertData(source, null, 1024 * 1024);
+  }
   catch { throw invalid('verification_darwin_environment_invalid'); }
   if (!data || Array.isArray(data) || typeof data !== 'object') throw invalid('verification_darwin_environment_invalid');
   const result = Object.create(null);
