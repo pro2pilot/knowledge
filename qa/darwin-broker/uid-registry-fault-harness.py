@@ -25,9 +25,11 @@ MAX_REGISTRY = 4 * 1024 * 1024
 CORRUPT_SENTINEL = b"KNOWLEDGE_OWNED_CORRUPT_REGISTRY_FIXTURE\n"
 EXPECTED_SOURCE_FIELDS = ("attempt_id", "descriptor_sha256", "source_sha256",
                           "host_id", "boot_id", "task_ruid", "installation_id",
-                          "allocation_seq", "allocation_sha256")
+                          "allocation_seq", "allocation_sha256", "account_policy_id",
+                          "account_policy_sha256")
 EXPECTED_STRING_FIELDS = ("attempt_id", "descriptor_sha256", "source_sha256", "host_id",
-                          "boot_id", "installation_id", "allocation_seq", "allocation_sha256")
+                          "boot_id", "installation_id", "allocation_seq", "allocation_sha256",
+                          "account_policy_id", "account_policy_sha256")
 
 
 def load_harness_helpers():
@@ -42,7 +44,8 @@ def load_harness_helpers():
     # the helper's __main__ guard inactive.
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    for name in ("canonical", "digest", "exact_fields"):
+    for name in ("canonical", "digest", "exact_fields", "valid_account_policy",
+                 "account_policy_binding"):
         if not callable(getattr(module, name, None)):
             raise RuntimeError("M2 helper API is incomplete")
     return module
@@ -223,7 +226,7 @@ def save_profile(path_value, status, descriptor):
     return hashlib.sha256(actual).hexdigest()
 
 
-def validate_probe(probe):
+def validate_probe(probe, helper):
     uid_history = probe.get("uid_history")
     return (
         exact_bool(probe.get("ok"), True) and
@@ -231,6 +234,7 @@ def validate_probe(probe):
         exact_bool(probe.get("capability_qualified"), False) and
         exact_bool(probe.get("registry_healthy"), True) and
         exact_bool(probe.get("entry_store_loaded"), True) and
+        helper.valid_account_policy(probe.get("account_policy"), require_ready=True) and
         isinstance(uid_history, dict) and
         exact_bool(uid_history.get("healthy_cached"), True) and
         uid_history.get("health_source") == "disk_refresh_attempt" and
@@ -243,7 +247,7 @@ def validate_probe(probe):
         isinstance(probe.get("host_id"), str) and isinstance(probe.get("boot_id"), str))
 
 
-def validate_binding(prepared, probe):
+def validate_binding(prepared, probe, helper):
     descriptor = prepared.get("descriptor")
     if not isinstance(descriptor, dict):
         raise RuntimeError("prepare did not return a public descriptor")
@@ -258,6 +262,7 @@ def validate_binding(prepared, probe):
         "allocation_seq": descriptor.get("allocation_seq"),
         "allocation_sha256": descriptor.get("allocation_sha256"),
     }
+    binding.update(helper.account_policy_binding(probe.get("account_policy"), descriptor))
     uid_history = probe.get("uid_history") if isinstance(probe.get("uid_history"), dict) else {}
     if (not all(type(binding[k]) is str for k in EXPECTED_STRING_FIELDS) or
             type(binding["task_ruid"]) is not int or
@@ -309,7 +314,7 @@ def controller(args, helper):
     binary, sock = str(Path(args.binary)), str(Path(args.socket))
     fixture, target = fixture_registry_path(sock)
     probe_reply = helper.rpc(binary, sock, {"op": "probe"}, timeout=3)
-    if not validate_probe(probe_reply):
+    if not validate_probe(probe_reply, helper):
         raise RuntimeError("daemon probe is not healthy in explicit diagnostic mode")
     prepared = helper.rpc(binary, sock, {"op": "prepare", "mode": "isolated_copy",
         "attempt_nonce": secrets.token_hex(32), "work_budget_ms": 120000,
@@ -317,7 +322,7 @@ def controller(args, helper):
     attempt_ref = {"attempt_id": prepared["attempt_id"],
                    "descriptor_sha256": prepared["descriptor_sha256"]}
     try:
-        binding = validate_binding(prepared, probe_reply)
+        binding = validate_binding(prepared, probe_reply, helper)
     except Exception:
         try:
             public_rpc(helper, binary, sock,

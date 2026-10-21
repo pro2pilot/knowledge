@@ -9,6 +9,7 @@ const { limits } = require('./verification-isolated-copy');
 
 const SCHEMA = 'knowledge-darwin-broker.v1';
 const MAX_REPLY_BYTES = 64 * 1024;
+const ACCOUNT_POLICY = 'admin_reserved_interval_no_runtime_nss.v1';
 const SOURCE_FILE = path.join(__dirname, 'verification-darwin-broker.m');
 const STUB_SOURCE_FILE = path.join(__dirname, 'verification-darwin-stub.c');
 const UID_HEADER_FILE = path.join(__dirname, 'verification-darwin-uid-history.h');
@@ -90,7 +91,7 @@ function decodeReply(buffer) {
   const allowed = ['schema', 'ok', 'source_sha256', 'capability_qualified', 'qualification_mode',
     'binary_sha256', 'stub_source_sha256', 'stub_binary_sha256', 'stub_wire_version',
     'host_id', 'boot_id', 'allowed_runtimes', 'registry_healthy', 'registry_quarantine_reason',
-    'entry_store_loaded', 'uid_history', 'error'];
+    'entry_store_loaded', 'uid_history', 'account_policy', 'error'];
   if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).some(key => !allowed.includes(key)) ||
       value.schema !== SCHEMA || typeof value.ok !== 'boolean' || !/^[a-f0-9]{64}$/.test(value.source_sha256 || '')) {
     throw invalid('verification_darwin_protocol_invalid');
@@ -103,6 +104,7 @@ function decodeReply(buffer) {
       typeof value.host_id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value.host_id) ||
       typeof value.boot_id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value.boot_id) ||
       !validUIDHistory(value.uid_history, value.host_id) ||
+      !validAccountPolicy(value.account_policy) ||
       typeof value.qualification_mode !== 'boolean' || value.stub_wire_version !== 'KVS1' ||
       !/^[a-f0-9]{64}$/.test(value.stub_source_sha256 || '') || !/^[a-f0-9]{64}$/.test(value.stub_binary_sha256 || '') ||
       !value.allowed_runtimes || Array.isArray(value.allowed_runtimes) || typeof value.allowed_runtimes !== 'object' ||
@@ -140,6 +142,16 @@ function validUIDHistory(history, host) {
       !/^(?:0|[1-9][0-9]{0,5})$/.test(cp.seq) || Number(cp.seq) > 100000 ||
       !hex(cp.tip_sha256) || !Number.isSafeInteger(cp.next_uid) || cp.next_uid !== 1000000000 + Number(cp.seq))) return false;
   return !history.healthy_cached || cp !== null && history.reason === 'HEALTHY';
+}
+
+function validAccountPolicy(policy) {
+  if (!exact(policy, ['id', 'healthy', 'reason', 'sha256', 'configured_owner_count', 'runtime_directory_lookups']) ||
+      policy.id !== ACCOUNT_POLICY || typeof policy.healthy !== 'boolean' || typeof policy.reason !== 'string' ||
+      !/^[A-Z0-9_]{1,128}$/.test(policy.reason) || policy.runtime_directory_lookups !== false ||
+      !Number.isSafeInteger(policy.configured_owner_count) || policy.configured_owner_count < 0 ||
+      policy.configured_owner_count > 64 || !(policy.sha256 === null || typeof policy.sha256 === 'string' &&
+        /^[a-f0-9]{64}$/.test(policy.sha256))) return false;
+  return !policy.healthy || policy.reason === 'HEALTHY' && policy.sha256 !== null && policy.configured_owner_count > 0;
 }
 
 function protectedBrokerHash(binaryPath) {
@@ -190,6 +202,7 @@ function containmentCapability(value) {
     if (reply.entry_store_loaded !== true || reply.uid_history.healthy_cached !== true ||
         reply.uid_history.health_source !== 'disk_refresh_attempt' ||
         reply.uid_history.last_refresh_attempt_started_monotonic_ms === null) return unavailable('broker_uid_history_unhealthy');
+    if (reply.account_policy.healthy !== true) return unavailable('broker_account_policy_unhealthy');
     if (reply.binary_sha256 !== binary_sha256) return unavailable('broker_binary_pin_mismatch');
     // An administrator installs a protected byte-identical runtime copy. Its
     // pathname deliberately differs from the ordinary user's executable.
@@ -202,6 +215,7 @@ function containmentCapability(value) {
       uid_history_header_sha256: reply.uid_history.header_sha256,
       uid_history_source_sha256: reply.uid_history.source_sha256,
       installation_id: reply.uid_history.installation_id_cached,
+      account_policy_id: reply.account_policy.id, account_policy_sha256: reply.account_policy.sha256,
       runtime_path, host_id: reply.host_id, boot_id: reply.boot_id };
   } catch (error) {
     return unavailable(/^[a-z0-9_]{1,96}$/.test(error?.code || '') ? error.code : 'broker_probe_unavailable');

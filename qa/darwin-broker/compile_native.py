@@ -74,6 +74,7 @@ record = {'scope': 'preliminary native clang compile only; no backend qualificat
           'stub_source_sha256': stub_digest, 'stub_pair_description': pair_describe,
           'broker_binary_sha256': broker_digest, 'stub_binary_sha256': stub_binary_digest,
           'uid_history_files': history_files,
+          'account_policy_id': expected.get('account_policy_id'),
           'kernel_groups_import_verified': kernel_groups_import_verified,
           'elapsed_ms': round((time.monotonic()-start)*1000, 3),
           'platform': platform.platform(), 'machine': platform.machine(), 'source_sha256': digest,

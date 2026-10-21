@@ -15,6 +15,8 @@ function historyMetadata() {
   const host_id = '00000000-0000-0000-0000-000000000001';
   return { host_id, boot_id: 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', entry_store_loaded: true,
     registry_quarantine_reason: null,
+    account_policy: { id: 'admin_reserved_interval_no_runtime_nss.v1', healthy: true, reason: 'HEALTHY',
+      sha256: '3'.repeat(64), configured_owner_count: 1, runtime_directory_lookups: false },
     uid_history: { healthy_cached: true, reason: 'HEALTHY', health_source: 'disk_refresh_attempt',
       last_refresh_attempt_started_monotonic_ms: 123,
       installation_id_cached: '1'.repeat(64),
@@ -127,12 +129,22 @@ test('reply decoder rejects oversized, malformed, unknown, and mistyped protocol
         uid_history: { ...unqualified.uid_history, [field]: '0'.repeat(64) } }))),
       { code: 'verification_darwin_uid_source_pin_mismatch' });
     }
+    for (const patch of [{ healthy: 1 }, { id: 'implicit_lookup' }, { sha256: null },
+      { configured_owner_count: 0 }, { configured_owner_count: 65 }, { configured_owner_count: true },
+      { runtime_directory_lookups: true }, { reason: 'ACCOUNT_POLICY_CHANGED' }, { extra: true }]) {
+      assert.throws(() => client.decodeReply(Buffer.from(JSON.stringify({ ...unqualified,
+        account_policy: { ...unqualified.account_policy, ...patch } }))),
+      { code: 'verification_darwin_protocol_invalid' });
+    }
     const quarantined = { ...unqualified, registry_healthy: false, entry_store_loaded: false,
       registry_quarantine_reason: 'ENTRY_STORE_MISSING_OR_CHANGED',
       uid_history: { ...unqualified.uid_history, healthy_cached: false, reason: 'REGISTRY_CHECKPOINT_MISMATCH',
         health_source: 'cached_quarantine', checkpoint_cached: null, installation_id_cached: null,
         last_refresh_attempt_started_monotonic_ms: null } };
     assert.equal(client.decodeReply(Buffer.from(JSON.stringify(quarantined))).uid_history.healthy_cached, false);
+    const policyQuarantined = { ...unqualified, account_policy: { ...unqualified.account_policy,
+      healthy: false, reason: 'ACCOUNT_POLICY_MISSING_INVALID_OR_UNBOUND', sha256: null, configured_owner_count: 0 } };
+    assert.equal(client.decodeReply(Buffer.from(JSON.stringify(policyQuarantined))).account_policy.healthy, false);
   }
 });
 

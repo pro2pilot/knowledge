@@ -26,6 +26,7 @@ import time
 
 MAX_REPLY = 65536
 MAX_RUN_FILE = 65536
+ACCOUNT_POLICY_ID = "admin_reserved_interval_no_runtime_nss.v1"
 
 
 def canonical(value):
@@ -158,6 +159,43 @@ def exact_fields(actual, expected):
     return isinstance(actual, dict) and all(
         type(actual.get(key)) is type(value) and actual.get(key) == value
         for key, value in expected.items())
+
+
+def valid_account_policy(policy, *, require_ready=False):
+    fields = {"id", "healthy", "reason", "sha256", "configured_owner_count",
+              "runtime_directory_lookups"}
+    if not isinstance(policy, dict) or set(policy) != fields:
+        return False
+    sha = policy.get("sha256")
+    valid_sha = (sha is None or
+                 (type(sha) is str and re.fullmatch(r"[0-9a-f]{64}", sha) is not None))
+    valid = (
+        type(policy.get("id")) is str and policy["id"] == ACCOUNT_POLICY_ID and
+        type(policy.get("healthy")) is bool and
+        type(policy.get("reason")) is str and valid_sha and
+        type(policy.get("configured_owner_count")) is int and
+        0 <= policy["configured_owner_count"] <= 64 and
+        type(policy.get("runtime_directory_lookups")) is bool and
+        policy["runtime_directory_lookups"] is False and
+        (not policy["healthy"] or policy["reason"] == "HEALTHY"))
+    if require_ready:
+        valid = (valid and policy["healthy"] is True and
+                 policy["reason"] == "HEALTHY" and type(sha) is str and
+                 re.fullmatch(r"[0-9a-f]{64}", sha) is not None and
+                 policy["configured_owner_count"] >= 1)
+    return valid
+
+
+def account_policy_binding(policy, descriptor):
+    if not valid_account_policy(policy, require_ready=True) or not isinstance(descriptor, dict):
+        raise RuntimeError("initial account-policy probe is not healthy or well-typed")
+    policy_id = descriptor.get("account_policy_id")
+    policy_sha = descriptor.get("account_policy_sha256")
+    if (type(policy_id) is not str or policy_id != policy["id"] or
+            type(policy_sha) is not str or policy_sha != policy["sha256"]):
+        raise RuntimeError("prepared descriptor did not match the initial account-policy probe")
+    return {"account_policy_id": policy_id,
+            "account_policy_sha256": policy_sha}
 
 def valid_identity(identity):
     numeric = ("pid", "start_sec", "start_usec", "ruid", "pidversion")
@@ -440,6 +478,8 @@ def authority():
     expected = {
         "schema": "knowledge-darwin-command-drain-proof.v1",
         "phase": "commands_drained",
+        "account_policy_id": config["account_policy_id"],
+        "account_policy_sha256": config["account_policy_sha256"],
         "terminal_cleanup": False,
         "native_command_drain_facts_confirmed": True,
         "command_drain_confirmed": False,
@@ -505,6 +545,9 @@ def controller(args):
     probe = rpc(binary, sock, {"op": "probe"})
     if not probe.get("qualification_mode") or probe.get("capability_qualified") is not False:
         raise RuntimeError("expected explicit diagnostic daemon with capability_qualified=false")
+    initial_account_policy = probe.get("account_policy")
+    if not valid_account_policy(initial_account_policy, require_ready=True):
+        raise RuntimeError("initial account-policy probe is not healthy or well-typed")
     if probe.get("allowed_runtimes", {}).get(node) != installed_node_digest:
         raise RuntimeError("protected Node runtime pin mismatch")
     timing_contract = timing_contract_probe(binary, sock)
@@ -558,6 +601,7 @@ def controller(args):
             "boot_id": descriptor.get("boot_id"),
             "task_ruid": descriptor.get("task_ruid"),
         }
+        proof_binding.update(account_policy_binding(initial_account_policy, descriptor))
         if (not all(type(proof_binding.get(key)) is str for key in
                     ("attempt_id", "descriptor_sha256", "source_sha256", "host_id", "boot_id")) or
                 type(proof_binding.get("task_ruid")) is not int or
@@ -617,7 +661,10 @@ def controller(args):
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
         config = {"binary": binary, "socket": sock, "node": node,
-                  "raw_outputs": raw_outputs, "scenario": args.scenario, **credentials}
+                  "raw_outputs": raw_outputs, "scenario": args.scenario,
+                  "account_policy_id": proof_binding["account_policy_id"],
+                  "account_policy_sha256": proof_binding["account_policy_sha256"],
+                  **credentials}
         child.stdin.write(canonical(config) + b"\n")
         child.stdin.flush()
         ready = json.loads(read_line_bounded(child.stdout.fileno(), 60))
@@ -633,6 +680,13 @@ def controller(args):
         line = read_line_bounded(child.stdout.fileno(), 60)
         authority_result = json.loads(line)
         if args.scenario == "interrupt_drain":
+            raced_drain_proof = authority_result.get("drain_proof")
+            if (raced_drain_proof is not None and
+                    not exact_fields(raced_drain_proof, {
+                        "account_policy_id": proof_binding["account_policy_id"],
+                        "account_policy_sha256": proof_binding["account_policy_sha256"],
+                    })):
+                raise RuntimeError("raced command-drain proof changed the account-policy binding")
             if (authority_result.get("node_completed") is not True or
                     type(authority_result.get("node_exit_code")) is not int or
                     authority_result.get("node_exit_code") != 0):

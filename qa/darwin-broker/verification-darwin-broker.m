@@ -70,6 +70,8 @@
 #define K_MAX_COPY (2ull * 1024ull * 1024ull * 1024ull)
 #define K_UID_FIRST 1000000000u
 #define K_UID_LAST 1900000000u
+#define K_ACCOUNT_POLICY @"admin_reserved_interval_no_runtime_nss.v1"
+#define K_MAX_OWNERS 64u
 #define K_PID_CAP 65536u
 /* Match verification-policy.js. Valid caller budgets are never silently
  * shortened to the earlier one-hour work / one-minute cleanup prototype caps. */
@@ -91,6 +93,12 @@ static KSignalToken gSignalToken;
 static NSString *gExecutable, *gBinarySHA, *gStubPath, *gStubBinarySHA, *gRegistryPath, *gSocketPath, *gWorkspaceRoot;
 static NSString *gPrintWorkspace;
 static NSString *gAllocatorPath,*gAnchorPath;
+static NSString *gAccountPolicyArgument,*gAccountPolicySHA,*gAccountPolicyReason;
+static NSMutableArray<NSString *> *gAllowedOwners;
+static NSDictionary *gAccountPolicy;
+static NSDictionary<NSString *,NSData *> *gOwnerUUIDs;
+static NSData *gAccountPolicyBytes;
+static bool gAccountPolicyHealthy,gAccountPolicyFailed;
 static KVDarwinUIDHistory *gUIDHistory;
 static bool gUIDRefreshAttempted,gEntryStoreLoaded,gUIDRangeConfirmed;
 static uint64_t gUIDLastRefreshMS;
@@ -348,6 +356,71 @@ static bool persist(void) {
     if(!ok)gPoisoned=true;
     return ok;
 }
+/* Account-directory access is confined to explicit quiescent admin init below.
+ * Serving only parses protected bytes and uses numeric UUID ACL qualifiers. */
+static bool canonicalUUID(id value) {
+    if(!isString(value,36)||[value length]!=36)return false;
+    uuid_t uuid;uuid_string_t text;
+    if(uuid_parse([value UTF8String],uuid)||uuid_is_null(uuid))return false;
+    uuid_unparse_lower(uuid,text);return [value isEqual:@(text)];
+}
+static bool ownerNumber(NSString *text,uid_t *uid) {
+    uint64_t n=0;if(!decimal64(text,&n)||n==0||n>=K_UID_FIRST)return false;
+    *uid=(uid_t)n;return true;
+}
+static NSData *readAccountPolicy(void) {
+    NSString *path=pathChild(gAnchorPath,@"account-policy.json");
+    if(!protectedPath(path,true,true))return nil;
+    int fd=open(path.fileSystemRepresentation,O_RDONLY|O_NOFOLLOW|O_CLOEXEC);if(fd<0)return nil;
+    struct stat s,n;NSData *bytes=nil;
+    if(!fstat(fd,&s)&&S_ISREG(s.st_mode)&&s.st_uid==0&&s.st_nlink==1&&(s.st_mode&07777)==0600
+        &&!lstat(path.fileSystemRepresentation,&n)&&s.st_dev==n.st_dev&&s.st_ino==n.st_ino)bytes=readFD(fd,32768);
+    if(close(fd))return nil;return bytes;
+}
+static bool policyFailure(NSString *reason) {
+    gAccountPolicyHealthy=false;gAccountPolicyFailed=true;gAccountPolicyReason=reason;return false;
+}
+static bool refreshAccountPolicy(void) {
+    if(gAccountPolicyFailed)return false;
+    NSDictionary *binding=gRegistry[@"account_policy"];NSData *bytes=readAccountPolicy();
+    NSDictionary *p=parseJSON(bytes);NSDictionary *owners=p[@"owners"];
+    if(![binding isKindOfClass:NSDictionary.class]||binding.count!=2||![binding[@"id"] isEqual:K_ACCOUNT_POLICY]
+        ||!hex64(binding[@"sha256"])||!bytes||![sha(bytes) isEqual:binding[@"sha256"]]
+        ||![jsonData(p) isEqual:bytes]||p.count!=7||![p[@"schema"] isEqual:@"knowledge-darwin-account-policy.v1"]
+        ||![p[@"id"] isEqual:K_ACCOUNT_POLICY]||!hex64(p[@"installation_id"])
+        ||![p[@"installation_id"] isEqual:gRegistry[@"installation_id"]]
+        ||!numericField(p[@"uid_first"])||[p[@"uid_first"] unsignedLongLongValue]!=K_UID_FIRST
+        ||!numericField(p[@"uid_last_exclusive"])||[p[@"uid_last_exclusive"] unsignedLongLongValue]!=K_UID_LAST
+        ||!booleanField(p[@"range_admin_asserted"])||![p[@"range_admin_asserted"] boolValue]
+        ||![owners isKindOfClass:NSDictionary.class]||!owners.count||owners.count>K_MAX_OWNERS)
+        return policyFailure(@"ACCOUNT_POLICY_MISSING_INVALID_OR_UNBOUND");
+    NSMutableSet *qualifiers=[NSMutableSet set];NSMutableDictionary *uuidBytes=[NSMutableDictionary dictionary];
+    for(NSString *key in owners){uid_t uid;if(!ownerNumber(key,&uid)||!canonicalUUID(owners[key])||[qualifiers containsObject:owners[key]])
+        return policyFailure(@"ACCOUNT_POLICY_OWNER_INVALID");[qualifiers addObject:owners[key]];
+        uuid_t uuid;if(uuid_parse([owners[key] UTF8String],uuid))return policyFailure(@"ACCOUNT_POLICY_OWNER_INVALID");
+        uuidBytes[key]=[NSData dataWithBytes:uuid length:sizeof(uuid)];}
+    if(gAccountPolicyBytes&&![gAccountPolicyBytes isEqual:bytes])return policyFailure(@"ACCOUNT_POLICY_CHANGED");
+    gAccountPolicy=p;gOwnerUUIDs=[uuidBytes copy];gAccountPolicyBytes=[bytes copy];gAccountPolicySHA=binding[@"sha256"];
+    gAccountPolicyHealthy=true;gAccountPolicyReason=@"HEALTHY";return true;
+}
+static NSDictionary *accountPolicyStatus(void) {
+    return @{@"id":K_ACCOUNT_POLICY,@"healthy":@(gAccountPolicyHealthy),
+        @"reason":gAccountPolicyReason?:@"NOT_VALIDATED",@"sha256":gAccountPolicySHA?:NSNull.null,
+        @"configured_owner_count":@([gAccountPolicy[@"owners"] count]),@"runtime_directory_lookups":@NO};
+}
+static bool writeInitialAccountPolicy(NSDictionary *owners) {
+    NSDictionary *p=@{@"schema":@"knowledge-darwin-account-policy.v1",@"id":K_ACCOUNT_POLICY,
+        @"installation_id":gUIDHistory.installationID,@"uid_first":@(K_UID_FIRST),@"uid_last_exclusive":@(K_UID_LAST),
+        @"range_admin_asserted":@YES,@"owners":owners};
+    NSData *bytes=jsonData(p);if(!bytes||bytes.length>32768)return false;
+    if(!protectedPath(gAnchorPath,false,true))return false;
+    int dir=open(gAnchorPath.fileSystemRepresentation,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);if(dir<0)return false;
+    int fd=openat(dir,"account-policy.json",O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+    bool ok=fd>=0&&exactIO(fd,(void *)bytes.bytes,bytes.length,true)&&fsync(fd)==0&&fcntl(fd,F_FULLFSYNC)==0;
+    if(fd>=0&&close(fd))ok=false;if(ok)ok=fsync(dir)==0;if(close(dir))ok=false;
+    NSData *back=ok?readAccountPolicy():nil;if(!back||![back isEqual:bytes])return false;
+    gAccountPolicy=p;gAccountPolicyBytes=[bytes copy];gAccountPolicySHA=sha(bytes);return true;
+}
 static NSMutableDictionary *entries(void) { return gRegistry[@"attempts"]; }
 static NSMutableDictionary *entryFor(NSString *attempt) { id e=entries()[attempt];
     return [e isKindOfClass:NSMutableDictionary.class]?e:nil; }
@@ -367,6 +440,7 @@ static bool validRecordedEntry(NSMutableDictionary *e,NSString *id) {
         &&[d[@"stub_source_sha256"] isEqual:@KNOWLEDGE_DARWIN_STUB_SOURCE_SHA]
         &&[d[@"stub_binary_sha256"] isEqual:gStubBinarySHA]&&[d[@"stub_wire_version"] isEqual:@"KVS1"]
         &&hex64(d[@"installation_id"])&&[d[@"installation_id"] isEqual:gRegistry[@"installation_id"]]
+        &&[d[@"account_policy_id"] isEqual:K_ACCOUNT_POLICY]&&hex64(d[@"account_policy_sha256"])
         &&hex64(d[@"allocation_sha256"])&&isString(d[@"allocation_seq"],20)
         &&[d[@"uid_history_header_sha256"] isEqual:@KNOWLEDGE_DARWIN_UID_HISTORY_HEADER_SHA]
         &&[d[@"uid_history_source_sha256"] isEqual:@KNOWLEDGE_DARWIN_UID_HISTORY_SOURCE_SHA]
@@ -414,7 +488,9 @@ static NSDictionary *uidHistoryStatus(bool refresh) {
 }
 static bool validUIDAllocation(NSMutableDictionary *e) {
     NSDictionary *d=e[@"descriptor"];gUIDRefreshAttempted=false;
-    if(!refreshEntryStore()||!gUIDHistory.healthy||![d[@"installation_id"] isEqual:gUIDHistory.installationID])return false;
+    if(!refreshEntryStore()||!refreshAccountPolicy()||![d[@"account_policy_id"] isEqual:K_ACCOUNT_POLICY]
+        ||![d[@"account_policy_sha256"] isEqual:gAccountPolicySHA]
+        ||!gUIDHistory.healthy||![d[@"installation_id"] isEqual:gUIDHistory.installationID])return false;
     gUIDRefreshAttempted=true;
     gUIDLastRefreshMS=nowMS();return [gUIDHistory validReservationForUID:[d[@"task_ruid"] unsignedIntValue]
         attempt:d[@"attempt_id"] sequence:d[@"allocation_seq"] sha256:d[@"allocation_sha256"] error:NULL];
@@ -429,7 +505,9 @@ static bool validRelative(NSString *path) {
  * ACL, xattrs, hardlinks, special files, ownership, or privileged mode survives.
  * The original project is never opened by root and is never chmod/chown'd. */
 static bool ownerReadACL(int fd, uid_t owner, bool directory) {
-    uuid_t uuid; if(mbr_uid_to_uuid(owner,uuid))return false;
+    NSString *key=[NSString stringWithFormat:@"%u",owner];uuid_t uuid;
+    if(!refreshAccountPolicy())return false;NSData *qualifier=gOwnerUUIDs[key];
+    if(qualifier.length!=sizeof(uuid))return false;memcpy(uuid,qualifier.bytes,sizeof(uuid));
     acl_t a=acl_init(1); if(!a)return false; acl_entry_t e; acl_permset_t p;
     bool ok=acl_create_entry(&a,&e)==0 && acl_set_tag_type(e,ACL_EXTENDED_ALLOW)==0
         && acl_set_qualifier(e,uuid)==0 && acl_get_permset(e,&p)==0 && acl_clear_perms(p)==0;
@@ -748,6 +826,8 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
     if(!kCapabilityQualified&&!gQualificationMode)return failure(@"CAPABILITY_UNQUALIFIED");
     if(!gEntryStoreLoaded||gPoisoned)return failure(@"REGISTRY_DURABILITY_UNCONFIRMED");
     if(peer->owner==0||peer->owner>=K_UID_FIRST)return failure(@"ORDINARY_OWNER_REQUIRED");
+    if(!refreshAccountPolicy())return failure(@"ACCOUNT_POLICY_UNCONFIRMED");
+    if(!gAccountPolicy[@"owners"][[NSString stringWithFormat:@"%u",peer->owner]])return failure(@"OWNER_NOT_CONFIGURED");
     if(![q[@"mode"] isEqual:@"isolated_copy"]||!hex64(q[@"attempt_nonce"]))return failure(@"INVALID_PREPARE");
     if(!validDuration(q[@"work_budget_ms"],K_MAX_WORK_MS))return failure(@"INVALID_WORK_BUDGET");
     if(!validDuration(q[@"cleanup_budget_ms"],K_MAX_CLEANUP_MS))return failure(@"INVALID_CLEANUP_BUDGET");
@@ -769,10 +849,8 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
         if(!persist()||![gUIDHistory confirmRegistryCheckpointWithError:NULL]||nowMS()>=deadline)break;
         uid_t next=[candidate[@"uid"] unsignedIntValue];int count=members(next,pids);
         if(count<0)break;if(count>0)continue;if(nowMS()>=deadline)break;
-        errno=0;struct passwd *account=getpwuid(next);int accountError=errno;
-        if(nowMS()>=deadline)break;if(account)continue;if(accountError)break;
-        errno=0;struct group *group=getgrgid((gid_t)next);int groupError=errno;
-        if(nowMS()>=deadline)break;if(group)continue;if(groupError)break;
+        /* Explicit install policy supplies account-range exclusion. Runtime
+         * NSS absence never reserved this UID; kernel membership still must. */
         if(nowMS()>=deadline)break;uid=next;allocation=candidate;break;}
     free(pids);
     if(nowMS()>=deadline)return failure(@"WORK_BUDGET_EXCEEDED_PREPARATION");
@@ -783,6 +861,7 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
         @"boundary_id":id,@"attempt_id":id,@"attempt_nonce":q[@"attempt_nonce"],@"task_ruid":@(uid),@"task_gid":@(uid),
         @"owner_uid":@(peer->owner),@"host_id":gHost,@"boot_id":gBoot,@"mode":@"isolated_copy",
         @"installation_id":allocation[@"installation_id"],@"allocation_seq":allocation[@"seq"],@"allocation_sha256":allocation[@"sha256"],
+        @"account_policy_id":K_ACCOUNT_POLICY,@"account_policy_sha256":gAccountPolicySHA,
         @"uid_history_header_sha256":@KNOWLEDGE_DARWIN_UID_HISTORY_HEADER_SHA,
         @"uid_history_source_sha256":@KNOWLEDGE_DARWIN_UID_HISTORY_SOURCE_SHA,
         @"work_budget_ms":@(budget),@"cleanup_budget_ms":q[@"cleanup_budget_ms"],
@@ -832,6 +911,7 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
 }
 
 static NSDictionary *statusReply(NSMutableDictionary *e) {
+    refreshAccountPolicy();
     bool allocationVerified=validUIDAllocation(e);
     NSMutableDictionary *r=[@{@"ok":@YES,@"schema":K_SCHEMA,@"attempt_id":e[@"descriptor"][@"attempt_id"],
         @"descriptor":e[@"descriptor"],@"descriptor_sha256":e[@"descriptor_sha256"],@"state":e[@"state"],
@@ -845,7 +925,7 @@ static NSDictionary *statusReply(NSMutableDictionary *e) {
         @"cleanup_budget_exceeded":e[@"cleanup_budget_exceeded"]?:@NO,
         @"stop_reason":e[@"stop_reason"]?:NSNull.null,@"registry_healthy":@((bool)!gPoisoned),
         @"registry_quarantine_reason":gQuarantineReason?:NSNull.null,
-        @"entry_store_loaded":@(gEntryStoreLoaded),@"uid_history":uidHistoryStatus(false),
+        @"entry_store_loaded":@(gEntryStoreLoaded),@"uid_history":uidHistoryStatus(false),@"account_policy":accountPolicyStatus(),
         @"allocation_tuple_verified_current":@(allocationVerified),
         @"sandbox_profile":sandboxProfile(e[@"descriptor"][@"workspace_path"])} mutableCopy];
     if(e[@"proof"])r[@"proof"]=e[@"proof"];
@@ -856,15 +936,15 @@ static void handleClient(int fd) {
     NSDictionary *q=parseJSON(receiveRequest(fd));NSString *op=q[@"op"];NSDictionary *reply=nil;
     if(!q||!isString(op,64)||!requestTypes(q)||![q[@"source_sha256"] isEqual:@KNOWLEDGE_BROKER_SOURCE_SHA])reply=failure(@"PROTOCOL_OR_SOURCE_PIN_MISMATCH");
     else if([op isEqual:@"probe"]){
-        /* Refresh can quarantine the entry store. Construct every health field
-         * only after that observation; literal evaluation order is no guard. */
-        NSDictionary *history=uidHistoryStatus(true);
+        /* Refresh before constructing literals: cached registry/history health
+         * must describe the same observation as the policy status. */
+        NSDictionary *history=uidHistoryStatus(true);refreshAccountPolicy();
         reply=@{@"ok":@YES,@"schema":K_SCHEMA,@"capability_qualified":@(kCapabilityQualified),
         @"qualification_mode":@(gQualificationMode),@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,@"binary_sha256":gBinarySHA,
         @"stub_source_sha256":@KNOWLEDGE_DARWIN_STUB_SOURCE_SHA,@"stub_binary_sha256":gStubBinarySHA,@"stub_wire_version":@"KVS1",
         @"host_id":gHost,@"boot_id":gBoot,@"allowed_runtimes":gRuntimePins,@"registry_healthy":@((bool)!gPoisoned),
         @"registry_quarantine_reason":gQuarantineReason?:NSNull.null,
-        @"entry_store_loaded":@(gEntryStoreLoaded),@"uid_history":history};}
+        @"entry_store_loaded":@(gEntryStoreLoaded),@"uid_history":history,@"account_policy":accountPolicyStatus()};}
     /* A failed write forbids new work, not an authenticated best-effort stop
      * of a known owned reservation or read-only status. Unknown ownership
      * remains quarantined and never gains signal authority through recovery. */
@@ -1038,6 +1118,7 @@ static void advanceCleanup(void) {
             @"attempt_id":e[@"descriptor"][@"attempt_id"],@"descriptor_sha256":e[@"descriptor_sha256"],
             @"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,@"host_id":gHost,@"boot_id":gBoot,
             @"installation_id":e[@"descriptor"][@"installation_id"],@"allocation_seq":e[@"descriptor"][@"allocation_seq"],
+            @"account_policy_id":e[@"descriptor"][@"account_policy_id"],@"account_policy_sha256":e[@"descriptor"][@"account_policy_sha256"],
             @"allocation_sha256":e[@"descriptor"][@"allocation_sha256"],@"uid_history_tuple_verified":@YES,
             @"task_ruid":e[@"descriptor"][@"task_ruid"],@"admission_closed":@YES,
             @"spawn_exclusion_acquired":@YES,@"spawn_exclusion_held_until_terminal":@YES,
@@ -1076,6 +1157,7 @@ static void advanceCleanup(void) {
         @"descriptor_sha256":e[@"descriptor_sha256"],@"source_sha256":@KNOWLEDGE_BROKER_SOURCE_SHA,
         @"host_id":gHost,@"boot_id":gBoot,@"task_ruid":e[@"descriptor"][@"task_ruid"],
         @"installation_id":e[@"descriptor"][@"installation_id"],@"allocation_seq":e[@"descriptor"][@"allocation_seq"],
+        @"account_policy_id":e[@"descriptor"][@"account_policy_id"],@"account_policy_sha256":e[@"descriptor"][@"account_policy_sha256"],
         @"allocation_sha256":e[@"descriptor"][@"allocation_sha256"],@"uid_history_tuple_verified":@((bool)(confirmed&&uidExclusive)),
         @"admission_closed":e[@"admission_closed"],@"spawn_exclusion_acquired":@(excluded),@"spawn_intents_resolved":@(intents),
         @"kernel_membership_method":@"proc_listpids(PROC_RUID_ONLY,nonnull_buffer);active_and_zombie_lists",
@@ -1232,8 +1314,22 @@ static bool nativePrerequisites(void) {
     gRuntimePins=pins;return true;
 }
 static int initInstall(void) {
-    if(!gUIDRangeConfirmed)return 64;
+    if(!gUIDRangeConfirmed||![gAccountPolicyArgument isEqual:K_ACCOUNT_POLICY]||!gAllowedOwners.count)return 64;
     if(!nativePrerequisites()){fprintf(stderr,"init prerequisite failure: %s (errno=%d)\n",gSetupStage,errno);return 78;}
+    /* Explicit root maintenance only, before registration of any history.
+     * These calls may block in external directory services. No service loop or
+     * active attempt is owned by this initializer. Never call from runtime. */
+    NSMutableDictionary *owners=[NSMutableDictionary dictionary];
+    uuid_t rootUUID;if(mbr_uid_to_uuid(0,rootUUID)||uuid_is_null(rootUUID))return 78;
+    for(NSString *key in gAllowedOwners){uid_t uid;uuid_t uuid;uuid_string_t text;
+        if(!ownerNumber(key,&uid))return 64;
+        errno=0;struct passwd *owner=getpwuid(uid);
+        if(!owner||owner->pw_uid!=uid||mbr_uid_to_uuid(uid,uuid)||uuid_is_null(uuid)||uuid_compare(uuid,rootUUID)==0)return 78;
+        uuid_unparse_lower(uuid,text);if([owners.allValues containsObject:@(text)])return 78;owners[key]=@(text);
+    }
+    /* Existing/partial policy is evidence, never repairable through init. */
+    struct stat policyStat;NSString *policyPath=pathChild(gAnchorPath,@"account-policy.json");
+    if(lstat(policyPath.fileSystemRepresentation,&policyStat)==0||errno!=ENOENT)return 78;
     NSError *error=nil;
     gUIDHistory=[KVDarwinUIDHistory beginInitializationWithConfiguration:historyConfiguration() error:&error];
     if(!gUIDHistory||![gUIDHistory.reason isEqual:@"INITIALIZATION_PENDING"]||!gUIDHistory.checkpoint){
@@ -1241,14 +1337,16 @@ static int initInstall(void) {
     /* Explicit fresh initialization only. No existing registry is overwritten,
      * including one that appeared after the component's empty-tree preflight. */
     struct stat prior;if(fstatat(gRegistryFD,"registry.json",&prior,AT_SYMLINK_NOFOLLOW)==0||errno!=ENOENT)return 78;
+    if(!writeInitialAccountPolicy(owners)){fprintf(stderr,"account policy creation unconfirmed; no reset\n");return 78;}
     gRegistry=[@{@"schema":K_SCHEMA,@"attempts":[NSMutableDictionary dictionary],@"active_attempt":@"",
-        @"installation_id":gUIDHistory.installationID,@"uid_history_checkpoint":gUIDHistory.checkpoint} mutableCopy];
-    if(!initializeRegistry()||![gUIDHistory finalizeInitializationWithError:&error]){
+        @"installation_id":gUIDHistory.installationID,@"uid_history_checkpoint":gUIDHistory.checkpoint,
+        @"account_policy":@{@"id":K_ACCOUNT_POLICY,@"sha256":gAccountPolicySHA}} mutableCopy];
+    if(!initializeRegistry()||!refreshAccountPolicy()||![gUIDHistory finalizeInitializationWithError:&error]){
         fprintf(stderr,"explicit init remains unconfirmed; no reset: %s\n",gUIDHistory.reason.UTF8String?:"REGISTRY_WRITE_FAILED");return 78;}
     gEntryStoreLoaded=true;
     NSDictionary *reply=@{@"ok":@YES,@"schema":@"knowledge-darwin-install-result.v1",
         @"installation_id":gUIDHistory.installationID,@"uid_history_checkpoint":gUIDHistory.checkpoint,
-        @"capability_qualified":@NO,@"uid_range_admin_asserted":@YES};
+        @"capability_qualified":@NO,@"uid_range_admin_asserted":@YES,@"account_policy":accountPolicyStatus()};
     NSData *bytes=jsonData(reply);unsigned char newline='\n';
     return exactIO(1,(void *)bytes.bytes,bytes.length,true)&&exactIO(1,&newline,1,true)?0:74;
 }
@@ -1283,6 +1381,9 @@ static bool startup(void) {
          * Preserve its bytes/known entries for exact-target diagnosis only. */
         gPoisoned=true;gQuarantineReason=@"REGISTRY_INSTALLATION_BINDING_MISMATCH";
     }
+    /* Missing policy disables admission/UID-wide cleanup, not independently
+     * authenticated exact-birth recovery of existing current-source entries. */
+    refreshAccountPolicy();
     if(activeID().length){NSMutableDictionary *e=entryFor(activeID());
         if(!e||!validRecordedEntry(e,activeID())||![e[@"descriptor"][@"boot_id"] isEqual:gBoot]||![e[@"descriptor"][@"host_id"] isEqual:gHost]){
             gPoisoned=true;gQuarantineReason=@"REGISTRY_DESCRIPTOR_BOOT_HOST_OR_OWNERSHIP_UNKNOWN";
@@ -1306,7 +1407,7 @@ static int serve(void) {
         bool drained=[e[@"state"] isEqual:@"commands_drained"];
         if(known&&!gClosing&&(![e[@"admission_closed"] boolValue]||drained)){struct KIdentity v;
             int controller=observeExact(e[@"controller"],&v),authority=e[@"authority"]?observeExact(e[@"authority"],&v):1;
-            NSString *reason=gStopping?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
+            NSString *reason=gStopping?@"daemon_stopping":gPoisoned?@"registry_durability_unconfirmed":!gAccountPolicyHealthy?@"account_policy_unconfirmed":!gUIDHistory.healthy?@"uid_history_unhealthy":controller<0||authority<0?@"owner_observation_unconfirmed":
                 controller==0||authority==0?@"owner_exited":drained&&nowMS()>=[e[@"cleanup_deadline_ms"] unsignedLongLongValue]?@"cleanup_budget_exceeded":
                 !drained&&nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]?@"work_budget_exceeded":nil;
             if([reason isEqual:@"cleanup_budget_exceeded"])e[@"cleanup_budget_exceeded"]=@YES;
@@ -1357,16 +1458,21 @@ int main(int argc,char **argv) {@autoreleasepool {
     NSString *canonicalSocket=@"/Library/PrivilegedHelperTools/KnowledgeVerification-control/broker.sock";
     gRegistryPath=canonicalState;gAllocatorPath=canonicalAllocator;gAnchorPath=canonicalAnchors;
     gSocketPath=canonicalSocket;gWorkspaceRoot=canonicalWorkspaces;
-    NSMutableArray *runtimes=[NSMutableArray array];NSString *mode=nil;bool stateOptions=false;
+    NSMutableArray *runtimes=[NSMutableArray array];NSString *mode=nil;bool stateOptions=false;unsigned explicitRoots=0;
+    gAllowedOwners=[NSMutableArray array];
     for(int i=1;i<argc;i++){NSString *s=@(argv[i]);
         if([@[@"--serve",@"--init-install",@"--request",@"--run",@"--print-profile"] containsObject:s]){if(mode)return 64;mode=s;}
         else if([s isEqual:@"--qualification-mode"])gQualificationMode=true;
         else if([s isEqual:@"--confirm-reserved-uid-range=1000000000:1900000000"])gUIDRangeConfirmed=true;
-        else if([s hasPrefix:@"--registry="]){gRegistryPath=[s substringFromIndex:11];stateOptions=true;}
-        else if([s hasPrefix:@"--allocator="]){gAllocatorPath=[s substringFromIndex:12];stateOptions=true;}
-        else if([s hasPrefix:@"--anchors="]){gAnchorPath=[s substringFromIndex:10];stateOptions=true;}
-        else if([s hasPrefix:@"--socket="])gSocketPath=[s substringFromIndex:9];
-        else if([s hasPrefix:@"--workspaces="]){gWorkspaceRoot=[s substringFromIndex:13];stateOptions=true;}
+        else if([s hasPrefix:@"--account-policy="]){if(gAccountPolicyArgument)return 64;gAccountPolicyArgument=[s substringFromIndex:17];}
+        else if([s hasPrefix:@"--allow-owner="]){NSString *key=[s substringFromIndex:14];uid_t uid;
+            if(!ownerNumber(key,&uid)||[gAllowedOwners containsObject:key]||gAllowedOwners.count>=K_MAX_OWNERS)return 64;
+            [gAllowedOwners addObject:key];}
+        else if([s hasPrefix:@"--registry="]){gRegistryPath=[s substringFromIndex:11];stateOptions=true;explicitRoots|=1u;}
+        else if([s hasPrefix:@"--allocator="]){gAllocatorPath=[s substringFromIndex:12];stateOptions=true;explicitRoots|=2u;}
+        else if([s hasPrefix:@"--anchors="]){gAnchorPath=[s substringFromIndex:10];stateOptions=true;explicitRoots|=4u;}
+        else if([s hasPrefix:@"--socket="]){gSocketPath=[s substringFromIndex:9];explicitRoots|=8u;}
+        else if([s hasPrefix:@"--workspaces="]){gWorkspaceRoot=[s substringFromIndex:13];stateOptions=true;explicitRoots|=16u;}
         else if([s hasPrefix:@"--workspace="])gPrintWorkspace=[s substringFromIndex:12];
         else if([s hasPrefix:@"--runtime="])[runtimes addObject:[s substringFromIndex:10]];
         else return 64;
@@ -1375,7 +1481,7 @@ int main(int argc,char **argv) {@autoreleasepool {
         if(!canonicalAbsolute(path))return 64;
     gRuntimes=runtimes;
     if([mode isEqual:@"--print-profile"]){
-        if(gQualificationMode||gUIDRangeConfirmed||stateOptions||!runtimes.count||!canonicalAbsolute(gPrintWorkspace))return 64;
+        if(gQualificationMode||gUIDRangeConfirmed||gAccountPolicyArgument||gAllowedOwners.count||stateOptions||!runtimes.count||!canonicalAbsolute(gPrintWorkspace))return 64;
         NSData *profile=[sandboxProfile(gPrintWorkspace) dataUsingEncoding:NSUTF8StringEncoding];
         return exactIO(1,(void *)profile.bytes,profile.length,true)?0:74;
     }
@@ -1385,8 +1491,11 @@ int main(int argc,char **argv) {@autoreleasepool {
         if(getuid()!=0||geteuid()!=0||!runtimes.count)return 64;
         bool canonical=[gRegistryPath isEqual:canonicalState]&&[gAllocatorPath isEqual:canonicalAllocator]
             &&[gAnchorPath isEqual:canonicalAnchors]&&[gWorkspaceRoot isEqual:canonicalWorkspaces]&&[gSocketPath isEqual:canonicalSocket];
-        if(!canonical&&!gQualificationMode)return 64;
-        if(!canonical){
+        /* Diagnostic lineage relaxation must never use production state,
+         * including when every default was silently inherited. */
+        if(gQualificationMode){if(canonical||explicitRoots!=31u)return 64;}
+        else if(!canonical)return 64;
+        if(gQualificationMode){
             /* A diagnostic fixture selects ALL five roots outside every
              * production sibling. Partial overrides must never touch defaults,
              * even before native prerequisite inspection or singleton open. */
@@ -1395,10 +1504,10 @@ int main(int argc,char **argv) {@autoreleasepool {
                 for(NSString *root in production)if([path isEqual:root]||[path hasPrefix:[root stringByAppendingString:@"/"]]
                     ||[root hasPrefix:[path stringByAppendingString:@"/"]])return 64;
         }
-        if(serving&&gUIDRangeConfirmed)return 64;
+        if(serving&&(gUIDRangeConfirmed||gAccountPolicyArgument||gAllowedOwners.count))return 64;
         return initializing?initInstall():serve();
     }
-    if(gQualificationMode||gUIDRangeConfirmed||stateOptions||runtimes.count)return 64;
+    if(gQualificationMode||gUIDRangeConfirmed||gAccountPolicyArgument||gAllowedOwners.count||stateOptions||runtimes.count)return 64;
     /* Ordinary native request/profile clients can select a protected socket;
      * they neither initialize nor open allocator state. */
     if([mode isEqual:@"--request"])return client(false);

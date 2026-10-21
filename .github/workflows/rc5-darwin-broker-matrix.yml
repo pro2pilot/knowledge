@@ -31,20 +31,20 @@ jobs:
         run: python3 qa/darwin-broker/run_uid_history_selftest.py
       - name: Test installed pinned broker and continuous drain barrier
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/daemon-harness-m2.py --m2-scenario=normal --expected-source-sha=a1dec8d8810fc292881cfc0157e6af55d4f1816fef45087800e68612a99f3efb
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/daemon-harness-m2.py --m2-scenario=normal --check-init-cli --expected-source-sha=9843673af90d5f07dcc80e07428f697a536469227ea703f42c964e69a04493c4
       - name: Interrupt pending command drain with terminal close
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/daemon-harness-m2.py --m2-scenario=interrupt_drain --expected-source-sha=a1dec8d8810fc292881cfc0157e6af55d4f1816fef45087800e68612a99f3efb
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/daemon-harness-m2.py --m2-scenario=interrupt_drain --expected-source-sha=9843673af90d5f07dcc80e07428f697a536469227ea703f42c964e69a04493c4
       - name: Preserve missing active registry without recreating it
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/uid-registry-fault-harness.py --uid-registry-fault=unlink --expected-source-sha=a1dec8d8810fc292881cfc0157e6af55d4f1816fef45087800e68612a99f3efb
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/uid-registry-fault-harness.py --uid-registry-fault=unlink --expected-source-sha=9843673af90d5f07dcc80e07428f697a536469227ea703f42c964e69a04493c4
       - name: Preserve corrupted active registry without overwriting it
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/uid-registry-fault-harness.py --uid-registry-fault=corrupt --expected-source-sha=a1dec8d8810fc292881cfc0157e6af55d4f1816fef45087800e68612a99f3efb
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --harness=qa/darwin-broker/uid-registry-fault-harness.py --uid-registry-fault=corrupt --expected-source-sha=9843673af90d5f07dcc80e07428f697a536469227ea703f42c964e69a04493c4
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt24-${{ matrix.os }}
+          name: darwin-native-attempt25-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-portable-attempt24-ubuntu-22.04
+          name: darwin-portable-attempt25-ubuntu-22.04
           path: |
             qa/darwin-broker/COPY_SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json

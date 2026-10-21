@@ -29,13 +29,15 @@ def sha(path):
             h.update(block)
     return h.hexdigest()
 
-def run(name, argv, record, timeout=30, data=None):
+def run(name, argv, record, timeout=30, data=None, native_root=False):
     start = time.monotonic()
     try:
         p = subprocess.run(argv, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            timeout=timeout, shell=False)
         timed_out = False
     except subprocess.TimeoutExpired as error:
+        if native_root:
+            record['root_native_exits_confirmed'] = False
         stdout = error.stdout or b''
         stderr = error.stderr or b''
         if isinstance(stdout, str): stdout = stdout.encode()
@@ -100,6 +102,59 @@ def assess_host_postdrop(stdout, exit_code):
             'parent_reaped_timeout': reaped.get('timeout'),
             'stages_present': sorted(stages), 'backend_certified': False}
 
+def check_init_cli(binary, node, fixture, policy_id, record):
+    """Exercise parser/preflight refusals before the own fixture is initialized."""
+    roots = {'registry': str(fixture / 'registry'), 'allocator': str(fixture / 'allocator'),
+             'anchors': str(fixture / 'anchors'), 'workspaces': str(fixture / 'workspaces'),
+             'socket': str(fixture / 'control/broker.sock')}
+    canonical = {key: '/Library/PrivilegedHelperTools/KnowledgeVerification-' + suffix for key, suffix in
+                 [('registry', 'state'), ('allocator', 'allocator'), ('anchors', 'anchors'),
+                  ('workspaces', 'workspaces'), ('socket', 'control/broker.sock')]}
+    options = lambda values: ['--' + key + '=' + value for key, value in values.items()]
+    owner = '--allow-owner=' + str(os.getuid())
+    init = ['--init-install', '--qualification-mode', '--runtime=' + str(node),
+            '--confirm-reserved-uid-range=1000000000:1900000000', '--account-policy=' + policy_id, owner]
+    serve = ['--serve', '--qualification-mode', '--runtime=' + str(node)]
+    cases = []
+    for mode, base in [('init', init), ('serve', serve)]:
+        cases += [('qualification_defaults_' + mode, base),
+                  ('qualification_all_canonical_' + mode, base + options(canonical)),
+                  ('qualification_missing_socket_' + mode,
+                   base + options({key: value for key, value in roots.items() if key != 'socket'})),
+                  ('qualification_mixed_' + mode, base + options({**roots, 'anchors': canonical['anchors']})),
+                  ('qualification_nested_production_' + mode,
+                   base + options({**roots, 'registry': canonical['registry'] + '/diagnostic-state'})),
+                  ('custom_without_qualification_' + mode,
+                   [value for value in base if value != '--qualification-mode'] + options(roots))]
+    for name, replacement in [('root_owner', '--allow-owner=0'), ('noncanonical_owner', '--allow-owner=0501'),
+                               ('reserved_owner', '--allow-owner=1000000000')]:
+        cases.append((name, [replacement if value == owner else value for value in init] + options(roots)))
+    cases += [('duplicate_owner', init + [owner] + options(roots)),
+              ('missing_owner', [value for value in init if value != owner] + options(roots)),
+              ('missing_policy', [value for value in init if not value.startswith('--account-policy=')] + options(roots)),
+              ('unknown_policy', ['--account-policy=unknown.v1' if value.startswith('--account-policy=') else value
+                                  for value in init] + options(roots)),
+              ('owner_cap_exceeded', [value for value in init if value != owner] +
+               ['--allow-owner=' + str(uid) for uid in range(1, 66)] + options(roots))]
+    observations = []
+    for name, argv in cases:
+        result = run('cli-' + name, ['/usr/bin/sudo', '-n', str(binary), *argv], record, 60, native_root=True)
+        observations.append({'name': name, 'exit_code': result.returncode, 'stdout_empty': result.stdout == b''})
+        if result.returncode != 64 or result.stdout:
+            raise RuntimeError('native CLI did not reject the exact unsafe/invalid configuration: ' + name)
+    unknown = ['--allow-owner=999999999' if value == owner else value for value in init] + options(roots)
+    result = run('cli-unknown-owner-before-history', ['/usr/bin/sudo', '-n', str(binary), *unknown],
+                 record, 60, native_root=True)
+    if result.returncode != 78 or result.stdout:
+        raise RuntimeError('native init did not refuse the synthetic unavailable owner')
+    observations.append({'name': 'unknown_owner_before_history', 'exit_code': result.returncode, 'stdout_empty': True})
+    for name in ('registry', 'allocator', 'anchors', 'workspaces', 'control'):
+        result = run('cli-own-empty-' + name, ['/usr/bin/sudo', '-n', '/bin/ls', '-A', str(fixture / name)], record)
+        if result.returncode or result.stdout:
+            raise RuntimeError('refused CLI configurations created state in the own uninitialized fixture')
+    return {'cases': observations, 'own_state_directories_unchanged_empty': True,
+            'scope': 'CLI refusals and own fixture only; no assertion of global filesystem tracing'}
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--broker', type=Path, default=HERE / 'evidence' / 'knowledge-native-broker')
 parser.add_argument('--stub', type=Path, default=HERE / 'evidence' / 'knowledge-native-stub')
@@ -115,7 +170,10 @@ parser.add_argument('--m2-scenario', choices=('normal', 'interrupt_drain'),
                     help='Use the two-phase harness and an owned native admission-lock probe')
 parser.add_argument('--uid-registry-fault', choices=('unlink', 'corrupt'),
                     help='Run only the owned active-reservation entry-store fault check')
+parser.add_argument('--check-init-cli', action='store_true')
 args = parser.parse_args()
+if args.check_init_cli and (args.m2_scenario != 'normal' or args.uid_registry_fault or args.host_probe_only):
+    parser.error('--check-init-cli requires the normal M2 scenario')
 EVIDENCE_ROOT = HERE / 'evidence'
 if EVIDENCE_ROOT.is_symlink() or not EVIDENCE_ROOT.is_dir():
     raise SystemExit('expected build evidence directory is missing or a symlink')
@@ -124,6 +182,7 @@ OUT.mkdir(mode=0o700)
 record = {'scope': 'launchd startup-method physical probe only', 'backend_certified': False,
           'trusted_os_origin_verified': False, 'commands': [], 'capability_semantics': False,
           'platform': platform.platform(), 'architecture': platform.machine()}
+record['root_native_exits_confirmed'] = True
 fixture = None
 bootstrapped = False
 registration_attempted = False
@@ -167,6 +226,10 @@ try:
     record['compile_result_status'] = compile_result['status']
     record['compile_result_source_unchanged'] = compile_result['source_unchanged']
     history_files = source_receipt.get('uid_history_files', {})
+    account_policy = source_receipt.get('account_policy_id')
+    if (account_policy != compile_result.get('account_policy_id') or
+            account_policy not in (None, 'admin_reserved_interval_no_runtime_nss.v1')):
+        raise RuntimeError('account-policy compile/source metadata differs or is unsupported')
     if (history_files != compile_result.get('uid_history_files', {}) or
             (args.uid_registry_fault and len(history_files) != 2)):
         raise RuntimeError('UID-history compile/source metadata differs or fault test lacks the component')
@@ -303,20 +366,28 @@ try:
             '--confirm-reserved-uid-range=1000000000:1900000000',
             '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
             '--workspaces=' + str(fixture / 'workspaces'), '--runtime=' + str(node), *history_options]
-        initialized = run('explicit-native-init', ['/usr/bin/sudo', '-n', *init_argv], record, 60)
+        if account_policy:
+            init_argv += ['--account-policy=' + account_policy, '--allow-owner=' + str(os.getuid())]
+        if args.check_init_cli:
+            if not account_policy:
+                raise RuntimeError('CLI policy matrix requires the current explicit account policy')
+            record['init_cli_matrix'] = check_init_cli(binary, node, fixture, account_policy, record)
+        initialized = run('explicit-native-init', ['/usr/bin/sudo', '-n', *init_argv], record, 60, native_root=True)
         if initialized.returncode or json.loads(initialized.stdout).get('ok') is not True:
             raise RuntimeError('explicit own-fixture native initialization failed')
         init_files = [fixture / name for name in ('anchors/install.json', 'anchors/uid-head.json',
                                                   'allocator/consumed.journal', 'registry/registry.json')]
+        if account_policy:
+            init_files.append(fixture / 'anchors/account-policy.json')
         init_before = {}
         for i, path in enumerate(init_files):
             observed = run('init-before-' + str(i), ['/usr/bin/sudo', '-n', '/bin/cat', str(path)], record)
             if observed.returncode:
                 raise RuntimeError('initialized own state could not be read back')
             init_before[str(path.relative_to(fixture))] = hashlib.sha256(observed.stdout).hexdigest()
-        reinitialized = run('refuse-native-reinit', ['/usr/bin/sudo', '-n', *init_argv], record, 30)
+        reinitialized = run('refuse-native-reinit', ['/usr/bin/sudo', '-n', *init_argv], record, 60, native_root=True)
         if (reinitialized.returncode != 78 or reinitialized.stdout or
-                not reinitialized.stderr.startswith(b'explicit init failed:')):
+                (not account_policy and not reinitialized.stderr.startswith(b'explicit init failed:'))):
             raise RuntimeError('existing own-fixture UID history did not produce the expected native refusal')
         init_after = {}
         for i, path in enumerate(init_files):
@@ -493,6 +564,9 @@ try:
                 descriptor.get('uid_history_header_sha256') != history_files.get('verification-darwin-uid-history.h') or
                 descriptor.get('uid_history_source_sha256') != history_files.get('verification-darwin-uid-history.m')):
             raise RuntimeError('actual native descriptor UID sources differ from the fresh compile pair')
+        if account_policy and (descriptor.get('account_policy_id') != account_policy or
+                descriptor.get('account_policy_sha256') != probe.get('account_policy', {}).get('sha256')):
+            raise RuntimeError('actual descriptor account policy differs from the installed public probe')
         record['harness_actual_pair_matches_compile'] = True
         record['timing_contract_probe'] = result.get('timing_contract_probe', {'status': 'NOT_REPORTED'})
         (OUT / 'native-proof-response.json').write_text(json.dumps(result.get('native_proof'), sort_keys=True, separators=(',', ':')) + '\n')
@@ -586,7 +660,8 @@ finally:
                     record['original_owner_private_output_readback'] = {
                         'readable': False, 'error_type': type(read_error).__name__, 'semantics_only': True}
             # Never remove the fixture until the exact service is booted out and private UID membership is clear.
-            if not bootstrapped and membership_clear and host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear:
+            if (not bootstrapped and membership_clear and host_probe_processes_reaped and host_uid_scan_clear and
+                    groups_probe_reaped and groups_uid_scan_clear and record['root_native_exits_confirmed']):
                 if root_logs_created:
                     outlog = run('collect-own-root-daemon-stdout', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stdout.log')], record)
                     errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
@@ -605,11 +680,12 @@ finally:
                 removed = run('remove-own-fixture', ['/usr/bin/sudo', '-n', '/bin/rm', '-rf', '--', str(fixture)], record)
                 record['fixture_cleanup_exit'] = removed.returncode
             else:
-                record['fixture_cleanup_deferred'] = 'launchd stop, private UID scan, host-probe reaping, or host UID-zero scan was not confirmed'
+                record['fixture_cleanup_deferred'] = 'launchd stop, private UID scan, probe reaping, or root initializer exit was not confirmed'
         except BaseException as cleanup_error:
             record['fixture_cleanup_deferred'] = str(cleanup_error)
     record['cleanup_confirmed'] = not fixture or (not bootstrapped and membership_clear and
-        host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear and record.get('fixture_cleanup_exit') == 0)
+        host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear and
+        record['root_native_exits_confirmed'] and record.get('fixture_cleanup_exit') == 0)
     if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and not record['cleanup_confirmed']:
         record['status'] = 'LAUNCHD_STARTUP_OBSERVED_CLEANUP_UNCONFIRMED'
     (OUT / 'LAUNCHD_SMOKE_RESULT.json').write_text(json.dumps(record, indent=2) + '\n')
