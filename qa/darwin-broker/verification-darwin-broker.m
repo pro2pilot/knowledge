@@ -123,6 +123,15 @@ static bool canonicalAbsolute(NSString *path) {
     for(NSUInteger i=1;i<parts.count;i++)if(![parts[i] length]||[parts[i] isEqual:@"."]||[parts[i] isEqual:@".."])return false;
     return true;
 }
+/* Keep physical spelling. Foundation path utilities may rewrite /private/tmp
+ * into the /tmp symlink, which nofollow trust checks must never follow. */
+static NSString *pathChild(NSString *parent,NSString *leaf) {
+    return [parent isEqual:@"/"]?[@"/" stringByAppendingString:leaf]:[parent stringByAppendingFormat:@"/%@",leaf];
+}
+static NSString *pathParent(NSString *path) {
+    NSRange slash=[path rangeOfString:@"/" options:NSBackwardsSearch];
+    return slash.location==0?@"/":[path substringToIndex:slash.location];
+}
 static bool numericField(id value) { if(![value isKindOfClass:NSNumber.class]
     ||CFGetTypeID((__bridge CFTypeRef)value)==CFBooleanGetTypeID())return false;
     double d=[value doubleValue];return isfinite(d)&&d>=0&&d<=9007199254740991.0&&floor(d)==d; }
@@ -189,8 +198,8 @@ static bool protectedPath(NSString *path, bool regular, bool allowTmp) {
     /* Foundation standardization can rewrite /private/tmp to /tmp. Validate
      * syntax lexically, then lstat every component without following links. */
     if(!canonicalAbsolute(path))return false;
-    NSString *p=@"/"; NSArray *parts=[path pathComponents];
-    for(NSUInteger i=1;i<parts.count;i++) { p=[p stringByAppendingPathComponent:parts[i]];
+    NSString *p=@"/"; NSArray *parts=[path componentsSeparatedByString:@"/"];
+    for(NSUInteger i=1;i<parts.count;i++) { p=pathChild(p,parts[i]);
         struct stat s; if(lstat(p.fileSystemRepresentation,&s) || s.st_uid!=0 || S_ISLNK(s.st_mode))return false;
         bool leaf=i==parts.count-1;
         bool tmpException=allowTmp && [p isEqual:@"/private/tmp"] && S_ISDIR(s.st_mode) && (s.st_mode&S_ISVTX);
@@ -244,7 +253,7 @@ static bool validRecordedEntry(NSMutableDictionary *e,NSString *id) {
     NSDictionary *d=e[@"descriptor"];if(![d isKindOfClass:NSDictionary.class])return false;
     return hex64(id)&&[d[@"boundary_id"] isEqual:id]&&[d[@"attempt_id"] isEqual:id]
         &&[d[@"backend"] isEqual:@"darwin_private_ruid"]&&[d[@"source_sha256"] isEqual:@KNOWLEDGE_BROKER_SOURCE_SHA]
-        &&[d[@"workspace_path"] isEqual:[gWorkspaceRoot stringByAppendingPathComponent:id]]
+        &&[d[@"workspace_path"] isEqual:pathChild(gWorkspaceRoot,id)]
         &&numericField(d[@"task_ruid"])&&[d[@"task_ruid"] unsignedLongLongValue]>=K_UID_FIRST
         &&[d[@"task_ruid"] unsignedLongLongValue]<K_UID_LAST&&[d[@"task_gid"] isEqual:d[@"task_ruid"]]
         &&numericField(e[@"owner_uid"])&&[e[@"owner_uid"] unsignedLongLongValue]>0
@@ -532,7 +541,7 @@ static NSDictionary *prepare(NSDictionary *q,struct KPeer *peer) {
         if(count==0&&!getpwuid((uid_t)next)&&!getgrgid((gid_t)next)){uid=(uid_t)next;break;}}
     free(pids);if(!uid||gPoisoned)return failure(@"UID_RESERVATION_UNAVAILABLE");
     NSString *id=randomHex(),*token=randomHex();uint64_t budget=MIN(MAX([q[@"work_budget_ms"] unsignedLongLongValue],(uint64_t)1),(uint64_t)3600000);
-    NSString *workspacePath=[gWorkspaceRoot stringByAppendingPathComponent:id];
+    NSString *workspacePath=pathChild(gWorkspaceRoot,id);
     NSDictionary *descriptor=@{@"schema":@"knowledge-darwin-private-ruid-descriptor.v1",@"backend":@"darwin_private_ruid",
         @"boundary_id":id,@"attempt_id":id,@"attempt_nonce":q[@"attempt_nonce"],@"task_ruid":@(uid),@"task_gid":@(uid),
         @"owner_uid":@(peer->owner),@"host_id":gHost,@"boot_id":gBoot,@"mode":@"isolated_copy",
@@ -816,7 +825,7 @@ static bool startup(void) {
     gBinarySHA=protectedFileSHA(gExecutable);if(!gBinarySHA)return false;
     gSetupStage="protected-directory-chains";
     if(!protectedPath(gRegistryPath,false,true)||!protectedPath(gWorkspaceRoot,false,true)
-        ||!protectedPath([gSocketPath stringByDeletingLastPathComponent],false,true))return false;
+        ||!canonicalAbsolute(gSocketPath)||!protectedPath(pathParent(gSocketPath),false,true))return false;
     if([gRegistryPath isEqual:gWorkspaceRoot]||[gWorkspaceRoot hasPrefix:[gRegistryPath stringByAppendingString:@"/"]])return false;
     gSetupStage="open-directory-fds";
     gRegistryFD=open(gRegistryPath.fileSystemRepresentation,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
@@ -887,7 +896,7 @@ static int serve(void) {
 }
 static int client(bool run) {
     if(!hex64(@KNOWLEDGE_BROKER_SOURCE_SHA)||!protectedFileSHA(gExecutable)
-        ||!protectedPath([gSocketPath stringByDeletingLastPathComponent],false,true))return 78;
+        ||!canonicalAbsolute(gSocketPath)||!protectedPath(pathParent(gSocketPath),false,true))return 78;
     struct stat st;if(lstat(gSocketPath.fileSystemRepresentation,&st)||!S_ISSOCK(st.st_mode)||st.st_uid!=0)return 78;
     NSMutableData *input=[NSMutableData data];unsigned char bytes[32768];ssize_t n;
     while((n=read(0,bytes,sizeof(bytes)))>0){if(input.length+(NSUInteger)n>K_MAX_JSON)return 64;[input appendBytes:bytes length:(NSUInteger)n];}

@@ -15,7 +15,7 @@ jobs:
         run: python3 qa/darwin-broker/compile_native.py
       - name: Verify source copy primitives on macOS
         if: always()
-        run: node --test qa/darwin-broker/copy/tests/verification-isolated-copy.test.js > qa/darwin-broker/evidence/copy-tests.tap 2>&1
+        run: node --test qa/darwin-broker/copy/tests/verification-isolated-copy.test.js qa/darwin-broker/copy/tests/verification-darwin-client.test.js > qa/darwin-broker/evidence/copy-tests.tap 2>&1
       - name: Native isolated-copy positive control
         if: always()
         run: python3 qa/darwin-broker/run_native_smoke.py
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt4
+          name: darwin-native-attempt5
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
