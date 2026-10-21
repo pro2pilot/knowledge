@@ -100,6 +100,119 @@ def rpc(binary, sock, request):
     return reply
 
 
+def rpc_observe(binary, sock, request):
+    """Bounded RPC capture for negative schema probes; never returns secrets in output."""
+    result = subprocess.run([binary, "--request", "--socket=" + sock],
+                            input=canonical(request), capture_output=True,
+                            timeout=75, check=False)
+    if len(result.stdout) > MAX_REPLY or not result.stdout:
+        return {"transport_exit": result.returncode, "transport_ok": False}
+    try:
+        reply = json.loads(result.stdout)
+    except (ValueError, TypeError):
+        return {"transport_exit": result.returncode, "transport_ok": False,
+                "invalid_json": True}
+    # Deliberately whitelist response fields: never serialize a token.
+    observed = {"transport_exit": result.returncode, "transport_ok": True,
+                "ok": reply.get("ok"), "error": reply.get("error"),
+                "schema": reply.get("schema")}
+    for name in ("descriptor", "descriptor_sha256", "attempt_id", "state", "proof"):
+        if name in reply:
+            observed[name] = reply[name]
+    return observed
+
+
+def close_observed_attempt(binary, sock, reply):
+    """Close any unexpectedly accepted probe promptly, retaining only public proof."""
+    if not reply.get("attempt_id") or not reply.get("descriptor_sha256"):
+        return {"closed": False, "reason": "no-bindable-attempt"}
+    closed = rpc_observe(binary, sock, {
+        "op": "close", "attempt_id": reply["attempt_id"],
+        "descriptor_sha256": reply["descriptor_sha256"], "cleanup_budget_ms": 10000})
+    proof = closed.get("proof") if isinstance(closed.get("proof"), dict) else {}
+    return {"closed": closed.get("ok") is True, "state": closed.get("state"),
+            "cleanup_confirmed": proof.get("cleanup_confirmed"),
+            "native_cleanup_facts_confirmed": proof.get("native_cleanup_facts_confirmed")}
+
+
+def timing_contract_probe(binary, sock):
+    """Exercise exact timing validation before the ordinary smoke reservation."""
+    cases = [
+        ("zero_work_budget", {"work_budget_ms": 0, "cleanup_budget_ms": 10000}),
+        ("missing_work_budget", {"cleanup_budget_ms": 10000}),
+        ("work_budget_max_plus_one", {"work_budget_ms": 60000000001,
+                                       "cleanup_budget_ms": 10000}),
+        ("cleanup_budget_max_plus_one", {"work_budget_ms": 120000,
+                                         "cleanup_budget_ms": 3600001}),
+        ("boolean_work_budget", {"work_budget_ms": True,
+                                  "cleanup_budget_ms": 10000}),
+    ]
+    result = {"expected_contract": "exact timing bounds and strict numeric schema",
+              "cases": [], "diagnostic_exact_budget": {"supported": False},
+              "backend_certified": False, "capability_qualified": False,
+              "unsafe_to_continue": False}
+    for name, fields in cases:
+        nonce = secrets.token_hex(32)
+        request = {"op": "prepare", "mode": "isolated_copy", "attempt_nonce": nonce,
+                   **fields}
+        observed = rpc_observe(binary, sock, request)
+        item = {"name": name, "rejected": observed.get("ok") is False,
+                "error": observed.get("error"), "transport_ok": observed.get("transport_ok")}
+        if observed.get("ok") is True:
+            item["unexpected_acceptance"] = True
+            item["cleanup"] = close_observed_attempt(binary, sock, observed)
+            if item["cleanup"].get("closed") is not True or item["cleanup"].get("state") != "closed":
+                result["unsafe_to_continue"] = True
+        else:
+            lookup = rpc_observe(binary, sock, {"op": "lookup", "attempt_nonce": nonce})
+            item["reservation_absent"] = lookup.get("ok") is False and lookup.get("error") == "RESERVATION_UNKNOWN"
+            item["lookup_error"] = lookup.get("error")
+        item["passed"] = item.get("rejected") is True and item.get("reservation_absent") is True
+        result["cases"].append(item)
+
+    nonce = secrets.token_hex(32)
+    prepared = rpc_observe(binary, sock, {"op": "prepare", "mode": "isolated_copy",
+        "attempt_nonce": nonce, "work_budget_ms": 60000000000,
+        "cleanup_budget_ms": 3600000})
+    diagnostic = {"accepted": prepared.get("ok") is True,
+                  "error": prepared.get("error")}
+    descriptor = prepared.get("descriptor") if isinstance(prepared.get("descriptor"), dict) else {}
+    budget = descriptor.get("work_budget_ms")
+    start = descriptor.get("work_started_monotonic_ms")
+    deadline = descriptor.get("work_deadline_ms")
+    cleanup_budget = descriptor.get("cleanup_budget_ms")
+    status = None
+    if prepared.get("ok") is True:
+        binding = {"attempt_id": prepared.get("attempt_id"),
+                   "descriptor_sha256": prepared.get("descriptor_sha256")}
+        status = rpc_observe(binary, sock, {"op": "status", **binding})
+        status_descriptor = status.get("descriptor") if isinstance(status.get("descriptor"), dict) else {}
+        status_start = status_descriptor.get("work_started_monotonic_ms")
+        status_deadline = status_descriptor.get("work_deadline_ms")
+        status_delta = (status_deadline - status_start
+                        if type(status_start) is int and type(status_deadline) is int else None)
+        exact = (budget == 60000000000 and cleanup_budget == 3600000 and
+                 type(start) is int and type(deadline) is int and
+                 deadline - start == 60000000000 and
+                 status.get("ok") is True and
+                 status_descriptor.get("work_budget_ms") == 60000000000 and
+                 status_descriptor.get("cleanup_budget_ms") == 3600000 and
+                 status_delta == 60000000000)
+        diagnostic.update({"supported": exact,
+                           "descriptor_work_budget_ms": budget,
+                           "descriptor_cleanup_budget_ms": cleanup_budget,
+                           "deadline_minus_start_ms": deadline - start if type(start) is int and type(deadline) is int else None,
+                           "status_matches": status.get("ok") is True and status_descriptor == descriptor})
+        diagnostic["cleanup"] = close_observed_attempt(binary, sock, prepared)
+        if diagnostic["cleanup"].get("closed") is not True or diagnostic["cleanup"].get("state") != "closed":
+            result["unsafe_to_continue"] = True
+    result["diagnostic_exact_budget"] = diagnostic
+    result["status"] = ("PASS" if all(case["passed"] for case in result["cases"]) and diagnostic.get("supported")
+                        else "UNSUPPORTED_OR_REJECTED" if not diagnostic.get("supported")
+                        else "TIMING_NEGATIVE_CASE_FAILED")
+    return result
+
+
 def run_client(binary, sock, request, raw_outputs):
     # The controller owns these exclusive files so output survives an authority
     # exit before it can serialize its JSON result back to the controller.
@@ -212,6 +325,9 @@ def controller(args):
         raise RuntimeError("expected explicit diagnostic daemon with capability_qualified=false")
     if probe.get("allowed_runtimes", {}).get(node) != installed_node_digest:
         raise RuntimeError("protected Node runtime pin mismatch")
+    timing_contract = timing_contract_probe(binary, sock)
+    if timing_contract.get("unsafe_to_continue"):
+        raise RuntimeError("timing-probe attempt could not be closed; regular Node smoke not started")
     prepared = rpc(binary, sock, {"op": "prepare", "mode": "isolated_copy",
                                  "attempt_nonce": secrets.token_hex(32),
                                  "work_budget_ms": 120000, "cleanup_budget_ms": 10000})
@@ -224,7 +340,8 @@ def controller(args):
               "source_sha256": probe["source_sha256"],
               "descriptor_sha256": prepared["descriptor_sha256"],
               "descriptor": prepared["descriptor"],
-              "capability_qualified": False, "product_certified": False}
+              "capability_qualified": False, "product_certified": False,
+              "timing_contract_probe": timing_contract}
     outcome = 1
     try:
         raw_outputs = create_raw_outputs(args.evidence_dir)

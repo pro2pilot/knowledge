@@ -24,11 +24,11 @@ jobs:
         run: /usr/bin/clang -std=c11 -O2 -Wall -Wextra qa/darwin-broker/uid-scan.c -o qa/darwin-broker/evidence/uid-scan
       - name: LaunchDaemon isolated-copy startup probe
         if: always()
-        run: python3 qa/darwin-broker/run_launchd_smoke.py
+        run: python3 qa/darwin-broker/run_launchd_smoke.py --expected-source-sha=a699a968f11125f8a16282d9c43c44286fe1d4d5d1a2ddcb7571a506bea7dc87
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt12-${{ matrix.os }}
+          name: darwin-native-attempt13-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
@@ -46,5 +46,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-copy-attempt12-linux
+          name: darwin-copy-attempt13-linux
           path: qa/darwin-broker/evidence/*
