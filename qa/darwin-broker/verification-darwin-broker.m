@@ -116,6 +116,13 @@ static bool equalSecret(NSString *a, NSString *b) {
 }
 static bool safeText(id v,NSUInteger max) { return [v isKindOfClass:NSString.class]&&[v length]<=max
     &&[v rangeOfCharacterFromSet:[NSCharacterSet characterSetWithRange:NSMakeRange(0,1)]].location==NSNotFound; }
+static bool canonicalAbsolute(NSString *path) {
+    if(!isString(path,4096)||![path hasPrefix:@"/"]||[path hasSuffix:@"/"]
+        ||[path rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound)return false;
+    NSArray *parts=[path componentsSeparatedByString:@"/"];
+    for(NSUInteger i=1;i<parts.count;i++)if(![parts[i] length]||[parts[i] isEqual:@"."]||[parts[i] isEqual:@".."])return false;
+    return true;
+}
 static bool numericField(id value) { if(![value isKindOfClass:NSNumber.class]
     ||CFGetTypeID((__bridge CFTypeRef)value)==CFBooleanGetTypeID())return false;
     double d=[value doubleValue];return isfinite(d)&&d>=0&&d<=9007199254740991.0&&floor(d)==d; }
@@ -179,7 +186,9 @@ static bool safeRootACL(NSString *path) {
     acl_free(acl);return safe;
 }
 static bool protectedPath(NSString *path, bool regular, bool allowTmp) {
-    if(![path isAbsolutePath] || ![[path stringByStandardizingPath] isEqual:path])return false;
+    /* Foundation standardization can rewrite /private/tmp to /tmp. Validate
+     * syntax lexically, then lstat every component without following links. */
+    if(!canonicalAbsolute(path))return false;
     NSString *p=@"/"; NSArray *parts=[path pathComponents];
     for(NSUInteger i=1;i<parts.count;i++) { p=[p stringByAppendingPathComponent:parts[i]];
         struct stat s; if(lstat(p.fileSystemRepresentation,&s) || s.st_uid!=0 || S_ISLNK(s.st_mode))return false;
@@ -214,7 +223,12 @@ static bool saveJSON(NSString *name, NSDictionary *record) {
     if(fd>=0 && !fstat(fd,&s) && s.st_uid==0 && s.st_nlink==1 && !(s.st_mode&0077))back=readFD(fd,K_MAX_JSON);
     if(fd>=0)close(fd); ok=back && [back isEqual:d]; if(!ok)gPoisoned=true; return ok;
 }
-static bool persist(void) { return !gPoisoned && saveJSON(@"registry.json",gRegistry); }
+static bool persist(void) {
+    if(gPoisoned)return false;
+    bool ok=saveJSON(@"registry.json",gRegistry);
+    if(!ok)gPoisoned=true;
+    return ok;
+}
 static NSMutableDictionary *entries(void) { return gRegistry[@"attempts"]; }
 static NSMutableDictionary *entryFor(NSString *attempt) { id e=entries()[attempt];
     return [e isKindOfClass:NSMutableDictionary.class]?e:nil; }
@@ -450,7 +464,11 @@ static bool launchRun(NSMutableDictionary *e,NSDictionary *q,int client) {
     int lock=admissionFD(e),workspaceFD=openWorkspace(e),cfg[2]={-1,-1},ready[2]={-1,-1},gate[2]={-1,-1},out[2]={-1,-1},err[2]={-1,-1};
     bool ok=lock>=0&&workspaceFD>=0&&flock(lock,LOCK_EX|LOCK_NB)==0;
     if(ok)ok=pipe(cfg)==0&&pipe(ready)==0&&pipe(gate)==0&&pipe(out)==0&&pipe(err)==0;
-    if(ok){e[@"spawn_intent"]=@YES;ok=persist();}
+    if(ok){
+        /* A prior command's dead stub cannot resolve this new launch intent. */
+        [e removeObjectForKey:@"launch_stub"];[e removeObjectForKey:@"command_identity"];
+        e[@"spawn_intent"]=@YES;ok=persist();
+    }
     posix_spawn_file_actions_t fa;posix_spawnattr_t attr;bool initialized=false;pid_t pid=0;
     if(ok){ok=posix_spawn_file_actions_init(&fa)==0&&posix_spawnattr_init(&attr)==0;initialized=ok;}
     if(ok){int null=open("/dev/null",O_RDONLY|O_CLOEXEC);ok=null>=0;
@@ -481,7 +499,13 @@ static bool launchRun(NSMutableDictionary *e,NSDictionary *q,int client) {
         gRunConfig=message;gRunConfigOffset=0;
         gRun=(struct KRun){.pid=pid,.client=client,.out=out[0],.err=err[0],.ready=ready[0],.gate=gate[1],.config=cfg[1],
             .deadline=MIN([e[@"work_deadline_ms"] unsignedLongLongValue],nowMS()+MIN(MAX([q[@"timeout_ms"] unsignedLongLongValue],(uint64_t)1),(uint64_t)3600000))};
-        fcntl(gRun.out,F_SETFL,O_NONBLOCK);fcntl(gRun.err,F_SETFL,O_NONBLOCK);fcntl(gRun.ready,F_SETFL,O_NONBLOCK);fcntl(gRun.config,F_SETFL,O_NONBLOCK);
+        int *nonblocking[]={&gRun.out,&gRun.err,&gRun.ready,&gRun.config};
+        for(unsigned i=0;i<4;i++){
+            int flags=fcntl(*nonblocking[i],F_GETFL);
+            if(flags<0||fcntl(*nonblocking[i],F_SETFL,flags|O_NONBLOCK)<0){
+                close(*nonblocking[i]);*nonblocking[i]=-1;ok=false;
+            }
+        }
         if(!ok)closeAdmission(e,@"launch_publication_failed",[e[@"cleanup_budget_ms"] unsignedLongLongValue]);
         return true; /* accepted transport, even when launch must be stopped */
     }
@@ -910,10 +934,8 @@ int main(int argc,char **argv) {@autoreleasepool {
         if([path rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound)return 64;
     gRuntimes=runtimes;
     if([mode isEqual:@"--print-profile"]){
-        if(gQualificationMode||!runtimes.count||!isString(gPrintWorkspace,4096)||![gPrintWorkspace isAbsolutePath]
-            ||![[gPrintWorkspace stringByStandardizingPath] isEqual:gPrintWorkspace]
-            ||[gPrintWorkspace rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location!=NSNotFound)return 64;
-        for(NSString *runtime in runtimes)if(![runtime isAbsolutePath]||![[runtime stringByStandardizingPath] isEqual:runtime])return 64;
+        if(gQualificationMode||!runtimes.count||!canonicalAbsolute(gPrintWorkspace))return 64;
+        for(NSString *runtime in runtimes)if(!canonicalAbsolute(runtime))return 64;
         NSData *profile=[sandboxProfile(gPrintWorkspace) dataUsingEncoding:NSUTF8StringEncoding];
         return exactIO(1,(void *)profile.bytes,profile.length,true)?0:74;
     }

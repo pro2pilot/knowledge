@@ -28,6 +28,8 @@ def run(name, argv, timeout=120):
 
 try:
     assert platform.system() == 'Darwin' and os.getuid() > 0
+    assert run('compile-path-diagnostics', ['/usr/bin/clang', '-fobjc-arc', '-framework', 'Foundation',
+               str(HERE / 'path-diagnostics.m'), '-o', str(OUT / 'path-diagnostics')]) == 0
     assert run('compile-uid-scan', ['/usr/bin/clang', '-std=c11', '-O2', '-Wall', '-Wextra',
                str(HERE / 'uid-scan.c'), '-o', str(OUT / 'uid-scan')]) == 0
     fixture = Path(tempfile.mkdtemp(prefix='knowledge-native-smoke.', dir='/private/tmp')).resolve()
@@ -44,6 +46,9 @@ try:
         assert run('install-' + name, ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0555', str(source), str(dest)]) == 0
         record[name + '_installed_sha256'] = hashlib.sha256(dest.read_bytes()).hexdigest()
     assert record['node_installed_sha256'] == record['original_node_sha256']
+    run('path-diagnostics', [str(OUT / 'path-diagnostics'), str(binary), str(fixture)])
+    run('fixture-path-permissions', ['/bin/ls', '-lde', '/private', '/private/tmp', str(fixture),
+        str(fixture / 'bin'), str(binary)])
     daemon_argv = ['/usr/bin/sudo', '-n', str(binary), '--serve', '--qualification-mode',
                    '--registry=' + str(fixture / 'registry'), '--socket=' + str(sock),
                    '--workspaces=' + str(fixture / 'workspaces'), '--runtime=' + str(node)]
