@@ -12,8 +12,9 @@ const CAPS = Object.freeze({ max_files: 50000, max_bytes: 2147483648, max_file_b
 const KNOWLEDGE_SOURCE_DIRS = new Set(['tools', 'tests', 'docs', 'models', 'schemas', 'templates',
   'agent-integrations', 'commands', 'skills', 'assets', 'flows', 'github-action-templates', 'memory-providers', '.release-notes']);
 const KNOWLEDGE_SOURCE_FILES = new Set(['package.json', 'config.yaml', 'verification-policy.json', 'install-manifest.json',
-  'release-policy.json', 'lock-policy.json', 'README.md', 'INSTALL.md', 'QUICK_START.md', 'RELEASE_NOTES.md', 'SECURITY.md',
-  'LICENSE', 'LICENSE.md', 'NOTICE', 'inspector.js', 'inspector.cmd', 'inspector.ps1']);
+  'release-policy.json', 'install-policy.json', 'lock-policy.json', 'README.md', 'INSTALL.md', 'Quick-Start.md', 'RELEASE_NOTES.md', 'SECURITY.md',
+  'LICENSE', 'LICENSE.md', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'Portal.md', 'SBOM.memory.json',
+  '.gitignore', '.gitattributes', 'inspector.js', 'open-inspector.vbs']);
 const sha = body => crypto.createHash('sha256').update(body).digest('hex');
 const compareNames = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 function failure(code, message, details) {

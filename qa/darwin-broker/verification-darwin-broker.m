@@ -32,6 +32,7 @@
 #include <signal.h>
 #include <spawn.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <sys/acl.h>
 #include <sys/file.h>
 #include <sys/resource.h>
@@ -109,6 +110,16 @@ static bool isString(id v, NSUInteger max) { return [v isKindOfClass:NSString.cl
 static bool hex64(id v) { if (!isString(v,64) || [v length]!=64) return false;
     return [v rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:
         @"0123456789abcdef"] invertedSet]].location==NSNotFound; }
+static bool decimal64(id value,uint64_t *out) {
+    if(!isString(value,20))return false;uint64_t result=0;
+    for(NSUInteger i=0;i<[value length];i++){
+        unichar c=[value characterAtIndex:i];if(c<'0'||c>'9')return false;
+        unsigned digit=(unsigned)(c-'0');if(result>(UINT64_MAX-digit)/10)return false;
+        result=result*10+digit;
+    }
+    if([value length]>1&&[value characterAtIndex:0]=='0')return false;
+    *out=result;return true;
+}
 static bool equalSecret(NSString *a, NSString *b) {
     NSData *x=[a dataUsingEncoding:NSUTF8StringEncoding], *y=[b dataUsingEncoding:NSUTF8StringEncoding];
     if (!x || x.length!=y.length) return false; const uint8_t *p=x.bytes,*q=y.bytes; uint8_t v=0;
@@ -153,8 +164,9 @@ static NSDictionary *identityJSON(struct KIdentity *v) { return @{ @"pid":@(v->b
     @"start_sec":@(v->bsd.pbi_start_tvsec),@"start_usec":@(v->bsd.pbi_start_tvusec),
     @"ruid":@(v->bsd.pbi_ruid),@"pidversion":@(v->unique.pidversion) }; }
 static bool sameBirth(NSDictionary *saved, struct KIdentity *v) {
-    return [saved[@"pid"] unsignedIntValue]==v->bsd.pbi_pid
-        && [saved[@"unique_id"] unsignedLongLongValue]==v->unique.uniqueid
+    uint64_t unique=0;
+    return decimal64(saved[@"unique_id"],&unique)&&[saved[@"pid"] unsignedIntValue]==v->bsd.pbi_pid
+        && unique==v->unique.uniqueid
         && [saved[@"start_sec"] unsignedLongLongValue]==v->bsd.pbi_start_tvsec
         && [saved[@"start_usec"] unsignedLongLongValue]==v->bsd.pbi_start_tvusec;
 }
@@ -256,8 +268,9 @@ static bool validRecordedIdentity(id identity) {
     if(![identity isKindOfClass:NSDictionary.class])return false;
     for(NSString *key in @[@"pid",@"start_sec",@"start_usec",@"ruid",@"pidversion"])
         if(!numericField(identity[key]))return false;
+    uint64_t unique=0;
     return [identity[@"pid"] unsignedLongLongValue]>1&&[identity[@"pid"] unsignedLongLongValue]<=INT_MAX
-        &&isString(identity[@"unique_id"],20)&&[identity[@"unique_id"] unsignedLongLongValue]>0;
+        &&decimal64(identity[@"unique_id"],&unique)&&unique>0;
 }
 static bool validRecordedEntry(NSMutableDictionary *e,NSString *id) {
     NSDictionary *d=e[@"descriptor"];if(![d isKindOfClass:NSDictionary.class])return false;

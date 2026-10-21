@@ -29,7 +29,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt7-${{ matrix.os }}
+          name: darwin-native-attempt8-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
@@ -46,5 +46,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-copy-attempt7-linux
+          name: darwin-copy-attempt8-linux
           path: qa/darwin-broker/evidence/*

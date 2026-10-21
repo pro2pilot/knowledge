@@ -262,7 +262,7 @@ test('enforces file-count and byte limits and stops at a finite checkpoint', asy
 
 test('copies declared Knowledge sources and refuses leases, caches, and unknown state roots', async t => {
   const root = makeTemp(t), project = projectAt(root);
-  const accepted = ['.knowledge/tools/check.js', '.knowledge/docs/guide.md', '.knowledge/package.json'];
+  const accepted = ['.knowledge/tools/check.js', '.knowledge/docs/guide.md', '.knowledge/package.json', '.knowledge/Quick-Start.md'];
   const excluded = ['.knowledge/locks/v1/sync.lock/owner.json', '.knowledge/inspector/data.json',
     '.knowledge/search/index.json', '.knowledge/freshness.json', '.knowledge/events/receipt.json',
     '.knowledge/modules/module.json', '.knowledge/external_memory/providers.json', '.knowledge/future-state/secret.json',
