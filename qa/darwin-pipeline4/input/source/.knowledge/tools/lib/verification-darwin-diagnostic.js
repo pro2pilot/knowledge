@@ -16,6 +16,9 @@ const now = () => process.hrtime.bigint();
 const elapsed = start => Number(now() - start) / 1e6;
 const failure = code => Object.assign(new Error(code), { code });
 const code = error => /^[a-zA-Z0-9_]{1,128}$/.test(error?.code || '') ? error.code : 'darwin_diagnostic_failed';
+const childFailure = (message, fallback) => failure(message?.type === 'failed' &&
+  typeof message.reason === 'string' && /^[a-zA-Z0-9_]{1,128}$/.test(message.reason)
+    ? message.reason : fallback);
 const delay = ms => new Promise(resolve => setTimeout(resolve, timerDelay(ms)));
 const helperHandles = new Set();
 let helpersStarted = 0, helpersClosed = 0;
@@ -277,13 +280,16 @@ async function controller(input) {
       cwd: request.test.cwd, timeout_ms: Math.min(request.test.timeout_ms, Math.max(1, Math.floor(Number(deadline - now()) / 1e6))) };
     send(child, { type: 'start', config, binding, token: prepared.token, command, cleanupMs });
     const registered = await bounded(role.next(), Math.max(1, Number(deadline - now()) / 1e6), 'darwin_diagnostic_authority_registration_timeout');
+    if (registered.type === 'failed') throw childFailure(registered, 'darwin_diagnostic_authority_registration_failed');
     if (registered.type !== 'registered' || registered.identity?.pid !== child.pid) throw failure('darwin_diagnostic_authority_registration_invalid');
     await readback('sealed'); await call({ op: 'permit' }); guard(); send(child, { type: 'permit' });
     const commandMessage = await bounded(role.next(), Math.max(1, Number(deadline - now()) / 1e6), 'darwin_diagnostic_work_budget_exceeded');
+    if (commandMessage.type === 'failed') throw childFailure(commandMessage, 'darwin_diagnostic_authority_work_failed');
     if (commandMessage.type !== 'command_completed') throw failure('darwin_diagnostic_authority_failed');
     run = wire.commandResult(commandMessage.command, binding, command); guard();
     workCompleted = now(); cleanupDeadline = workCompleted + BigInt(cleanupMs) * 1000000n;
     const completed = await bounded(role.next(), Math.max(1, Number(cleanupDeadline - now()) / 1e6), 'darwin_diagnostic_cleanup_budget_exceeded');
+    if (completed.type === 'failed') throw childFailure(completed, 'darwin_diagnostic_authority_cleanup_failed');
     if (completed.type !== 'drained') throw failure('darwin_diagnostic_authority_failed');
     run = wire.commandResult(completed.command, binding, command);
     if (!completed.helpers || completed.helpers.started !== completed.helpers.exit_observed ||
@@ -356,7 +362,7 @@ async function runDiagnostic(value) {
   const id = `DGD-${crypto.randomBytes(16).toString('hex')}`, start = now();
   const child = fork(__filename, ['--controller'], childOptions()), role = channel(child);
   const budget = request.verificationPolicy.work_budget_ms + request.verificationPolicy.cleanup_budget_ms + 30000;
-  let observation = null, binding = null, intent = false, cancelled = false;
+  let observation = null, binding = null, intent = false, cancelled = false, controllerFailure = null;
   const cancel = () => { if (!cancelled) { cancelled = true; send(child, { type: 'cancel' }); } };
   process.on('SIGINT', cancel); process.on('SIGTERM', cancel);
   send(child, { type: 'start', id, request });
@@ -367,11 +373,13 @@ async function runDiagnostic(value) {
         if (message.type === 'intent') intent = true;
         else if (message.type === 'reservation') binding = message.binding;
         else if (message.type === 'result') { observation = message.result; break; }
+        else if (message.type === 'failed') { controllerFailure = childFailure(message,
+          'darwin_diagnostic_controller_child_failed').code; break; }
         else if (message.type === 'exit') break;
       }
     })(), budget, 'darwin_diagnostic_controller_budget_exceeded');
     const exit = await bounded(role.exited, Math.max(1, budget - elapsed(start)), 'darwin_diagnostic_controller_exit_unconfirmed');
-    if (!observation || exit.exit_code !== 0 || exit.signal !== null) throw failure('darwin_diagnostic_controller_failed');
+    if (!observation || exit.exit_code !== 0 || exit.signal !== null) throw failure(controllerFailure || 'darwin_diagnostic_controller_failed');
     if (cancelled || elapsed(start) >= budget) observation = { ...observation, status: 'failed', reason: cancelled
       ? 'darwin_diagnostic_cancelled' : 'darwin_diagnostic_total_budget_exceeded' };
     // Repeat actual original readback after the observed controller exit. This

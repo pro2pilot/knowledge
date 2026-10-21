@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const { fork } = require('node:child_process');
 const path = require('node:path');
 const wire = require('../tools/lib/verification-darwin-diagnostic-protocol');
 const { runDiagnostic } = require('../tools/lib/verification-darwin-diagnostic');
@@ -121,4 +122,27 @@ test('cached observation and diagnostic facts never become qualified closure', (
 });
 test('non-macOS diagnostic refusal occurs before filesystem/process admission', { skip: process.platform === 'darwin' }, async () => {
   await assert.rejects(runDiagnostic(request()), { code: 'darwin_diagnostic_requires_macos' });
+});
+test('controller sends the safe pre-try native-probe failure over direct-child IPC', {
+  skip: process.platform === 'darwin'
+}, async () => {
+  const controller = path.resolve(__dirname, '../tools/lib/verification-darwin-diagnostic.js');
+  const child = fork(controller, ['--controller'], { execArgv: [],
+    env: { PATH: process.env.PATH || '', NODE_NO_WARNINGS: '1' },
+    stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+  const messages = [];
+  const result = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('controller IPC test timed out'));
+    }, 5000);
+    child.on('message', message => messages.push(message));
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('exit', (exit_code, signal) => { clearTimeout(timer); resolve({ exit_code, signal }); });
+    child.send({ type: 'start', id: 'DGD-test', request: request() }, error => {
+      if (error) { clearTimeout(timer); reject(error); }
+    });
+  });
+  assert.deepEqual(messages, [{ type: 'failed', reason: 'verification_darwin_required' }]);
+  assert.deepEqual(result, { exit_code: 2, signal: null });
 });

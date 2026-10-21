@@ -1440,8 +1440,8 @@
     },
     {
       "path": ".knowledge/tests/verification-darwin-diagnostic.test.js",
-      "sha256": "c23455ad842ada838113ddb1cca15789fa5deb4ddb3ac1342b7bd1fde1b6a518",
-      "bytes": 8676
+      "sha256": "5340c9fab39274d56f7f1f35e8a9420015f5c486eb6d1be81fbb9e1cb78ce0d0",
+      "bytes": 9915
     },
     {
       "path": ".knowledge/tests/verification-darwin-transport.test.js",
@@ -1965,8 +1965,8 @@
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-diagnostic.js",
-      "sha256": "628f2e43e31fe419070190b74dbf0e323c3686ffc25fa86ce05b1931119833bd",
-      "bytes": 29194
+      "sha256": "827ccb737850465c9d884491011368b73d370167e535186815633fa2bbb578c3",
+      "bytes": 29956
     },
     {
       "path": ".knowledge/tools/lib/verification-darwin-stub.c",
