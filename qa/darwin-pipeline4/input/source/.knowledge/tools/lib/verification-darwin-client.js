@@ -196,7 +196,7 @@ function containmentCapability(value) {
       ['--request', `--socket=${normalized.broker_socket}`,
         `--lifecycle-timeout-ms=${PROBE_LIFECYCLE_TIMEOUT_MS}`,
         `--transport-timeout-ms=${PROBE_TRANSPORT_TIMEOUT_MS}`], {
-        shell: false, input: JSON.stringify({ op: 'probe' }), encoding: 'buffer',
+        shell: false, input: JSON.stringify({ op: 'probe' }), /* default Buffer output; no encoding alias */
         timeout: PROBE_LIFECYCLE_TIMEOUT_MS,
         maxBuffer: MAX_REPLY_BYTES, windowsHide: true, env: nativeEnv()
       });
@@ -241,7 +241,7 @@ function diagnosticProbe(value) {
     ['--request', `--socket=${normalized.broker_socket}`,
       `--lifecycle-timeout-ms=${PROBE_LIFECYCLE_TIMEOUT_MS}`,
       `--transport-timeout-ms=${PROBE_TRANSPORT_TIMEOUT_MS}`], {
-      shell: false, input: JSON.stringify({ op: 'probe' }), encoding: 'buffer',
+      shell: false, input: JSON.stringify({ op: 'probe' }), /* default Buffer output; no encoding alias */
       timeout: PROBE_LIFECYCLE_TIMEOUT_MS, maxBuffer: MAX_REPLY_BYTES,
       windowsHide: true, env: nativeEnv()
     });

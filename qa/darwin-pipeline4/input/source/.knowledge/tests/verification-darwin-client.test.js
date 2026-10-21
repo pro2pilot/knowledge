@@ -222,7 +222,21 @@ test('probe wrapper preserves the helper lifecycle budget and passes both native
   };
   const calls = [];
   const adaptedRequire = name => name === 'fs' ? adaptedFs : name === 'child_process' ? {
-    spawnSync: (...args) => { calls.push(args); return { status: 1, stdout: Buffer.alloc(0) }; }
+    spawnSync: (...args) => {
+      calls.push(args);
+      // Use the real host transport options with binary non-UTF8 output. The
+      // native service itself remains unexercised by this portable test.
+      const child = require('node:child_process').spawnSync(process.execPath,
+        ['-e', 'if(require("node:fs").readFileSync(0,"utf8")!==JSON.stringify({op:"probe"}))process.exit(9);'+
+          'process.stdout.write(Buffer.from([255,0,97]));process.stderr.write(Buffer.from([254,0,98]))'], args[2]);
+      assert.equal(child.status, 0);
+      assert.equal(child.error, undefined);
+      assert.equal(Buffer.isBuffer(child.stdout), true);
+      assert.equal(child.stdout.equals(Buffer.from([255, 0, 97])), true);
+      assert.equal(Buffer.isBuffer(child.stderr), true);
+      assert.equal(child.stderr.equals(Buffer.from([254, 0, 98])), true);
+      return { status: 1, stdout: Buffer.alloc(0) };
+    }
   } : actualRequire(name);
   const module = { exports: {} };
   const wrapper = vm.runInNewContext('(function(require,module,exports,__filename,__dirname){' +
@@ -233,7 +247,10 @@ test('probe wrapper preserves the helper lifecycle budget and passes both native
     broker_path: '/audit/broker', broker_socket: '/audit/broker.sock', copy: {} } });
   assert.equal(result.status, 'unavailable');
   assert.equal(result.reason, 'broker_probe_failed');
-  assert.equal(calls.length, 1);
+  assert.throws(() => module.exports.diagnosticProbe({ darwin: { enabled: true, mode: 'isolated_copy',
+    broker_path: '/audit/broker', broker_socket: '/audit/broker.sock', copy: {} } }),
+  { code: 'verification_darwin_probe_failed' });
+  assert.equal(calls.length, 2);
   const [binary, argv, options] = calls[0];
   assert.equal(binary, '/audit/broker');
   const flag = name => Number(argv.find(x => x.startsWith(name + '=')).split('=')[1]);
