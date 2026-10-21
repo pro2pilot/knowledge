@@ -27,7 +27,7 @@ record = {'scope': 'audit fixtures only; no product capability or ACK', 'backend
           'platform': platform.platform(), 'uid': os.getuid(), 'commands': rows}
 fixture = None
 try:
-    for name in ['credential-exec-probe', 'host-port-probe']:
+    for name in ['credential-exec-probe', 'host-port-probe', 'task-access-probe']:
         source = HERE / (name + '.c')
         record[name + '_source_sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
         code = command('compile-' + name, ['/usr/bin/clang', '-std=c11', '-O2', '-Wall', '-Wextra',
@@ -68,6 +68,14 @@ try:
     record['suid_and_sgid_controls'] = [c for c in cases if not c['sandboxed'] and c['import_method'] == 0]
     record['sandbox_normal_control'] = [c for c in cases if c['sandboxed'] and c['fixture'] == 0 and c['import_method'] == 0]
     command('host-port', ['/usr/bin/sudo', '-n', str(OUT / 'host-port-probe')])
+    task_probe = fixture / 'task-access-probe'
+    assert command('install-task-access-probe', ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0755',
+                   str(OUT / 'task-access-probe'), str(task_probe)]) == 0
+    assert command('task-access-profile', [str(broker), '--print-profile', '--workspace=' + str(copy),
+                   '--runtime=' + str(task_probe)]) == 0
+    task_profile = (OUT / 'task-access-profile.stdout.log').read_text()
+    record['task_access_profile_sha256'] = hashlib.sha256(task_profile.encode()).hexdigest()
+    command('task-access', ['/usr/bin/sudo', '-n', str(task_probe), str(os.getuid()), '1800000123', task_profile])
     record['status'] = 'DIAGNOSTICS_COMPLETE_REVIEW_REQUIRED'
 except BaseException as error:
     record['status'] = 'INFRASTRUCTURE_FAILED'
