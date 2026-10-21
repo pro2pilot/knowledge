@@ -33,6 +33,11 @@ EXPECTED_PROOF_FIELDS = {
     "capability_qualified": False,
     "uid_history_tuple_verified": False,
     "admission_closed": True,
+    "registered_authority_exited": True,
+}
+EXPECTED_STOP_REASON = {
+    "policy-unlink": "account_policy_unconfirmed",
+    "registry-unlink": "registry_durability_unconfirmed",
 }
 PROOF_ALLOWLIST = (
     "schema", "phase", "terminal_cleanup", "state", "native_cleanup_facts_confirmed",
@@ -103,7 +108,8 @@ def public_rpc(helper, binary, sock, request, timeout=3):
     fields = ("ok", "error", "schema", "attempt_id", "descriptor_sha256", "descriptor",
               "source_sha256", "state", "admission_closed", "proof", "registry_healthy",
               "entry_store_loaded", "uid_history", "account_policy", "capability_qualified",
-              "qualification_mode", "cleanup_started_monotonic_ms", "cleanup_deadline_monotonic_ms")
+              "qualification_mode", "cleanup_started_monotonic_ms", "cleanup_deadline_monotonic_ms",
+              "stop_reason")
     return {"transport_ok": True, "transport_exit": observed["transport_exit"],
             **{key: reply[key] for key in fields if key in reply}}
 
@@ -140,18 +146,70 @@ def read_owned_target(target):
     return content.stdout
 
 
-def fixture_target(uid_helpers, sock, fault):
-    fixture, registry = uid_helpers.fixture_registry_path(sock)
-    target = fixture / "anchors" / "account-policy.json" if fault == "policy-unlink" else registry
-    expected_parent = fixture / "anchors" if fault == "policy-unlink" else fixture / "registry"
-    if (target.parent != expected_parent or target.is_symlink() or
-            target.resolve(strict=True) != target or not target.is_file()):
-        raise RuntimeError("fault target is not the exact nonsymlink file in this fixture")
-    directory_stat = target.parent.lstat()
-    if (target.parent.is_symlink() or not stat.S_ISDIR(directory_stat.st_mode) or
-            directory_stat.st_uid != 0 or
-            stat.S_IMODE(directory_stat.st_mode) != (0o755 if fault == "policy-unlink" else 0o700)):
-        raise RuntimeError("fault target parent failed the literal owned-fixture checks")
+def root_directory_metadata(path):
+    result = root_command(["/usr/bin/stat", "-f", "%u %g %Lp %HT", str(path)], max_output=4096)
+    if result.returncode != 0:
+        raise RuntimeError("protected fixture directory metadata could not be read")
+    try:
+        fields = result.stdout.decode("ascii").strip().split()
+        uid, gid, mode = (int(fields[i], 8 if i == 2 else 10) for i in range(3))
+    except (ValueError, IndexError, UnicodeError):
+        raise RuntimeError("protected fixture directory metadata response was malformed")
+    return uid, gid, mode, fields[3:]
+
+
+def ordinary_directory_metadata(path, expected_mode):
+    """Inspect only directories the ordinary controller can traverse."""
+    try:
+        info = path.lstat()
+    except OSError as error:
+        raise RuntimeError("accessible fixture directory could not be inspected: " + type(error).__name__)
+    if (path.is_symlink() or not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or
+            stat.S_IMODE(info.st_mode) != expected_mode):
+        raise RuntimeError("accessible fixture directory failed its literal ownership/mode check")
+
+
+def fixture_target(sock, fault):
+    # Keep the ordinary controller out of registry/: it is root:0700.
+    # Construct and validate the fixture lexically, then use fixed root stat/cat
+    # commands for the protected directory and leaf.
+    raw_socket = str(sock)
+    if "\x00" in raw_socket or "\\" in raw_socket:
+        raise RuntimeError("socket path contains an invalid character")
+    socket_path = Path(raw_socket)
+    if (not socket_path.is_absolute() or ".." in socket_path.parts or
+            raw_socket != str(socket_path) or socket_path.name != "broker.sock" or
+            socket_path.parent.name != "control"):
+        raise RuntimeError("socket path has an invalid fixture shape")
+    fixture = socket_path.parent.parent
+    if (fixture.parent != Path("/private/tmp") or
+            re.fullmatch(r"knowledge-launchd-smoke\.[A-Za-z0-9_-]+", fixture.name) is None):
+        raise RuntimeError("socket path is not an immediate child of the owned private tmp root")
+    tmp = Path("/private/tmp")
+    try:
+        tmp_info = tmp.lstat()
+        socket_info = socket_path.lstat()
+    except OSError as error:
+        raise RuntimeError("ordinary-user fixture path could not be inspected: " + type(error).__name__)
+    if (tmp.is_symlink() or tmp_info.st_uid != 0 or stat.S_IMODE(tmp_info.st_mode) != 0o1777 or
+            not tmp_info.st_mode & stat.S_ISVTX):
+        raise RuntimeError("private tmp root failed the literal sticky-root check")
+    ordinary_directory_metadata(fixture, 0o711)
+    ordinary_directory_metadata(socket_path.parent, 0o711)
+    if (socket_path.is_symlink() or not stat.S_ISSOCK(socket_info.st_mode) or socket_info.st_uid != 0):
+        raise RuntimeError("broker socket is not an owned real nonsymlink socket")
+
+    if fault == "policy-unlink":
+        target = fixture / "anchors" / "account-policy.json"
+        ordinary_directory_metadata(target.parent, 0o755)
+        expected_parent_mode = 0o755
+    else:
+        target = fixture / "registry" / "registry.json"
+        expected_parent_mode = 0o700
+    parent_uid, parent_gid, parent_mode, parent_kind = root_directory_metadata(target.parent)
+    if (parent_uid != 0 or parent_gid != 0 or parent_mode != expected_parent_mode or
+            parent_kind != ["Directory"]):
+        raise RuntimeError("protected fault-target directory failed root ownership/type/mode checks")
     return fixture, target
 
 
@@ -217,7 +275,8 @@ def prepare_authority(helper, uid_helpers, args, probe, prepared, binding):
     child.stdin.write(helper.canonical(config) + b"\n")
     child.stdin.flush()
     ready = json.loads(helper.read_line_bounded(child.stdout.fileno(), 60))
-    if ready.get("registered") is not True or not helper.valid_identity(ready.get("authority_identity")):
+    if (ready.get("registered") is not True or not helper.valid_identity(ready.get("authority_identity")) or
+            ready["authority_identity"].get("pid") != child.pid):
         raise RuntimeError("native authority registration lacked its exact birth identity")
     helper.rpc(binary, sock, {"op": "permit", **credentials})
     child.stdin.write(b"G")
@@ -267,7 +326,7 @@ def controller(args, helper, uid_helpers):
     if sys.platform != "darwin" or os.getuid() == 0:
         raise RuntimeError("run this controller as an ordinary user on real macOS")
     binary, sock = str(Path(args.binary)), str(Path(args.socket))
-    fixture, target = fixture_target(uid_helpers, sock, args.fault)
+    fixture, target = fixture_target(sock, args.fault)
     probe = helper.rpc(binary, sock, {"op": "probe"})
     if (probe.get("qualification_mode") is not True or probe.get("capability_qualified") is not False or
             probe.get("source_sha256") is None or
@@ -316,6 +375,8 @@ def controller(args, helper, uid_helpers):
         "times_monotonic_ns": {"controller_started": started_ns},
         "native_helper_pid": None,
         "native_helper_pid_status": "unknown_not_exposed_by_public_status",
+        "native_run_helper_lifecycle_confirmed": False,
+        "native_run_helper_lifecycle_status": "unknown_grandchild_exit_not_observed",
     }
     child = None
     raw_outputs = None
@@ -353,16 +414,54 @@ def controller(args, helper, uid_helpers):
         except subprocess.TimeoutExpired:
             authority_waited = False
         result["times_monotonic_ns"]["authority_wait_end"] = time.monotonic_ns()
+        authority_exit_observed_ns = (result["times_monotonic_ns"]["authority_wait_end"]
+            if child.returncode is not None else None)
         result["authority_wait"] = {"actual_wait_completed": authority_waited,
             "exit_code": child.returncode, "timed_out_after_seconds": None if authority_waited else 15,
-            "direct_child_reaped_by_controller": authority_waited}
+            "direct_child_reaped_by_controller": authority_waited,
+            "exit_observed_monotonic_ns": authority_exit_observed_ns}
+        result["immutable_primary_observation"] = {
+            "authority_wait_completed": authority_waited,
+            "authority_exit_code": child.returncode,
+            "authority_exit_observed_monotonic_ns": authority_exit_observed_ns,
+            "authority_exit_expected_sigkill": authority_waited and child.returncode == -9,
+            "authority_identity_matches_direct_child": (
+                helper.valid_identity(ready["authority_identity"]) and
+                ready["authority_identity"].get("pid") == child.pid),
+        }
         if not authority_waited:
             raise RuntimeError("authority child did not exit within the fixed 15-second post-fault wait")
 
-        # No RPC occurs from fault completion through the bounded authority wait above.
-        result["times_monotonic_ns"]["post_wait_status_start"] = time.monotonic_ns()
-        status_observed = public_rpc(helper, binary, sock, {"op": "status", **attempt_ref}, timeout=5)
-        result["times_monotonic_ns"]["post_wait_status_end"] = time.monotonic_ns()
+        # This bounded read-only aftermath poll cannot change the immutable
+        # authority-wait observation above. Native cleanup can publish its proof
+        # only after the cleanup deadline, even when SIGKILL arrived earlier.
+        result["times_monotonic_ns"]["post_wait_status_poll_start"] = time.monotonic_ns()
+        status_deadline = time.monotonic() + 20
+        status_observed = {}
+        status_poll_count = 0
+        status_poll_error_type = None
+        while True:
+            remaining = status_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            status_poll_count += 1
+            try:
+                status_observed = public_rpc(helper, binary, sock, {"op": "status", **attempt_ref},
+                    timeout=min(5, remaining))
+            except Exception as poll_error:
+                status_poll_error_type = type(poll_error).__name__
+            if (status_observed.get("state") == "cleanup_unconfirmed" and
+                    status_observed.get("stop_reason") == EXPECTED_STOP_REASON[args.fault] and
+                    isinstance(status_observed.get("proof"), dict)):
+                break
+            remaining = status_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.25, remaining))
+        result["times_monotonic_ns"]["post_wait_status_poll_end"] = time.monotonic_ns()
+        result["post_wait_status_poll_count"] = status_poll_count
+        if status_poll_error_type is not None:
+            result["post_wait_status_poll_last_error_type"] = status_poll_error_type
         result["times_monotonic_ns"]["post_wait_probe_start"] = time.monotonic_ns()
         probe_observed = public_rpc(helper, binary, sock, {"op": "probe"}, timeout=5)
         result["times_monotonic_ns"]["post_wait_probe_end"] = time.monotonic_ns()
@@ -383,6 +482,9 @@ def controller(args, helper, uid_helpers):
             status_observed.get("ok") is True and status_observed.get("state") == "cleanup_unconfirmed" and
             status_observed.get("admission_closed") is True and helper.exact_fields(proof, EXPECTED_PROOF_FIELDS) and
             proof_binding_ok and descriptor_binding_ok and flags_ok and
+            child.returncode == -9 and status_observed.get("stop_reason") == EXPECTED_STOP_REASON[args.fault] and
+            proof.get("registered_authority_exited") is True and
+            helper.same_identity(proof.get("authority_identity"), ready["authority_identity"]) and
             status_observed.get("attempt_id") == binding["attempt_id"] and
             status_observed.get("descriptor_sha256") == binding["descriptor_sha256"] and
             probe_observed.get("transport_ok") is True and probe_observed.get("transport_exit") == 0 and
@@ -394,7 +496,7 @@ def controller(args, helper, uid_helpers):
         result["post_wait_status"] = {key: status_observed.get(key) for key in
             ("transport_ok", "transport_exit", "ok", "attempt_id", "descriptor_sha256", "state",
              "admission_closed", "capability_qualified", "cleanup_started_monotonic_ms",
-             "cleanup_deadline_monotonic_ms") if key in status_observed}
+             "cleanup_deadline_monotonic_ms", "stop_reason") if key in status_observed}
         result["post_wait_probe"] = {key: probe_observed.get(key) for key in
             ("transport_ok", "transport_exit", "ok", "source_sha256", "capability_qualified",
              "qualification_mode", "registry_healthy", "entry_store_loaded") if key in probe_observed}
@@ -402,11 +504,10 @@ def controller(args, helper, uid_helpers):
         result["descriptor_binding_exact"] = descriptor_binding_ok
         result["proof_binding_exact"] = proof_binding_ok
         result["all_diagnostic_and_certification_flags_false"] = flags_ok
-        result["immutable_primary_observation"] = {"oracle_passed": oracle_ok,
-            "authority_wait_completed": authority_waited,
-            "authority_exit_code": child.returncode,
+        result["aftermath_observation"] = {"oracle_passed": oracle_ok,
             "post_wait_state": status_observed.get("state"),
             "admission_closed": status_observed.get("admission_closed"),
+            "stop_reason": status_observed.get("stop_reason"),
             "proof_state": proof.get("state") if isinstance(proof, dict) else None,
             "cleanup_confirmed": proof.get("cleanup_confirmed") if isinstance(proof, dict) else None}
         primary = {"passed": oracle_ok, "reason": None if oracle_ok else "active-state oracle mismatch"}
@@ -424,12 +525,17 @@ def controller(args, helper, uid_helpers):
         # Best-effort exact owned close is explicitly after the immutable primary measurement.
         if child is not None and child.poll() is None:
             result["times_monotonic_ns"]["best_effort_close_start"] = time.monotonic_ns()
-            close_result = public_rpc(helper, binary, sock, {"op": "close", **attempt_ref,
-                "cleanup_budget_ms": 10000}, timeout=5)
-            result["times_monotonic_ns"]["best_effort_close_end"] = time.monotonic_ns()
-            result["post_measurement_cleanup"] = {"attempted": True,
-                "state": close_result.get("state"), "error": close_result.get("error"),
-                "transport_ok": close_result.get("transport_ok")}
+            try:
+                close_result = public_rpc(helper, binary, sock, {"op": "close", **attempt_ref,
+                    "cleanup_budget_ms": 10000}, timeout=5)
+                result["post_measurement_cleanup"] = {"attempted": True,
+                    "state": close_result.get("state"), "error": close_result.get("error"),
+                    "transport_ok": close_result.get("transport_ok")}
+            except Exception as cleanup_error:
+                result["post_measurement_cleanup"] = {"attempted": True,
+                    "error_type": type(cleanup_error).__name__, "result": "unconfirmed"}
+            finally:
+                result["times_monotonic_ns"]["best_effort_close_end"] = time.monotonic_ns()
             try:
                 child.wait(timeout=5)
                 result["post_measurement_cleanup"]["authority_exit_code"] = child.returncode

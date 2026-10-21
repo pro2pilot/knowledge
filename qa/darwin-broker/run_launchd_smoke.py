@@ -190,6 +190,7 @@ record = {'scope': 'launchd startup-method physical probe only', 'backend_certif
           'trusted_os_origin_verified': False, 'commands': [], 'capability_semantics': False,
           'platform': platform.platform(), 'architecture': platform.machine()}
 record['root_native_exits_confirmed'] = True
+active_state_run_helper_exit_confirmed = True
 fixture = None
 bootstrapped = False
 registration_attempted = False
@@ -542,6 +543,8 @@ try:
         record['status'] = 'HOST_PROBE_ONLY_PASS' if record['host_postdrop_checks_passed'] else 'HOST_PROBE_ONLY_FAIL'
     else:
         harness_started = True
+        if args.active_state_fault:
+            active_state_run_helper_exit_confirmed = False
         run_evidence = OUT / 'native-run'
         run_evidence.mkdir(mode=0o700)
         selected_harness = (SCRIPT_DIR / 'active-state-fault-harness.py'
@@ -564,6 +567,13 @@ try:
             result = json.loads(harness.stdout)
         except (ValueError, TypeError):
             raise RuntimeError('daemon harness returned invalid JSON')
+        if args.active_state_fault:
+            active_state_run_helper_exit_confirmed = (
+                result.get('authority_direct_child_pid') is None or
+                result.get('native_run_helper_lifecycle_confirmed') is True)
+            record['active_state_run_helper_exit_confirmed'] = active_state_run_helper_exit_confirmed
+            record['active_state_run_helper_lifecycle_status'] = result.get(
+                'native_run_helper_lifecycle_status', 'not_started_or_not_reported')
         descriptor = result.get('descriptor')
         if (not isinstance(descriptor, dict) or result.get('source_sha256') != receipt_sha or
                 descriptor.get('source_sha256') != receipt_sha or
@@ -611,10 +621,15 @@ try:
                         proof.get('native_cleanup_facts_confirmed') is not False or
                         proof.get('cleanup_confirmed') is not False or
                         proof.get('capability_qualified') is not False or
+                        result.get('authority_wait', {}).get('exit_code') != -9 or
+                        result.get('post_wait_status', {}).get('stop_reason') !=
+                            ('account_policy_unconfirmed' if args.active_state_fault == 'policy-unlink'
+                             else 'registry_durability_unconfirmed') or
                         result.get('physical_smoke_passed') is not True or
                         result.get('post_wait_status', {}).get('admission_closed') is not True or
                         result.get('post_wait_status', {}).get('state') != 'cleanup_unconfirmed' or
-                        result.get('immutable_primary_observation', {}).get('oracle_passed') is not True):
+                        result.get('immutable_primary_observation', {}).get('authority_exit_expected_sigkill') is not True or
+                        result.get('aftermath_observation', {}).get('oracle_passed') is not True):
                     raise RuntimeError('active-state fault did not preserve the expected unconfirmed monitor result')
                 record['current_proof_persistence_confirmed'] = False
                 record['receipt_scope'] = 'diagnostic readback only; current state commit intentionally unconfirmed'
@@ -633,7 +648,8 @@ try:
                 proof.get('native_cleanup_facts_confirmed') is False and
                 proof.get('cleanup_confirmed') is False and
                 result.get('post_wait_status', {}).get('admission_closed') is True and
-                result.get('immutable_primary_observation', {}).get('oracle_passed') is True)
+                result.get('immutable_primary_observation', {}).get('authority_exit_expected_sigkill') is True and
+                result.get('aftermath_observation', {}).get('oracle_passed') is True)
         record['harness_physical_smoke_passed'] = result.get('physical_smoke_passed') is True and harness.returncode == 0
         record['status'] = ('LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' if record.get('launchd_startup_method_observed') and record['harness_physical_smoke_passed'] and record['launch_origin_canaries_passed'] and record.get('host_postdrop_checks_passed') is True
                            else 'LAUNCHD_ORIGIN_CANARY_FAIL' if record.get('launchd_startup_method_observed') and not record['launch_origin_canaries_passed']
@@ -697,7 +713,8 @@ finally:
                         'readable': False, 'error_type': type(read_error).__name__, 'semantics_only': True}
             # Never remove the fixture until the exact service is booted out and private UID membership is clear.
             if (not bootstrapped and membership_clear and host_probe_processes_reaped and host_uid_scan_clear and
-                    groups_probe_reaped and groups_uid_scan_clear and record['root_native_exits_confirmed']):
+                    groups_probe_reaped and groups_uid_scan_clear and record['root_native_exits_confirmed'] and
+                    active_state_run_helper_exit_confirmed):
                 if root_logs_created:
                     outlog = run('collect-own-root-daemon-stdout', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stdout.log')], record)
                     errlog = run('collect-own-root-daemon-stderr', ['/usr/bin/sudo', '-n', '/bin/cat', str(fixture / 'logs/daemon.stderr.log')], record)
@@ -716,12 +733,14 @@ finally:
                 removed = run('remove-own-fixture', ['/usr/bin/sudo', '-n', '/bin/rm', '-rf', '--', str(fixture)], record)
                 record['fixture_cleanup_exit'] = removed.returncode
             else:
-                record['fixture_cleanup_deferred'] = 'launchd stop, private UID scan, probe reaping, or root initializer exit was not confirmed'
+                record['fixture_cleanup_deferred'] = ('launchd stop, private UID scan, probe reaping, root initializer exit, '
+                    'or active-state native run-helper exit was not confirmed')
         except BaseException as cleanup_error:
             record['fixture_cleanup_deferred'] = str(cleanup_error)
     record['cleanup_confirmed'] = not fixture or (not bootstrapped and membership_clear and
         host_probe_processes_reaped and host_uid_scan_clear and groups_probe_reaped and groups_uid_scan_clear and
-        record['root_native_exits_confirmed'] and record.get('fixture_cleanup_exit') == 0)
+        record['root_native_exits_confirmed'] and active_state_run_helper_exit_confirmed and
+        record.get('fixture_cleanup_exit') == 0)
     if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and not record['cleanup_confirmed']:
         record['status'] = 'LAUNCHD_STARTUP_OBSERVED_CLEANUP_UNCONFIRMED'
     (OUT / 'LAUNCHD_SMOKE_RESULT.json').write_text(json.dumps(record, indent=2) + '\n')
