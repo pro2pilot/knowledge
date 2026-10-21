@@ -31,11 +31,21 @@ def sha(path):
 
 def run(name, argv, record, timeout=30, data=None):
     start = time.monotonic()
-    p = subprocess.run(argv, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                       timeout=timeout, shell=False)
+    try:
+        p = subprocess.run(argv, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           timeout=timeout, shell=False)
+        timed_out = False
+    except subprocess.TimeoutExpired as error:
+        stdout = error.stdout or b''
+        stderr = error.stderr or b''
+        if isinstance(stdout, str): stdout = stdout.encode()
+        if isinstance(stderr, str): stderr = stderr.encode()
+        p = subprocess.CompletedProcess(argv, None, stdout, stderr)
+        timed_out = True
     (OUT / (name + '.stdout.log')).write_bytes(p.stdout)
     (OUT / (name + '.stderr.log')).write_bytes(p.stderr)
     record['commands'].append({'name': name, 'argv': argv, 'exit_code': p.returncode,
+                               'timed_out': timed_out,
                                'elapsed_ms': round((time.monotonic()-start)*1000, 3)})
     return p
 
@@ -53,12 +63,16 @@ def checked_fixture(path):
 parser = argparse.ArgumentParser()
 parser.add_argument('--broker', type=Path, default=HERE / 'evidence' / 'knowledge-native-broker')
 parser.add_argument('--node', type=Path, default=Path(shutil.which('node')).resolve() if shutil.which('node') else None)
-parser.add_argument('--harness', type=Path, default=HERE / 'daemon-harness.py')
+attempt12_harness = SCRIPT_DIR / 'D' / 'native' / 'daemon-harness-attempt12.py'
+parser.add_argument('--harness', type=Path, default=attempt12_harness if attempt12_harness.is_file() else HERE / 'daemon-harness.py')
 parser.add_argument('--uid-scan', type=Path, default=HERE / 'evidence' / 'uid-scan')
 parser.add_argument('--source-receipt', type=Path, default=HERE / 'SOURCE_RECEIPT.json')
 parser.add_argument('--compile-result', type=Path, default=HERE / 'evidence' / 'COMPILE_RESULT.json')
 args = parser.parse_args()
-OUT = HERE / 'evidence' / ('launchd-smoke-' + uuid.uuid4().hex[:12])
+EVIDENCE_ROOT = HERE / 'evidence'
+if EVIDENCE_ROOT.is_symlink() or not EVIDENCE_ROOT.is_dir():
+    raise SystemExit('expected build evidence directory is missing or a symlink')
+OUT = EVIDENCE_ROOT / ('launchd-smoke-' + uuid.uuid4().hex[:12])
 OUT.mkdir(mode=0o700)
 record = {'scope': 'launchd startup-method physical probe only', 'backend_certified': False,
           'trusted_os_origin_verified': False, 'commands': [], 'capability_semantics': False,
@@ -91,6 +105,16 @@ try:
     broker_source, node_source = args.broker.resolve(strict=True), args.node.resolve(strict=True)
     if args.broker.is_symlink() or args.node.is_symlink() or not broker_source.is_file() or not node_source.is_file():
         raise RuntimeError('broker or resolved Node artifact is not an ordinary file')
+    origin_source = HERE / 'launch-origin-probe.c'
+    if not origin_source.is_file():
+        origin_source = SCRIPT_DIR / 'launch-origin-probe.c'
+    origin_binary = OUT / 'launch-origin-probe'
+    record['launch_origin_source_sha256'] = sha(origin_source)
+    compiled_origin = run('compile-launch-origin-probe', ['/usr/bin/clang', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                           str(origin_source), '-o', str(origin_binary)], record, 120)
+    if compiled_origin.returncode != 0:
+        raise RuntimeError('ordinary-user launch-origin-probe compile failed')
+    record['launch_origin_binary_sha256_before_install'] = sha(origin_binary)
     record['broker_sha256_before_install'] = sha(broker_source)
     record['node_sha256_before_install'] = sha(node_source)
     record['broker_input_path'] = str(broker_source)
@@ -107,11 +131,15 @@ try:
         assert run('mode-dir-' + name, ['/usr/bin/sudo', '-n', '/bin/chmod', mode, str(p)], record).returncode == 0
     assert run('protect-fixture', ['/usr/bin/sudo', '-n', '/usr/sbin/chown', '0:0', str(fixture)], record).returncode == 0
     assert run('mode-fixture', ['/usr/bin/sudo', '-n', '/bin/chmod', '0711', str(fixture)], record).returncode == 0
-    binary, node = fixture / 'bin/broker', fixture / 'runtime/node'
-    for name, source, target in [('broker', broker_source, binary), ('node', node_source, node)]:
+    binary, node, origin_probe = fixture / 'bin/broker', fixture / 'runtime/node', fixture / 'bin/launch-origin-probe'
+    for name, source, target in [('broker', broker_source, binary), ('node', node_source, node),
+                                 ('launch-origin-probe', origin_binary, origin_probe)]:
         assert run('install-' + name, ['/usr/bin/sudo', '-n', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0555', str(source), str(target)], record).returncode == 0
         record[name + '_sha256_after_install'] = sha(target)
-        if record[name + '_sha256_after_install'] != record[name + '_sha256_before_install']:
+        expected_hash = (record['broker_sha256_before_install'] if name == 'broker' else
+                         record['node_sha256_before_install'] if name == 'node' else
+                         record['launch_origin_binary_sha256_before_install'])
+        if record[name + '_sha256_after_install'] != expected_hash:
             raise RuntimeError(name + ' installed bytes changed')
     sock = fixture / 'control/broker.sock'
     stdout, stderr = fixture / 'logs/daemon.stdout.log', fixture / 'logs/daemon.stderr.log'
@@ -141,9 +169,64 @@ try:
     record['launchd_startup_method_observed'] = startup_print.returncode == 0 and bool(re.search(rb'\bpid\s*=\s*[0-9]+', startup_print.stdout))
     if not record['launchd_startup_method_observed']:
         raise RuntimeError('launchd did not report an active PID for its own label before harness')
+    pid_match = re.search(rb'\bpid\s*=\s*([0-9]+)', startup_print.stdout)
+    if not pid_match:
+        raise RuntimeError('own launchd label did not expose a decimal PID')
+    launched_pid = int(pid_match.group(1))
+    record['launchd_broker_pid'] = launched_pid
+    origin_checks = {}
+    daemon_origin = run('origin-own-launchdaemon-pid', ['/usr/bin/sudo', '-n', str(origin_probe), '--pid=' + str(launched_pid)], record)
+    try:
+        daemon_report = json.loads(daemon_origin.stdout)
+        target = daemon_report.get('target', {})
+        daemon_ok = (daemon_origin.returncode == 0 and daemon_report.get('creation_parent_is_init') is True and
+                     daemon_report.get('proc_pidpath_pid1_is_sbin_launchd') is True and
+                     daemon_report.get('parent_unique_matches_pid1') is True and target.get('pid') == launched_pid and
+                     daemon_report.get('target_identity_fresh_twice') is True and
+                     daemon_report.get('pid1_identity_fresh_twice') is True and target.get('ppid') == 1 and target.get('ruid_is_root') is True and
+                     target.get('euid_is_root') is True and target.get('suid_is_root') is True and
+                     os.path.realpath(target.get('image', '')) == os.path.realpath(str(binary)))
+        origin_checks['launchdaemon_pid'] = {'passed': daemon_ok, 'report': daemon_report,
+                                             'exit_code': daemon_origin.returncode}
+    except Exception as error:
+        origin_checks['launchdaemon_pid'] = {'passed': False, 'parse_error': str(error), 'exit_code': daemon_origin.returncode}
+    direct_origin = run('origin-direct-sudo-self', ['/usr/bin/sudo', '-n', str(origin_probe), '--self'], record)
+    try:
+        direct_report = json.loads(direct_origin.stdout)
+        direct_ok = (direct_origin.returncode == 0 and direct_report.get('mode') == 'self' and
+                     direct_report.get('creation_parent_is_init') is False and
+                     direct_report.get('target_identity_fresh_twice') is True and
+                     direct_report.get('target', {}).get('euid_is_root') is True)
+        origin_checks['direct_sudo'] = {'passed': direct_ok, 'report': direct_report,
+                                        'exit_code': direct_origin.returncode}
+    except Exception as error:
+        origin_checks['direct_sudo'] = {'passed': False, 'parse_error': str(error), 'exit_code': direct_origin.returncode}
+    orphan_origin = run('origin-orphan-canary', ['/usr/bin/sudo', '-n', str(origin_probe), '--orphan-canary'], record, 9)
+    orphan_timed_out = record['commands'][-1].get('timed_out', False) or orphan_origin.returncode is None
+    try:
+        orphan_report = json.loads(orphan_origin.stdout)
+        orphan_ok = (not orphan_timed_out and orphan_origin.returncode == 0 and orphan_report.get('mode') == 'orphan-canary' and
+                     orphan_report.get('target', {}).get('ppid') == 1 and
+                     orphan_report.get('target_identity_fresh_twice') is True and
+                     orphan_report.get('parent_unique_matches_pid1') is False and
+                     orphan_report.get('creation_parent_is_init') is False)
+        origin_checks['orphan_canary'] = {'passed': orphan_ok, 'report': orphan_report,
+                                          'exit_code': orphan_origin.returncode,
+                                          'timed_out': orphan_timed_out,
+                                          'status': 'passed' if orphan_ok else 'exit-ambiguous-fail'}
+    except Exception as error:
+        origin_checks['orphan_canary'] = {'passed': False, 'parse_error': str(error),
+                                          'exit_code': orphan_origin.returncode,
+                                          'timed_out': record['commands'][-1].get('timed_out', False),
+                                          'status': 'exit-ambiguous-fail'}
+    record['launch_origin_canaries'] = origin_checks
+    record['launch_origin_canaries_passed'] = all(item.get('passed') is True for item in origin_checks.values())
     harness_started = True
+    run_evidence = OUT / 'native-run'
+    run_evidence.mkdir(mode=0o700)
     harness = run('ordinary-user-daemon-harness', ['python3', str(args.harness), '--binary=' + str(binary),
-        '--socket=' + str(sock), '--node=' + str(node), '--profile-output=' + str(OUT / 'exact-native-profile.sb')], record, 180)
+        '--socket=' + str(sock), '--node=' + str(node), '--profile-output=' + str(OUT / 'exact-native-profile.sb'),
+        '--evidence-dir=' + str(run_evidence)], record, 180)
     try:
         result = json.loads(harness.stdout)
     except (ValueError, TypeError):
@@ -171,7 +254,8 @@ try:
     else:
         raise RuntimeError('daemon harness produced no native proof for root receipt readback')
     record['harness_physical_smoke_passed'] = result.get('physical_smoke_passed') is True and harness.returncode == 0
-    record['status'] = ('LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' if record.get('launchd_startup_method_observed') and record['harness_physical_smoke_passed']
+    record['status'] = ('LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' if record.get('launchd_startup_method_observed') and record['harness_physical_smoke_passed'] and record['launch_origin_canaries_passed']
+                       else 'LAUNCHD_ORIGIN_CANARY_FAIL' if record.get('launchd_startup_method_observed') and not record['launch_origin_canaries_passed']
                        else 'LAUNCHD_STARTUP_OBSERVED_HARNESS_FAIL' if record.get('launchd_startup_method_observed')
                        else 'LAUNCHD_PROBE_INCOMPLETE')
 except BaseException as error:
@@ -213,4 +297,4 @@ finally:
         record['status'] = 'LAUNCHD_STARTUP_OBSERVED_CLEANUP_UNCONFIRMED'
     (OUT / 'LAUNCHD_SMOKE_RESULT.json').write_text(json.dumps(record, indent=2) + '\n')
 print(json.dumps(record))
-raise SystemExit(0 if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and record['cleanup_confirmed'] else 1)
+raise SystemExit(0 if record['status'] == 'LAUNCHD_STARTUP_OBSERVED_HARNESS_PASS' and record.get('launch_origin_canaries_passed') and record['cleanup_confirmed'] else 1)

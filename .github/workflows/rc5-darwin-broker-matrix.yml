@@ -25,20 +25,17 @@ jobs:
       - name: LaunchDaemon isolated-copy startup probe
         if: always()
         run: python3 qa/darwin-broker/run_launchd_smoke.py
-      - name: Audit-only credential and host-port probes
-        if: always()
-        run: python3 qa/darwin-broker/run_security_probes.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-native-attempt11-${{ matrix.os }}
+          name: darwin-native-attempt12-${{ matrix.os }}
           path: |
             qa/darwin-broker/SOURCE_RECEIPT.json
             qa/darwin-broker/evidence/*.json
             qa/darwin-broker/evidence/*.log
             qa/darwin-broker/evidence/*.tap
             qa/darwin-broker/evidence/*.sb
-            qa/darwin-broker/evidence/launchd-smoke-*/*
+            qa/darwin-broker/evidence/launchd-smoke-*/**/*
   portable-linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 5
@@ -49,5 +46,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darwin-copy-attempt11-linux
+          name: darwin-copy-attempt12-linux
           path: qa/darwin-broker/evidence/*

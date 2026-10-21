@@ -13,11 +13,14 @@ import json
 import os
 from pathlib import Path
 import secrets
+import stat
 import subprocess
 import sys
+import tempfile
 
 
 MAX_REPLY = 65536
+MAX_RUN_FILE = 65536
 
 
 def canonical(value):
@@ -27,6 +30,59 @@ def canonical(value):
 
 def digest(value):
     return hashlib.sha256(value).hexdigest()
+
+
+def read_bounded(path):
+    fd = os.open(str(path), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_uid != os.getuid():
+            raise RuntimeError("native run evidence changed type or ownership")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            data = stream.read(MAX_RUN_FILE + 1)
+    finally:
+        os.close(fd)
+    if len(data) > MAX_RUN_FILE:
+        raise RuntimeError("native run evidence exceeded bound; raw file retained")
+    return data
+
+
+def create_raw_outputs(evidence_dir):
+    if evidence_dir is None:
+        root = Path(tempfile.mkdtemp(prefix="knowledge-darwin-run-evidence."))
+    else:
+        supplied = Path(evidence_dir)
+        if supplied.is_symlink() or not supplied.is_dir():
+            raise RuntimeError("evidence directory must already exist and must not be a symlink")
+        root = supplied.resolve(strict=True)
+    tag = secrets.token_hex(8)
+    paths = {key: root / ("native-run-" + tag + "." + suffix + ".raw")
+             for key, suffix in (("stdout", "stdout"), ("stderr", "stderr"), ("fd3", "fd3"))}
+    for path in paths.values():
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(path), flags, 0o600)
+        try:
+            st = os.fstat(fd)
+            if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_uid != os.getuid() or
+                    stat.S_IMODE(st.st_mode) & 0o077):
+                raise RuntimeError("new native evidence file failed ownership/type checks")
+        finally:
+            os.close(fd)
+    return {key: str(path) for key, path in paths.items()}
+
+
+def open_precreated_output(path):
+    flags = os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_uid != os.getuid() or
+                st.st_size != 0 or stat.S_IMODE(st.st_mode) & 0o077):
+            raise RuntimeError("precreated native evidence file changed before authority use")
+        high = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 10)
+    finally:
+        os.close(fd)
+    return os.fdopen(high, "wb", closefd=True)
 
 
 def rpc(binary, sock, request):
@@ -44,36 +100,52 @@ def rpc(binary, sock, request):
     return reply
 
 
-def run_client(binary, sock, request):
-    # fd3 is deliberately separate from workload stdout/stderr. This is an
-    # ordinary, single-threaded harness process, never a privileged preexec hook.
-    read_fd, write_fd = os.pipe()
-    metadata_fd = fcntl.fcntl(read_fd, fcntl.F_DUPFD_CLOEXEC, 20)
-    os.close(read_fd)
-    os.dup2(write_fd, 3, inheritable=True)
-    if write_fd != 3:
-        os.close(write_fd)
-    process = subprocess.Popen([binary, "--run", "--socket=" + sock],
-                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, pass_fds=(3,))
-    os.close(3)
+def run_client(binary, sock, request, raw_outputs):
+    # The controller owns these exclusive files so output survives an authority
+    # exit before it can serialize its JSON result back to the controller.
+    stdout_file = open_precreated_output(raw_outputs["stdout"])
+    stderr_file = open_precreated_output(raw_outputs["stderr"])
+    metadata_file = open_precreated_output(raw_outputs["fd3"])
+    saved_fd3 = None
+    process = None
+    timed_out = False
     try:
-        stdout, stderr = process.communicate(canonical(request), timeout=40)
-        metadata = bytearray()
-        while True:
-            chunk = os.read(metadata_fd, 4096)
-            if not chunk:
-                break
-            metadata.extend(chunk)
-            if len(metadata) > MAX_REPLY:
-                raise RuntimeError("native run metadata exceeds bound")
+        try:
+            saved_fd3 = os.dup(3)
+        except OSError:
+            pass
+        os.dup2(metadata_file.fileno(), 3, inheritable=True)
+        try:
+            process = subprocess.Popen([binary, "--run", "--socket=" + sock],
+                                       stdin=subprocess.PIPE, stdout=stdout_file,
+                                       stderr=stderr_file, pass_fds=(3,))
+        finally:
+            os.close(3)
+            if saved_fd3 is not None:
+                os.dup2(saved_fd3, 3, inheritable=True)
+                os.close(saved_fd3)
+                saved_fd3 = None
+        try:
+            process.communicate(canonical(request), timeout=40)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            process.kill()
+            process.wait(timeout=5)
     finally:
-        os.close(metadata_fd)
-    if process.returncode != 0 or not metadata:
+        for handle in (stdout_file, stderr_file, metadata_file):
+            handle.close()
+        if saved_fd3 is not None:
+            os.close(saved_fd3)
+    raw = {key: read_bounded(path) for key, path in raw_outputs.items()}
+    if timed_out:
+        raise RuntimeError("native run exceeded its bounded wait; raw files retained")
+    if process.returncode != 0 or not raw["fd3"]:
         raise RuntimeError("native run transport failed: " + str(process.returncode))
-    return {"native": json.loads(metadata),
-            "stdout": stdout[:8192].decode("utf-8", errors="replace"),
-            "stderr": stderr[:8192].decode("utf-8", errors="replace")}
+    return {"native": json.loads(raw["fd3"]),
+            "stdout": raw["stdout"].decode("utf-8", errors="replace"),
+            "stderr": raw["stderr"].decode("utf-8", errors="replace"),
+            "native_exit_code": process.returncode,
+            "raw_evidence_paths": raw_outputs}
 
 
 def authority():
@@ -87,11 +159,34 @@ def authority():
     result = run_client(binary, sock, {
         "op": "run", **credentials, "argv": [config["node"], "fixtures/main.js"],
         "cwd": ".", "env": {}, "timeout_ms": 20000,
-    })
+    }, config["raw_outputs"])
     print(json.dumps(result, sort_keys=True), flush=True)
     success = result["native"].get("ok") and result["native"].get("exit_code") == 0
     success = success and "DARWIN_NATIVE_PRIVATE_NODE_OK" in result["stdout"]
     return 0 if success else 3
+
+
+def raw_evidence_summary(paths):
+    summary = {}
+    for key, name in paths.items():
+        path = Path(name)
+        try:
+            size = path.stat().st_size
+            if size > MAX_RUN_FILE:
+                summary[key] = {"path": str(path), "bytes": size, "bounded_read": False}
+                continue
+            data = read_bounded(path)
+            item = {"path": str(path), "bytes": len(data), "sha256": digest(data),
+                    "bounded_read": True}
+            if key in ("stdout", "stderr"):
+                item["text"] = data.decode("utf-8", errors="replace")
+            summary[key] = item
+        except OSError as error:
+            summary[key] = {"path": str(path), "read_error": type(error).__name__}
+        except RuntimeError:
+            summary[key] = {"path": str(path), "bounded_read": False,
+                            "read_error": "output changed or exceeded bound while collecting"}
+    return summary
 
 
 def transfer(binary, sock, credentials, path, content, mode=420):
@@ -124,6 +219,7 @@ def controller(args):
     binding = {"attempt_id": prepared["attempt_id"],
                "descriptor_sha256": prepared["descriptor_sha256"]}
     child = None
+    raw_outputs = None
     result = {"schema": "knowledge-darwin-native-physical-smoke.v1",
               "source_sha256": probe["source_sha256"],
               "descriptor_sha256": prepared["descriptor_sha256"],
@@ -131,6 +227,8 @@ def controller(args):
               "capability_qualified": False, "product_certified": False}
     outcome = 1
     try:
+        raw_outputs = create_raw_outputs(args.evidence_dir)
+        result["native_run_evidence_files"] = raw_outputs
         expected_uid = prepared["descriptor"]["task_ruid"]
         code = ("'use strict'; const fs=require('fs');"
                 "if(process.getuid()!==" + str(expected_uid) +
@@ -162,7 +260,8 @@ def controller(args):
         child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--authority"],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
-        config = {"binary": binary, "socket": sock, "node": node, **credentials}
+        config = {"binary": binary, "socket": sock, "node": node,
+                  "raw_outputs": raw_outputs, **credentials}
         child.stdin.write(canonical(config) + b"\n")
         child.stdin.flush()
         ready = json.loads(child.stdout.readline(MAX_REPLY))
@@ -174,8 +273,10 @@ def controller(args):
         child.stdin = None
         stdout, stderr = child.communicate(timeout=45)
         result["authority_exit_code"] = child.returncode
-        result["authority_result"] = json.loads(stdout[:MAX_REPLY])
         result["authority_stderr"] = stderr[:8192].decode("utf-8", errors="replace")
+        result["authority_stderr_sha256"] = digest(stderr)
+        result["authority_stdout_sha256"] = digest(stdout)
+        result["authority_result"] = json.loads(stdout[:MAX_REPLY])
         if child.returncode:
             raise RuntimeError("positive private Node workload failed")
         result["positive_node_workload"] = True
@@ -196,6 +297,7 @@ def controller(args):
                 result["authority_exit_code"] = child.returncode
                 result["authority_abandoned_stdout"] = abandoned_stdout[:8192].decode("utf-8", errors="replace")
                 result["authority_stderr"] = abandoned_stderr[:8192].decode("utf-8", errors="replace")
+                result["authority_stderr_sha256"] = digest(abandoned_stderr)
             except Exception as error:
                 result["authority_collection_error"] = str(error)
         try:
@@ -214,6 +316,8 @@ def controller(args):
         except Exception as error:
             result["close_error"] = str(error)
             outcome = 1
+        if raw_outputs is not None:
+            result["native_run_raw_output_summary"] = raw_evidence_summary(raw_outputs)
     result["physical_smoke_passed"] = outcome == 0
     print(json.dumps(result, sort_keys=True, indent=2))
     return outcome
@@ -227,6 +331,7 @@ def main():
     parser.add_argument("--socket", required=True)
     parser.add_argument("--node", required=True)
     parser.add_argument("--profile-output")
+    parser.add_argument("--evidence-dir")
     return controller(parser.parse_args())
 
 
