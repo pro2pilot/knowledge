@@ -5,8 +5,8 @@
   "files": [
     {
       "repository_path": ".github/workflows/rc5-reliability-darwin-physical.yml",
-      "bytes": 3041,
-      "sha256": "c39f33884695f6b63513d3975d488c97bb7bf73b83a3bb56ae0e996b4a2d8a88"
+      "bytes": 3494,
+      "sha256": "1357c7e8e537240e54c46ba6bf417d8ff33e08b416044ae9e10ed731267c7225"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-native-compile.py",

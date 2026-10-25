@@ -3,10 +3,10 @@
   "status": "PASS_FROZEN_SOURCE",
   "scope": "Complete source tree including source-only tests and historical test fixtures; generated state/native outputs explicitly excluded.",
   "archive": "SOURCE.zip",
-  "archive_sha256": "f61b2c06bb8bdc777988a0323f104c5a3d010c9e5544a453a7a762b3f2f245ab",
-  "archive_bytes": 1918929,
-  "file_count": 601,
-  "uncompressed_bytes": 6574932,
+  "archive_sha256": "9f23726b5c23ad71419099ba743c5f1c52637748267851651a6b9027a1bfef46",
+  "archive_bytes": 1934447,
+  "file_count": 609,
+  "uncompressed_bytes": 6612247,
   "files": [
     {
       "path": ".gitattributes",
@@ -1617,9 +1617,21 @@
       "mode": "0644"
     },
     {
+      "path": "tests/helpers/reliability-linux-nested-observer-diagnostic.cjs",
+      "bytes": 5239,
+      "sha256": "fc5d025883b0a99bec7c87d981d6a57cd2ebc84645a84ea61d3c5915cf10f890",
+      "mode": "0644"
+    },
+    {
       "path": "tests/helpers/reliability-lock-worker.cjs",
       "bytes": 4309,
       "sha256": "efb6073c6e5bb22037465c8c584fc801d3b8a4adcc38f77c53f678a5c3dff87c",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/helpers/reliability-owner-selftest-slow-sync.cjs",
+      "bytes": 2222,
+      "sha256": "89d1b36bbf49ff802fd83ef379ad40a075242397a72a9ca274aafe4d67f50c55",
       "mode": "0644"
     },
     {
@@ -1650,6 +1662,12 @@
       "path": "tests/helpers/reliability-sync-owner.cjs",
       "bytes": 479,
       "sha256": "9c14c0d78f64e0956c723cacceca8b2700ec1d44a2fbdbc53a361ce7e0aba896",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+      "bytes": 2064,
+      "sha256": "33aaf6afa15f0ecf458031e6c866b3daee75d6f0c543eb8149658625d08d63d2",
       "mode": "0644"
     },
     {
@@ -1815,6 +1833,12 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-darwin-activation.test.js",
+      "bytes": 2243,
+      "sha256": "92713900e32fa1d3bdcc0275f778c64eda17c467fc61ac2ac3033c005c2e444b",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-darwin-control.test.js",
       "bytes": 9163,
       "sha256": "36848cf428e3132283a66924c9e33910490cc12c1e5d49674315f0ac49f0bc9f",
@@ -1959,6 +1983,12 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-owner-selftest-budget.test.js",
+      "bytes": 1845,
+      "sha256": "95ca2be8e7495056f99bad1eaf21c8ce1e397270471cf2bc4d6c2cca11766f48",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-recovery-deadline.test.js",
       "bytes": 3232,
       "sha256": "49746c31a297668a3e567d1e0b7a175bdb7c5e69dd19a0c70ce7568379f69b44",
@@ -1983,9 +2013,27 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-windows-command-lifecycle.test.js",
+      "bytes": 11155,
+      "sha256": "c75bb9386ccfe6aff6f41d066af7084f3f7214f7592078402b4f0b33ae0863ae",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-windows-protocol.test.js",
       "bytes": 6258,
       "sha256": "0df7c4289aaa63db3d2b2066ed84c27b2721d4e3894b38b9104bee4c35af2bf5",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-windows-receipt-io.test.js",
+      "bytes": 4717,
+      "sha256": "ee22f2bd7d4c042a21c13d121559487d79715e2439a17a15eae28b8975522a93",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-windows-team-crash.test.js",
+      "bytes": 6980,
+      "sha256": "6758c11c128f459a3770d3de3440402a76057fe8c4dda1f0957200d3cd2a8453",
       "mode": "0644"
     },
     {
@@ -2104,8 +2152,8 @@
     },
     {
       "path": "tests/verification-darwin-client.test.js",
-      "bytes": 15226,
-      "sha256": "8eaad6a11174533f6e7d4244a90fd166bd3c2cd2109bbb16a01ab3ab290cdb3a",
+      "bytes": 15151,
+      "sha256": "01de261c72893301f9def06828435584944b5b41776cd1acd2d1a8cd7d6db65e",
       "mode": "0644"
     },
     {
@@ -2518,8 +2566,8 @@
     },
     {
       "path": "tools/lib/command-windows-native.js",
-      "bytes": 9082,
-      "sha256": "c8a4e70f31ce891d3098cdc8dbf2035ed536c864435a398e20287a7401e8d17e",
+      "bytes": 9119,
+      "sha256": "144667ed4141bf3fef79dfee905aa8884401ccd6f6858d34aa244b6126145560",
       "mode": "0644"
     },
     {
@@ -2536,8 +2584,8 @@
     },
     {
       "path": "tools/lib/command-windows-receipts.js",
-      "bytes": 4881,
-      "sha256": "c700d51c1bb7cdf845fcf07af53eaf36de95886979b8a6171812289f1bf0ed51",
+      "bytes": 4931,
+      "sha256": "30a539ce1ecc484b53512a25bf9796f0d3350da13a011701c06a6bce3ec3da51",
       "mode": "0644"
     },
     {
@@ -2884,8 +2932,8 @@
     },
     {
       "path": "tools/lib/verification-darwin-production.js",
-      "bytes": 29500,
-      "sha256": "a32f399918ad2e748ce63f211e42c50aeff65714d7efe8215e2e1c0108a19fbf",
+      "bytes": 30018,
+      "sha256": "e9b466247424055dd2af25ff4a5b537d794ee9a48993e0a7c1242e696419fccb",
       "mode": "0644"
     },
     {
@@ -3340,8 +3388,8 @@
     },
     {
       "path": "tools/self-test-lock-owner-transitions.js",
-      "bytes": 25457,
-      "sha256": "fa5c0e30d45c5a8244ecf96f4c69084121d75227021afe62ac6354b3e4be60bc",
+      "bytes": 25777,
+      "sha256": "4a4612a92cd071cc58d67d5ba96a7a9afe4eb00d0d772054c1f0e96734fd67fb",
       "mode": "0644"
     },
     {

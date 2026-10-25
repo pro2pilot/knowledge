@@ -19,6 +19,33 @@ NATIVE = {'broker': 'verification-darwin-broker.m', 'stub': 'verification-darwin
     'history_header': 'verification-darwin-uid-history.h', 'history_source': 'verification-darwin-uid-history.m',
     'transport_header': 'verification-darwin-transport.h'}
 
+# Fixed QA installer preflight. Existing parents are only observed; the
+# controller never chmods, deletes or replaces an existing installation root.
+# Error output contains typed facts, not an exception message or pathname.
+INSTALL_PARENT_SCRIPT = '''import errno,json,os,stat,sys
+p=sys.argv[1];value={'ok':False,'created':False,'exists_before':None,'directory_before':None,'symlink_before':None,'root_owned_before':None,'mode_before':None,'errno':None,'identity':None}
+try:
+ assert os.getuid()==0 and os.geteuid()==0
+ outer=os.lstat(os.path.dirname(p))
+ if not stat.S_ISDIR(outer.st_mode) or outer.st_uid!=0 or outer.st_mode&0o022: raise OSError(errno.EPERM,'unsafe ancestor')
+ try: before=os.lstat(p)
+ except FileNotFoundError: before=None
+ value['exists_before']=before is not None
+ if before is not None:
+  value.update(directory_before=stat.S_ISDIR(before.st_mode),symlink_before=stat.S_ISLNK(before.st_mode),root_owned_before=before.st_uid==0,mode_before=stat.S_IMODE(before.st_mode))
+  if not stat.S_ISDIR(before.st_mode) or before.st_uid!=0 or before.st_mode&0o022: raise OSError(errno.EPERM,'unsafe existing parent')
+ else:
+  os.mkdir(p,0o755);value['created']=True;os.chmod(p,0o755)
+ after=os.lstat(p)
+ if not stat.S_ISDIR(after.st_mode) or after.st_uid!=0 or after.st_mode&0o022: raise OSError(errno.EPERM,'unsafe created parent')
+ if before is not None and (before.st_dev,before.st_ino)!=(after.st_dev,after.st_ino): raise OSError(errno.ESTALE,'parent changed')
+ value['identity']={'dev':after.st_dev,'ino':after.st_ino,'mode':stat.S_IMODE(after.st_mode)};value['ok']=True
+except OSError as error: value['errno']=error.errno
+except BaseException: value['errno']=errno.EINVAL
+print(json.dumps(value,separators=(',',':')))
+raise SystemExit(0 if value['ok'] else 1)
+'''
+
 
 def inventory(source):
     rows = []
@@ -73,6 +100,7 @@ def main():
             self.native_manifest = None;self.runtime_copy = None;self.cleanup_confirmed = False
             self.fixture_identity = None
             self.public_started = False;self.public_completed = False
+            self.install_parent_observation = None;self.install_parent_identity = None
 
         def run(self, name, argv, timeout=120, data=None, root=False):
             result = super().run(name, argv, timeout=timeout, data=data, root=root)
@@ -129,6 +157,16 @@ def main():
             # is disposable, but absence and created inode identity are still
             # checked; a preexisting installation is never replaced.
             self.check(os.getuid() != 0, 'ordinary_owner_required')
+            parent = str(Path(CANONICAL['registry']).parent)
+            observed = self.sudo(sys.executable, '-c', INSTALL_PARENT_SCRIPT, parent,
+                name='ensure-protected-install-parent', timeout=20)
+            try: value = json.loads(observed.stdout)
+            except Exception: value = None
+            self.install_parent_observation = value
+            self.check(observed.returncode == 0 and isinstance(value, dict) and value.get('ok') is True,
+                'protected_install_parent_unavailable')
+            if value.get('created') is True: self.install_parent_identity = value['identity']
+            base.private_file(evidence/'installation-parent.json', base.canonical(value))
             probe = 'import os,sys; raise SystemExit(1 if any(os.path.lexists(p) for p in sys.argv[1:]) else 0)'
             self.root('canonical-roots-must-be-absent', sys.executable, '-c', probe, *CANONICAL.values())
             for role, name in CANONICAL.items():
@@ -215,7 +253,7 @@ def main():
             self.public_completed = True
 
         def cleanup(self):
-            if self.fixture is None and not self.root_identities: return
+            if self.fixture is None and not self.root_identities and self.install_parent_identity is None: return
             if self.bootstrapped:
                 stopped = self.sudo('/bin/launchctl', 'bootout', 'system/'+self.label, name='bootout-production', timeout=60)
                 deadline = time.monotonic()+20
@@ -280,6 +318,19 @@ for fd in held: os.close(fd)
             self.root('remove-owned-canonical-inodes', sys.executable, '-c', remove, json.dumps(self.root_identities),
                 json.dumps(state), str(self.roots.get('registry', '')), str(self.birth_observer), str(self.uid_scan), timeout=90)
             self.root_identities = {};self.roots = {};self.fixture_initialized = False
+            self.check(not (isinstance(self.install_parent_observation, dict) and self.install_parent_observation.get('created') is True)
+                or self.install_parent_identity is not None or self.install_parent_observation.get('removed') is True,
+                'install_parent_creation_unconfirmed')
+            if self.install_parent_identity is not None:
+                remove_parent = ('import os,stat,json,sys;p=sys.argv[1];e=json.loads(sys.argv[2]);s=os.lstat(p);'
+                    'assert stat.S_ISDIR(s.st_mode) and s.st_uid==0 and s.st_dev==e["dev"] and s.st_ino==e["ino"] and stat.S_IMODE(s.st_mode)==e["mode"];'
+                    'os.rmdir(p)')
+                self.root('remove-created-install-parent', sys.executable, '-c', remove_parent,
+                    str(Path(CANONICAL['registry']).parent), json.dumps(self.install_parent_identity), timeout=20)
+                self.install_parent_identity = None
+                # The creation receipt remains history; do not treat a later
+                # idempotent cleanup call as an unknown created inode.
+                self.install_parent_observation = {**self.install_parent_observation, 'removed': True}
             if self.fixture:
                 # The reference created this unique protected fixture and the
                 # exact service/UID gates above are already satisfied.
@@ -319,6 +370,7 @@ for fd in held: os.close(fd)
                 'architecture': platform.machine(), 'source_unchanged': unchanged, 'cases': runner.case_results,
                 'cleanup_confirmed': runner.cleanup_confirmed, 'binary_history': runner.binary_history,
                 'native_addon': runner.native_manifest, 'installed_bindings': runner.installed_bindings,
+                'installation_parent': runner.install_parent_observation,
                 'records': runner.records, 'diagnostics': diagnostics, 'raw_traceback': raw_traceback,
                 'release_gate_qualified': False, 'scope': 'Normal public production request on disposable hosted macOS; other production failures have separate gates.'}
             (evidence/'SUMMARY.json').write_text(json.dumps(summary, indent=2)+'\n')

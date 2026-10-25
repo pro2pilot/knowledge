@@ -5,7 +5,15 @@ on:
   push:
     branches: [codex/rc5-reliability-20261025]
     paths:
-      - qa/reliability/**
+      - qa/reliability/source/**
+      - qa/reliability/DARWIN_ASSET_PINS.json
+      - qa/reliability/controllers/darwin-native-*
+      - qa/reliability/controllers/darwin-test-signal.c
+      - qa/reliability/controllers/darwin-public-summary.py
+      - qa/reliability/controllers/test-darwin-public-summary.py
+      - qa/reliability/controllers/test-darwin-reference-bootstrap.py
+      - qa/reliability/controllers/verify-darwin-ci-assets.py
+      - qa/reliability/reference/**
       - .github/workflows/rc5-reliability-darwin-physical.yml
 
 permissions:

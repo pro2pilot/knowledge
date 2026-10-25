@@ -73,12 +73,13 @@ def assess_tap(output, platform_name, group, policy):
     skipped = [case for case in cases if case['directive'] == 'SKIP']
     unexpected_skips = [case['name'] for case in skipped if case['name'] not in allowed_skips]
     missing = sorted(required - names)
+    unexpected_cases = sorted(names - required)
     passed = sum(case['outcome'] == 'ok' and not case['directive'] for case in cases)
-    valid = bool(totals.get('tests')) and passed > 0 and not missing and not unexpected_skips and \
+    valid = totals.get('tests') == len(required) and passed > 0 and not missing and not unexpected_cases and not unexpected_skips and \
         len(names) == len(cases) == totals.get('tests') and len(skipped) == totals.get('skipped') and \
         passed == totals.get('pass') and not totals.get('fail', 0) and not totals.get('cancelled', 0) and not totals.get('todo', 0)
     return {'valid': valid, 'counts': totals, 'skips': skipped,
-            'unexpected_skips': unexpected_skips, 'missing_required_cases': missing,
+            'unexpected_skips': unexpected_skips, 'missing_required_cases': missing, 'unexpected_case_names': unexpected_cases,
             'qualified_case_names': [case['name'] for case in cases if case['outcome'] == 'ok' and not case['directive']]}
 
 
@@ -98,7 +99,7 @@ def main():
     if case_policy.get('schema_version') != 'knowledge-native-qa-case-policy.v1':
         raise Failure('Unknown case qualification policy.')
     result = {'schema_version': 'knowledge-native-runtime-qa.v1', 'status': 'RUNNING',
-              'scope': 'Actual common-lock runtime scenarios on this host; excludes Darwin production broker qualification and whole-release acceptance.',
+              'scope': 'Actual common-lock runtime scenarios and explicitly listed Windows command/Flow scenarios on this host; excludes Darwin production broker qualification and whole-release acceptance.',
               'controller_sha256': file_sha(__file__), 'case_policy_sha256': file_sha(case_policy_path), 'host': platform.platform(),
               'commit': os.environ.get('GITHUB_SHA'), 'steps': [], 'downloads': []}
     (public / 'EXPECTED_CASES.json').write_text(json.dumps(case_policy, indent=2) + '\n')
@@ -279,12 +280,12 @@ def main():
                         target.chmod(member.mode & 0o777)
         return destination
 
-    def tests(node, names, label, source, platform_name, group):
+    def tests(node, names, label, source, platform_name, group, timeout=420):
         for name in names:
             if not (source / name).is_file():
                 raise Failure('Requested test does not exist: ' + name)
         record, output = run(label, [node, '--test', '--test-reporter=tap', '--test-concurrency=1',
-                                     *[source / name for name in names]], cwd=source, timeout=420, check=False)
+                                     *[source / name for name in names]], cwd=source, timeout=timeout, check=False)
         decoded = output.decode('utf-8', errors='replace')
         record['requested_test_files'] = names
         assessed = assess_tap(decoded, platform_name, group, case_policy)
@@ -321,11 +322,11 @@ def main():
                 raise Failure('Visual C developer environment is unavailable.')
             node_lib = download(version, 'win-' + host['architecture'] + '/node.lib')
             command += ['--compiler', compiler, '--node-lib', node_lib]
-            run('build-command-job-addon-compile-only', [node, source / 'tools/build-command-native.js',
+            run('build-command-job-addon', [node, source / 'tools/build-command-native.js',
                 '--headers', headers, '--compiler', compiler, '--node-lib', node_lib,
                 '--output', native_destination], cwd=source, timeout=180)
             result['windows_command_job'] = {'status': 'PASS_COMPILE_ONLY',
-                'runtime_qualification': 'NOT_RUN', 'scope': 'Compilation only; no custody, drain or recovery qualification.'}
+                'runtime_qualification': 'NOT_RUN', 'scope': 'Compilation complete; runtime stage has not completed.'}
             # Diagnose the actual Win32/NT relative rename boundary, including
             # no-replace collisions with a live immutable-owner Event. This probe
             # uses only controller-owned fixtures and is not a mock provider.
@@ -356,17 +357,36 @@ def main():
             # subsequent suite retains every existing pass/fail assertion.
             run('linux-namespace-capability-diagnostic',
                 [node, source / 'tests/helpers/reliability-linux-capability-diagnostic.cjs'], cwd=source, timeout=90)
+            run('linux-nested-observer-diagnostic',
+                [node, source / 'tests/helpers/reliability-linux-nested-observer-diagnostic.cjs'], cwd=source, timeout=90)
         info = "const q=require(process.argv[1]).qualifyNativePublication();console.log(JSON.stringify({node:process.version,napi:process.versions.napi,qualified:q.info,manifest:q.manifest}));"
         run('qualified-addon-current-runtime', [node, '-e', info, source / 'tools/lib/lock-publication.js'], cwd=source)
         tests(node, PRIMARY_TESTS, 'current-runtime-common-locks', source, host['platform'], 'main')
+        tests(node, ['tests/reliability-owner-selftest-budget.test.js'], 'public-owner-slow-preparation',
+            source, host['platform'], 'selftest_budget')
         if host['platform'] == 'linux':
             tests(node, ['tests/reliability-linux-authority-profile.test.js'], 'linux-actual-authority-profile',
                 source, host['platform'], 'linux_authority')
         _, transition_output = run('public-owner-transitions', [node, source / 'tools/self-test-lock-owner-transitions.js'], cwd=source)
         transition = json.loads(transition_output)
-        if transition.get('failed') or transition.get('status') != 'passed':
+        expected_transition_count = 29 if host['platform'] == 'win32' else 22
+        if transition.get('failed') or transition.get('status') != 'passed' or \
+                transition.get('total') != expected_transition_count or transition.get('passed') != expected_transition_count or \
+                len(transition.get('checks', [])) != expected_transition_count:
             raise Failure('Public transition self-test did not pass.')
         result['public_transition_counts'] = {key: transition[key] for key in ['total', 'passed', 'failed']}
+        if host['platform'] == 'win32':
+            # All three files execute even when an earlier case fails. The
+            # 900 s outer ceiling accommodates real 60 s negative cleanup
+            # budgets across seven holder-lifecycle scenarios; product
+            # budgets and per-case assertions are not changed by this gate.
+            result['windows_command_job']['runtime_qualification'] = 'RUNNING'
+            tests(node, ['tests/reliability-command-runner.test.js', 'tests/reliability-flow-owned.test.js',
+                'tests/reliability-windows-command-lifecycle.test.js', 'tests/reliability-windows-team-crash.test.js'], 'windows-command-flow-lifecycle',
+                source, host['platform'], 'windows_commands', timeout=900)
+            result['windows_command_job'] = {'status': 'PASS_SCOPED_RUNTIME',
+                'runtime_qualification': 'PASS_EXPLICIT_CASES',
+                'scope': 'Exact 31-case command/Flow/holder/Team-crash group; three named Linux-only skips remain unqualified.'}
         if host['platform'] == 'win32' and host['architecture'] == 'arm64':
             result['node18_abi'] = {'status': 'NOT_RUN_PLATFORM_NOT_DISTRIBUTED',
                                     'reason': 'Official Node 18.20.8 does not ship a win-arm64 executable; this job qualifies the actual Node 22 arm64 runtime only.'}

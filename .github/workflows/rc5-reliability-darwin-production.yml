@@ -5,7 +5,13 @@ on:
   push:
     branches: [codex/rc5-reliability-20261025]
     paths:
-      - qa/reliability/**
+      - qa/reliability/source/**
+      - qa/reliability/DARWIN_PRODUCTION_ASSET_PINS.json
+      - qa/reliability/controllers/darwin-production-*
+      - qa/reliability/controllers/test-darwin-production-*
+      - qa/reliability/controllers/test-darwin-install-parent.py
+      - qa/reliability/controllers/verify-darwin-ci-assets.py
+      - qa/reliability/reference/**
       - .github/workflows/rc5-reliability-darwin-production.yml
 
 permissions:

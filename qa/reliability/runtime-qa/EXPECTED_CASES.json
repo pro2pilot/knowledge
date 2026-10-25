@@ -154,6 +154,42 @@
       "nonzero UID: three real authority scopes retain no capabilities and preserve UID mapping",
       "current UID: the exact nested mapping determines the authority capability profile",
       "nonzero UID: ordinary command workers remain in the zero-capability profile"
+    ],
+    "windows_commands": [
+      "budgets preserve long work, default no-progress disabled, invalid values rejected",
+      "real native command and trailing pipe bytes complete only after drain",
+      "silent long work is allowed without a configured progress deadline",
+      "native guard reports the real nonzero exit without fabricating success",
+      "output noise cannot extend the absolute work deadline",
+      "output noise is not meaningful progress",
+      "wall-clock rollback does not shorten or invert the monotonic duration",
+      "detached descendants that close both output pipes are drained before acceptance",
+      "AbortSignal stops an admitted command independently of its I/O",
+      "bounded output overflow drains the scope and cannot return a successful candidate",
+      "persistent command session supports nested native scopes and drains between commands",
+      "scope proof distinguishes a live session from its immutable native finality",
+      "invalid UTF-8 stdout cannot become a successful semantic candidate",
+      "concurrent session request is refused without disturbing the first admitted command",
+      "a session budget closes native admission even if its caller never requests drain",
+      "a throwing output consumer causes native drain and preserves its error category",
+      "ordinary Flow runs all steps, binds its full evidence log and drains before success",
+      "evaluation runs its real producer path with a separate state root and native cleanup",
+      "Team Flow publishes scope before command admission and releases after drain",
+      "an actual admitted Flow can be cancelled while a command performs unending work",
+      "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller",
+      "concurrent Team Flow cannot execute any command before the first scope drains and releases",
+      "Windows Job has a live exact root and signed finality after both holders close",
+      "Windows both holders crash before receipt keeps missing Job closure unconfirmed",
+      "Windows fresh observer rejects forged terminal files, wrong root birth and cross-scope replay",
+      "Windows primary holder crash drains admitted descendants and leaves survivor proof",
+      "Windows primary receipt fsync stall and crash does not stop the other native holder",
+      "Windows secondary holder crash drains admitted descendants and leaves survivor proof",
+      "Windows secondary receipt fsync stall and crash does not stop the other native holder",
+      "Windows original CLI crash leaves independent B custody proof and a new Team Flow recovers",
+      "Windows nested fixed Flow cancellation preserves a custodian outside every owned ancestor Job"
+    ],
+    "selftest_budget": [
+      "public owner semantic scenarios reach their observation under real slow preparation"
     ]
   },
   "allowed_skips_by_platform": {
@@ -208,7 +244,10 @@
       "owner swapped to FIFO between validation and open does not block",
       "owner swapped to symlink before open stays rejected",
       "parent symlink replacement is rejected even when the owner inode is unchanged",
-      "replacement of empty initializing directories cannot restart the acquisition budget"
+      "replacement of empty initializing directories cannot restart the acquisition budget",
+      "scope proof distinguishes a live session from its immutable native finality",
+      "a session budget closes native admission even if its caller never requests drain",
+      "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller"
     ]
   },
   "note": "Every required case must appear. Only these exact nonnative scenarios may SKIP on the named platform. SKIP is not qualified; any unexpected skip, missing required case, TODO, incomplete output or all-skip run fails."

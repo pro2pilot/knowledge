@@ -3,7 +3,11 @@ on:
   workflow_dispatch:
   push:
     branches: [codex/rc5-reliability-20261025]
-    paths: ['qa/reliability/**', '.github/workflows/rc5-reliability-native.yml']
+    paths:
+      - qa/reliability/source/**
+      - qa/reliability/SOURCE_PINS.json
+      - qa/reliability/controllers/compile_native.py
+      - .github/workflows/rc5-reliability-native.yml
 permissions:
   contents: read
 concurrency:

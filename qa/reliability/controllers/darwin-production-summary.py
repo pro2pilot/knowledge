@@ -15,12 +15,14 @@ FAILURES = set('runner_architecture_mismatch runtime_copy_pin_mismatch node_vers
     'normal_socket_unavailable normal_mode_not_admissible normal_registry_unreadable duplicate_production_result '
     'public_production_normal_failed project_source_mutated normal_service_exit_unconfirmed normal_daemon_exit_unconfirmed '
     'normal_UID_cleanup_unconfirmed source_changed compile_shipping_broker_failed compile_shipping_stub_failed '
-    'stub_pair_mismatch_shipping uid_scan_compile_failed birth_observer_compile_failed'.split())
+    'stub_pair_mismatch_shipping uid_scan_compile_failed birth_observer_compile_failed protected_install_parent_unavailable '
+    'install_parent_creation_unconfirmed public_writer_cleanup_unconfirmed_preserve_fixture'.split())
 STAGES = set('node-version node-exec-path node-system-dylibs compile-lock-addon compile-uid-scan compile-birth-observer '
     'canonical-roots-must-be-absent init-production bootstrap-production capture-production-daemon probe-production '
     'read-production-registry public-production-normal bootout-production post-stop-production-uid '
     'verify-owned-canonical-inodes remove-owned-canonical-inodes verify-owned-fixture remove-owned-fixture '
-    'protect-fixture mode-fixture launchctl-print-own-label launchctl-verify-own-label-absent compare-native-process-birth'.split())
+    'protect-fixture mode-fixture launchctl-print-own-label launchctl-verify-own-label-absent compare-native-process-birth '
+    'ensure-protected-install-parent remove-created-install-parent'.split())
 
 
 def digest(value): return value if isinstance(value, str) and HEX.fullmatch(value) else None
@@ -56,6 +58,8 @@ def error_codes(source):
             codes.update(re.findall(r"['\"]((?:verification_|native_lock_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
     native = source/'tools/lib/verification-darwin-broker.m'
     if native.is_file() and not native.is_symlink(): codes.update(re.findall(r'@"([A-Z][A-Z0-9_]{2,100})"', native.read_text()))
+    protected = source/'tools/native/lock-publication.c'
+    if protected.is_file() and not protected.is_symlink(): codes.update(re.findall(r'"(darwin_protected_[a-z_]{1,80})"', protected.read_text()))
     return codes
 
 
@@ -156,6 +160,11 @@ def build(private, source, controller_status, architecture):
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID') if re.fullmatch('[0-9]+', os.environ.get('GITHUB_RUN_ID', '')) else None,
         'release_gate_qualified': False, 'scope': 'Normal public KVE/KVF/ACK only; independent stop and other failures remain separately qualified.',
         'raw_evidence_scope': 'runner-private; tokens, raw native replies, account/host identifiers, paths and payload output excluded'}
+    parent = raw.get('installation_parent') if isinstance(raw.get('installation_parent'), dict) else {}
+    summary['installation_parent'] = {key: boolean(parent.get(key)) for key in
+        ('ok', 'created', 'removed', 'exists_before', 'directory_before', 'symlink_before', 'root_owned_before')}
+    summary['installation_parent']['errno'] = parent.get('errno') if type(parent.get('errno')) is int and 0 < parent['errno'] < 4096 else None
+    summary['installation_parent']['mode_before'] = parent.get('mode_before') if type(parent.get('mode_before')) is int and 0 <= parent['mode_before'] <= 0o7777 else None
     return summary, {'schema': 'knowledge-darwin-production-public-stages.v1', 'stages': stages}
 
 

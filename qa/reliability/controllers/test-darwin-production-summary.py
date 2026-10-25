@@ -52,6 +52,8 @@ class ProductionEvidence(unittest.TestCase):
             root = Path(folder);private = root/'private';private.mkdir();source = root/'source';source.mkdir()
             secret = 'NEVER_PUBLIC_native_token_or_payload_value'
             value = self.good();value.update(token=secret, failure=secret, hostname=secret, raw_traceback=secret)
+            value['installation_parent'] = {'created': True, 'exists_before': False, 'errno': 2, 'path': secret,
+                'identity': {'dev': secret, 'ino': secret}, 'message': secret}
             value['cases'][0]['terminal'].update(token=secret, result=secret, acceptances=secret,
                 error_code=secret, error={'message': secret, 'containment': {'reason': secret}})
             value['records'] = [{'name': '001-'+secret, 'exit_code': 1, 'stdout': secret}]
@@ -62,6 +64,8 @@ class ProductionEvidence(unittest.TestCase):
             self.assertNotIn(secret, json.dumps([public, stages]));self.assertFalse(public['release_gate_qualified'])
             self.assertIsNone(public['cases'][0]['error_code']);self.assertIsNone(public['cases'][0]['containment_reason'])
             self.assertEqual(stages['stages'][0]['stage'], '001-unclassified-stage')
+            self.assertTrue(public['installation_parent']['created']);self.assertFalse(public['installation_parent']['exists_before'])
+            self.assertEqual(public['installation_parent']['errno'], 2)
 
 
 if __name__ == '__main__': unittest.main()
