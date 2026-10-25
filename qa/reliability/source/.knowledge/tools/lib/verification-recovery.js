@@ -12,6 +12,7 @@ function backendFor(attempt) {
   const backend=attempt?.containment?.backend;
   if(backend==='linux_pid_namespace' && process.platform==='linux') return require('./verification-linux-namespace');
   if(backend==='windows_job_object' && process.platform==='win32') return require('./verification-windows-recovery');
+  if(backend==='darwin_private_ruid' && process.platform==='darwin') return require('./verification-darwin-control');
   fail(backend?'verification_native_recovery_unavailable':'verification_recovery_descriptor_missing');
 }
 function namespaceFinality(proof,attempt) {
@@ -28,6 +29,17 @@ function bindProof(attempt,nativeProof) {
   const c=attempt.containment,proof=copyInertData(nativeProof);
   requireThat(c && hash(JSON.stringify(c.descriptor))===c.descriptor_sha256,'verification_process_identity_mismatch');
   requireThat(proof && proof.descriptor_sha256===c.descriptor_sha256,'verification_process_identity_mismatch');
+  if(c.backend==='darwin_private_ruid') {
+    const bridge=require('./verification-darwin-control');
+    requireThat(bridge.validateAttemptBinding(attempt) && proof.proof_kind==='recovery_observation' &&
+      bridge.validateProof(proof,c.descriptor,{allowRecovery:true}));
+    const result={...proof,attempt_id:attempt.attempt_id,generation:attempt.generation,
+      process_exits:attempt.processes.filter(p=>!p.exit_observed).map(p=>({spawn_id:p.spawn_id,pid:p.pid,
+        os_creation_time:null,process_nonce:p.process_nonce,method:'darwin_registered_authority_exit'})),
+      native_return:copyInertData(nativeProof)};
+    delete result.evidence_sha256;
+    result.evidence_sha256=hash(JSON.stringify(result));return result;
+  }
   requireThat(proof && proof.status==='completed' && proof.method===c.backend && proof.active_processes===0 &&
     proof.keeper_exited===true && proof.worker_exited===true && proof.controller_exited===true);
   if(c.backend==='linux_pid_namespace') requireThat(namespaceFinality(proof,attempt));
@@ -59,8 +71,14 @@ function bindProof(attempt,nativeProof) {
   result.evidence_sha256=hash(JSON.stringify(result));
   return result;
 }
-function createNativeRecovery(attempt) {
+function createNativeRecovery(attempt, options={}) {
   const backend=backendFor(attempt);
+  const darwin=attempt.containment.backend==='darwin_private_ruid';
+  const remaining=()=>{
+    const value=options.remainingMs ? Math.floor(options.remainingMs()) : attempt.profile.cleanup_budget_ms;
+    requireThat(Number.isSafeInteger(value) && value>0,'verification_recovery_budget_exceeded');
+    return Math.min(600000,value);
+  };
   requireThat(typeof backend.currentProcessIdentity==='function' && typeof backend.verifyProcessExit==='function' &&
     typeof backend.recoverContainer==='function','verification_native_recovery_unavailable');
   const adapter=snapshot=>{
@@ -68,13 +86,16 @@ function createNativeRecovery(attempt) {
     requireThat(snapshot.attempt_id===attempt.attempt_id && snapshot.generation===attempt.generation &&
       snapshot.containment?.descriptor_sha256===attempt.containment.descriptor_sha256,'verification_attempt_mismatch');
     const native=backend.recoverContainer(copyInertData(snapshot.containment.descriptor),
-      {cleanup_timeout_ms:snapshot.profile.cleanup_budget_ms,cleanup_receipt:copyInertData(snapshot.containment.cleanup_receipt)});
+      {cleanup_timeout_ms:darwin?remaining():snapshot.profile.cleanup_budget_ms,cleanup_receipt:copyInertData(snapshot.containment.cleanup_receipt)});
+    if(darwin)remaining();
     if(native?.status!=='completed') fail(typeof native?.code==='string' && /^[a-z0-9_]{1,128}$/.test(native.code)?native.code:'verification_cleanup_unconfirmed');
     return bindProof(snapshot,native);
   };
-  adapter.owner_identity=copyInertData(backend.currentProcessIdentity());
+  adapter.owner_identity=copyInertData(darwin?backend.currentProcessIdentity(attempt.containment.descriptor,
+    {timeoutMs:Math.min(5000,remaining())}):backend.currentProcessIdentity());
   adapter.verify_recoverer_exit=identity=>{
-    const observed=copyInertData(backend.verifyProcessExit(copyInertData(identity)));
+    const observed=copyInertData(darwin?backend.verifyProcessExit(attempt.containment.descriptor,copyInertData(identity),
+      {timeoutMs:Math.min(5000,remaining())}):backend.verifyProcessExit(copyInertData(identity)));
     if(observed.status!=='exited') return {status:observed.status==='active'?'active':'unconfirmed'};
     return {status:'exited',owner_identity_sha256:hash(JSON.stringify(identity)),evidence_sha256:hash(JSON.stringify(observed))};
   };
@@ -83,14 +104,51 @@ function createNativeRecovery(attempt) {
 function recoverAttempt(context,input) {
   // The narrow no-process/controller-only proof needs no OS backend. A live
   // recovery reservation must instead be examined by its exact native owner.
+  const started=process.hrtime.bigint();
+  input=copyInertData(input);
+  let requestedDeadline=null;
+  if(input?.deadline_ns!==undefined) {
+    requireThat(typeof input.deadline_ns==='string' && /^\d{1,32}$/.test(input.deadline_ns),'verification_clock_invalid');
+    requestedDeadline=BigInt(input.deadline_ns);
+    requireThat(process.hrtime.bigint()<requestedDeadline,'verification_recovery_budget_exceeded');
+  }
   const status=control.readStatus(context),attempt=status.attempt;
+  if(input?.startup_nonce_sha256!==undefined) {
+    requireThat(typeof input.startup_nonce_sha256==='string' && /^[a-f0-9]{64}$/.test(input.startup_nonce_sha256) &&
+      attempt?.storage_protocol===control.STORAGE_PROTOCOL && attempt.startup_nonce_sha256===input.startup_nonce_sha256,
+      'verification_attempt_mismatch');
+    requireThat(input.attempt_id===undefined && input.generation===undefined ||
+      input.attempt_id===attempt.attempt_id && input.generation===attempt.generation,'verification_attempt_mismatch');
+    input={...input,attempt_id:attempt.attempt_id,generation:attempt.generation};
+  }
   requireThat(attempt && input && attempt.attempt_id===input.attempt_id && attempt.generation===input.generation,'verification_attempt_mismatch');
+  if(attempt.storage_protocol===control.STORAGE_PROTOCOL || requestedDeadline!==null) {
+    const profileDeadline=started+BigInt(attempt.profile.cleanup_budget_ms)*1000000n;
+    // A caller may shorten this invocation's admission epoch, never enlarge
+    // the configured cleanup budget. Reading state and waiting for the old
+    // storage writer both consume the same original monotonic epoch.
+    const deadline=requestedDeadline!==null && requestedDeadline<profileDeadline ? requestedDeadline : profileDeadline;
+    const remainingMs=()=>Math.floor(Number(deadline-process.hrtime.bigint())/1e6);
+    const invoke=()=>{
+      requireThat(remainingMs()>0,'verification_recovery_budget_exceeded');
+      return recoverUnderLease(context,input,{remainingMs});
+    };
+    requireThat(remainingMs()>0,'verification_recovery_budget_exceeded');
+    return attempt.storage_protocol===control.STORAGE_PROTOCOL ?
+      control.withStorageLease(context,invoke,{timeoutMs:Math.min(600000,remainingMs())}) : invoke();
+  }
+  return recoverUnderLease(context,input);
+}
+function recoverUnderLease(context,input,options={}) {
+  const attempt=control.readStatus(context).attempt;
+  requireThat(attempt && attempt.attempt_id===input.attempt_id && attempt.generation===input.generation,'verification_attempt_mismatch');
+  if(input.startup_nonce_sha256!==undefined)requireThat(attempt.startup_nonce_sha256===input.startup_nonce_sha256,'verification_attempt_mismatch');
   if(attempt.recovery?.status!=='active') {
     const narrow=control.recoverAttempt(context,input);
     if(narrow.status!=='requires_native_recovery') return narrow;
   }
   if(!attempt.containment) return {status:'requires_native_recovery',reason:'durable_native_descriptor_missing',attempt};
-  try {return control.recoverAttempt(context,input,createNativeRecovery(attempt));}
+  try {return control.recoverAttempt(context,input,createNativeRecovery(attempt,options));}
   catch(error) {
     // Unsupported backend means no native action was attempted. Every action
     // failure after reservation is persisted by verification-control itself.

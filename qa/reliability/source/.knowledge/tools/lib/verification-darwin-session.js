@@ -82,39 +82,6 @@ async function sourcePins(options = {}) {
   return Object.fromEntries(rows);
 }
 
-// Read-only preparation precedes any durable reservation. Cancellation returns
-// promptly even if a kernel read is still pending; late completion cannot reach
-// prepare. Pending reads retain their finally-owned handles until the syscall
-// returns. This is an admission fence, not a claim that blocked I/O was killed.
-function preparation(work, { signal, limitMs }) {
-  checkDuration(limitMs, MAX_WORK_MS, 'verification_darwin_setup_budget_invalid');
-  const started = now(), revoked = new AbortController();
-  return new Promise((resolve, reject) => {
-    let done = false, timer;
-    const remaining = () => Math.max(0, Math.floor(limitMs - elapsed(started)));
-    function checkpoint() {
-      if (signal?.aborted || revoked.signal.aborted) throw failure('verification_darwin_cancelled');
-      if (!remaining()) throw failure('verification_darwin_setup_budget_exceeded');
-    }
-    function finish(error, value) {
-      if (done) return;done = true;clearTimeout(timer);signal?.removeEventListener('abort', aborted);
-      if (error) { revoked.abort();reject(error); } else resolve(value);
-    }
-    function aborted() { finish(failure('verification_darwin_cancelled')); }
-    function tick() {
-      if (done) return;
-      try { checkpoint();timer = setTimeout(tick, timerDelay(remaining())); }
-      catch (error) { finish(error); }
-    }
-    signal?.addEventListener('abort', aborted, { once: true });
-    tick();
-    if (done) return;
-    (async () => {
-      try { checkpoint();const value = await work(checkpoint, remaining, revoked.signal);checkpoint();finish(null, value); }
-      catch (error) { finish(error); }
-    })();
-  });
-}
 function parse(bytes) {
   if (bytes.length > native.MAX_REPLY_BYTES) throw failure('verification_darwin_reply_oversized');
   try { return copyInertData(JSON.parse(new TextDecoder('utf8', { fatal: true }).decode(bytes)), null, native.MAX_REPLY_BYTES); }
@@ -201,12 +168,18 @@ async function probeSession(configValue, { signal, setupBudgetMs = 120000 } = {}
   if (process.platform !== 'darwin') throw failure('verification_darwin_required');
   const config = normalized(configValue);
   if (!config.enabled) throw failure('verification_darwin_opt_in_required');
-  return preparation(async (checkpoint, remaining, setupSignal) => {
-  const [pins, binarySHA, runtimeSHA] = await Promise.all([sourcePins({ checkpoint }),
-    stableHash(config.broker_path, 256 * 1024 * 1024, true, { checkpoint }),
-    stableHash(process.execPath, 256 * 1024 * 1024, false, { checkpoint })]);
+  checkDuration(setupBudgetMs, MAX_WORK_MS, 'verification_darwin_setup_budget_invalid');
+  const started = now();
+  const remaining = () => Math.max(0, Math.floor(setupBudgetMs - elapsed(started)));
+  function checkpoint() {
+    if (signal?.aborted) throw failure('verification_darwin_cancelled');
+    if (!remaining()) throw failure('verification_darwin_setup_budget_exceeded');
+  }
   checkpoint();
-  const response = await rpc(config, { op: 'probe' }, { signal: setupSignal, limitMs: remaining() });
+  const { pins, binarySHA, runtimeSHA } = await require('./verification-darwin-preparation')
+    .prepareInputs(config, { signal, limitMs: remaining() });
+  checkpoint();
+  const response = await rpc(config, { op: 'probe' }, { signal, limitMs: remaining() });
   checkpoint();
   const value = native.decodeReply(Buffer.from(JSON.stringify(response.reply)), pins);
   if (value.capability_qualified !== true || value.qualification_mode !== false || value.qa_persistence_gate !== false) {
@@ -224,7 +197,6 @@ async function probeSession(configValue, { signal, setupBudgetMs = 120000 } = {}
     installation_id: value.uid_history.installation_id_cached, account_policy_id: value.account_policy.id,
     account_policy_sha256: value.account_policy.sha256, runtime_path: runtime, runtime_sha256: runtimeSHA,
     capability_qualified: true, qualification_mode: false });
-  }, { signal, limitMs: setupBudgetMs });
 }
 
 function makeSession({ config, binding, token, capability, cleanupBudgetMs, signal, started, budgetMs }) {
@@ -256,8 +228,9 @@ function makeSession({ config, binding, token, capability, cleanupBudgetMs, sign
     guard();return response.reply;
   }
   const session = {
-    binding, capability, workspace_path: binding.descriptor.workspace_path,
+    binding, capability, workspace_path: binding.descriptor.workspace_path, scratch_path: binding.descriptor.scratch_path,
     privateBinding() { return { config, binding, token, capability, cleanupBudgetMs, workBudgetMs: remaining() }; },
+    commandScope() { return require('./verification-darwin-scope').commandScope({ config, binding }); },
     async copyPlan(plan, options = {}) {
       guard();const copied = await isolated.transferProject(plan, input => request(input), {
         checkpoint: guard, progress: options.progress });guard();
@@ -280,7 +253,8 @@ function makeSession({ config, binding, token, capability, cleanupBudgetMs, sign
         const response = await rpc(config, { op: 'run', ...auth, ...command }, { run: true, signal,
           limitMs: command.timeout_ms + cleanupBudgetMs + 30000, onStdout: options.onStdout, onStderr: options.onStderr });
         guard();const result = wire.validateCommand(response.reply, binding, capability, command, expectedOrdinal);
-        return { result, helper: response.helper, status: result.exit_code, exit_code: result.exit_code, signal: result.signal,
+        return { result, command: Object.freeze({ ...command, argv: Object.freeze([...command.argv]), env: Object.freeze({ ...command.env }) }),
+          helper: response.helper, status: result.exit_code, exit_code: result.exit_code, signal: result.signal,
           stdout_bytes: response.helper.stdout_bytes, stderr_bytes: response.helper.stderr_bytes,
           stdout_sha256: response.helper.stdout_sha256, stderr_sha256: response.helper.stderr_sha256 };
       } catch (error) { stop('command_failed_or_unconfirmed');throw Object.assign(error, { binding }); }

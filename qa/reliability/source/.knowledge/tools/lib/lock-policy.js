@@ -8,6 +8,7 @@ const ROOT_KINDS = Object.freeze({
 
 const LOCKS = Object.freeze({
   'verification-control': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize durable verification attempt transitions.', consumers: ['verification-control', 'verification-supervisor', 'verification-watchdog'] }),
+  'verification-storage': Object.freeze({ root_kinds: ['state'], purpose: 'Exclude verification storage writers through physical completion and recovery.', consumers: ['verification-control', 'verification-darwin-store', 'verification-recovery'] }),
   'agent-integrations': Object.freeze({ root_kinds: ['state'], purpose: 'Install agent integrations transactionally.', consumers: ['install-agent-integrations'] }),
   'agent-task': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize integrated agent task workflows.', consumers: ['agent-task'] }),
   'agent-session': Object.freeze({ root_kinds: ['state'], purpose: 'Serialize agent session lifecycle and registry updates.', consumers: ['agent-session'] }),

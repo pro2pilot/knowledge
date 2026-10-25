@@ -94,7 +94,8 @@ async function cleanupLinux(helper, allowance, { allowIncomplete = false } = {})
 }
 
 async function prepareLinux(options, policy) {
-  if (options.preparedHelper) return require('./verification-linux-namespace').admitPreparedHelper(options.preparedHelper);
+  const backend = process.platform === 'win32' ? './command-windows-native' : './verification-linux-namespace';
+  if (options.preparedHelper) return require(backend).admitPreparedHelper(options.preparedHelper);
   if (options.signal?.aborted) throw fail('command_cancelled');
   const child = spawn(process.execPath, [path.join(__dirname, 'command-runtime-prepare.js')], {
     env: safeEnvironment(), stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true
@@ -107,7 +108,7 @@ async function prepareLinux(options, policy) {
       if (!error && mono() - start >= policy.setupMs) error = fail('command_setup_timeout');
       if (!error && (!candidate || child.exitCode !== 0 || child.signalCode)) error = fail('command_setup_unconfirmed');
       let admitted;
-      if (!error) { try { admitted = require('./verification-linux-namespace').admitPreparedHelper(candidate); } catch (cause) { error = cause; } }
+      if (!error) { try { admitted = require(backend).admitPreparedHelper(candidate); } catch (cause) { error = cause; } }
       if (error) {
         const artifact = await cleanupLinux(candidate || staged, Math.max(0, policy.cleanupMs - (cleanupStarted ? mono() - cleanupStarted : 0)), { allowIncomplete: true });
         error.cleanup = { status: ['completed', 'not_owned'].includes(artifact.status) ? 'completed' : 'unconfirmed',
@@ -132,9 +133,15 @@ async function prepareLinux(options, policy) {
     const timer = setTimeout(() => stop(fail('command_setup_timeout')), policy.setupMs);
     child.on('error', e => { if (!child.pid) { exited = disconnected = true; } stop(fail('command_setup_failed', e.message)); });
     child.on('message', message => {
-      if (error || terminal || candidate) return;
-      if (message?.type === 'snapshot_created' && !staged) staged = message.helper;
-      else if (message?.type === 'prepared') candidate = message.helper;
+      if (terminal) return;
+      // Retain ownership metadata even if cancellation won the event race.
+      // The already-created private inode still needs a guarded cleanup.
+      if (message?.type === 'snapshot_created' && !candidate) {
+        if (staged && staged.snapshot?.directory !== message.helper?.snapshot?.directory) { stop(fail('command_setup_snapshot_changed')); return; }
+        staged = message.helper; return;
+      }
+      if (error || candidate) return;
+      if (message?.type === 'prepared') candidate = message.helper;
       else stop(fail(message?.code || 'command_setup_failed', message?.message));
     });
     child.once('exit', () => { exited = true; finish(); });
@@ -148,8 +155,8 @@ async function createScope(kind, payload, options = {}) {
   const policy = budgets(options.budgets);
   const created = mono();
   let helper;
-  if (process.platform === 'linux') helper = await prepareLinux(options, policy);
-  else if (process.platform !== 'win32') throw fail('command_containment_unavailable', 'This platform has no qualified native scope for ordinary project writes');
+  if (['linux', 'win32'].includes(process.platform)) helper = await prepareLinux(options, policy);
+  else throw fail('command_containment_unavailable', 'This platform has no qualified native scope for ordinary project writes');
   const ownsHelper = !!helper?.snapshot && !options.preparedHelper;
   if (options.signal?.aborted) {
     const artifact = ownsHelper ? await cleanupLinux(helper, policy.cleanupMs) : { status: 'not_owned' };
@@ -183,10 +190,11 @@ async function createScope(kind, payload, options = {}) {
       onFailure: reject
     }));
   } else {
-    worker = spawn(process.execPath, [HOST], nativeOptions);
-    worker.on('error', error => reject(fail('command_worker_spawn_failed', error.message)));
-    try { job = require('./verification-windows-job').createWindowsJob(worker, () => reject(fail('command_native_authority_failed')), lifetimeMs); }
-    catch (error) { worker.kill('SIGKILL'); throw error; }
+    ({ worker, job } = require('./command-windows-scope').spawnWindowsContainedWorker(nativeOptions, {
+      preparedHelper: helper, lifetimeMs: policy.setupMs + policy.workMs, cleanupMs: policy.cleanupMs,
+      setupMs: Math.max(1, policy.setupMs - (mono() - created)), durable: kind === 'session', proofRelay: options.proofRelay,
+      onFailure: reject
+    }));
   }
   const output = { stdout: [], stderr: [] };
   const outputEnd = {};
@@ -214,6 +222,7 @@ async function createScope(kind, payload, options = {}) {
   worker.on('exit', (code, signal) => reject(fail('command_worker_exited', `Guard exited (${code}, ${signal || 'no signal'})`)));
   worker.on('message', message => {
     if (stopping || firstError) return;
+    if (process.platform === 'win32' && !started && ['native_ready', 'native_failed'].includes(message?.type)) return;
     if (!message || typeof message !== 'object') { reject(fail('command_protocol_invalid')); return; }
     if (message.type === 'host_ready' && !started) { hostReadyResolve(); return; }
     if (!started) { reject(fail('command_protocol_invalid')); return; }

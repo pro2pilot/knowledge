@@ -30,6 +30,9 @@ function validateExecutionScope(value) {
       return descriptor.controller.proc_pid_chain.length === last.depth && descriptor.init.proc_pid_chain.length === last.depth + 1;
     }
     if (scope.backend === 'windows_job_object') {
+      if (scope.descriptor?.schema_version === 'knowledge-windows-command-job.v2') {
+        return require('./command-windows-protocol').validateScope(scope) && scope.descriptor.secondary !== null;
+      }
       const descriptor = scope.descriptor, host = descriptor?.host;
       return descriptor?.schema_version === 'knowledge-windows-job.v1' && descriptor.backend === scope.backend &&
         /^Local\\KnowledgeVerification-[a-f0-9]{64}$/.test(descriptor.job_name || '') && /^[a-f0-9]{64}$/.test(descriptor.source_sha256 || '') &&
@@ -55,8 +58,11 @@ function queryScopeClosure(value, { timeoutMs = 5000, localOnly = false } = {}) 
   if (scope.backend === 'linux_pid_namespace' && process.platform === 'linux') {
     result = require('./verification-linux-namespace').queryCommandScope(scope.descriptor, scope.observer_lineage, { timeoutMs });
   } else if (scope.backend === 'windows_job_object' && process.platform === 'win32') {
-    const native = require('./verification-windows-recovery');
-    result = typeof native.queryScopeClosure === 'function' ? native.queryScopeClosure(scope.descriptor, { timeoutMs }) : unknown('command_scope_query_unavailable');
+    if (scope.descriptor.schema_version === 'knowledge-windows-command-job.v2') result = require('./command-windows-runtime').queryScopeClosure(scope, { timeoutMs });
+    else {
+      const native = require('./verification-windows-recovery');
+      result = typeof native.queryScopeClosure === 'function' ? native.queryScopeClosure(scope.descriptor, { timeoutMs }) : unknown('command_scope_query_unavailable');
+    }
   } else result = unknown('command_scope_platform_mismatch');
   if (result.status === 'unconfirmed' && result.code === 'command_scope_observer_outside_lineage' && relay && !localOnly) {
     const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.NODE_PATH;

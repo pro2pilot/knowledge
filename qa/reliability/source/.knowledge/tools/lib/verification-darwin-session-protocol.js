@@ -44,6 +44,7 @@ function validateDescriptor(value, capability, nonce) {
       typeof d.allocation_seq !== 'string' || !/^[1-9][0-9]{0,8}$/.test(d.allocation_seq) ||
       Number(d.allocation_seq) !== d.task_ruid - 1000000000 + 1 ||
       !path.posix.isAbsolute(d.workspace_path || '') || d.workspace_path !== value.workspace_path ||
+      d.scratch_policy !== 'private_uid_sibling.v1' || d.scratch_path !== d.workspace_path + '.scratch' ||
       !integer(d.work_started_monotonic_ms) || !integer(d.work_budget_ms) || d.work_budget_ms < 1 ||
       d.work_deadline_ms !== d.work_started_monotonic_ms + d.work_budget_ms ||
       !integer(d.cleanup_budget_ms) || d.cleanup_budget_ms < 1 || d.cleanup_budget_ms > 3600000 ||

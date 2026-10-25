@@ -461,7 +461,9 @@
       "tools/verify-lock-consumer-inventory.js",
       "tools/lib/release-policy.js",
       "tools/lib/release-step-evidence.js",
-      "tools/lib/release-contract.js"
+      "tools/lib/release-contract.js",
+      "tools/build-lock-native.js",
+      "tools/build-command-native.js"
     ],
     "required_public_paths": [
       "INSTALL.md",
@@ -529,7 +531,16 @@
       "docs/product/",
       "docs/strategy/",
       "internal/",
-      ".github/"
+      ".github/",
+      "maintenance/verification-control/",
+      "maintenance/locks/",
+      "metrics/CURRENT.json",
+      "metrics/.generation-format.json",
+      "metrics/.locks/",
+      "inspector/CURRENT.json",
+      "inspector/.generation-format.json",
+      "inspector/.locks/",
+      "evaluation/results/"
     ],
     "candidate_note_pattern": "^\\.release-notes/v[^/]*(?:step|rc)[^/]*\\.md$",
     "public_agent_integration_paths": [
@@ -609,6 +620,96 @@
       "agent-integrations/opencode/commands/kb-wikigraph.md",
       "agent-integrations/roo/rules/knowledge.md",
       "agent-integrations/windsurf/rules/knowledge.md"
+    ],
+    "native_runtime_artifacts": [
+      {
+        "platform": "linux",
+        "architecture": "x64",
+        "binary": "tools/lib/native/linux-x64/lock-publication.node",
+        "manifest": "tools/lib/native/linux-x64/lock-publication.manifest.json",
+        "source": "tools/native/lock-publication.c",
+        "schema_version": "knowledge-lock-native-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "linux",
+        "architecture": "x64",
+        "binary": "tools/lib/native/linux-x64/verification-linux-namespace",
+        "manifest": "tools/lib/native/linux-x64/verification-linux-namespace.manifest.json",
+        "source": "tools/lib/verification-linux-namespace.c",
+        "schema_version": "knowledge-command-native-binary.v1"
+      },
+      {
+        "platform": "linux",
+        "architecture": "arm64",
+        "binary": "tools/lib/native/linux-arm64/lock-publication.node",
+        "manifest": "tools/lib/native/linux-arm64/lock-publication.manifest.json",
+        "source": "tools/native/lock-publication.c",
+        "schema_version": "knowledge-lock-native-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "linux",
+        "architecture": "arm64",
+        "binary": "tools/lib/native/linux-arm64/verification-linux-namespace",
+        "manifest": "tools/lib/native/linux-arm64/verification-linux-namespace.manifest.json",
+        "source": "tools/lib/verification-linux-namespace.c",
+        "schema_version": "knowledge-command-native-binary.v1"
+      },
+      {
+        "platform": "darwin",
+        "architecture": "x64",
+        "binary": "tools/lib/native/darwin-x64/lock-publication.node",
+        "manifest": "tools/lib/native/darwin-x64/lock-publication.manifest.json",
+        "source": "tools/native/lock-publication.c",
+        "schema_version": "knowledge-lock-native-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "binary": "tools/lib/native/darwin-arm64/lock-publication.node",
+        "manifest": "tools/lib/native/darwin-arm64/lock-publication.manifest.json",
+        "source": "tools/native/lock-publication.c",
+        "schema_version": "knowledge-lock-native-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "win32",
+        "architecture": "x64",
+        "binary": "tools/lib/native/win32-x64/lock-publication.node",
+        "manifest": "tools/lib/native/win32-x64/lock-publication.manifest.json",
+        "source": "tools/native/lock-publication.c",
+        "schema_version": "knowledge-lock-native-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "win32",
+        "architecture": "x64",
+        "binary": "tools/lib/native/win32-x64/command-windows-job.node",
+        "manifest": "tools/lib/native/win32-x64/command-windows-job.manifest.json",
+        "source": "tools/native/command-windows-job.c",
+        "schema_version": "knowledge-command-windows-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "win32",
+        "architecture": "arm64",
+        "binary": "tools/lib/native/win32-arm64/lock-publication.node",
+        "manifest": "tools/lib/native/win32-arm64/lock-publication.manifest.json",
+        "source": "tools/native/lock-publication.c",
+        "schema_version": "knowledge-lock-native-binary.v1",
+        "napi_version": 8
+      },
+      {
+        "platform": "win32",
+        "architecture": "arm64",
+        "binary": "tools/lib/native/win32-arm64/command-windows-job.node",
+        "manifest": "tools/lib/native/win32-arm64/command-windows-job.manifest.json",
+        "source": "tools/native/command-windows-job.c",
+        "schema_version": "knowledge-command-windows-binary.v1",
+        "napi_version": 8
+      }
     ]
   },
   "forbidden_paths": [

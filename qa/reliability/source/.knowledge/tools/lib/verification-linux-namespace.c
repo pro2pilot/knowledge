@@ -38,6 +38,7 @@ static unsigned long long procdev, observer_dev, observer_ino, btime;
 static long hz;
 static int observer_depth;
 static char boot_id[64];
+static int observer_stage;
 
 static long long now_ms(void) { struct timespec t; if (clock_gettime(CLOCK_MONOTONIC, &t)) return -1; return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
 static int pidfd_open_local(int pid) { return (int)syscall(SYS_pidfd_open, pid, 0); }
@@ -215,20 +216,30 @@ static int read_boot_time(void) {
   fclose(input); if (!found) { errno = EINVAL; return -1; } return 0;
 }
 static int setup_observer(void) {
+  observer_stage = 10;
   procfd = open("/proc", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW); if (procfd < 0) return -1;
+  observer_stage = 11;
   struct statfs fs; struct stat st; if (fstatfs(procfd, &fs) || fs.f_type != PROC_SUPER_MAGIC || fstat(procfd, &st)) { errno = ENOTSUP; return -1; } procdev = (unsigned long long)st.st_dev;
+  observer_stage = 12;
   char buf[MAX_TEXT]; if (read_text_at(procfd, "sys/kernel/random/boot_id", boot_id, sizeof(boot_id))) return -1;
   boot_id[strcspn(boot_id, "\r\n")] = 0; if (strlen(boot_id) != 36) { errno = EINVAL; return -1; }
+  observer_stage = 13;
   if (read_boot_time()) return -1;
+  observer_stage = 14;
   hz = sysconf(_SC_CLK_TCK); if (hz <= 0) return -1;
+  observer_stage = 15;
   if (fstatat(procfd, "self/ns/pid", &st, 0)) return -1; observer_dev = (unsigned long long)st.st_dev; observer_ino = (unsigned long long)st.st_ino;
   /* NSpid count of the observer tells which column belongs to this caller. */
+  observer_stage = 16;
   int d = process_dir(self_proc_pid()); if (d < 0) return -1;
+  observer_stage = 17;
   if (read_text_at(d, "status", buf, sizeof(buf))) { close(d); return -1; } close(d);
   char *p = strstr(buf, "\nNSpid:"); if (!p) { errno = ENOTSUP; return -1; } p += 7;
   while (*p == ' ' || *p == '\t') ++p;
   while (*p >= '0' && *p <= '9') { char *end; (void)strtol(p, &end, 10); observer_depth++; p = end; while (*p == ' ' || *p == '\t') ++p; }
+  observer_stage = 18;
   struct identity self; if (!observer_depth || identity(self_proc_pid(), &self) || self.pid != getpid()) { errno = ENOTSUP; return -1; }
+  observer_stage = 0;
   return 0;
 }
 static void print_identity(int fd, const struct identity *i) {
@@ -237,7 +248,7 @@ static void print_identity(int fd, const struct identity *i) {
   for (int j = 0; j < i->depth; j++) dprintf(fd, "%s%d", j ? "," : "", i->pid_chain[j]);
   dprintf(fd, "]}");
 }
-static void print_error(int fd, const char *code) { dprintf(fd, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"%s\",\"errno\":%d}\n", PROTOCOL, code, errno); }
+static void print_error(int fd, const char *code) { dprintf(fd, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"%s\",\"errno\":%d,\"observer_stage\":%d}\n", PROTOCOL, code, errno, observer_stage); }
 static int send_event(int fd, int kind, int pid, int value) { struct event e = {kind, pid, value}; return write_all(fd, &e, sizeof(e)); }
 static int close_above_five(void) {
 #ifdef SYS_close_range
@@ -247,24 +258,31 @@ static int close_above_five(void) {
   struct rlimit lim; if (getrlimit(RLIMIT_NOFILE, &lim) || lim.rlim_cur > 1048576) return -1;
   for (int fd = 6; (rlim_t)fd < lim.rlim_cur; fd++) close(fd); return 0;
 }
-static int restrict_worker(int trusted_authority) {
-  if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) || prctl(PR_SET_SECUREBITS, SECBIT_NOROOT | SECBIT_NOROOT_LOCKED | SECBIT_NO_SETUID_FIXUP | SECBIT_NO_SETUID_FIXUP_LOCKED)) return -1;
+static int restrict_worker(int trusted_authority, int *stage) {
+  *stage = 1; if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) return -1;
+  *stage = 2; if (prctl(PR_SET_SECUREBITS, SECBIT_NOROOT | SECBIT_NOROOT_LOCKED | SECBIT_NO_SETUID_FIXUP | SECBIT_NO_SETUID_FIXUP_LOCKED)) return -1;
   struct __user_cap_header_struct header = {_LINUX_CAPABILITY_VERSION_3, 0}; struct __user_cap_data_struct data[2]; memset(data, 0, sizeof(data));
-  if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0)) return -1;
+  *stage = 3; if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0)) return -1;
   /* Only the pinned authority may create a nested user namespace when its
    * parent UID is 0. Linux >=5.12 requires CAP_SETFCAP for that map. This is
    * namespaced authority, never a host capability or a command-worker grant. */
-  unsigned int allowed = trusted_authority ? (1U << CAP_SETFCAP) : 0;
+  /* Self maps preserve the caller's numeric UID. A nonzero parent UID does
+   * not need SETFCAP; requesting it unnecessarily is also rejected by hosts
+   * which allow user namespaces while masking their extra capabilities. */
+  unsigned int allowed = trusted_authority && getuid() == 0 ? (1U << CAP_SETFCAP) : 0;
   data[0].permitted = data[0].effective = data[0].inheritable = allowed;
-  if (syscall(SYS_capset, &header, data) || prctl(PR_SET_DUMPABLE, 1)) return -1;
-  if (trusted_authority && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_SETFCAP, 0, 0)) return -1;
-  memset(data, 0, sizeof(data)); if (syscall(SYS_capget, &header, data)) return -1;
+  *stage = 4; if (syscall(SYS_capset, &header, data)) return -1;
+  *stage = 5; if (prctl(PR_SET_DUMPABLE, 1)) return -1;
+  *stage = 6; if (allowed && prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_SETFCAP, 0, 0)) return -1;
+  *stage = 7; memset(data, 0, sizeof(data)); if (syscall(SYS_capget, &header, data)) return -1;
+  *stage = 8;
   if (data[0].permitted != allowed || data[0].effective != allowed || data[0].inheritable != allowed || data[1].permitted || data[1].effective || data[1].inheritable || prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) != 1) { errno = EPERM; return -1; }
   return 0;
 }
 static void worker_stub(struct child_args *a) {
   close(a->gate[1]); close(a->execerr[0]);
-  if (restrict_worker(a->trusted_authority)) { send_event(a->events[1], 'E', 0, errno); _exit(125); }
+  int stage = 0;
+  if (restrict_worker(a->trusted_authority, &stage)) { send_event(a->events[1], 'E', stage, errno); _exit(125); }
   int host_pid = self_proc_pid(); if (host_pid <= 0 || send_event(a->events[1], 'W', host_pid, getpid())) _exit(125);
   if (dup2(a->gate[0], 4) < 0 || dup2(a->execerr[1], 5) < 0 || fcntl(5, F_SETFD, FD_CLOEXEC) < 0 || close_above_five()) _exit(125);
   char c; ssize_t n; do { n = read(4, &c, 1); } while (n < 0 && errno == EINTR); close(4);
@@ -305,7 +323,10 @@ static int parent_proc_pid(void) { char buf[MAX_TEXT]; int d = process_dir(self_
 
 static int run_keeper(char **command, int lifetime, int probe, int trusted_authority) {
   int out = probe ? 1 : 4; pid_t controller = getppid();
-  if (prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != controller || setup_observer()) { print_error(out, "namespace_observer_unavailable"); return 1; }
+  observer_stage = 1;
+  if (prctl(PR_SET_PDEATHSIG, SIGKILL)) { print_error(out, "namespace_observer_unavailable"); return 1; }
+  observer_stage = 2;
+  if (getppid() != controller || setup_observer()) { print_error(out, "namespace_observer_unavailable"); return 1; }
   struct identity keeper_identity, controller_identity;
   if (identity(self_proc_pid(), &keeper_identity) || identity(parent_proc_pid(), &controller_identity)) { print_error(out, "namespace_parent_identity_unavailable"); return 1; }
   struct child_args a; memset(&a, 0, sizeof(a)); a.procfd = procfd; a.command = command; a.trusted_authority = trusted_authority; a.keeperfd = pidfd_open_local(getpid());
@@ -342,12 +363,16 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
       } else if (e.kind == 'R') ready = 1;
       else if (e.kind == 'W') host_worker = e.pid;
       else if (e.kind == 'X') { if (!closing) dprintf(out, "{\"protocol\":\"%s\",\"status\":\"worker_exit\",\"wait_status\":%d}\n", PROTOCOL, e.value); }
-      else { if (e.kind == 'E') errno = e.value; print_error(out, "namespace_child_setup_failed"); failed = closing = 1; (void)pidfd_kill(initfd); }
+      else {
+        if (e.kind == 'E') dprintf(out, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"namespace_child_setup_failed\",\"errno\":%d,\"setup_stage\":%d}\n", PROTOCOL, e.value, e.pid);
+        else print_error(out, "namespace_child_setup_failed");
+        failed = closing = 1; (void)pidfd_kill(initfd);
+      }
     }
     if (ready && host_worker && !emitted && !closing) {
       if (identity(host_init, &init_identity) || identity(host_worker, &worker_identity) || init_identity.ns_pid != 1 || init_identity.pid != init || init_identity.ns_ino == observer_ino) { print_error(out, "namespace_birth_identity_failed"); failed = closing = 1; (void)pidfd_kill(initfd); continue; }
       emitted = 1;
-      dprintf(out, "{\"protocol\":\"%s\",\"status\":\"ready\",\"boot_id\":\"%s\",\"procfs_dev\":\"%llu\",\"observer_pid_namespace\":{\"dev\":\"%llu\",\"ino\":\"%llu\"},\"procfs_mode\":\"inherited_ancestor_view\",\"capability_profile\":\"%s\",\"no_new_privileges\":true,\"identities\":{\"controller\":", PROTOCOL, boot_id, procdev, observer_dev, observer_ino, trusted_authority ? "authority_setfcap" : "worker_none");
+      dprintf(out, "{\"protocol\":\"%s\",\"status\":\"ready\",\"boot_id\":\"%s\",\"procfs_dev\":\"%llu\",\"observer_pid_namespace\":{\"dev\":\"%llu\",\"ino\":\"%llu\"},\"procfs_mode\":\"inherited_ancestor_view\",\"capability_profile\":\"%s\",\"no_new_privileges\":true,\"identities\":{\"controller\":", PROTOCOL, boot_id, procdev, observer_dev, observer_ino, trusted_authority ? (getuid() == 0 ? "authority_setfcap" : "authority_none") : "worker_none");
       print_identity(out, &controller_identity); dprintf(out, ",\"keeper\":"); print_identity(out, &keeper_identity); dprintf(out, ",\"init\":"); print_identity(out, &init_identity); dprintf(out, ",\"worker\":"); print_identity(out, &worker_identity); dprintf(out, "}}\n");
       if (probe) { closing = 1; (void)pidfd_kill(initfd); }
     }

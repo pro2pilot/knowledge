@@ -44,8 +44,9 @@ function containmentCapability(nativeExecution) {
   if (nativeExecution !== undefined) {
     const normalized = require('./verification-policy').nativeExecutionConfig(nativeExecution);
     if (normalized.darwin.enabled) return {
-      platform: process.platform, backend: 'darwin_private_ruid', status: 'unavailable',
-      reason: process.platform === 'darwin' ? 'darwin_pipeline_unqualified' : 'darwin_required'
+      platform: process.platform, backend: 'darwin_private_ruid',
+      status: process.platform === 'darwin' ? 'requires_runtime_setup' : 'unavailable',
+      reason: process.platform === 'darwin' ? 'protected_broker_current_epoch_and_private_uid_finality_required' : 'darwin_required'
     };
   }
   const windows = process.platform === 'win32';
@@ -131,6 +132,9 @@ function runSupervised(request, timeoutMs, started = clock()) {
   const policy = resolvePolicy(request.verificationPolicy, timeoutMs);
   timeoutMs = policy.work_budget_ms;
   deadline = started + BigInt(timeoutMs) * 1000000n;
+  if (nativeExecution?.darwin.enabled && process.platform === 'darwin') {
+    return require('./verification-darwin-production').runSync(request, timeoutMs, started);
+  }
   const unavailable = containmentFailure(timeoutMs, started, deadline, nativeExecution);
   if (unavailable) throw Object.assign(new Error(unavailable.error.message), unavailable.error, {
     verification_budget: unavailable.budget, completed_executions: [], teardown: unavailable.teardown

@@ -37,7 +37,7 @@ test('real SIGKILL before owner preparation leaves no public ownerless lock', {t
 test('real SIGKILL after publication before acknowledgment recovers without waiting on wall age', {timeout:20000}, async t=>{
   const f=fixture(t),child=f.launch('after-publish');await f.ready(child);
   const owner=fs.readFileSync(path.join(f.publicPath,'owner.json'));const parsed=JSON.parse(owner);
-  if(parsed.schema_version==='knowledge-lock-owner.v3')assert.equal(parsed.kernel_lease.method,'owner-inode-lease.v1');
+  if(parsed.schema_version==='knowledge-lock-owner.v3')assert.equal(parsed.kernel_lease.method,process.platform==='win32'?'windows-owner-event.v1':'owner-inode-lease.v1');
   else assert.ok(parsed.native_identity,'The legacy physical acceptance requires its qualified native owner provider.');
   assert.equal(LOCK_POLICY.default_stale_ms,120000);assert.equal(LOCK_POLICY.default_timeout_ms,30000);
   child.child.kill('SIGKILL');await child.done;
@@ -91,7 +91,7 @@ test('a v3 reclaimer holds the old owner lease while paused before namespace ret
 });
 test('real process exit is recoverable even when the optional procfs identity was unavailable', {timeout:20000}, async t=>{
   const f=fixture(t),child=f.launch('exit-held-no-proc');const exit=await child.done;assert.equal(exit.code,0,exit.stderr);
-  const owner=JSON.parse(fs.readFileSync(path.join(f.publicPath,'owner.json')));assert.equal(owner.native_identity,null);assert.equal(owner.kernel_lease.method,'owner-inode-lease.v1');
+  const owner=JSON.parse(fs.readFileSync(path.join(f.publicPath,'owner.json')));assert.equal(owner.native_identity,null);assert.equal(owner.kernel_lease.method,process.platform==='win32'?'windows-owner-event.v1':'owner-inode-lease.v1');
   const next=manager.acquireContainedLock(f.request);assert.notEqual(next.lock_id,owner.lock_id);next.release();
 });
 test('garbage collection of the JS handle cannot release a live native writer lease', {timeout:20000}, async t=>{

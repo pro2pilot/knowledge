@@ -12,7 +12,8 @@ const {
 const {
   loadReleaseContract,
   normalizeReleasePath,
-  validateReleaseInventory
+  validateReleaseInventory,
+  validateNativeArtifacts
 } = require('./lib/release-contract');
 
 const root = path.resolve(__dirname, '..');
@@ -321,6 +322,7 @@ function validate(zipPath, options = {}) {
     rejectBackslash: true
   });
   violations.push(...inventory.violations);
+  violations.push(...validateNativeArtifacts(entries, releaseContract));
   for (const entry of entries) {
     const name = normalizeRel(entry.name);
     if (textEntry(name)) {

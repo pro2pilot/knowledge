@@ -783,12 +783,12 @@ async function mainAsync(argv = process.argv.slice(2), options = {}) {
   const policy = options.budgets || owned.cliBudgets(args.contextFlags);
   return owned.runOwnedOperation('flow-main', { argv }, { ...options, budgets: policy });
 }
-async function cli() {
+async function cli(runtime = {}) {
   const argv = process.argv.slice(2), args = parseArgs(argv), controller = new AbortController();
   const cancel = () => controller.abort();
   process.on('SIGINT', cancel); process.on('SIGTERM', cancel);
   try {
-    const result = await mainAsync(argv, { signal: controller.signal });
+    const result = await mainAsync(argv, { ...runtime, signal: controller.signal });
     const out = result.value;
     if (out.overall_status === 'ok' && out.onboarding_follow_up?.required && !args.json && !args.quiet && !controller.signal.aborted) {
       // The intentionally persistent Inspector starts after all Flow ownership
@@ -821,7 +821,7 @@ module.exports = {
   runOneAsync,
   runFlowAsync,
   mainAsync,
-  __owned: { runOne: runOneWorker, runFlow: runFlowWorker, main: (argv, runtime) => main(argv, { ownedRuntime: runtime }) },
+  __owned: { runOne: runOneWorker, runFlow: runFlowWorker, main: (argv, runtime) => main(argv, { ownedRuntime: runtime }), cli },
   parseArgs,
   colorEnabled,
   runFlow,

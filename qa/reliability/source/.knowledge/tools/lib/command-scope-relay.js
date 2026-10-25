@@ -8,6 +8,7 @@ async function createScopeRelay() {
   const token = crypto.randomBytes(32).toString('hex');
   const children = new Set(), sockets = new Set(); let closing = false;
   let observerDescriptor, helper;
+  const custody = process.platform === 'win32' ? require('./command-windows-custody').createCustodyManager(() => ({ descriptor: observerDescriptor, helper })) : null;
   const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const server = net.createServer({ allowHalfOpen: true }, socket => {
     sockets.add(socket); socket.once('close', () => sockets.delete(socket));
@@ -19,10 +20,19 @@ async function createScopeRelay() {
       let request;
       try {
         request = JSON.parse(input);
-        if (invalid || closing || request.token !== token || !validateExecutionScope(request.scope) ||
+        if (invalid || closing || request.token !== token ||
             !Number.isSafeInteger(request.timeoutMs) || request.timeoutMs < 1 || request.timeoutMs > 600000 || children.size >= 4) throw new Error('invalid');
       } catch { socket.end(JSON.stringify({ proof: { status: 'unconfirmed', code: 'command_scope_request_invalid' } })); return; }
       socket.setTimeout(request.timeoutMs + 2000, () => socket.destroy());
+      if (custody && ['windows_custodian_create', 'windows_custodian_bind', 'windows_custodian_close'].includes(request.operation)) {
+        custody.dispatch(request).then(value => { if (!socket.destroyed) socket.end(JSON.stringify(value)); }, error => {
+          if (!socket.destroyed) socket.end(JSON.stringify({ ok: false, scope_id: request.scope_id, code: error.code || 'command_windows_custodian_unconfirmed' }));
+        });
+        return;
+      }
+      if (request.operation !== undefined || !validateExecutionScope(request.scope)) {
+        socket.end(JSON.stringify({ proof: { status: 'unconfirmed', code: 'command_scope_request_invalid' } })); return;
+      }
       const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.NODE_PATH;
       for (const key of Object.keys(env)) if (key.startsWith('LD_')) delete env[key];
       let executable = process.execPath, args = [path.join(__dirname, 'command-scope-proof.js')], nativeOnly = false;
@@ -82,9 +92,10 @@ async function createScopeRelay() {
       for (const child of children) child.kill('SIGKILL');
       server.close();
       const deadline = Number(process.hrtime.bigint()) / 1e6 + cleanupMs;
+      const custodyCleanup = custody ? await custody.close(Math.max(1, deadline - Number(process.hrtime.bigint()) / 1e6)) : null;
       while (children.size && Number(process.hrtime.bigint()) / 1e6 < deadline) await new Promise(resolve => setTimeout(resolve, 10));
       if (children.size) { for (const child of children) child.unref(); return { status: 'unconfirmed', code: 'command_scope_relay_exit_unconfirmed' }; }
-      return { status: 'completed' };
+      return { status: custodyCleanup?.status === 'unconfirmed' ? 'unconfirmed' : 'completed', ...(custodyCleanup ? { custody: custodyCleanup } : {}) };
     }
   };
 }

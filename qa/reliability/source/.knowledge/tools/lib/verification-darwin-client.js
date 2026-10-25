@@ -159,25 +159,10 @@ function validAccountPolicy(policy) {
 }
 
 function protectedBrokerHash(binaryPath) {
-  const parts = binaryPath.split('/').filter(Boolean);
-  let current = '/';
-  for (let i = 0; i < parts.length; i++) {
-    current = path.posix.join(current, parts[i]);
-    const stat = fs.lstatSync(current);
-    if (stat.isSymbolicLink() || stat.uid !== 0 || (stat.mode & 0o022)) throw invalid('verification_darwin_broker_unsafe');
-    if (i < parts.length - 1 && !stat.isDirectory()) throw invalid('verification_darwin_broker_unsafe');
-    if (i === parts.length - 1 && (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o6000))) {
-      throw invalid('verification_darwin_broker_unsafe');
-    }
-  }
-  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0);
-  const fd = fs.openSync(binaryPath, flags);
-  try {
-    const live = fs.fstatSync(fd), leaf = fs.lstatSync(binaryPath);
-    if (!live.isFile() || live.uid !== 0 || live.nlink !== 1 || (live.mode & 0o6022) ||
-        live.dev !== leaf.dev || live.ino !== leaf.ino || live.size !== leaf.size) throw invalid('verification_darwin_broker_unsafe');
-    return hash(fs.readFileSync(fd));
-  } finally { fs.closeSync(fd); }
+  // The independently pinned package addon observes root ancestry, ACLs and
+  // bounded bytes on the same descriptors. The broker cannot attest itself.
+  return require('./lock-publication').verifyProtectedExecutable(binaryPath,
+    { maxBytes: 268435456, remainingMs: 30000 }).sha256;
 }
 
 function unavailable(reason) {

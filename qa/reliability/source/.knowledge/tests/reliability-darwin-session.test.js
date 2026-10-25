@@ -20,6 +20,7 @@ function fixture() {
     attempt_nonce: hex('d'), task_ruid: 1000000000, task_gid: 1000000000, owner_uid: 501,
     stub_wire_version: 'KVS2', guardian_protocol: 'KVR2', capability_qualified: true, qualification_mode: false,
     allocation_seq: '1', allocation_sha256: hex('e'), workspace_path: '/protected/work/' + id,
+    scratch_policy: 'private_uid_sibling.v1', scratch_path: '/protected/work/' + id + '.scratch',
     allowed_runtimes: { '/protected/node': capability.runtime_sha256 }, work_started_monotonic_ms: 100,
     work_budget_ms: 100000, work_deadline_ms: 100100, cleanup_budget_ms: 60000 };
   const prepare = { ok: true, attempt_id: id, descriptor: d, descriptor_sha256: protocol.digest(d),
@@ -105,30 +106,22 @@ test('a correctly hashed proof cannot predate its cleanup epoch', () => {
     { code: 'verification_darwin_current_proof_invalid' });
 });
 
-test('cancel during held setup metadata returns before the read and never prepares a reservation', async tc => {
-  // Portable controlled FS hold, not a Darwin kernel-I/O claim. Actual source
-  // files are read after release, while the session's platform gate is modeled.
-  const root = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'darwin-setup-cancel-'));
-  const file = path.join(root, 'unexecuted-broker');fs.writeFileSync(file, 'not an executable\n', { mode: 0o600 });
+test('cancel during held readonly setup waits for real helper exit before reporting cancellation', async tc => {
+  // Real process lifetime, modeled read/ACL implementation; no native macOS claim.
+  const { withFixture } = require('./helpers/reliability-darwin-preparation-fixture');
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
-  const originalLstat = fs.promises.lstat;let release, entered;
-  const held = new Promise(resolve => { release = resolve; });
-  const reached = new Promise(resolve => { entered = resolve; });
-  tc.mock.method(fs.promises, 'lstat', async (...args) => { entered();await held;return originalLstat(...args); });
   Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'darwin' });
-  const abort = new AbortController();let observed;
   try {
-    const pending = session.probeSession({ enabled: true, mode: 'isolated_copy', broker_path: file,
-      broker_socket: '/private/tmp/knowledge-fixture-unused.sock', copy: {} }, { signal: abort.signal, setupBudgetMs: 10000 });
-    observed = pending.then(value => ({ value }), error => ({ error }));
-    await reached;abort.abort();
-    const result = await Promise.race([observed, new Promise(resolve => setImmediate(() => resolve({ held: true })))]);
-    assert.equal(result.error?.code, 'verification_darwin_cancelled', 'cancellation must settle while metadata remains held');
-  } finally {
-    release();await observed;
-    tc.mock.restoreAll();Object.defineProperty(process, 'platform', originalPlatform);
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    await withFixture(tc, 'hold', async ({ ready }) => {
+      const abort = new AbortController();
+      const observed = session.probeSession({ enabled: true, mode: 'isolated_copy',
+        broker_path: '/protected/unexecuted-broker', broker_socket: '/private/tmp/unused.sock', copy: {} },
+        { signal: abort.signal, setupBudgetMs: 10000 }).then(value => ({ value }), error => ({ error }));
+      await ready;abort.abort();const result = await observed;
+      assert.equal(result.error?.code, 'verification_darwin_cancelled');
+      assert.equal(result.error.helper.exit_observed, true);assert.equal(result.error.helper.admission_possible, false);
+    });
+  } finally { Object.defineProperty(process, 'platform', originalPlatform); }
 });
 
 const hasChildren = (() => { try { return require('node:child_process').spawnSync(process.execPath, ['--version']).status === 0; } catch { return false; } })();

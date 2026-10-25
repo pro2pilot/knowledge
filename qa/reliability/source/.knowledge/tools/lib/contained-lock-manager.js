@@ -17,6 +17,7 @@ const { removeTempDirStrict } = require('./strict-temp-cleanup');
 const { LOCK_POLICY, lockDefinition, validNativeOwnerIdentity } = require('./lock-policy');
 const { canonicalOwnerText, sanitizedOwner, validateOwner } = require('./lock-owner-schema');
 const { qualifyNativePublication, publishPreparedLock, probeOwnerLease, closeOwnerLease } = require('./lock-publication');
+const ownerLeaseMethod = () => process.platform === 'win32' ? 'windows-owner-event.v1' : 'owner-inode-lease.v1';
 
 function lockError(code, message, details = {}) {
   const error = new Error(message);
@@ -628,9 +629,9 @@ function requireExecutionClosure(read, timeoutMs) {
   );
 }
 
-function kernelLeaseDisposition(policy, paths, read, directory, holdLease) {
+function kernelLeaseDisposition(policy, paths, read, directory, holdLease, startedAt) {
   const unknown = reason => ({ disposition: { local: null, alive: null, stale: false, reason, recovery_required: 'kernel_owner_lease_evidence' } });
-  if (read.owner.kernel_lease?.method !== 'owner-inode-lease.v1' || read.owner.publication !== 'atomic-directory-noreplace.v1' ||
+  if (read.owner.kernel_lease?.method !== ownerLeaseMethod() || read.owner.publication !== 'atomic-directory-noreplace.v1' ||
       (read.owner.native_identity !== null && !validNativeOwnerIdentity(read.owner.native_identity, read.owner.pid))) return unknown('kernel_owner_protocol_invalid');
   let proof;
   try { proof = probeOwnerLease(policy.rootPath, path.basename(paths.lockDir)); }
@@ -645,7 +646,13 @@ function kernelLeaseDisposition(policy, paths, read, directory, holdLease) {
       throw lockError('lock_ownership_changed', 'The native lease does not bind the exact observed immutable owner inode.');
     }
     if (read.owner.execution_scope !== null) {
-      const closure = read.executionScope ? queryExecutionClosure(read.executionScope, policy.timeoutMs) : { status: 'unconfirmed' };
+      // Native scope observation belongs to this acquisition's original
+      // admission epoch. Slow preparation or a prior observation must not
+      // renew the provider timeout. An already-started syscall may still
+      // finish late; namespace mutation remains separately rechecked below.
+      const remaining = startedAt === undefined ? policy.timeoutMs : Math.floor(policy.timeoutMs - elapsedBudgetMs(startedAt));
+      if (remaining < 1) return unknown('owner_scope_observation_budget_exhausted');
+      const closure = read.executionScope ? queryExecutionClosure(read.executionScope, remaining) : { status: 'unconfirmed' };
       if (closure.status !== 'completed') return { disposition: { local: true, alive: false, stale: false,
         reason: closure.status === 'active' ? 'owner_lease_free_execution_scope_active' : 'owner_lease_free_execution_scope_unconfirmed',
         recovery_required: 'execution_scope_closure_evidence' } };
@@ -922,7 +929,7 @@ function inspectCurrent(policy, paths, options = {}) {
   if (transition) return transition;
   const ageMs = Math.max(0, Date.now() - Number(directory.mtimeMs));
   const native = read.owner.schema_version === 'knowledge-lock-owner.v3'
-    ? kernelLeaseDisposition(policy, paths, read, directory, options.holdKernelLease)
+    ? kernelLeaseDisposition(policy, paths, read, directory, options.holdKernelLease, options.startedAt)
     : { disposition: ownerDisposition(read.owner, ageMs, policy) };
   const disposition = native.disposition;
   let finalTransition;
@@ -977,9 +984,9 @@ function readRecoveredGeneration(policy, quarantine, ownerDigest) {
   return { directory, retained };
 }
 
-function observeRecoveredGeneration(policy, paths, inspected) {
+function observeRecoveredGeneration(policy, paths, inspected, startedAt) {
   const current = inspectCurrent(policy, paths, {
-    retryDirectoryTransitions: true, waitForOwnerInitialization: true,
+    retryDirectoryTransitions: true, waitForOwnerInitialization: true, startedAt,
   });
   if (current.owner_digest === inspected.owner_digest) {
     // A restored/copied old generation must not be recovered a second time.
@@ -994,7 +1001,7 @@ function observeRecoveredGeneration(policy, paths, inspected) {
 
 function recoverCurrent(policy, paths, inspected, startedAt) {
   const latest = inspectCurrent(policy, paths, {
-    retryDirectoryTransitions: true, waitForOwnerInitialization: true, holdKernelLease: true,
+    retryDirectoryTransitions: true, waitForOwnerInitialization: true, holdKernelLease: true, startedAt,
   });
   try {
   if (latest.status !== 'stale' || latest.owner_digest !== inspected.owner_digest) {
@@ -1002,7 +1009,7 @@ function recoverCurrent(policy, paths, inspected, startedAt) {
   }
   const quarantine = recoveryGenerationPath(policy, paths, inspected.owner_digest);
   if (readRecoveredGeneration(policy, quarantine, inspected.owner_digest)) {
-    return observeRecoveredGeneration(policy, paths, inspected);
+    return observeRecoveredGeneration(policy, paths, inspected, startedAt);
   }
   // Scope closure and history inspection may perform slow I/O. The retained
   // native lease still protects the original inode, so revalidate that the
@@ -1020,7 +1027,7 @@ function recoverCurrent(policy, paths, inspected, startedAt) {
     // interpreting a destination collision as another contender's progress.
     if (['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES'].includes(error.code) &&
         readRecoveredGeneration(policy, quarantine, inspected.owner_digest)) {
-      return observeRecoveredGeneration(policy, paths, inspected);
+      return observeRecoveredGeneration(policy, paths, inspected, startedAt);
     }
     throw mapContainmentFailure(error, 'unsafe_lock_path');
   }
@@ -1127,7 +1134,7 @@ function prepareLockDirectory(policy, paths, scope) {
     }
     requireCreatedDirectory(policy, directory, identity);
     owner = createOwner(policy, scope.binding, {
-      method: 'owner-inode-lease.v1',
+      method: ownerLeaseMethod(),
       owner_dev: String(original.dev),
       owner_ino: String(original.ino),
       directory_dev: String(identity.dev),
@@ -1207,7 +1214,7 @@ function acquireContainedLock(request) {
         requirePreparedEntries(paths.lockDir, owner);
         break;
       }
-      const inspected = inspectCurrent(policy, paths, { retryDirectoryTransitions: true, waitForOwnerInitialization: true });
+      const inspected = inspectCurrent(policy, paths, { retryDirectoryTransitions: true, waitForOwnerInitialization: true, startedAt });
       prior = { observation: inspected, afterRecovery: false };
       if (inspected.status === 'missing' || inspected.status === 'replaced') {
         if (elapsedBudgetMs(startedAt) >= policy.timeoutMs) throw timeoutError(policy, null);
@@ -1252,7 +1259,7 @@ function acquireContainedLock(request) {
           throw mapContainmentFailure(sharingRetryError, 'unsafe_lock_path');
         }
         requireCreatedDirectory(policy, paths.lockDir, directoryIdentity);
-        const current = inspectCurrent(policy, paths);
+        const current = inspectCurrent(policy, paths, { startedAt: releaseStarted });
         if (!['active', 'stale'].includes(current.status) ||
             current.owner_digest !== ownerDigest ||
             current.owner.lock_id !== owner.lock_id ||

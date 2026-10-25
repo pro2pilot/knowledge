@@ -1,0 +1,94 @@
+{
+  "schema": "knowledge-darwin-ci-assets.v1",
+  "files": [
+    {
+      "repository_path": ".github/workflows/rc5-reliability-darwin-production.yml",
+      "bytes": 2856,
+      "sha256": "a8cd13ece195110224caa52f13fa44ed1c5402243a38f3ad01d423ba077ceb98"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-lifecycle.py",
+      "bytes": 25757,
+      "sha256": "ed1a92e3338b5d81a0d892f018f0553b04f3d81a7ec1ce502ae0d6b1bfa9e696"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-controller.js",
+      "bytes": 3319,
+      "sha256": "155a6db862151f3bff0fc7e2a00c36443795bf00cb3428cccc9c0d843387bb86"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
+      "bytes": 14544,
+      "sha256": "b93c0388cf953c91dc2593ce93894a8927f8251411aa9c342cd83d99db6fc2fe"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
+      "bytes": 5071,
+      "sha256": "2d7968c42679c674b971e966a9df232a27b4b23462d5f797a62e5741d8b3ee86"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/verify-darwin-ci-assets.py",
+      "bytes": 1563,
+      "sha256": "685dcc4b390324a2a4f3ab498d98dc547db26cc4cea1f5f1464619e4ef2992be"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/PINS.json",
+      "bytes": 92543,
+      "sha256": "168e21634a371823c8030444aa05ae993f32fa9b63fcbe614ff97de3b500db38"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/run_pipeline4.py",
+      "bytes": 92583,
+      "sha256": "05f651321793aa2fafce4d87bc49a742175446833f244a4802c36c4ede49658e"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/persistence_gate.py",
+      "bytes": 9462,
+      "sha256": "8d40301ee387e767a6e739db1e4454d06b181e7ad7d2ab87a8b1869afd086080"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/birth-observer.c",
+      "bytes": 3163,
+      "sha256": "4fc0f8513ade119508745e45a25445ac6595def7880481e50e444e365cac787d"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-broker/uid-scan.c",
+      "bytes": 1285,
+      "sha256": "cf8245dc0e1c564c50ecbb9b8114ab50c74e1c89daf8a9bcc9bc239456bb2ebc"
+    }
+  ],
+  "native_sources": [
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-broker.m",
+      "bytes": 222316,
+      "sha256": "02b7dec225e3374cd9daac507c673debd539a3d8c98ce81555610c6a1365b4e4"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-stub.c",
+      "bytes": 39294,
+      "sha256": "15de2b87f2cc3ad33aeae91a1f5aa8f5646b2c03e5a94ca4a8caf6b847522818"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-transport.h",
+      "bytes": 6952,
+      "sha256": "7c5a5907ea6f243d4c5ff3d84ff727f481167a41074489daf5e034b6c4e96ab8"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-uid-history.h",
+      "bytes": 5262,
+      "sha256": "067cb0c64f0ea6c6ed57927de571e7e572b3f05ff951143364a19acffa074852"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-uid-history.m",
+      "bytes": 29373,
+      "sha256": "2fef98ad495d5aaa1ab3bf0385a0a00780f781351d645cc89fbe7da5f68f9e36"
+    }
+  ],
+  "production_qualified": false,
+  "runtime_source_required": "qa/reliability/source/.knowledge",
+  "scope": "Normal public KVE/KVF/ACK early physical gate, source capability candidate enabled; release qualification remains separate",
+  "uploaded_artifacts": [
+    "summary.json",
+    "stages.json"
+  ]
+}

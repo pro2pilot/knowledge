@@ -202,11 +202,11 @@ function main(options = {}) {
 async function mainAsync(options = {}) {
   return (await owned.runOwnedOperation('evaluation-main', {}, options)).value;
 }
-async function cli() {
+async function cli(runtime = {}) {
   const controller = new AbortController(), cancel = () => controller.abort();
   process.on('SIGINT', cancel); process.on('SIGTERM', cancel);
   try {
-    const report = await mainAsync({ signal: controller.signal, budgets: owned.cliBudgets(parseCliArgs().flags) });
+    const report = await mainAsync({ ...runtime, signal: controller.signal, budgets: runtime.budgets || owned.cliBudgets(parseCliArgs().flags) });
     console.log(JSON.stringify(report, null, 2)); process.exitCode = exitCodeForReport(report);
   } catch (error) {
     console.log(JSON.stringify({ status: 'failed', failure_code: error.code || 'evaluation_failed',
@@ -220,4 +220,4 @@ module.exports.mainAsync = mainAsync;
 module.exports.exitCodeForReport = exitCodeForReport;
 module.exports.runCheck = run;
 module.exports.runCheckAsync = runCheckAsync;
-module.exports.__owned = { main: mainWorker, runCheck: runCheckWorker };
+module.exports.__owned = { main: mainWorker, runCheck: runCheckWorker, cli };

@@ -66,7 +66,22 @@ async function persistFinalization(stateRoot, value) {
   // Unique batch identity makes collisions unexpected. Exclusive creation
   // keeps an interrupted file diagnostic-only; it is never overwritten.
   const file = await fs.promises.open(target, 'wx');
-  try { await file.writeFile(body); } finally { await file.close(); }
+  try { await file.writeFile(body); await file.sync(); } finally { await file.close(); }
+  // A reference may be signed only after the receipt and its containing
+  // directory entries have crossed the supported durability barriers. Keep
+  // this I/O in the contained storage authority; a stalled flush must not
+  // stall the independent cancellation controller.
+  if (process.platform !== 'win32') {
+    for (const parent of [...parents].reverse()) {
+      const handle = await fs.promises.open(parent.path,
+        fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW);
+      try {
+        const live = await handle.stat();
+        if (!live.isDirectory() || live.dev !== parent.dev || live.ino !== parent.ino) fail();
+        await handle.sync();
+      } finally { await handle.close(); }
+    }
+  }
   for (const parent of parents) {
     const live = await fs.promises.lstat(parent.path);
     if (!live.isDirectory() || live.isSymbolicLink() || live.dev !== parent.dev || live.ino !== parent.ino) fail();
@@ -159,7 +174,7 @@ function requireFinalizedExecutions(stateRoot, executionIds, acceptances, privac
           record.timeout_ms !== ack.timeout_ms || !Number.isFinite(record.observed_elapsed_ms) || record.observed_elapsed_ms < 0 ||
           record.observed_elapsed_ms > ack.accepted_elapsed_ms ||
           modern && (record.work_elapsed_ms !== ack.work_elapsed_ms || record.cleanup_budget_ms !== ack.cleanup_budget_ms ||
-            record.observed_elapsed_ms < record.work_elapsed_ms || record.teardown?.keeper_exited !== true) || record.teardown?.status !== 'completed' ||
+            record.observed_elapsed_ms < record.work_elapsed_ms || !darwin && record.teardown?.keeper_exited !== true) || record.teardown?.status !== 'completed' ||
           record.teardown.active_processes !== 0 || record.teardown.method !== record.backend ||
           !(darwin ? ['darwin_private_ruid'] : current ? ['windows_job_object', 'linux_pid_namespace'] : ['windows_job_object']).includes(record.backend) ||
           current && (typeof record.teardown.descriptor_sha256 !== 'string' || !HASH.test(record.teardown.descriptor_sha256) || record.teardown.worker_exited !== true ||
@@ -185,6 +200,7 @@ function requireFinalizedExecutions(stateRoot, executionIds, acceptances, privac
             execution.record.task_id !== record.task_id || execution.record.session_id !== record.session_id ||
             execution.record.runtime_binding === 'process_exec_path' && execution.record.runtime_sha256 !== record.runtime_sha256) fail();
         seen.add(pin.execution_id); ordered.push(pin.execution_id);
+        if (darwin) darwinFinalization.validateExecution(record, execution.record, index);
         bind(execution);
         executionRecords.push(execution.record);
         if (requested.has(pin.execution_id)) covered.add(pin.execution_id);

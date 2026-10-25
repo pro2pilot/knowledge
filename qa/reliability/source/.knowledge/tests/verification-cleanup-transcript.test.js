@@ -222,18 +222,21 @@ test('a new attempt archives the previous full native transcript',t=>{
 test('legacy v2 cleanup reads and mutates without inventing a native transcript',t=>{
   const f=fixture(t),legacy=JSON.parse(fs.readFileSync(f.file,'utf8'));
   legacy.schema_version='knowledge-verification-control.v2';
+  delete legacy.storage_protocol;delete legacy.startup_nonce_sha256;
   legacy.cleanup={status:legacy.cleanup.status,attempts:legacy.cleanup.attempts,
     evidence_sha256:legacy.cleanup.evidence_sha256};
   fs.writeFileSync(f.file,JSON.stringify(legacy));
   const before=fs.readFileSync(f.file);
   const read=control.readStatus(f.context).attempt;
-  assert.equal(read.schema_version,'knowledge-verification-control.v3');
+  assert.equal(read.schema_version,control.SCHEMA);
+  assert.equal(read.storage_protocol,null);assert.equal(read.startup_nonce_sha256,null);
   assert.equal(read.cleanup.native_transcript,null);
   assert.equal(read.cleanup.transcript_required,false);
   assert.deepEqual(fs.readFileSync(f.file),before);
   control.updateAttempt(f.context,f.owner,{type:'phase',phase:'preparing'});
   const saved=JSON.parse(fs.readFileSync(f.file,'utf8'));
-  assert.equal(saved.schema_version,'knowledge-verification-control.v3');
+  assert.equal(saved.schema_version,control.SCHEMA);
+  assert.equal(saved.storage_protocol,null);assert.equal(saved.startup_nonce_sha256,null);
   assert.equal(saved.cleanup.native_transcript,null);
   assert.equal(saved.cleanup.transcript_required,false);
   assert.equal(saved.containment,null);

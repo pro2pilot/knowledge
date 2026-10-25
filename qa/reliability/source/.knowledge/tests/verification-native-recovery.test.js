@@ -148,15 +148,18 @@ test('native proof binding rejects an unobserved or different process birth',t=>
 });
 
 test('historical v1 state is read without writes and upgraded without invented ownership',t=>{
-  const f=fixture(t),raw=JSON.parse(fs.readFileSync(f.file));delete raw.containment;delete raw.recovery;raw.schema_version='knowledge-verification-control.v1';
+  const f=fixture(t),raw=JSON.parse(fs.readFileSync(f.file));delete raw.containment;delete raw.recovery;
+  delete raw.storage_protocol;delete raw.startup_nonce_sha256;raw.schema_version='knowledge-verification-control.v1';
   raw.cleanup={status:raw.cleanup.status,attempts:raw.cleanup.attempts,evidence_sha256:raw.cleanup.evidence_sha256};
   fs.writeFileSync(f.file,JSON.stringify(raw));const before=fs.readFileSync(f.file);
-  const status=control.readStatus(f.context);assert.equal(status.attempt.schema_version,'knowledge-verification-control.v3');
+  const status=control.readStatus(f.context);assert.equal(status.attempt.schema_version,control.SCHEMA);
+  assert.equal(status.attempt.storage_protocol,null);assert.equal(status.attempt.startup_nonce_sha256,null);
   assert.equal(status.attempt.cleanup.native_transcript,null);assert.equal(status.attempt.cleanup.transcript_required,false);
   assert.equal(status.attempt.containment,null);assert.deepEqual(fs.readFileSync(f.file),before);
   const result=control.recoverAttempt(f.context,f.id);assert.equal(result.ack_released,false);
   const saved=JSON.parse(fs.readFileSync(f.file));
-  assert.equal(saved.schema_version,'knowledge-verification-control.v3');
+  assert.equal(saved.schema_version,control.SCHEMA);
+  assert.equal(saved.storage_protocol,null);assert.equal(saved.startup_nonce_sha256,null);
   assert.equal(saved.cleanup.native_transcript,null);assert.equal(saved.cleanup.transcript_required,false);
 });
 

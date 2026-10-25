@@ -212,7 +212,7 @@ function validDescriptor(value) {
   return value && value.schema_version === SCHEMA && value.backend === 'linux_pid_namespace' && /^[a-f0-9-]{36}$/.test(value.boot_id || '') &&
     /^\d+$/.test(value.procfs_dev || '') && /^\d+$/.test(value.observer_pid_namespace?.dev || '') && /^\d+$/.test(value.observer_pid_namespace?.ino || '') &&
     ['controller', 'keeper', 'init', 'worker'].every(role => validIdentity(value[role])) && value.init.namespace_pid === 1 &&
-    value.worker.namespace_pid === 2 && ['worker_none', 'authority_setfcap'].includes(value.capability_profile) && value.no_new_privileges === true &&
+    value.worker.namespace_pid === 2 && ['worker_none', 'authority_setfcap', 'authority_none'].includes(value.capability_profile) && value.no_new_privileges === true &&
     ['controller', 'keeper'].every(role => value[role].pid_namespace.ino === value.observer_pid_namespace.ino && value[role].pid_namespace.dev === value.observer_pid_namespace.dev) &&
     value.worker.pid_namespace.ino === value.init.pid_namespace.ino && value.worker.pid_namespace.dev === value.init.pid_namespace.dev &&
     value.init.pid_namespace.ino !== value.observer_pid_namespace.ino && /^[a-f0-9]{64}$/.test(value.helper?.source_sha256 || '') && /^[a-f0-9]{64}$/.test(value.helper?.binary_sha256 || '');
@@ -236,7 +236,7 @@ function spawnLinuxContainedWorker(executable, args, options = {}, settings = {}
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const started = new Promise((resolve, reject) => { startedResolve = resolve; startedReject = reject; });
   ready.catch(() => {}); started.catch(() => {});
-  const reject = code => { protocolFailure ||= code; const error = failure(code); readyReject(error); startedReject(error); if (!stopping && typeof settings.onFailure === 'function') settings.onFailure(error); };
+  const reject = (code, details = {}) => { protocolFailure ||= code; const error = Object.assign(failure(code), details); readyReject(error); startedReject(error); if (!stopping && typeof settings.onFailure === 'function') settings.onFailure(error); };
   worker.once('error', error => { reject(error.code || 'verification_namespace_spawn_failed'); for (const fn of listeners) fn(); });
   worker.once('exit', (code, signal) => { exited = true; exitCode = code; exitSignal = signal; if (!stopping) reject('verification_namespace_keeper_exited'); for (const fn of listeners) fn(); });
   worker.stdio[4].on('error', () => { controlFailed = true; reject('verification_namespace_transport_failed'); for (const fn of listeners) fn(); });
@@ -265,12 +265,16 @@ function spawnLinuxContainedWorker(executable, args, options = {}, settings = {}
           capability_profile: message.capability_profile, no_new_privileges: message.no_new_privileges,
           ...identities, helper: { source_sha256: helper.source_sha256, binary_sha256: helper.binary_sha256, architecture: helper.architecture } };
         if (!validDescriptor(descriptor) || identities.controller.pid !== process.pid || identities.keeper.pid !== worker.pid ||
-            message.capability_profile !== (settings.trustedAuthority === true ? 'authority_setfcap' : 'worker_none')) { descriptor = undefined; reject('verification_namespace_identity_invalid'); continue; }
+            message.capability_profile !== (settings.trustedAuthority === true ? (process.getuid() === 0 ? 'authority_setfcap' : 'authority_none') : 'worker_none')) { descriptor = undefined; reject('verification_namespace_identity_invalid'); continue; }
         descriptor = JSON.parse(JSON.stringify(descriptor)); readyResolve(JSON.parse(JSON.stringify(descriptor)));
       } else if (message.status === 'started' && permitted) { if (!stopping) startedResolve(); }
       else if (message.status === 'closed') { closeMessage = message; for (const fn of listeners) fn(); }
       else if (message.status === 'worker_exit') { if (!stopping) reject('verification_worker_exited'); }
-      else if (message.status === 'unconfirmed') { reject(message.code || 'verification_namespace_failed'); }
+      else if (message.status === 'unconfirmed') { reject(message.code || 'verification_namespace_failed', {
+        ...(Number.isSafeInteger(message.errno) && message.errno >= 0 ? { native_errno: message.errno } : {}),
+        ...(Number.isSafeInteger(message.observer_stage) && message.observer_stage >= 0 && message.observer_stage <= 32 ? { native_observer_stage: message.observer_stage } : {}),
+        ...(Number.isSafeInteger(message.setup_stage) && message.setup_stage >= 0 && message.setup_stage <= 8 ? { native_setup_stage: message.setup_stage } : {})
+      }); }
       else reject('verification_namespace_protocol_invalid');
     }
   });
@@ -320,7 +324,7 @@ function runIdentityOperation(mode, context, identity, timeoutMs, suppliedHelper
   if (!validIdentity(identity) || !/^[a-f0-9-]{36}$/.test(context?.boot_id || '') || !/^\d+$/.test(context.procfs_dev || '') ||
       !/^\d+$/.test(context.observer_pid_namespace?.dev || '') || !/^\d+$/.test(context.observer_pid_namespace?.ino || '')) return { status: 'unconfirmed', code: 'native_identity_invalid' };
   const allowance = Math.max(1, Math.min(2147483000, Math.floor(Number(timeoutMs) || 1)));
-  const args = [mode, context.boot_id, context.observer_pid_namespace.dev, context.observer_pid_namespace.ino, context.procfs_dev,
+  const args = ['--parent', String(process.pid), mode, context.boot_id, context.observer_pid_namespace.dev, context.observer_pid_namespace.ino, context.procfs_dev,
     String(identity.pid), String(identity.proc_pid), identity.start_ticks, identity.pid_namespace.dev, identity.pid_namespace.ino, String(identity.namespace_pid), String(allowance)];
   const result = spawnSync(helper.executable, args, { encoding: 'utf8', timeout: allowance + 1000, maxBuffer: 65536, env: nativeEnv() });
   try {
@@ -341,12 +345,16 @@ function verifyProcessExit(value) {
 }
 function queryCommandScope(descriptor, lineage, { timeoutMs = 5000 } = {}) {
   const unconfirmed = code => ({ status: 'unconfirmed', method: 'linux_pid_namespace', code });
+  const started = clock(); let helper;
+  const remaining = () => Math.max(0, Math.floor(timeoutMs - elapsed(started)));
+  const result = (() => {
   try {
     if (!validDescriptor(descriptor) || !Array.isArray(lineage)) return unconfirmed('command_scope_invalid');
-    const helper = preparePackagedHelper();
+    helper = preparePackagedHelper({ snapshot: true });
     if (descriptor.helper.source_sha256 !== helper.source_sha256 || descriptor.helper.binary_sha256 !== helper.binary_sha256 ||
         descriptor.helper.architecture !== helper.architecture) return unconfirmed('native_helper_pin_mismatch');
-    const result = spawnSync(helper.executable, ['--identity'], { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 65536, env: nativeEnv() });
+    if (!remaining()) return unconfirmed('command_scope_query_timeout');
+    const result = spawnSync(helper.executable, ['--parent', String(process.pid), '--identity'], { encoding: 'utf8', timeout: remaining(), maxBuffer: 65536, env: nativeEnv() });
     const rows = parseLines(result.stdout), observer = rows.length === 1 ? rows[0] : null;
     if (result.error || result.status !== 0 || !observer || observer.boot_id !== descriptor.boot_id || observer.procfs_dev !== descriptor.procfs_dev ||
         !validIdentity(observer.identity)) return unconfirmed('native_observer_mismatch');
@@ -360,13 +368,20 @@ function queryCommandScope(descriptor, lineage, { timeoutMs = 5000 } = {}) {
     // no PID enumeration or new inferred-absence shortcut is introduced.
     const context = { ...descriptor, observer_pid_namespace: observer.observer_pid_namespace };
     const identity = { ...descriptor.init, pid: chain[frame.depth - 1] };
-    const proof = runIdentityOperation('--observe', context, identity, timeoutMs, helper);
+    if (!remaining()) return unconfirmed('command_scope_query_timeout');
+    const proof = runIdentityOperation('--observe', context, identity, remaining(), helper);
+    if (!remaining()) return unconfirmed('command_scope_query_timeout');
     if (proof.status === 'active') return { ...proof, status: 'active', method: 'linux_pid_namespace' };
     if (proof.status !== 'exited') return unconfirmed(proof.code || 'native_scope_exit_unconfirmed');
     return { status: 'completed', method: 'linux_pid_namespace', active_processes: 0, namespace_drained: true,
       descriptor_sha256: hash(JSON.stringify(descriptor)), init_exit_basis: proof.method,
       process_reaped: proof.process_reaped === true, release_inferred: proof.release_inferred === true };
   } catch (error) { return unconfirmed(error.code || 'native_scope_observer_unavailable'); }
+  })();
+  const cleanup = helper?.snapshot ? cleanupPreparedHelper(helper) : { status: 'not_owned' };
+  if (cleanup.status === 'unconfirmed') return { ...unconfirmed('command_native_snapshot_cleanup_unconfirmed'), artifact_cleanup: cleanup };
+  if (!remaining()) return unconfirmed('command_scope_query_timeout');
+  return result;
 }
 function recoverContainer(descriptor, options = {}) {
   const start = clock(), allowance = Math.max(1, Math.min(600000, Math.floor(Number(options.cleanup_timeout_ms) || 30000)));

@@ -35,6 +35,8 @@
 #include <linux/fs.h>
 #elif defined(__APPLE__)
 #include <sys/mount.h>
+#include <sys/acl.h>
+#include <CommonCrypto/CommonDigest.h>
 #else
 #error "Unsupported platform: no qualified exclusive directory publication"
 #endif
@@ -42,10 +44,13 @@
 
 #if defined(_WIN32)
 #define LOCK_PLATFORM "win32"
+#define OWNER_LEASE_PROTOCOL "windows-owner-event.v1"
 #elif defined(__APPLE__)
 #define LOCK_PLATFORM "darwin"
+#define OWNER_LEASE_PROTOCOL "owner-inode-lease.v1"
 #else
 #define LOCK_PLATFORM "linux"
+#define OWNER_LEASE_PROTOCOL "owner-inode-lease.v1"
 #endif
 #if defined(__x86_64__) || defined(_M_X64)
 #define LOCK_ARCH "x64"
@@ -90,7 +95,7 @@ static napi_value info(napi_env env, napi_callback_info ignored) {
   field(env, value, "schema_version", "knowledge-lock-publication-native.v1");
   field(env, value, "source_sha256", KNOWLEDGE_LOCK_SOURCE_SHA256);
   field(env, value, "platform", LOCK_PLATFORM); field(env, value, "architecture", LOCK_ARCH);
-  field(env, value, "lease_protocol", "owner-inode-lease.v1");
+  field(env, value, "lease_protocol", OWNER_LEASE_PROTOCOL);
   napi_value version; napi_create_uint32(env, 8, &version); napi_set_named_property(env, value, "napi_version", version);
   return value;
 }
@@ -271,6 +276,10 @@ done:
 #endif
 typedef NTSTATUS (NTAPI *open_relative_fn)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK,
   PLARGE_INTEGER, ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
+typedef NTSTATUS (NTAPI *set_information_fn)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
+_Static_assert(sizeof(void *) == 8 && offsetof(FILE_RENAME_INFO, RootDirectory) == 8 &&
+  offsetof(FILE_RENAME_INFO, FileNameLength) == 16 && offsetof(FILE_RENAME_INFO, FileName) == 20,
+  "Unexpected Windows relative rename ABI");
 typedef ULONG (WINAPI *dos_error_fn)(NTSTATUS);
 typedef struct { HANDLE root, locks, version, release, stage; BY_HANDLE_FILE_INFORMATION r, v, p, s; } anchors;
 typedef struct { HANDLE file; BY_HANDLE_FILE_INFORMATION owner, directory; unsigned char raw[4097]; size_t used; } owner_lease;
@@ -329,8 +338,8 @@ static HANDLE open_owner_file(HANDLE directory) {
   UNICODE_STRING value; value.Buffer = L"owner.json"; value.Length = 10 * sizeof(wchar_t); value.MaximumLength = value.Length;
   OBJECT_ATTRIBUTES oa; InitializeObjectAttributes(&oa, &value, OBJ_CASE_INSENSITIVE, directory, NULL);
   IO_STATUS_BLOCK io; HANDLE handle = INVALID_HANDLE_VALUE;
-  /* LockFileEx accepts a GENERIC_READ handle. Do not require permission to
-     alter immutable ownership bytes merely to inspect their lifetime lease. */
+  /* Read immutable ownership bytes without requiring write permission.
+     The lifetime reference is retained separately before publication. */
   NTSTATUS status = open_relative(&handle, GENERIC_READ | SYNCHRONIZE,
     &oa, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
     0x00000040 /* FILE_NON_DIRECTORY_FILE */ | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT, NULL, 0);
@@ -344,10 +353,6 @@ static int take_owner_lease(HANDLE directory, owner_lease *lease) {
   if (GetFileType(lease->file) != FILE_TYPE_DISK || !GetFileInformationByHandle(directory, &lease->directory) ||
       !GetFileInformationByHandle(lease->file, &lease->owner)) return -1;
   if (!same_file(&lease->owner, &lease->owner) || lease->owner.nFileSizeHigh || !lease->owner.nFileSizeLow || lease->owner.nFileSizeLow > 4096) { SetLastError(ERROR_FILE_INVALID); return -1; }
-  OVERLAPPED range; memset(&range, 0, sizeof(range)); range.Offset = 1048576;
-  // The reserved byte is beyond the 4096-byte immutable owner. Ordinary
-  // Windows readers never touch a mandatory byte-range lock in their data.
-  if (!LockFileEx(lease->file, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &range)) return GetLastError() == ERROR_LOCK_VIOLATION ? 1 : -1;
   FILE_BASIC_INFO before_basic, after_basic;
   if (!GetFileInformationByHandleEx(lease->file, FileBasicInfo, &before_basic, sizeof(before_basic))) return -1;
   while (lease->used < sizeof(lease->raw)) {
@@ -362,6 +367,29 @@ static int take_owner_lease(HANDLE directory, owner_lease *lease) {
     before_basic.ChangeTime.QuadPart == after_basic.ChangeTime.QuadPart && before_basic.LastWriteTime.QuadPart == after_basic.LastWriteTime.QuadPart;
   if (current != INVALID_HANDLE_VALUE) CloseHandle(current);
   if (!valid) { SetLastError(ERROR_FILE_INVALID); return -1; }
+  /* NTFS does not permit moving a directory containing an open file, even
+     with FILE_SHARE_DELETE. Retain a kernel object keyed by these immutable
+     physical identities instead. Object existence, never event state, is
+     the lifetime proof. The Global namespace spans interactive sessions. */
+  if(lease->owner.dwVolumeSerialNumber!=lease->directory.dwVolumeSerialNumber) { SetLastError(ERROR_NOT_SAME_DEVICE); return -1; }
+  unsigned long long owner_id=((unsigned long long)lease->owner.nFileIndexHigh<<32)|lease->owner.nFileIndexLow;
+  unsigned long long directory_id=((unsigned long long)lease->directory.nFileIndexHigh<<32)|lease->directory.nFileIndexLow;
+  wchar_t event_name[160];
+  if(_snwprintf_s(event_name,160,_TRUNCATE,L"Global\\KnowledgeOwnerLease-v1-%08lX-%016llX-%016llX",
+      (unsigned long)lease->owner.dwVolumeSerialNumber,owner_id,directory_id)<0) { SetLastError(ERROR_INVALID_NAME); return -1; }
+  close_lease_handle(lease);
+  SetLastError(ERROR_SUCCESS);
+  HANDLE lifetime=CreateEventExW(NULL,event_name,CREATE_EVENT_MANUAL_RESET,SYNCHRONIZE);
+  DWORD created_error=GetLastError();
+  if(!lifetime) {SetLastError(created_error);return -1;}
+  if(created_error!=ERROR_SUCCESS) {
+    CloseHandle(lifetime);SetLastError(created_error);
+    return created_error==ERROR_ALREADY_EXISTS?1:-1;
+  }
+  if(!SetHandleInformation(lifetime,HANDLE_FLAG_INHERIT,0)) {
+    DWORD e=GetLastError();CloseHandle(lifetime);SetLastError(e);return -1;
+  }
+  lease->file=lifetime;
   return 0;
 }
 static wchar_t *wide(const char *input) {
@@ -430,13 +458,28 @@ static int publish_native(const char *root_input, const char *stage_input, const
   anchors a = { INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE };
   FILE_RENAME_INFO *rename_info = NULL; int result = -1; *published = 0;
   if (!root || !stage || !public_name || open_anchors(root, stage, &a, 1) || binding(root, stage, public_name, &a, 0) || take_owner_lease(a.stage, lease)) goto done;
-  size_t length = wcslen(public_name)*sizeof(wchar_t), size = offsetof(FILE_RENAME_INFO, FileName) + length;
+  size_t length = wcslen(public_name)*sizeof(wchar_t), size = sizeof(FILE_RENAME_INFO) + length;
   rename_info = (FILE_RENAME_INFO *)calloc(1, size); if (!rename_info) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); goto done; }
   rename_info->ReplaceIfExists = FALSE; rename_info->RootDirectory = a.version;
   rename_info->FileNameLength = (DWORD)length; memcpy(rename_info->FileName, public_name, length);
   if (budget_expired(start, budget)) { SetLastError(ERROR_TIMEOUT); result = 2; goto done; }
-  if (!SetFileInformationByHandle(a.stage, FileRenameInfo, rename_info, (DWORD)size)) {
-    DWORD code = GetLastError(); if (code == ERROR_ALREADY_EXISTS || code == ERROR_FILE_EXISTS) result = 1;
+  /* The Win32 FileRenameInfo wrapper rejects a non-NULL RootDirectory on
+     actual Windows runners, despite the structure documentation. Do not
+     turn this into a by-path rename: the pinned destination HANDLE is the
+     containment boundary. The NT FileRenameInformation service accepts
+     precisely this bounded relative name and preserves no-replace. */
+  HMODULE module = GetModuleHandleW(L"ntdll.dll");
+  set_information_fn set_information = (set_information_fn)GetProcAddress(module, "NtSetInformationFile");
+  dos_error_fn dos_error = (dos_error_fn)GetProcAddress(module, "RtlNtStatusToDosError");
+  if (!set_information || !dos_error) { SetLastError(ERROR_NOT_SUPPORTED); goto done; }
+  IO_STATUS_BLOCK io; memset(&io, 0, sizeof(io));
+  NTSTATUS status = set_information(a.stage, &io, rename_info, (ULONG)size, (FILE_INFORMATION_CLASS)10 /* FileRenameInformation */);
+  if (status != 0 || io.Status != 0) {
+    /* Our HANDLE is synchronous. A pending return must nevertheless remain
+       publication uncertainty, never permission to clean or admit work. */
+    if (status == (NTSTATUS)0x00000103L) *published = 1;
+    DWORD code = dos_error(status != 0 ? status : io.Status);
+    if (code == ERROR_ALREADY_EXISTS || code == ERROR_FILE_EXISTS) result = 1;
     SetLastError(code); goto done;
   }
   *published = 1;
@@ -552,12 +595,141 @@ static napi_value publish(napi_env env, napi_callback_info callback) {
   close_lease_handle(&lease);
   return value;
 }
+/* Independent executable trust check. The package's pinned N-API code checks
+ * the candidate helper; an executable's own --probe reply cannot authenticate
+ * permissions on itself. All metadata and bytes come from anchored descriptors.
+ * Invoke only in the isolated preparer/storage process: a real kernel I/O stall
+ * can outlive the logical budget and must not block the monitor's stop path. */
+#if defined(__APPLE__)
+static int protected_same(const struct stat *a,const struct stat *b,int leaf) {
+  return a->st_dev==b->st_dev && a->st_ino==b->st_ino && a->st_mode==b->st_mode &&
+    a->st_uid==b->st_uid && a->st_gid==b->st_gid && (!leaf ||
+    (a->st_size==b->st_size && a->st_nlink==b->st_nlink &&
+      a->st_mtimespec.tv_sec==b->st_mtimespec.tv_sec && a->st_mtimespec.tv_nsec==b->st_mtimespec.tv_nsec &&
+      a->st_ctimespec.tv_sec==b->st_ctimespec.tv_sec && a->st_ctimespec.tv_nsec==b->st_ctimespec.tv_nsec));
+}
+static int protected_acl_fd(int fd,const struct stat *expected,int leaf) {
+  filesec_t metadata=filesec_init();if(!metadata)return 0;
+  struct stat observed;int present=0,safe=0;acl_t acl=NULL;
+  if(fstatx_np(fd,&observed,metadata) || !protected_same(expected,&observed,leaf) ||
+      filesec_query_property(metadata,FILESEC_ACL,&present))goto done;
+  if(!present){safe=1;goto done;}
+  if(filesec_get_property(metadata,FILESEC_ACL,&acl) || !acl)goto done;
+  /* Darwin returns -1/EINVAL after the last entry; this is not Linux's 0 end.
+   * A bounded index also makes malformed or unexpectedly huge ACLs fail shut. */
+  for(int index=0;index<1024;index++) {
+    acl_entry_t entry;errno=0;
+    if(acl_get_entry(acl,index,&entry)) {if(errno==EINVAL)safe=1;goto done;}
+    acl_tag_t tag;acl_permset_t permissions;
+    if(acl_get_tag_type(entry,&tag) || acl_get_permset(entry,&permissions))goto done;
+    if(tag==ACL_EXTENDED_DENY)continue;
+    if(tag!=ACL_EXTENDED_ALLOW)goto done;
+    const acl_perm_t writes[]={ACL_WRITE_DATA,ACL_APPEND_DATA,ACL_DELETE,ACL_DELETE_CHILD,
+      ACL_WRITE_ATTRIBUTES,ACL_WRITE_EXTATTRIBUTES,ACL_WRITE_SECURITY,ACL_CHANGE_OWNER};
+    for(size_t i=0;i<sizeof(writes)/sizeof(writes[0]);i++)
+      if(acl_get_perm_np(permissions,writes[i])!=0)goto done;
+  }
+done:
+  if(acl)acl_free(acl);filesec_free(metadata);return safe;
+}
+static int protected_metadata(int fd,struct stat *st,int leaf,int sticky_tmp) {
+  if(fstat(fd,st) || st->st_uid!=0 || (st->st_mode&0022 && !sticky_tmp))return 0;
+  if(leaf ? (!S_ISREG(st->st_mode)||st->st_nlink!=1||(st->st_mode&06000)||!(st->st_mode&0111))
+      : (!S_ISDIR(st->st_mode)||(sticky_tmp&&!(st->st_mode&S_ISVTX))))return 0;
+  return protected_acl_fd(fd,st,leaf);
+}
+static void protected_u64(napi_env env,napi_value result,const char *name,uint64_t value) {
+  char buffer[32];snprintf(buffer,sizeof(buffer),"%llu",(unsigned long long)value);field(env,result,name,buffer);
+}
+static napi_value verify_protected_executable(napi_env env,napi_callback_info callback) {
+  napi_value args[3];size_t count=3;double maximum=0,budget=0;char *path=NULL,*cursor=NULL;
+  if(napi_get_cb_info(env,callback,&count,args,NULL,NULL)!=napi_ok||count!=3 ||
+      !(path=string_argument(env,args[0],4096)) ||
+      napi_get_value_double(env,args[1],&maximum)!=napi_ok||!isfinite(maximum)||maximum<1||maximum>268435456||floor(maximum)!=maximum ||
+      napi_get_value_double(env,args[2],&budget)!=napi_ok||!isfinite(budget)||budget<1||budget>600000) {
+    free(path);return fail(env,"darwin_protected_argument_invalid","Expected canonical path, byte cap and remaining budget.",0);
+  }
+  int fds[257],used=0,ok=0;char *names[257]={0};struct stat states[257];
+  for(size_t i=0;i<257;i++)fds[i]=-1;
+  unsigned long native_error=0;const char *reason="darwin_protected_path_unsafe";
+  double start=monotonic_ms();size_t length=strlen(path);
+  if(path[0]!='/'||length<2||path[length-1]=='/'||strstr(path,"//")||strchr(path,'\\'))goto done;
+  for(size_t i=0;i<length;i++)if((unsigned char)path[i]<32 || (unsigned char)path[i]==127)goto done;
+  fds[0]=open("/",O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK);used=1;
+  if(fds[0]<0 || !protected_metadata(fds[0],&states[0],0,0))goto done;
+  cursor=path+1;
+  while(*cursor) {
+    if(budget_expired(start,budget)){reason="darwin_protected_budget_exceeded";goto done;}
+    if(used>=257)goto done;
+    char *next=strchr(cursor,'/');int leaf=next==NULL;
+    if(next)*next=0;
+    if(!*cursor||!strcmp(cursor,".")||!strcmp(cursor,".."))goto done;
+    names[used]=cursor;struct stat named;
+    if(fstatat(fds[used-1],cursor,&named,AT_SYMLINK_NOFOLLOW)||S_ISLNK(named.st_mode))goto done;
+    fds[used]=openat(fds[used-1],cursor,O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK|(leaf?0:O_DIRECTORY));
+    int index=used++;
+    int sticky_tmp=index==2&&!strcmp(names[1],"private")&&!strcmp(cursor,"tmp")&&!leaf;
+    if(fds[index]<0 || !protected_metadata(fds[index],&states[index],leaf,sticky_tmp) ||
+        !protected_same(&named,&states[index],leaf))goto done;
+    if(leaf)break;cursor=next+1;
+  }
+  if(used<2 || !S_ISREG(states[used-1].st_mode) || states[used-1].st_size<1 ||
+      (uint64_t)states[used-1].st_size>(uint64_t)maximum)goto done;
+  unsigned char block[65536],digest[CC_SHA256_DIGEST_LENGTH];CC_SHA256_CTX hash;
+  if(CC_SHA256_Init(&hash)!=1)goto done;
+  off_t offset=0,bytes=states[used-1].st_size;
+  while(offset<bytes) {
+    if(budget_expired(start,budget)){reason="darwin_protected_budget_exceeded";goto done;}
+    size_t wanted=(uint64_t)(bytes-offset)>sizeof(block)?sizeof(block):(size_t)(bytes-offset);
+    ssize_t got=pread(fds[used-1],block,wanted,offset);
+    if(got<0&&errno==EINTR)continue;
+    if(got<=0||CC_SHA256_Update(&hash,block,(CC_LONG)got)!=1)goto done;
+    offset+=got;
+  }
+  for(;;) {
+    if(budget_expired(start,budget)){reason="darwin_protected_budget_exceeded";goto done;}
+    ssize_t extra=pread(fds[used-1],block,1,bytes);
+    if(extra<0&&errno==EINTR)continue;if(extra!=0)goto done;break;
+  }
+  if(CC_SHA256_Final(digest,&hash)!=1)goto done;
+  for(int i=used-1;i>=0;i--) {
+    if(budget_expired(start,budget)){reason="darwin_protected_budget_exceeded";goto done;}
+    struct stat after,named;int leaf=i==used-1;
+    if(fstat(fds[i],&after)||!protected_same(&states[i],&after,leaf)||!protected_acl_fd(fds[i],&after,leaf))goto done;
+    if(i>0 && (fstatat(fds[i-1],names[i],&named,AT_SYMLINK_NOFOLLOW)||!protected_same(&after,&named,leaf)))goto done;
+    if(i==0 && (lstat("/",&named)||!protected_same(&after,&named,0)))goto done;
+  }
+  if(budget_expired(start,budget)){reason="darwin_protected_budget_exceeded";goto done;}ok=1;
+done:
+  native_error=(unsigned long)errno;
+  for(int i=used-1;i>=0;i--)if(fds[i]>=0)close(fds[i]);
+  free(path);
+  if(!ok)return fail(env,reason,"Protected executable metadata, ACL or stable bytes could not be confirmed.",native_error);
+  napi_value result;napi_create_object(env,&result);
+  field(env,result,"schema","knowledge-darwin-protected-executable.v1");field(env,result,"status","verified");
+  char hexadecimal[65];for(unsigned i=0;i<32;i++)snprintf(hexadecimal+i*2,3,"%02x",digest[i]);
+  field(env,result,"sha256",hexadecimal);
+  protected_u64(env,result,"device",(uint64_t)states[used-1].st_dev);
+  protected_u64(env,result,"inode",(uint64_t)states[used-1].st_ino);
+  protected_u64(env,result,"bytes",(uint64_t)states[used-1].st_size);
+  protected_u64(env,result,"ctime_sec",(uint64_t)states[used-1].st_ctimespec.tv_sec);
+  protected_u64(env,result,"ctime_nsec",(uint64_t)states[used-1].st_ctimespec.tv_nsec);
+  protected_u64(env,result,"mtime_sec",(uint64_t)states[used-1].st_mtimespec.tv_sec);
+  protected_u64(env,result,"mtime_nsec",(uint64_t)states[used-1].st_mtimespec.tv_nsec);
+  return result;
+}
+#else
+static napi_value verify_protected_executable(napi_env env,napi_callback_info callback) {
+  (void)callback;return fail(env,"darwin_protected_platform_unsupported","Darwin ACL observation requires Darwin.",0);
+}
+#endif
 NAPI_MODULE_INIT() {
   napi_property_descriptor definitions[] = {
     { "info", NULL, info, NULL, NULL, NULL, napi_default, NULL },
     { "publish", NULL, publish, NULL, NULL, NULL, napi_default, NULL }
     ,{ "probeLease", NULL, probe_lease, NULL, NULL, NULL, napi_default, NULL }
     ,{ "closeLease", NULL, close_lease, NULL, NULL, NULL, napi_default, NULL }
+    ,{ "verifyProtectedExecutable", NULL, verify_protected_executable, NULL, NULL, NULL, napi_default, NULL }
   };
   napi_define_properties(env, exports, sizeof(definitions)/sizeof(definitions[0]), definitions); return exports;
 }

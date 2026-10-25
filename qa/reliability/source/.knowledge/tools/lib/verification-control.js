@@ -9,12 +9,14 @@ const os = require('os');
 const { copyInertData } = require('./inert-data');
 const { assertSafeContainmentRoot, assertSafeContainedPath, ensureContainedDir,
   writeJsonAtomicContained } = require('./json-store');
-const { withContainedLock } = require('./contained-lock-manager');
+const { acquireContainedLock, withContainedLock } = require('./contained-lock-manager');
 const { LOCKS } = require('./lock-policy');
 
 const LEGACY_SCHEMA = 'knowledge-verification-control.v1';
 const PREVIOUS_SCHEMA = 'knowledge-verification-control.v2';
-const SCHEMA = 'knowledge-verification-control.v3';
+const TRANSCRIPT_PREVIOUS_SCHEMA = 'knowledge-verification-control.v3';
+const SCHEMA = 'knowledge-verification-control.v4';
+const STORAGE_PROTOCOL = 'lifetime_lease.v1';
 const TRANSCRIPT_SCHEMA = 'knowledge-native-cleanup-transcript.v1';
 const MAX_TRANSCRIPT_BYTES = 64 * 1024;
 const LOCAL_RECOVERER_NONCE = crypto.randomBytes(32).toString('hex');
@@ -30,6 +32,7 @@ const OUTCOMES = new Set(['passed','failed','cancelled','timed_out']);
 const STAGES = new Set(['setup','test_setup','command','finalization','receipt_commit','between_tests','batch_receipt','cleanup']);
 const WAIT_REASONS = new Set(['work','cleanup','cancel','work_timeout','progress_timeout']);
 const resourceScopes = new Set();
+const storageLeases = new Map();
 const resourceKey = loc => loc.rootIdentity.dev + ':' + loc.rootIdentity.ino;
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const now = () => new Date().toISOString();
@@ -59,6 +62,40 @@ function location(context) {
   const rootIdentity = identity(fs.lstatSync(root,{bigint:true}));
   const directory = path.join(root,'maintenance','verification-control');
   return { root, rootIdentity, directory, active: path.join(directory,'active.json') };
+}
+function requireStorageLease(loc, attempt) {
+  if(attempt?.storage_protocol===STORAGE_PROTOCOL)
+    requireThat(storageLeases.has(resourceKey(loc)),'verification_storage_lease_required');
+}
+function acquireStorageLease(context, options={}) {
+  options=inert(options);
+  requireThat(options && Object.keys(options).every(key=>key==='timeoutMs'),'verification_control_invalid');
+  const loc=location(context),key=resourceKey(loc);
+  requireThat(!storageLeases.has(key),'verification_storage_lease_already_held');
+  const lease=acquireContainedLock({context,rootKind:'state',rootPath:loc.root,lockName:'verification-storage',
+    purpose:LOCKS['verification-storage'].purpose,...(options.timeoutMs===undefined?{}:{timeoutMs:options.timeoutMs})});
+  let active=true;
+  const handle=Object.freeze({release(){
+    if(!active)return false;
+    // Revocation is irreversible even when retirement/cleanup fails. No
+    // later control operation may rely on this spent in-process authority.
+    active=false;storageLeases.delete(key);return lease.release();
+  }});
+  storageLeases.set(key,handle);return handle;
+}
+function withStorageLease(context, action, options={}) {
+  requireThat(typeof action==='function','verification_control_invalid');
+  const invoke=()=>{const result=action();requireThat(!result || typeof result.then!=='function','verification_storage_async_unsupported');return result;};
+  if(storageLeases.has(resourceKey(location(context))))return invoke();
+  const lease=acquireStorageLease(context,options);
+  try{return invoke();}finally{lease.release();}
+}
+function withPriorStorageFence(context, action) {
+  const loc=location(context),previous=load(loc);
+  // Take the long lease before the short CAS mutex. The opposite lock order
+  // could deadlock an old storage writer trying to finish its last write.
+  return previous?.storage_protocol===STORAGE_PROTOCOL && !storageLeases.has(resourceKey(loc))
+    ? withStorageLease(context,action) : action();
 }
 function physicalRead(loc,file) {
   try {
@@ -107,11 +144,14 @@ function validate(a,loc) {
     a = {...a,schema_version:PREVIOUS_SCHEMA,containment:null,recovery:null};
   }
   if(a && a.schema_version===PREVIOUS_SCHEMA && exact(a.cleanup,['status','attempts','evidence_sha256']))
-    a={...a,schema_version:SCHEMA,cleanup:{...a.cleanup,native_transcript:null,transcript_required:false}};
-  requireThat(exact(a,['schema_version','attempt_id','generation','revision','root_identity','request_sha256','owner_token_sha256','initiator','profile','phase','claimed','created_at','updated_at','cancel','stop_reason','runtime_observation','progress','progress_history','processes','cleanup','terminal','containment','recovery']),'verification_control_corrupt');
+    a={...a,schema_version:TRANSCRIPT_PREVIOUS_SCHEMA,cleanup:{...a.cleanup,native_transcript:null,transcript_required:false}};
+  if(a && a.schema_version===TRANSCRIPT_PREVIOUS_SCHEMA && exact(a,['schema_version','attempt_id','generation','revision','root_identity','request_sha256','owner_token_sha256','initiator','profile','phase','claimed','created_at','updated_at','cancel','stop_reason','runtime_observation','progress','progress_history','processes','cleanup','terminal','containment','recovery']))
+    a={...a,schema_version:SCHEMA,storage_protocol:null,startup_nonce_sha256:null};
+  requireThat(exact(a,['schema_version','attempt_id','generation','revision','root_identity','request_sha256','owner_token_sha256','initiator','profile','phase','claimed','created_at','updated_at','cancel','stop_reason','runtime_observation','progress','progress_history','processes','cleanup','terminal','containment','recovery','storage_protocol','startup_nonce_sha256']),'verification_control_corrupt');
   requireThat(a.schema_version === SCHEMA && ID.test(a.attempt_id) && GENERATION.test(a.generation) && integer(a.revision,1) &&
     same(a.root_identity,loc.rootIdentity) && HASH.test(a.request_sha256) && HASH.test(a.owner_token_sha256) &&
-    same(normalizeProfile(a.profile),a.profile) && PHASES.has(a.phase) && typeof a.claimed === 'boolean' && iso(a.created_at) && iso(a.updated_at),'verification_control_corrupt');
+    same(normalizeProfile(a.profile),a.profile) && PHASES.has(a.phase) && typeof a.claimed === 'boolean' && iso(a.created_at) && iso(a.updated_at) &&
+    (a.storage_protocol===null ? a.startup_nonce_sha256===null : a.storage_protocol===STORAGE_PROTOCOL && HASH.test(a.startup_nonce_sha256)),'verification_control_corrupt');
   requireThat(exact(a.initiator,['pid','agent_id','host_sha256','process_creation_time']) && integer(a.initiator.pid,1) &&
     (a.initiator.agent_id===null || /^[A-Za-z0-9_.-]{1,128}$/.test(a.initiator.agent_id)) && HASH.test(a.initiator.host_sha256) && a.initiator.process_creation_time===null,'verification_control_corrupt');
   requireThat(exact(a.cancel,['requested','reason_code','at']) && typeof a.cancel.requested === 'boolean' &&
@@ -142,11 +182,13 @@ function validate(a,loc) {
     const c=a.containment;
     if(exact(c,['backend','descriptor_sha256','descriptor','spawn_ids'])) c.cleanup_receipt=null;
     requireThat(exact(c,['backend','descriptor_sha256','descriptor','spawn_ids','cleanup_receipt']) &&
-      ['windows_job_object','linux_pid_namespace'].includes(c.backend) &&
+      ['windows_job_object','linux_pid_namespace','darwin_private_ruid'].includes(c.backend) &&
       c.descriptor && !Array.isArray(c.descriptor) && typeof c.descriptor==='object' && c.descriptor.backend===c.backend &&
       HASH.test(c.descriptor_sha256) && hash(JSON.stringify(c.descriptor))===c.descriptor_sha256 &&
-      Buffer.byteLength(JSON.stringify(c.descriptor))<=32768 && Array.isArray(c.spawn_ids) && c.spawn_ids.length>0 &&
+      Buffer.byteLength(JSON.stringify(c.descriptor))<=32768 && Array.isArray(c.spawn_ids) &&
+      (c.spawn_ids.length>0 || c.backend==='darwin_private_ruid') &&
       c.spawn_ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || c.spawn_ids[i-1]<id)),'verification_control_corrupt');
+    if(c.backend==='darwin_private_ruid')requireThat(require('./verification-darwin-control').validateAttemptBinding(a,c),'verification_control_corrupt');
     if(c.cleanup_receipt!==null) {
       const receipt=c.cleanup_receipt,{evidence_sha256,...observed}=receipt;
       assertNativeProofPublicFields(receipt);
@@ -206,9 +248,14 @@ function ownerCheck(a,owner) {
 function changed(loc,a) { a.revision++;a.updated_at=now();write(loc,a);return publicAttempt(a); }
 function beginAttempt(context, options) {
   options=inert(options); requireThat(options && HASH.test(options.request_sha256));
+  requireThat(options.storage_protocol===undefined || options.storage_protocol===STORAGE_PROTOCOL,'verification_storage_protocol_invalid');
+  requireThat(options.storage_protocol===STORAGE_PROTOCOL ? HASH.test(options.startup_nonce_sha256) :
+    options.startup_nonce_sha256===undefined,'verification_startup_nonce_invalid');
+  requireStorageLease(location(context),{storage_protocol:options.storage_protocol});
   const profile=normalizeProfile(options.profile);
-  return mutate(context,(loc,a)=>{
+  return withPriorStorageFence(context,()=>mutate(context,(loc,a)=>{
     if(a?.claimed) fail('verification_recovery_required','An active verification owns this state root; inspect status/cancel/recover.');
+    requireStorageLease(loc,a);
     if(a) {
       const archived=path.join(loc.directory,'attempts',a.attempt_id+'.json');
       ensureContainedDir(loc.root,path.dirname(archived));
@@ -218,10 +265,10 @@ function beginAttempt(context, options) {
     const token=crypto.randomBytes(32).toString('hex'),at=now();
     a={schema_version:SCHEMA,attempt_id:'VAT-'+crypto.randomBytes(16).toString('hex'),generation:crypto.randomBytes(16).toString('hex'),revision:1,root_identity:loc.rootIdentity,
       request_sha256:options.request_sha256,owner_token_sha256:hash(token),initiator:{pid:process.pid,agent_id:/^[A-Za-z0-9_.-]{1,128}$/.test(process.env.KNOWLEDGE_AGENT_ID||'')?process.env.KNOWLEDGE_AGENT_ID:null,host_sha256:hash(os.hostname()),process_creation_time:null},profile,phase:'reserved',claimed:true,created_at:at,updated_at:at,
-      cancel:{requested:false,reason_code:null,at:null},stop_reason:null,runtime_observation:null,progress:{sequence:0,milestone:null,ordinal:0,evidence_sha256:null,at:null},progress_history:[],processes:[],cleanup:{status:'not_started',attempts:0,evidence_sha256:null,native_transcript:null,transcript_required:true},terminal:null,containment:null,recovery:null};
+      cancel:{requested:false,reason_code:null,at:null},stop_reason:null,runtime_observation:null,progress:{sequence:0,milestone:null,ordinal:0,evidence_sha256:null,at:null},progress_history:[],processes:[],cleanup:{status:'not_started',attempts:0,evidence_sha256:null,native_transcript:null,transcript_required:true},terminal:null,containment:null,recovery:null,storage_protocol:options.storage_protocol??null,startup_nonce_sha256:options.startup_nonce_sha256??null};
     write(loc,a);
     return {attempt:publicAttempt(a),owner:{attempt_id:a.attempt_id,generation:a.generation,token}};
-  });
+  }));
 }
 function readStatus(context) {
   const a=load(location(context));
@@ -249,11 +296,12 @@ function withResourceAvailable(context,action) {
   const loc=location(context),key=resourceKey(loc);
   const invoke=()=>{const result=action();requireThat(!result || typeof result.then!=='function','verification_resource_async_unsupported');return result;};
   if(resourceScopes.has(key))return invoke();
-  return mutate(context,(_loc,a)=>{
+  return withPriorStorageFence(context,()=>mutate(context,(_loc,a)=>{
     if(a?.claimed)fail('verification_recovery_required');
+    requireStorageLease(_loc,a);
     resourceScopes.add(key);
     try{return invoke();}finally{resourceScopes.delete(key);}
-  });
+  }));
 }
 function assertResourceAvailable(context,owner=null) {
   return mutate(context,(_loc,a)=>{
@@ -265,6 +313,7 @@ function updateAttempt(context,owner,event) {
   event=inert(event);requireThat(event && typeof event.type==='string');
   return mutate(context,(loc,a)=>{
     ownerCheck(a,owner);requireThat(a.claimed,'verification_already_terminal');
+    requireStorageLease(loc,a);
     if(event.expected_revision!==undefined)requireThat(event.expected_revision===a.revision,'verification_control_conflict');
     // The original authority may append exact exit observations and monotonic
     // native cleanup evidence. Neither fact changes the work fence, reservation,
@@ -284,11 +333,28 @@ function updateAttempt(context,owner,event) {
       requireThat(!a.cancel.requested && !a.stop_reason && a.cleanup.status==='not_started' && a.containment===null,'verification_stopped');
       const descriptor=inert(event.descriptor),ids=inert(event.spawn_ids);
       requireThat(descriptor && !Array.isArray(descriptor) && typeof descriptor==='object' &&
-        ['windows_job_object','linux_pid_namespace'].includes(descriptor.backend) && Buffer.byteLength(JSON.stringify(descriptor))<=32768 &&
-        Array.isArray(ids) && ids.length>0 && ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || ids[i-1]<id)),'verification_containment_invalid');
+        ['windows_job_object','linux_pid_namespace','darwin_private_ruid'].includes(descriptor.backend) && Buffer.byteLength(JSON.stringify(descriptor))<=32768 &&
+        Array.isArray(ids) && (ids.length>0 || descriptor.backend==='darwin_private_ruid') && ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || ids[i-1]<id)),'verification_containment_invalid');
       a.containment={backend:descriptor.backend,descriptor_sha256:hash(JSON.stringify(descriptor)),descriptor,spawn_ids:ids,cleanup_receipt:null};
+      if(descriptor.backend==='darwin_private_ruid')requireThat(require('./verification-darwin-control').validateAttemptBinding(a),'verification_containment_invalid');
+    } else if(event.type==='darwin_authority_bound') {
+      requireThat(!a.cancel.requested && !a.stop_reason && a.cleanup.status==='not_started' &&
+        a.containment?.backend==='darwin_private_ruid' && a.containment.descriptor.authority_identity===null &&
+        a.processes.length===0 && a.containment.spawn_ids.length===0,'verification_stopped');
+      const descriptor=inert(event.descriptor),previous=a.containment.descriptor;
+      const bridge=require('./verification-darwin-control');
+      requireThat(bridge.validateDescriptor(descriptor) && descriptor.authority_identity!==null &&
+        same(descriptor.scope,previous.scope) && same(descriptor.controller_identity,previous.controller_identity) &&
+        descriptor.authority_identity.birth.pid===event.pid && (event.process_nonce??event.logical_nonce)===a.generation &&
+        HASH.test(event.executable_sha256),'verification_containment_invalid');
+      a.processes=[{spawn_id:1,role:'authority',pid:event.pid,os_creation_time:null,process_nonce:a.generation,
+        executable_sha256:event.executable_sha256,exit_observed:false}];
+      a.containment={backend:descriptor.backend,descriptor_sha256:hash(JSON.stringify(descriptor)),descriptor,
+        spawn_ids:[1],cleanup_receipt:null};
+      requireThat(bridge.validateAttemptBinding(a),'verification_containment_invalid');
     } else if(event.type==='spawn_intent') {
       requireThat(!a.cancel.requested && !a.stop_reason && a.cleanup.status==='not_started','verification_stopped');
+      requireThat(a.containment?.backend!=='darwin_private_ruid','verification_spawn_invalid');
       requireThat(ROLES.has(event.role) && a.processes.length<128,'verification_spawn_invalid');
       a.processes.push({spawn_id:a.processes.length+1,role:event.role,pid:null,os_creation_time:null,process_nonce:null,executable_sha256:null,exit_observed:false});
     } else if(event.type==='spawn_aborted') {
@@ -363,6 +429,14 @@ function namespaceFinality(proof,allowInference) {
     ['linux_boot_birth_absent','linux_boot_birth_replaced'].includes(proof.init_exit_basis) && proof.init_reap_basis==='kernel_namespace_init_final_exit';
 }
 function validNativeContainerProof(a,proof) {
+  if(proof?.method==='darwin_private_ruid') {
+    const bridge=require('./verification-darwin-control');
+    return proof.attempt_id===a.attempt_id && proof.generation===a.generation &&
+      a.containment?.backend==='darwin_private_ruid' && proof.descriptor_sha256===a.containment.descriptor_sha256 &&
+      HASH.test(proof.evidence_sha256) && bridge.validateAttemptBinding(a) &&
+      bridge.validateProof(proof,a.containment.descriptor,{allowRecovery:a.recovery!==null}) &&
+      (proof.proof_kind!=='normal_current' || proof.authority_exit.process_nonce===a.generation);
+  }
   return proof && proof.attempt_id===a.attempt_id && proof.generation===a.generation &&
     proof.status==='completed' && ['windows_job_object','linux_pid_namespace'].includes(proof.method) && proof.active_processes===0 &&
     (a.containment===null ? proof.method==='windows_job_object' : proof.method===a.containment.backend && proof.descriptor_sha256===a.containment.descriptor_sha256 && proof.worker_exited===true) &&
@@ -371,9 +445,11 @@ function validNativeContainerProof(a,proof) {
 function confirmedCleanup(a,proof) {
   proof=inert(proof);
   if(!proof || proof.attempt_id!==a.attempt_id || proof.generation!==a.generation)return false;
-  if(proof.method==='no_processes_started')return a.processes.length===0;
+  if(proof.method==='no_processes_started')return a.processes.length===0 && a.containment===null;
   if(proof.method==='controller_only')return proof.status==='completed' && HASH.test(proof.evidence_sha256) && controllerOnly(a);
-  return validNativeContainerProof(a,proof) && a.processes.length>0 && a.processes.every(p=>p.pid!==null && p.exit_observed);
+  return validNativeContainerProof(a,proof) && (a.processes.length>0 ||
+    proof.method==='darwin_private_ruid' && proof.proof_kind==='recovery_observation' && a.containment.descriptor.authority_identity===null) &&
+    a.processes.every(p=>p.pid!==null && p.exit_observed);
 }
 
 // Preserve the exact native return before adding control-plane bindings. The
@@ -435,6 +511,9 @@ function finishRecord(loc,a,input) {
   requireThat(input && OUTCOMES.has(input.outcome));
   requireThat(confirmedCleanup(a,input.cleanup_proof),'verification_cleanup_unconfirmed');
   requireThat(input.cleanup_proof.method!=='controller_only' || input.outcome!=='passed','verification_ack_invalid');
+  requireThat(input.outcome!=='passed' || input.cleanup_proof.method!=='darwin_private_ruid' ||
+    input.cleanup_proof.proof_kind==='normal_current' && input.cleanup_proof.proof_current===true &&
+    input.cleanup_proof.cleanup_only===false,'verification_cleanup_unconfirmed');
   requireThat(input.outcome!=='passed' || input.cleanup_proof.method!=='linux_pid_namespace' || input.cleanup_proof.init_reaped===true && input.cleanup_proof.init_exit_observed===true && input.cleanup_proof.init_exit_inferred!==true,'verification_cleanup_unconfirmed');
   if (input.deadline_ns !== undefined) {
     requireThat(typeof input.deadline_ns === 'string' && /^\d{1,32}$/.test(input.deadline_ns),'verification_control_invalid');
@@ -455,20 +534,22 @@ function commitFinish(context,owner,input) {
   input=inert(input);
   return mutate(context,(loc,a)=>{
     ownerCheck(a,owner);
+    requireStorageLease(loc,a);
     if(!a.claimed)return {status:a.terminal.outcome,ack_released:a.terminal.outcome==='passed',attempt:publicAttempt(a)};
     requireThat(a.recovery===null,'verification_recovery_in_progress');
     return finishRecord(loc,a,input);
   });
 }
 function recoverAttempt(context,input,nativeRecovery=null) {
-  input=inert(input);const snapshot=load(location(context));
+  input=inert(input);const loc=location(context),snapshot=load(loc);
   requireThat(snapshot && input && snapshot.attempt_id===input.attempt_id && snapshot.generation===input.generation,'verification_attempt_mismatch');
   if(!snapshot.claimed)return {status:'already_terminal',attempt:publicAttempt(snapshot)};
+  requireStorageLease(loc,snapshot);
   // Only existing exact-handle exit evidence can recover this narrow case.
   // Any authority/keeper/unknown spawn intent still needs a native adapter.
   if(typeof nativeRecovery!=='function') {
     requireThat(snapshot.recovery?.status!=='active','verification_recovery_in_progress');
-    if(snapshot.processes.length===0) {
+    if(snapshot.processes.length===0 && snapshot.containment===null) {
       return mutate(context,(loc,a)=>{
         requireThat(a && a.attempt_id===snapshot.attempt_id && a.generation===snapshot.generation && a.revision===snapshot.revision,'verification_control_conflict');
         return finishRecord(loc,a,{outcome:a.cancel.requested?'cancelled':'failed',
@@ -528,11 +609,14 @@ function recoverAttempt(context,input,nativeRecovery=null) {
         const seen=new Set();
         for(const exit of proof.process_exits) {
           const p=a.processes.find(p=>p.spawn_id===exit.spawn_id);
-          const nativeMethod=['process_handle_signaled','windows_birth_absent','linux_pidfd_exit','linux_boot_birth_absent','linux_boot_birth_replaced','linux_namespace_init_exit'].includes(exit.method);
+          const nativeMethod=['process_handle_signaled','windows_birth_absent','linux_pidfd_exit','linux_boot_birth_absent','linux_boot_birth_replaced','linux_namespace_init_exit','darwin_registered_authority_exit'].includes(exit.method);
           requireThat(p && !seen.has(exit.spawn_id) && p.pid===exit.pid &&
             p.os_creation_time===(exit.os_creation_time??null) &&
             (p.os_creation_time!==null || p.process_nonce===exit.process_nonce) && nativeMethod,'verification_process_identity_mismatch');
           requireThat(exit.method!=='linux_namespace_init_exit' || a.containment?.backend==='linux_pid_namespace' && p.role==='authority' && a.containment.descriptor.worker?.pid===p.pid && proof.namespace_drained===true,'verification_process_identity_mismatch');
+          requireThat(exit.method!=='darwin_registered_authority_exit' || a.containment?.backend==='darwin_private_ruid' &&
+            p.role==='authority' && a.containment.descriptor.authority_identity?.birth.pid===p.pid &&
+            proof.proof_kind==='recovery_observation','verification_process_identity_mismatch');
           // PID nonce alone is local ChildProcess evidence; native recovery may
           // use it only when bound to an authenticated containment descriptor.
           requireThat(p.os_creation_time!==null || a.containment!==null && a.containment.spawn_ids.includes(p.spawn_id),'verification_cleanup_unconfirmed');
@@ -555,4 +639,4 @@ function recoverAttempt(context,input,nativeRecovery=null) {
   }
 }
 
-module.exports={SCHEMA,normalizeProfile,beginAttempt,readStatus,assertResourceAvailable,withResourceAvailable,updateAttempt,requestCancel,commitFinish,recoverAttempt,bindCleanupProof};
+module.exports={SCHEMA,STORAGE_PROTOCOL,acquireStorageLease,withStorageLease,normalizeProfile,beginAttempt,readStatus,assertResourceAvailable,withResourceAvailable,updateAttempt,requestCancel,commitFinish,recoverAttempt,bindCleanupProof};

@@ -76,7 +76,7 @@ function validateOwner(owner, expected = {}) {
     if (!lease || typeof lease !== 'object' || Array.isArray(lease) ||
         Object.keys(lease).length !== leaseFields.length ||
         Object.keys(lease).some((key, index) => key !== leaseFields[index]) ||
-        lease.method !== 'owner-inode-lease.v1' ||
+        !['owner-inode-lease.v1','windows-owner-event.v1'].includes(lease.method) ||
         lease.owner_ino === '0' || lease.directory_ino === '0' ||
         leaseFields.slice(1).some(key => typeof lease[key] !== 'string' || !/^(0|[1-9][0-9]{0,39})$/.test(lease[key]))) {
       throw ownerError('kernel_lease_invalid');

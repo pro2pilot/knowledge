@@ -30,7 +30,8 @@ process.stdout.write(JSON.stringify({pid:process.pid,path:h.path,lock_id:h.lock_
   assert.equal(departed.pid, child.pid, 'The recorded holder must be the awaited own child');
   const owner = JSON.parse(fs.readFileSync(path.join(departed.path, 'owner.json'), 'utf8'));
   assert.equal(owner.pid, departed.pid); assert.equal(owner.lock_id, departed.lock_id);
-  assert.equal(owner.kernel_lease.method, 'owner-inode-lease.v1', 'Positive recovery must bind an actual native owner-inode lease');
+  assert.equal(owner.kernel_lease.method, process.platform === 'win32' ? 'windows-owner-event.v1' : 'owner-inode-lease.v1',
+    'Positive recovery must bind the actual platform kernel lifetime protocol');
   assert.throws(() => process.kill(departed.pid, 0), error => error.code === 'ESRCH');
   const old = new Date(Date.now() - 60000); fs.utimesSync(departed.path, old, old);
   const inspected = manager.inspectLockSafety(request);

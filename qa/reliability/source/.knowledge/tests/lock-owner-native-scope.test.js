@@ -80,7 +80,7 @@ test('new owners use v3 and a kernel lease in the existing v1 layout and release
   assert.equal(f.owner.schema_version, 'knowledge-lock-owner.v3');
   assert.equal(path.basename(path.dirname(f.handle.path)), 'v1');
   assert.deepEqual(Object.keys(f.owner), schema.V3_OWNER_FIELDS);
-  assert.equal(f.owner.kernel_lease.method, 'owner-inode-lease.v1');
+  assert.equal(f.owner.kernel_lease.method, process.platform === 'win32' ? 'windows-owner-event.v1' : 'owner-inode-lease.v1');
   assert.equal(schema.canonicalOwnerText(f.owner), fs.readFileSync(f.ownerPath, 'utf8'));
   assert.ok(f.owner.native_identity === null || policy.validNativeOwnerIdentity(f.owner.native_identity, process.pid));
   assert.equal(policy.LOCK_POLICY.default_stale_ms, 120000);

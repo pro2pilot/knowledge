@@ -65,7 +65,7 @@ _Static_assert(sizeof(struct KUnique)==56,"Darwin combined process ABI");
 struct KOwnerBirth { uint32_t pid,uid;uint64_t unique_id,start_sec,start_usec; };
 struct Config {
     unsigned char *wire; size_t length,offset;
-    uid_t uid; uint64_t deadline,cleanup_budget,allocation_seq,lock_device,lock_inode,workspace_device,workspace_inode;
+    uid_t uid; uint64_t deadline,cleanup_budget,allocation_seq,lock_device,lock_inode,workspace_device,workspace_inode,scratch_device,scratch_inode;
     char *attempt,*cwd,*profile,*runtime_sha,*daemon_epoch,*installation_id,*allocation_sha;
     struct KOwnerBirth controller,authority;
     uint32_t argc,envc; char **argv,**env;
@@ -225,6 +225,7 @@ static bool decode(struct Config *c) {
         ||!u64(c,&c->allocation_seq)||c->allocation_seq!=(uint64_t)uid-K_UID_FIRST+1
         ||!u64(c,&c->lock_device)||!u64(c,&c->lock_inode)
         ||!u64(c,&c->workspace_device)||!u64(c,&c->workspace_inode)
+        ||!u64(c,&c->scratch_device)||!u64(c,&c->scratch_inode)
         ||!owner_birth(c,&c->controller)||!owner_birth(c,&c->authority)
         ||c->controller.uid!=c->authority.uid||c->controller.pid==c->authority.pid)return false;
     c->uid=(uid_t)uid;
@@ -266,13 +267,16 @@ static bool read_config(struct Config *c,int fd,uint64_t deadline) {
     }return false;
 }
 static bool bound_fds(const struct Config *c) {
-    struct stat lock,workspace;int mode=fcntl(13,F_GETFL);
+    struct stat lock,workspace,scratch;int mode=fcntl(13,F_GETFL);
     return fstat(13,&lock)==0&&S_ISREG(lock.st_mode)&&lock.st_uid==0&&lock.st_nlink==1
         &&(lock.st_mode&0777)==0600&&mode>=0&&(mode&O_ACCMODE)==O_RDWR
         &&(uint64_t)lock.st_dev==c->lock_device&&(uint64_t)lock.st_ino==c->lock_inode
         &&flock(13,LOCK_EX|LOCK_NB)==0&&fstat(14,&workspace)==0&&S_ISDIR(workspace.st_mode)
         &&workspace.st_uid==c->uid&&workspace.st_gid==c->uid&&(workspace.st_mode&0777)==0700
-        &&(uint64_t)workspace.st_dev==c->workspace_device&&(uint64_t)workspace.st_ino==c->workspace_inode;
+        &&(uint64_t)workspace.st_dev==c->workspace_device&&(uint64_t)workspace.st_ino==c->workspace_inode
+        &&fstat(15,&scratch)==0&&S_ISDIR(scratch.st_mode)&&scratch.st_uid==c->uid&&scratch.st_gid==c->uid
+        &&(scratch.st_mode&0777)==0700&&(uint64_t)scratch.st_dev==c->scratch_device&&(uint64_t)scratch.st_ino==c->scratch_inode
+        &&(scratch.st_dev!=workspace.st_dev||scratch.st_ino!=workspace.st_ino);
 }
 static bool private_credentials(uid_t uid) {
     struct KIdentity own={0};gid_t groups[256]={0};
@@ -374,7 +378,7 @@ static int launch_child(const struct Config *c,uint64_t bootstrap) {
     if(setuid(c->uid)){fprintf(stderr,"native C stub credential stage=setuid errno=%d\n",errno);return 134;}
     if(!private_credentials(c->uid))return 134;
     if(!ordinary_host()||!scrub_names())return 135;
-    if(!isolated_cwd(14,c->cwd))return 136;close(14);
+    if(!isolated_cwd(14,c->cwd))return 136;close(14);close(15);
     struct rlimit core={0,0};if(setrlimit(RLIMIT_CORE,&core))return 137;
     if(now_ms()>=deadline)return 125;
     char ready='R';if(write(11,&ready,1)!=1)return 138;close(11);
@@ -546,7 +550,7 @@ static int guard_command(struct Config *c,uint64_t bootstrap) {
         int result=launch_child(c,bootstrap);_exit(result);
     }
     g.child_pid=pid;g.child_known=fresh(pid,&g.child);
-    close(readiness[1]);close(permit[0]);close(13);close(14);
+    close(readiness[1]);close(permit[0]);close(13);close(14);close(15);
     struct KGuardState state={.deadline=c->deadline,.cleanup_budget=c->cleanup_budget,.last_now=before};
     const struct KGuardOps ops={guardian_clock,guardian_parent,guardian_reap,guardian_signal_child,guardian_drain};
     unsigned char registration[88];size_t registration_sent=0;

@@ -13,21 +13,24 @@ test('transaction manifest enforces its byte limit during growth after fstat', t
   t.after(() => removeTempDirStrict(root, { expectedIdentity: identity }));
   const target = path.join(root, 'value.json'); fs.writeFileSync(target, '{}\n');
   assert.throws(() => transaction.commitJsonTransaction({ stateRoot: root, transactionId: 'bounded-manifest',
-    writes: [{ path: target, value: { value: 1 } }], faultAt: 'after_initial_manifest' }));
+    writes: [{ path: target, value: { value: 1 } }], faultAt: 'after_initial_manifest' }), { code: 'transaction_fault_injected' });
   const tx = path.join(transaction.__test.transactionRoot(root), 'bounded-manifest');
   const file = path.join(tx, 'manifest.json'); const st = fs.statSync(file);
   const rawRead = fs.readFileSync, chunkRead = fs.readSync;
-  let injected = false, bytesConsumed = 0;
+  let injected = false, bytesConsumed = 0, outerRead = false;
   const isManifest = fd => typeof fd === 'number' && fs.fstatSync(fd).ino === st.ino && fs.fstatSync(fd).dev === st.dev;
   const grow = () => { if (!injected) { injected = true; fs.appendFileSync(file, Buffer.alloc(34 * 1024 * 1024, 32)); } };
   fs.readFileSync = function(fd) {
     const observed = isManifest(fd); if (observed) grow();
-    const body = rawRead.apply(this, arguments); if (observed) bytesConsumed += Buffer.byteLength(body);
-    return body;
+    if (observed) outerRead = true;
+    try {
+      const body = rawRead.apply(this, arguments); if (observed) bytesConsumed += Buffer.byteLength(body);
+      return body;
+    } finally { if (observed) outerRead = false; }
   };
   fs.readSync = function(fd) {
     const observed = isManifest(fd); if (observed) grow();
-    const count = chunkRead.apply(this, arguments); if (observed) bytesConsumed += count;
+    const count = chunkRead.apply(this, arguments); if (observed && !outerRead) bytesConsumed += count;
     return count;
   };
   try { assert.throws(() => transaction.inspectTransaction(tx)); }

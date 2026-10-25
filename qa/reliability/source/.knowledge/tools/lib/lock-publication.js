@@ -69,12 +69,14 @@ function qualifyNativePublication() {
     const native = require(binaryPath);
     const info = native.info();
     if (info.schema_version !== 'knowledge-lock-publication-native.v1' || info.source_sha256 !== manifest.source_sha256 ||
-        info.platform !== process.platform || info.architecture !== process.arch || info.napi_version !== 8 || info.lease_protocol !== 'owner-inode-lease.v1' ||
+        info.platform !== process.platform || info.architecture !== process.arch || info.napi_version !== 8 ||
+        info.lease_protocol !== (process.platform === 'win32' ? 'windows-owner-event.v1' : 'owner-inode-lease.v1') ||
         typeof native.publish !== 'function' || typeof native.probeLease !== 'function' || typeof native.closeLease !== 'function') throw unavailable('native_handshake_mismatch');
     if (readPinnedFile(root, binaryPath, 16777216).sha256 !== binary.sha256 ||
         readPinnedFile(root, manifestPath, 16384).sha256 !== manifestRead.sha256 ||
         readPinnedFile(root, path.join(root, 'native', 'lock-publication.c'), 262144).sha256 !== source.sha256) throw unavailable('package_changed_during_load');
-    qualified = Object.freeze({ publish: native.publish, probeLease: native.probeLease, closeLease: native.closeLease, info: Object.freeze(info), manifest: Object.freeze(manifest) });
+    qualified = Object.freeze({ publish: native.publish, probeLease: native.probeLease, closeLease: native.closeLease,
+      verifyProtectedExecutable: native.verifyProtectedExecutable, info: Object.freeze(info), manifest: Object.freeze(manifest) });
     return qualified;
   } catch (error) { throw error?.code === 'lock_native_publication_unavailable' ? error : unavailable('qualification_failed', error); }
 }
@@ -85,5 +87,17 @@ function publishPreparedLock(root, stageBasename, publicBasename, remainingMs = 
 
 function probeOwnerLease(root, publicBasename) { return qualifyNativePublication().probeLease(root, publicBasename); }
 function closeOwnerLease(token) { return qualifyNativePublication().closeLease(token); }
+function verifyProtectedExecutable(file, { maxBytes = 268435456, remainingMs = 30000 } = {}) {
+  const native = qualifyNativePublication();
+  if (typeof native.verifyProtectedExecutable !== 'function') throw unavailable('protected_executable_api_unavailable');
+  const value = native.verifyProtectedExecutable(file, maxBytes, remainingMs);
+  if (!value || value.schema !== 'knowledge-darwin-protected-executable.v1' || value.status !== 'verified' ||
+      !/^[a-f0-9]{64}$/.test(value.sha256 || '') ||
+      !['device', 'inode', 'bytes', 'ctime_sec', 'ctime_nsec', 'mtime_sec', 'mtime_nsec']
+        .every(key => typeof value[key] === 'string' && /^(?:0|[1-9][0-9]*)$/.test(value[key]))) {
+    throw unavailable('protected_executable_receipt_invalid');
+  }
+  return Object.freeze(value);
+}
 
-module.exports = { qualifyNativePublication, publishPreparedLock, probeOwnerLease, closeOwnerLease };
+module.exports = { qualifyNativePublication, publishPreparedLock, probeOwnerLease, closeOwnerLease, verifyProtectedExecutable };

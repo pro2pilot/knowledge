@@ -527,7 +527,14 @@ function runVerificationTests(options) {
 async function runVerificationTestsCore(request, supervisor) {
   const boundary = require('./verification-supervisor');
   request = boundary.verificationRequestData(request);
-  boundary.assertContainmentAvailable(require('./verification-policy').nativeExecutionRequest(request));
+  // Only a fixed supervisor can install these hooks; inert public admission
+  // rejects function properties. Darwin executes the command in the broker's
+  // private UID while this trusted worker records its bounded observations.
+  const nativeHooks = supervisor.nativeBackend === 'darwin_private_ruid';
+  if (!nativeHooks) boundary.assertContainmentAvailable(require('./verification-policy').nativeExecutionRequest(request));
+  else if (typeof supervisor.runCommand !== 'function' || typeof supervisor.sourceSnapshot !== 'function') {
+    throw Object.assign(new Error('Incomplete native command adapter'), { code: 'verification_native_adapter_invalid' });
+  }
   const {
   stateRoot,
   repoRoot,
@@ -569,7 +576,9 @@ async function runVerificationTestsCore(request, supervisor) {
       'Verification execution requires a non-empty source snapshot'
     );
   }
-  const sourceSnapshot = (allowMissing = false) => sourcePaths
+  const sourceSnapshot = supervisor.sourceSnapshot
+    ? allowMissing => supervisor.sourceSnapshot(sourcePaths, allowMissing)
+    : (allowMissing = false) => sourcePaths
     .map((relative) => {
       const absolute = safeRelativeFile(repoRoot, relative);
       if (!absolute) {
@@ -607,7 +616,7 @@ async function runVerificationTestsCore(request, supervisor) {
     const cwdRelative = String(test.cwd || '.').replace(/\\/g, '/');
     const cwd = safeRelativeDirectory(repoRoot, cwdRelative);
     if (!cwd) throw new Error(`Verification cwd is missing or unsafe: ${cwdRelative}`);
-    const sourceSnapshotBefore = sourceSnapshot(true);
+    const sourceSnapshotBefore = await sourceSnapshot(true);
     rejectNodeExecutableAlias(argv[0]);
     const nodeCommand =
       nodeExecutableKind(argv[0]) === 'canonical';
@@ -726,18 +735,22 @@ async function runVerificationTestsCore(request, supervisor) {
             : []))
       : process.env;
     await supervisor.phase('command', deadline);
-    const result = spawnSync(executable, executableArgv, {
+    const commandOptions = {
       cwd,
       env: executionEnvironment,
       encoding: null,
       windowsHide: true,
       maxBuffer: 16 * 1024 * 1024,
       shell: false
-    });
+    };
+    const result = supervisor.runCommand
+      ? await supervisor.runCommand({ argv, executable, executableArgv, commandOptions,
+        cwdRelative, nodeCommand, nodeInvocation, generatedProducer, deadline, timeoutMs })
+      : spawnSync(executable, executableArgv, commandOptions);
     await supervisor.phase('finalization', deadline);
     const stdout = Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout || '');
     const stderr = Buffer.isBuffer(result.stderr) ? result.stderr : Buffer.from(result.stderr || '');
-    const sourceSnapshotAfter = sourceSnapshot(false);
+    const sourceSnapshotAfter = await sourceSnapshot(false);
     const base = {
       schema_version: 'knowledge-verification-execution.v2',
       batch_id: supervisor.batchId,

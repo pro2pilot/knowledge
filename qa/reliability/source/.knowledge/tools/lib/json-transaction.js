@@ -110,9 +110,38 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
-function fileHash(filePath) {
-  return sha256(fs.readFileSync(filePath));
+function observeTransactionFile(filePath, collect = false) {
+  const same = (a, b) => ['dev', 'ino', 'size', 'nlink', 'mtimeNs', 'ctimeNs'].every(key => a[key] === b[key]);
+  const failChanged = () => { throw transactionError('transaction_file_changed', 'Transaction file changed while it was observed'); };
+  const named = fs.lstatSync(filePath, { bigint: true });
+  if (!named.isFile() || named.isSymbolicLink() || named.size < 0n || named.size >= BigInt(Number.MAX_SAFE_INTEGER)) failChanged();
+  if (collect && named.size > BigInt(require('node:buffer').constants.MAX_LENGTH)) {
+    throw transactionError('transaction_file_too_large', 'Transaction snapshot exceeds the runtime buffer limit');
+  }
+  const fd = fs.openSync(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
+  const digest = crypto.createHash('sha256'), parts = [];
+  let used = 0;
+  try {
+    const before = fs.fstatSync(fd, { bigint: true });
+    if (!before.isFile() || !same(named, before)) failChanged();
+    // Bound this observation by its initial size. A growing writer cannot
+    // extend the read to an unbounded EOF. Hash-only guards use constant memory.
+    const limit = Number(before.size) + 1, buffer = Buffer.alloc(Math.min(65536, limit));
+    while (used < limit) {
+      const count = fs.readSync(fd, buffer, 0, Math.min(buffer.length, limit - used), null);
+      if (count === 0) break;
+      const bytes = buffer.subarray(0, count);digest.update(bytes);
+      if (collect) parts.push(Buffer.from(bytes));
+      used += count;
+    }
+    const after = fs.fstatSync(fd, { bigint: true }), live = fs.lstatSync(filePath, { bigint: true });
+    if (BigInt(used) !== before.size || !after.isFile() || !live.isFile() || live.isSymbolicLink() ||
+        !same(before, after) || !same(after, live)) failChanged();
+  } finally { fs.closeSync(fd); }
+  return { sha256: digest.digest('hex'), body: collect ? Buffer.concat(parts, used) : null };
 }
+
+function fileHash(filePath) { return observeTransactionFile(filePath).sha256; }
 
 function relativeInside(root, target) {
   // macOS exposes /var and /tmp as system aliases for /private/var and
@@ -185,8 +214,8 @@ function fault(point, options) {
 }
 
 function copyAtomic(source, target, expectedSha256 = null) {
-  const body = fs.readFileSync(source);
-  if (expectedSha256 !== null && sha256(body) !== expectedSha256) throw transactionError('transaction_source_hash_mismatch', 'Journal bytes changed before copying');
+  const { body, sha256: observed } = observeTransactionFile(source, true);
+  if (expectedSha256 !== null && observed !== expectedSha256) throw transactionError('transaction_source_hash_mismatch', 'Journal bytes changed before copying');
   writeFileAtomic(target, body);
 }
 
@@ -347,48 +376,10 @@ function treeGuardObservationError(root, error) {
 }
 
 function treeGuardFileHash(filePath) {
-  const noFollow = Number(fs.constants.O_NOFOLLOW || 0);
-  let handle = null;
-  try {
-    handle = fs.openSync(
-      filePath,
-      fs.constants.O_RDONLY | noFollow
-    );
-    const before = fs.fstatSync(handle, { bigint: true });
-    if (!before.isFile() || before.isSymbolicLink()) {
-      throw transactionError(
-        'transaction_guard_drift',
-        `Tree guard entry is not a regular file: ${filePath}`,
-        { target: filePath }
-      );
-    }
-    const body = fs.readFileSync(handle);
-    const after = fs.fstatSync(handle, { bigint: true });
-    const live = fs.lstatSync(filePath, { bigint: true });
-    if (
-      !after.isFile() ||
-      !live.isFile() ||
-      live.isSymbolicLink() ||
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      before.size !== after.size ||
-      before.mtimeNs !== after.mtimeNs ||
-      before.ctimeNs !== after.ctimeNs ||
-      after.dev !== live.dev ||
-      after.ino !== live.ino ||
-      after.size !== live.size ||
-      after.mtimeNs !== live.mtimeNs ||
-      after.ctimeNs !== live.ctimeNs
-    ) {
-      throw transactionError(
-        'transaction_guard_drift',
-        `Tree guard file changed while it was read: ${filePath}`,
-        { target: filePath }
-      );
-    }
-    return sha256(body);
-  } finally {
-    if (handle !== null) fs.closeSync(handle);
+  try { return observeTransactionFile(filePath).sha256; }
+  catch (error) {
+    throw transactionError('transaction_guard_drift', 'Tree guard file could not be observed safely',
+      { target: filePath, cause_code: String(error?.code || 'unknown') });
   }
 }
 
@@ -1236,7 +1227,7 @@ function commitJsonTransaction(input) {
     }
     requestedTargets.add(identity);
     const oldExists = fs.existsSync(target);
-    const oldBody = oldExists ? fs.readFileSync(target) : null;
+    const oldBody = oldExists ? observeTransactionFile(target, true).body : null;
     const serialized = item.body !== undefined
       ? item.body
       : `${JSON.stringify(item.value, null, 2)}\n`;

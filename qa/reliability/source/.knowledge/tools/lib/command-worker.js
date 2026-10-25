@@ -23,8 +23,11 @@ process.on('message', async message => {
       if (proofRelay) require('./command-scope-proof').setScopeProofRelay(proofRelay);
       if (message.kind === 'command') {
         const command = message.payload;
-        const child = require('child_process').spawn(command.executable, command.args, {
-          cwd: command.cwd, env: runner.safeEnvironment(command.env), stdio: ['ignore', 1, 2], windowsHide: true
+        const path = require('path');
+        const target = command.executable === process.execPath && command.nestedAuthority === true ? path.resolve(command.args[0] || '') : null;
+        const entry = target === path.resolve(__dirname, '../flow.js') ? 'flow' : target === path.resolve(__dirname, '../evaluation-harness.js') ? 'evaluation' : null;
+        const child = require('child_process').spawn(command.executable, entry ? [path.join(__dirname, 'command-cli-worker.js')] : command.args, {
+          cwd: command.cwd, env: runner.safeEnvironment(command.env), stdio: entry ? ['ignore', 1, 2, 'ipc'] : ['ignore', 1, 2], windowsHide: true
         });
         let sent = false;
         const report = value => { if (sent) return; sent = true; send({ type: 'result', value }); };
@@ -32,6 +35,11 @@ process.on('message', async message => {
         // exit precedes stream closure when a detached descendant retains a
         // pipe. The outer native scope drains those descendants before EOF.
         child.once('exit', (status, signal) => report({ status, signal, error: null }));
+        if (entry) {
+          child.on('message', value => { if (value?.type === 'cli_progress') progress('nested_operation_progress', value.phase); });
+          child.send({ type: 'cli_start', entry, argv: command.args.slice(1), budgets: sessionPolicy, helper, observerLineage, proofRelay },
+            error => { if (error) { child.kill('SIGKILL'); report({ status: null, signal: null, error: serialize(error) }); } });
+        }
         return;
       }
       if (message.kind === 'session') return;

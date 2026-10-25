@@ -55,6 +55,12 @@ function pathIsIncluded(pathValue, contract) {
 
 function exclusionForPath(relativePath, contract) {
   const normalized = normalizeReleasePath(relativePath).path;
+  if (normalized.startsWith('tools/lib/native/')) {
+    const allowed = (contract.native_runtime_artifacts || []).flatMap(row => [row.binary, row.manifest]);
+    if (!allowed.some(item => normalized === item || item.startsWith(normalized + '/'))) {
+      return { excluded: true, reason: 'native_runtime_allowlist', rule: normalized };
+    }
+  }
   if (normalized.startsWith('agent-integrations/')) {
     const allowed = new Set((contract.public_agent_integration_paths || [])
       .map((item) => normalizeReleasePath(item).path));
@@ -156,4 +162,38 @@ function validateReleaseInventory(entries, contract, options = {}) {
   return { entries: names.size, public_self_tests: Array.from(actualTests).sort(), public_agent_integrations: Array.from(actualIntegrations).sort(), violations };
 }
 
-module.exports = { normalizeReleasePath, loadReleaseContract, pathMatches, pathIsIncluded, exclusionForPath, validateReleaseInventory };
+function validateNativeArtifacts(entries, contract, prefix = '.knowledge/') {
+  const crypto = require('crypto');
+  const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+  const files = new Map(entries.map(entry => [entry.name, entry]));
+  const violations = [];
+  for (const expected of contract.native_runtime_artifacts || []) {
+    const binaryName = prefix + expected.binary, manifestName = prefix + expected.manifest;
+    const binary = files.get(binaryName), manifest = files.get(manifestName), source = files.get(prefix + expected.source);
+    for (const [entry, value] of [[binaryName, binary], [manifestName, manifest], [prefix + expected.source, source]]) {
+      if (!value) violations.push({ type: 'native_artifact_missing', entry });
+    }
+    if (!binary || !manifest || !source) continue;
+    let record;
+    try {
+      if (manifest.body.length > 16384) throw new Error('oversized');
+      record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifest.body));
+    } catch { violations.push({ type: 'native_manifest_invalid', entry: manifestName });continue; }
+    if (!record || record.schema_version !== expected.schema_version || record.platform !== expected.platform ||
+        record.architecture !== expected.architecture || record.binary !== path.posix.basename(expected.binary) ||
+        expected.napi_version !== undefined && record.napi_version !== expected.napi_version ||
+        !/^[a-f0-9]{64}$/.test(record.source_sha256 || '') || !/^[a-f0-9]{64}$/.test(record.binary_sha256 || '') ||
+        !Number.isSafeInteger(record.binary_bytes) || record.binary_bytes < 1 || record.binary_bytes > 16 * 1024 * 1024) {
+      violations.push({ type: 'native_manifest_invalid', entry: manifestName });continue;
+    }
+    if (binary.body.length !== record.binary_bytes || hash(binary.body) !== record.binary_sha256) {
+      violations.push({ type: 'native_binary_hash_mismatch', entry: binaryName });
+    }
+    if (hash(source.body) !== record.source_sha256) {
+      violations.push({ type: 'native_source_hash_mismatch', entry: prefix + expected.source, manifest: manifestName });
+    }
+  }
+  return violations;
+}
+
+module.exports = { normalizeReleasePath, loadReleaseContract, pathMatches, pathIsIncluded, exclusionForPath, validateReleaseInventory, validateNativeArtifacts };
