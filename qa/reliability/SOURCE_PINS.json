@@ -1,0 +1,15 @@
+{
+  "schema": "knowledge-reliability-source-pins.v1",
+  "base_audit2_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
+  "scope": "second prepared native compile snapshot; first rejected before remote mutation",
+  "files": {
+    "tools/build-lock-native.js": "3bc4d564b99f9c82cc8664815578c303e20592f5ba7bf5a2a224517e4187c66f",
+    "tools/native/lock-publication.c": "e5bc0232b48c5cdcd6b0f4bbccfe40098e72ae0b9caab89127cece1fa716db78",
+    "tools/lib/verification-linux-namespace.c": "06c347c25a1bd081d1864a2476bef4df730e74608bd62b68ee3e2da774e4a25b",
+    "tools/lib/verification-darwin-broker.m": "0fd821d6507c92bb160d8c078c4e642755869c066331bb9392a10d4c43e18e0f",
+    "tools/lib/verification-darwin-stub.c": "dc1355dd8e275d3b0085e16fb0e58b5cba4db0619bdc15fbd36bf55840991438",
+    "tools/lib/verification-darwin-uid-history.h": "067cb0c64f0ea6c6ed57927de571e7e572b3f05ff951143364a19acffa074852",
+    "tools/lib/verification-darwin-uid-history.m": "2fef98ad495d5aaa1ab3bf0385a0a00780f781351d645cc89fbe7da5f68f9e36",
+    "tools/lib/verification-darwin-transport.h": "7c5a5907ea6f243d4c5ff3d84ff727f481167a41074489daf5e034b6c4e96ab8"
+  }
+}

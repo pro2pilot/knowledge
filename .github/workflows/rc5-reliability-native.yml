@@ -1,0 +1,68 @@
+name: RC5 reliability native builds
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability-20261025]
+    paths: ['qa/reliability/**', '.github/workflows/rc5-reliability-native.yml']
+permissions:
+  contents: read
+concurrency:
+  group: rc5-reliability-native-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set Visual C environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Build exact pinned sources
+        run: python qa/reliability/compile_native.py --source qa/reliability/source/.knowledge --pins qa/reliability/SOURCE_PINS.json --out native-build
+      - name: Preserve build result and distributable binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-native-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            native-build/BUILD.json
+            native-build/*.stdout.log
+            native-build/*.stderr.log
+            native-build/native/*/lock-publication.node
+            native-build/native/*/lock-publication.manifest.json
+            native-build/native/*/verification-linux-namespace
+            native-build/native/*/verification-linux-namespace.manifest.json
+            native-build/native/*/verification-darwin-broker
+            native-build/native/*/verification-darwin-stub
+            native-build/native/*/.build-*/BUILD.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
