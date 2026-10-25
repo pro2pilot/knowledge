@@ -1376,6 +1376,10 @@ static NSString *sandboxProfile(NSString *workspace) {
     for(NSString *runtime in utf8Sorted(gRuntimes))
         [rules addObject:[NSString stringWithFormat:@"(literal %@)",sbplString(runtime)]];
     [p appendFormat:@"(allow process-exec %@ (subpath %@)) ",[rules componentsJoinedByString:@" "],sbplString(workspace)];
+    /* Node opens /dev/null read/write for ignored child stdio. This grants only
+     * data writes to the actual character device, never a replaced regular file
+     * or an arbitrary path outside the command workspace. */
+    [p appendString:@"(allow file-write-data (require-all (literal \"/dev/null\") (vnode-type CHARACTER-DEVICE))) "];
     [p appendFormat:@"(allow file-write* (subpath %@)) (deny file-link) (allow sysctl-read) (allow process-info* (target self))",sbplString(workspace)];
     return p;
 }

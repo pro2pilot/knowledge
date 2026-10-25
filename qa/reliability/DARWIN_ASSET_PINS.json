@@ -77,8 +77,8 @@
   "native_sources": [
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-broker.m",
-      "bytes": 198271,
-      "sha256": "0fd821d6507c92bb160d8c078c4e642755869c066331bb9392a10d4c43e18e0f"
+      "bytes": 198613,
+      "sha256": "7a88a584ffde840c679fde6dc19fa90111c9af08babdd48dc99986f127e469cd"
     },
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-stub.c",
