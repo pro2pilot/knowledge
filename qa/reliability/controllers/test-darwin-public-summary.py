@@ -1,12 +1,46 @@
 #!/usr/bin/env python3
-import importlib.util, json, tempfile, unittest
+import importlib.util, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 here=Path(__file__).resolve().parent
-spec=importlib.util.spec_from_file_location('darwin_public_summary',here/'darwin-public-summary.py')
+target=Path(os.environ.get('KNOWLEDGE_DARWIN_PUBLIC_SUMMARY',here/'darwin-public-summary.py')).resolve()
+spec=importlib.util.spec_from_file_location('darwin_public_summary',target)
 public=importlib.util.module_from_spec(spec);spec.loader.exec_module(public)
 
 class PublicAllowlist(unittest.TestCase):
+    def test_bootstrap_diagnostics_allow_code_coordinates_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            private=Path(folder)/'private';private.mkdir();source=Path(folder)/'source';source.mkdir()
+            secret='DO_NOT_PUBLISH_exception_args_or_path'
+            value={'diagnostics':[{'type':'FileNotFoundError','stage':'bootstrap','message':secret,'args':[secret],
+                'frames':[{'file':'run_pipeline4.py','line':973,'locals':secret,'path':secret},
+                          {'file':secret,'line':123},{'file':'persistence_gate.py','line':-2}]}]}
+            (private/'DIAGNOSTIC.json').write_text(json.dumps(value))
+            summary,_=public.build(private,source,1,'arm64')
+            self.assertNotIn(secret,json.dumps(summary))
+            self.assertEqual(summary['diagnostics'],[{'type':'FileNotFoundError','stage':'bootstrap',
+                'frames':[{'file':'run_pipeline4.py','line':973}]}])
+
+    def test_cli_fails_incomplete_matrix_even_when_controller_exited_zero(self):
+        with tempfile.TemporaryDirectory() as folder:
+            private=Path(folder)/'private';private.mkdir();source=Path(folder)/'source';source.mkdir()
+            good={'status':'PASS_PHYSICAL_NATIVE_DIAGNOSTIC_ONLY','architecture':'arm64','source_unchanged':True,
+                'cases':[{'name':name,'status':'PASS_PHYSICAL_NATIVE_DIAGNOSTIC'} for name in public.CASES]}
+            cases=[('complete',good,0),('missing',{**good,'cases':good['cases'][:-1]},1),
+                ('duplicate',{**good,'cases':good['cases']+[good['cases'][0]]},1),
+                ('other-arch',{**good,'architecture':'x86_64'},1),
+                ('source-mutated',{**good,'source_unchanged':False},1)]
+            for name,value,expected in cases:
+                with self.subTest(case=name):
+                    (private/'SUMMARY.json').write_text(json.dumps(value));destination=Path(folder)/name
+                    result=subprocess.run([sys.executable,str(target),'--private',str(private),'--public',str(destination),
+                        '--source',str(source),'--controller-status','0','--expected-arch','arm64'],
+                        capture_output=True,text=True,timeout=15)
+                    self.assertEqual(result.returncode,expected,result.stdout+result.stderr)
+                    self.assertEqual(sorted(p.name for p in destination.iterdir()),['stages.json','summary.json'])
+                    actual=json.loads((destination/'summary.json').read_text())
+                    self.assertEqual(actual['status'],'PASS_NATIVE_DIAGNOSTIC_MATRIX' if not expected else 'FAIL_OR_INCOMPLETE')
+
     def test_raw_native_values_do_not_escape(self):
         with tempfile.TemporaryDirectory() as folder:
             private=Path(folder)/'private';private.mkdir();source=Path(folder)/'source';source.mkdir()

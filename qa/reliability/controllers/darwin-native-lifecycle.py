@@ -5,8 +5,21 @@ Reuses the pinned reference's fixture installer/cleanup, never its verdict or
 pins. Shipping physics and compile-time QA holds are reported separately.
 No KVE/KVF/ACK is produced here. Production integration has its own controller.
 """
-import argparse, hashlib, importlib.util, json, os, platform, queue, signal, subprocess, sys, threading, time, uuid
+import argparse, hashlib, importlib.util, json, os, platform, queue, signal, subprocess, sys, threading, time, traceback, uuid
 from pathlib import Path
+
+DIAGNOSTIC_FILES={'darwin-native-lifecycle.py','run_pipeline4.py','persistence_gate.py'}
+DIAGNOSTIC_TYPES={'QAError','FileNotFoundError','PermissionError','TypeError','AttributeError','KeyError','ValueError',
+    'OSError','CalledProcessError','TimeoutExpired','RuntimeError','ImportError','ModuleNotFoundError','SyntaxError','KeyboardInterrupt'}
+def safe_exception(error,stage):
+    frames=[];current=error.__traceback__
+    while current is not None and len(frames)<16:
+        name=Path(current.tb_frame.f_code.co_filename).name
+        frames.append({'file':name if name in DIAGNOSTIC_FILES else 'external-frame','line':current.tb_lineno})
+        current=current.tb_next
+    # No message, args, source line, local variable or pathname enters this view.
+    return {'type':type(error).__name__ if type(error).__name__ in DIAGNOSTIC_TYPES else 'UnknownException',
+        'stage':stage if stage in ('bootstrap','execute','cleanup') else 'unknown','frames':frames}
 
 def main():
     ap = argparse.ArgumentParser()
@@ -233,16 +246,19 @@ def main():
                 if name in ('io-stop','root-phase-kill'):
                     self.fixture_path();self.compile_pair(True);qa=self.setup_fixture('qa');self.case(name,qa);self.cleanup()
             self.status='PASS_PHYSICAL_NATIVE_DIAGNOSTIC_ONLY'
-    runner=Runner();failure=None
+    runner=Runner();failure=None;diagnostics=[];raw_traceback=None
     try: runner.execute()
-    except BaseException as error: failure=str(error);runner.status='FAIL'
+    except BaseException as error:
+        failure=str(error);runner.status='FAIL';diagnostics.append(safe_exception(error,'execute'));raw_traceback=traceback.format_exc()
     finally:
         try: runner.cleanup()
         except BaseException as error:
             runner.status='FAIL';failure=(failure or '')+';cleanup:'+str(error)
+            diagnostics.append(safe_exception(error,'cleanup'))
         if evidence.exists():
             summary={'schema':'knowledge-reliability-darwin-native-lifecycle.v1','status':runner.status,'failure':failure,
                 'platform':platform.platform(),'architecture':platform.machine(),'cases':runner.case_results,
+                'diagnostics':diagnostics,'raw_traceback':raw_traceback,
                 'native_os_origin_qualified':False,'capability_qualified':False,'production_KVE_KVF_ACK':'NOT_RUN',
                 'actual_kernel_IO_stall':'NOT_RUN; QA holds are before/after real operations',
                 'binary_history':runner.binary_history,'records':runner.records,
@@ -250,4 +266,17 @@ def main():
             (evidence/'SUMMARY.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
     return 0 if runner.status.startswith('PASS_') else 1
 
-if __name__=='__main__': sys.exit(main())
+if __name__=='__main__':
+    try: sys.exit(main())
+    except SystemExit: raise
+    except BaseException as error:
+        # Import/constructor failures occur before Runner's finally. Emit only
+        # bounded code coordinates publicly; complete traceback stays private.
+        value={'diagnostics':[safe_exception(error,'bootstrap')]}
+        try:
+            at=sys.argv.index('--evidence');root=Path(sys.argv[at+1]).resolve()
+            root.mkdir(mode=0o700,parents=True,exist_ok=True)
+            with (root/'DIAGNOSTIC.json').open('x') as stream:json.dump(value,stream)
+            with (root/'bootstrap.traceback.private').open('x') as stream:traceback.print_exc(file=stream)
+        except BaseException: pass
+        print(json.dumps(value));sys.exit(1)

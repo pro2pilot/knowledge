@@ -38,7 +38,10 @@ jobs:
           node-version: '22'
       - name: Verify exact controller and reference pins
         shell: bash
-        run: python3 qa/reliability/controllers/verify-darwin-ci-assets.py --root . --inventory qa/reliability/DARWIN_ASSET_PINS.json
+        run: |
+          python3 qa/reliability/controllers/verify-darwin-ci-assets.py --root . --inventory qa/reliability/DARWIN_ASSET_PINS.json
+          KNOWLEDGE_DARWIN_REFERENCE="$GITHUB_WORKSPACE/qa/reliability/reference" python3 qa/reliability/controllers/test-darwin-reference-bootstrap.py
+          python3 qa/reliability/controllers/test-darwin-public-summary.py
       - name: Execute shipping and QA lifecycle cases
         shell: bash
         run: |

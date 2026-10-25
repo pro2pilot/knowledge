@@ -23,4 +23,3 @@ int main(int argc, char **argv) {
   puts("]}"); free(pids);
   return valid ? (bytes == 0 ? 0 : 1) : 2;
 }
-

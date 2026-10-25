@@ -5,8 +5,8 @@
   "files": [
     {
       "repository_path": ".github/workflows/rc5-reliability-darwin-physical.yml",
-      "bytes": 2802,
-      "sha256": "fc7646b37fc979e9b7a0d723d45536f521922ff8a66bf60a31654d363545cb1a"
+      "bytes": 3041,
+      "sha256": "c39f33884695f6b63513d3975d488c97bb7bf73b83a3bb56ae0e996b4a2d8a88"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-native-compile.py",
@@ -15,8 +15,8 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-native-lifecycle.py",
-      "bytes": 18446,
-      "sha256": "be3ea8706df696520764922583ace07a61bc2174a90c4f670c2873c2abb632bf"
+      "bytes": 20418,
+      "sha256": "8a23d2e91eb8e3aa965eafc5b0a079fc83af3a8f8dca95a3edd36103a220af4e"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-native-controller.js",
@@ -30,8 +30,8 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-public-summary.py",
-      "bytes": 11036,
-      "sha256": "d574cbe0bab0190bc406d22c754a62f08d2182599f20c2e14faec857750d8829"
+      "bytes": 12729,
+      "sha256": "93263c0a11eaac6a04bbde321c5eb00090629051cd10ec025b13779137737e94"
     },
     {
       "repository_path": "qa/reliability/controllers/verify-darwin-ci-assets.py",
@@ -40,8 +40,13 @@
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-public-summary.py",
-      "bytes": 3207,
-      "sha256": "ade3ff8b670158ddb2ad522ce7bad3ba5821ffbb13c81f8af510c9b1014267dd"
+      "bytes": 5943,
+      "sha256": "5747b9b04931bf9985ad32b42ab023cb48b63628b39c6130ee1b6d6b640aa189"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/test-darwin-reference-bootstrap.py",
+      "bytes": 1467,
+      "sha256": "3ddec891c6aa7310e70e8835749e4840ae2fb4f4d6a4406cb032c3443606989d"
     },
     {
       "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/PINS.json",
@@ -65,8 +70,8 @@
     },
     {
       "repository_path": "qa/reliability/reference/qa/darwin-broker/uid-scan.c",
-      "bytes": 1286,
-      "sha256": "dec1fc9128e747bea01c224b6b40e76c5703795e4468a155326aa4e87c1c614b"
+      "bytes": 1285,
+      "sha256": "cf8245dc0e1c564c50ecbb9b8114ab50c74e1c89daf8a9bcc9bc239456bb2ebc"
     }
   ],
   "native_sources": [

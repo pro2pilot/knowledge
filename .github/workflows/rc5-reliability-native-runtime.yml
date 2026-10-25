@@ -1,0 +1,58 @@
+name: RC5 reliability native runtime
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability-20261025]
+    paths: ['qa/reliability/runtime-qa/**', '.github/workflows/rc5-reliability-native-runtime.yml']
+permissions:
+  contents: read
+concurrency:
+  group: rc5-reliability-native-runtime-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set Visual C environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Build and physically exercise frozen runtime
+        run: python qa/reliability/runtime-qa/native_qa.py --archive qa/reliability/runtime-qa/SOURCE.zip --manifest qa/reliability/runtime-qa/SOURCE_MANIFEST.json --out native-runtime-qa
+      - name: Retain bounded raw evidence and exact native binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-runtime-${{ matrix.os }}-${{ matrix.arch }}
+          path: native-runtime-qa/public/**
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90

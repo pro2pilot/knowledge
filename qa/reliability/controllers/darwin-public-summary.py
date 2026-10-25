@@ -18,7 +18,11 @@ FAILURES=set(('runner_architecture_mismatch independent_uid_observation_unavaila
     'compile_qa_stub_failed stub_pair_mismatch_shipping stub_pair_mismatch_qa '
     'birth_observer_compile_failed uid_scan_compile_failed node_not_found node_exec_path_failed '
     'node_dylib_scan_failed native_birth_capture_mismatch native_birth_comparison_invalid '
-    'native_birth_identity_changed direct_monitor_exit_unconfirmed source_mutated_during_run').split())
+    'native_birth_identity_changed direct_monitor_exit_unconfirmed source_mutated_during_run '
+    'uid_scan_source_pin_mismatch birth_observer_source_missing evidence_root_exists evidence_root_permissions').split())
+DIAGNOSTIC_FILES={'darwin-native-lifecycle.py','run_pipeline4.py','persistence_gate.py','external-frame'}
+DIAGNOSTIC_TYPES={'QAError','FileNotFoundError','PermissionError','TypeError','AttributeError','KeyError','ValueError',
+    'OSError','CalledProcessError','TimeoutExpired','RuntimeError','ImportError','ModuleNotFoundError','SyntaxError','KeyboardInterrupt','UnknownException'}
 STAGES=set(('protect-fixture mode-fixture node-exec-path node-system-dylibs launchctl-print-own-label '
     'launchctl-verify-own-label-absent compile-uid-scan compile-birth-observer compile-test-signal '
     'read-own-protected-registry capture-native-process-birth compare-native-process-birth '
@@ -61,6 +65,17 @@ def build(private,source,controller_status,architecture):
     raw=raw if isinstance(raw,dict) else {}
     inputs=read_json(private/'INPUTS.json',2*1024*1024)
     inputs=inputs if isinstance(inputs,dict) else {}
+    fallback=read_json(private/'DIAGNOSTIC.json',65536)
+    diagnostics=[]
+    candidates=raw.get('diagnostics',fallback.get('diagnostics',[]) if isinstance(fallback,dict) else [])
+    for item in candidates[:4] if isinstance(candidates,list) else []:
+        if not isinstance(item,dict):continue
+        frames=[]
+        for frame in item.get('frames',[])[:16] if isinstance(item.get('frames'),list) else []:
+            if isinstance(frame,dict) and frame.get('file') in DIAGNOSTIC_FILES and type(frame.get('line')) is int and 0<frame['line']<1000000:
+                frames.append({'file':frame['file'],'line':frame['line']})
+        diagnostics.append({'type':item.get('type') if item.get('type') in DIAGNOSTIC_TYPES else 'UnknownException',
+            'stage':item.get('stage') if item.get('stage') in ('bootstrap','execute','cleanup') else 'unknown','frames':frames})
     cases=[]
     for item in raw.get('cases',[]) if isinstance(raw.get('cases'),list) else []:
         if not isinstance(item,dict) or item.get('name') not in CASES:continue
@@ -115,7 +130,7 @@ def build(private,source,controller_status,architecture):
         'controller_sha256':digest(inputs.get('controller_sha256')),'test_signal_sha256':digest(inputs.get('test_signal_sha256')),
         'reference_runner_sha256':digest(inputs.get('reference_runner_sha256')),
         'failure_code':code(raw['failure']) if raw.get('failure') else (None if raw else 'controller_summary_missing'),
-        'cases':cases,'compiled_pairs':histories,'compiler_diagnostics':compile_diagnostics,
+        'cases':cases,'compiled_pairs':histories,'compiler_diagnostics':compile_diagnostics,'diagnostics':diagnostics,
         'workflow_commit':os.environ.get('GITHUB_SHA') if re.fullmatch(r'[a-f0-9]{40}',os.environ.get('GITHUB_SHA','')) else None,
         'workflow_run_id':os.environ.get('GITHUB_RUN_ID') if re.fullmatch(r'\d+',os.environ.get('GITHUB_RUN_ID','')) else None,
         'native_os_origin_qualified':False,'backend_qualified':False,'production_KVE_KVF_ACK':'NOT_RUN',
@@ -134,5 +149,8 @@ def main():
         p=public/name;p.write_text(json.dumps(value,indent=2,sort_keys=True)+'\n');p.chmod(0o644)
     print(json.dumps({'status':summary['status'],'public_files':['summary.json','stages.json'],
         'backend_qualified':False,'raw_uploaded':False}))
-    return 0
+    # The public decision is an independent acceptance gate. A zero exit from
+    # a controller with missing/duplicate cases, wrong architecture or source
+    # drift must not turn this workflow green. Keep both JSON files on FAIL.
+    return 0 if summary['status']=='PASS_NATIVE_DIAGNOSTIC_MATRIX' else 1
 if __name__=='__main__':raise SystemExit(main())
