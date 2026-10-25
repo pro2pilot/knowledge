@@ -327,12 +327,13 @@ def main():
             result['windows_command_job'] = {'status': 'PASS_COMPILE_ONLY',
                 'runtime_qualification': 'NOT_RUN', 'scope': 'Compilation only; no custody, drain or recovery qualification.'}
             # Diagnose the actual Win32/NT relative rename boundary, including
-            # no-replace collisions with a live owner-inode lease. This probe
+            # no-replace collisions with a live immutable-owner Event. This probe
             # uses only controller-owned fixtures and is not a mock provider.
             probe_source = source / 'tests/helpers/reliability-windows-rename-probe.c'
             probe_binary = scratch / 'windows-relative-rename-probe.exe'
             run('build-windows-relative-rename-probe', [compiler, '/nologo', '/std:c11', '/W4', '/O2',
-                '/Fe' + str(probe_binary), '/Fo' + str(scratch / 'windows-relative-rename-probe.obj'), probe_source], cwd=scratch)
+                '/Fe' + str(probe_binary), '/Fo' + str(scratch / 'windows-relative-rename-probe.obj'), probe_source,
+                '/link', 'advapi32.lib'], cwd=scratch)
             result['windows_relative_rename_probe'] = {'source_sha256': file_sha(probe_source), 'binary_sha256': file_sha(probe_binary)}
             run('windows-relative-rename-api-comparison', [probe_binary, scratch / 'windows-rename-fixture'], cwd=scratch)
         run('build-native-addon', command, cwd=source, timeout=180)
@@ -358,6 +359,9 @@ def main():
         info = "const q=require(process.argv[1]).qualifyNativePublication();console.log(JSON.stringify({node:process.version,napi:process.versions.napi,qualified:q.info,manifest:q.manifest}));"
         run('qualified-addon-current-runtime', [node, '-e', info, source / 'tools/lib/lock-publication.js'], cwd=source)
         tests(node, PRIMARY_TESTS, 'current-runtime-common-locks', source, host['platform'], 'main')
+        if host['platform'] == 'linux':
+            tests(node, ['tests/reliability-linux-authority-profile.test.js'], 'linux-actual-authority-profile',
+                source, host['platform'], 'linux_authority')
         _, transition_output = run('public-owner-transitions', [node, source / 'tools/self-test-lock-owner-transitions.js'], cwd=source)
         transition = json.loads(transition_output)
         if transition.get('failed') or transition.get('status') != 'passed':

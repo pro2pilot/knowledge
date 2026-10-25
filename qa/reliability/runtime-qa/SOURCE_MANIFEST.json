@@ -3,10 +3,10 @@
   "status": "PASS_FROZEN_SOURCE",
   "scope": "Complete source tree including source-only tests and historical test fixtures; generated state/native outputs explicitly excluded.",
   "archive": "SOURCE.zip",
-  "archive_sha256": "208d651a70be2cc6f9e5adc84a98c99547110b6cb5b287f63eefe862c211a640",
-  "archive_bytes": 1837169,
-  "file_count": 569,
-  "uncompressed_bytes": 6325354,
+  "archive_sha256": "89b48c78172cdc0785b1cf98ad596b90c6842d785330f8f3681e0336094a8b05",
+  "archive_bytes": 1901798,
+  "file_count": 592,
+  "uncompressed_bytes": 6526440,
   "files": [
     {
       "path": ".gitattributes",
@@ -1527,6 +1527,12 @@
       "mode": "0644"
     },
     {
+      "path": "tests/fixtures/darwin-finality-model.js",
+      "bytes": 7840,
+      "sha256": "79aaad3f828962c62913759ceb209839c03e832016d0409cb55207856fb01360",
+      "mode": "0644"
+    },
+    {
       "path": "tests/fixtures/darwin-transport-probe.c",
       "bytes": 12083,
       "sha256": "62c50fd172b08c42e2643d02c2227033bd9d0773ac6d8d729987b79c9e3e1fd8",
@@ -1593,6 +1599,18 @@
       "mode": "0644"
     },
     {
+      "path": "tests/helpers/reliability-darwin-control-fixture.cjs",
+      "bytes": 5020,
+      "sha256": "2cf7a4818049253e70877f1fefa8a0a6f9a23578f7211b16b6d7baf21ea9b07b",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/helpers/reliability-darwin-preparation-fixture.js",
+      "bytes": 4051,
+      "sha256": "6e38f15a3fec1f83f5711ada28e07b575553dc12ddc0a3acb4f859b26748162c",
+      "mode": "0644"
+    },
+    {
       "path": "tests/helpers/reliability-linux-capability-diagnostic.cjs",
       "bytes": 3351,
       "sha256": "1782bef490ce56e5f776dd4ff07916de31f06046bac3a6e939b6b718e2d3a796",
@@ -1624,8 +1642,8 @@
     },
     {
       "path": "tests/helpers/reliability-windows-rename-probe.c",
-      "bytes": 8056,
-      "sha256": "8e9728757df3593875e7db4c5b1cbe6e63ffc3cce5cdfc7339734b360201129f",
+      "bytes": 12122,
+      "sha256": "566eb0985b54c39ee6647395d56ab073df14a368170a1c3d41bd63a781a56afa",
       "mode": "0644"
     },
     {
@@ -1785,6 +1803,18 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-darwin-control.test.js",
+      "bytes": 9163,
+      "sha256": "36848cf428e3132283a66924c9e33910490cc12c1e5d49674315f0ac49f0bc9f",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-darwin-finalization.test.js",
+      "bytes": 4709,
+      "sha256": "9df38e1bcad93f46762da14f8bc007c3a2765b811262c7c719d83098f3c2540c",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-darwin-guardian-core.test.js",
       "bytes": 6489,
       "sha256": "869cc4cc3949df171a5057b07b8094138af4dc7773ff5f53181286a5b1df2644",
@@ -1803,9 +1833,33 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-darwin-preparation.test.js",
+      "bytes": 4567,
+      "sha256": "5f924485c84a747654eeecde4b278a71d0e4ffc73294aba031707338040eb81d",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-darwin-scope.test.js",
+      "bytes": 11098,
+      "sha256": "e4e6fc3c99f518ad87aa2a37ee94a6a1fa72bd9239a3f079a1bf438e9f7c17c9",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-darwin-scratch.test.js",
+      "bytes": 4159,
+      "sha256": "72717b569de868f97e53aa1dccf447375fba31a6e666c0f6b8c40c3a53f8388f",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-darwin-session.test.js",
-      "bytes": 14941,
-      "sha256": "f3df0241727d5b38ac6096899df2ec45b7da2f13cdadbb0bb9ccaaf803f5f318",
+      "bytes": 14442,
+      "sha256": "f1dc1cc93538d80bd0822319f6bac3744f62c8f4df4fb1d5ee1f17ccde8ffd86",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-finalization-durability.test.js",
+      "bytes": 2117,
+      "sha256": "ff4d8c88d2e66cf1c906f0bac597fcb211edd3d79f33d86e1d7e66fc55fcec19",
       "mode": "0644"
     },
     {
@@ -1827,6 +1881,12 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-linux-authority-profile.test.js",
+      "bytes": 3360,
+      "sha256": "2ac9a961b68f5d53fa043e5d6d83791c3372e68dc74eda16d65a865daeed9c4f",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-lock-compatibility.test.js",
       "bytes": 3157,
       "sha256": "5027219ce4a44a1c7cc5dc7fbd0a5074f06c24b3e0b1aff797a1feecc1d1389a",
@@ -1840,8 +1900,8 @@
     },
     {
       "path": "tests/reliability-lock-lifecycle.test.js",
-      "bytes": 10470,
-      "sha256": "7bd537839b18acc33997481a8402ad6820790009c18672ce6aa74b19f5382491",
+      "bytes": 10574,
+      "sha256": "3296edc2cafff66977ff7b34b3d555156ff00a705ff0d8ed4ac93a1e755e4598",
       "mode": "0644"
     },
     {
@@ -1884,6 +1944,12 @@
       "path": "tests/reliability-sync-liveness.test.js",
       "bytes": 1508,
       "sha256": "6057e61314438d43348db32195718e40444b97fe382feb7d292346c7254de2ec",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-windows-protocol.test.js",
+      "bytes": 6258,
+      "sha256": "0df7c4289aaa63db3d2b2066ed84c27b2721d4e3894b38b9104bee4c35af2bf5",
       "mode": "0644"
     },
     {
@@ -1960,8 +2026,8 @@
     },
     {
       "path": "tests/transaction-bounded-manifest.test.js",
-      "bytes": 2450,
-      "sha256": "bf02f0572a4ed452a57f204d61c6d953a4bdc99be2b38da1f245ebb03c7a34d9",
+      "bytes": 2624,
+      "sha256": "cc346282e321f9faa24817245aab8ce28bc3143280b827d93bb7c405fcc22de3",
       "mode": "0644"
     },
     {
@@ -1984,8 +2050,8 @@
     },
     {
       "path": "tests/verification-cleanup-transcript.test.js",
-      "bytes": 13466,
-      "sha256": "986bf6c4c9720e33d1964e236afbdaf6f5040a05acc7bdd586d9f85cdaac5c34",
+      "bytes": 13673,
+      "sha256": "c21143d005c1ad0c1b06441dbd5e9c752f0203abc8f04fe0d0048c0b7e924604",
       "mode": "0644"
     },
     {
@@ -2385,6 +2451,54 @@
       "mode": "0644"
     },
     {
+      "path": "tools/lib/command-windows-guard.js",
+      "bytes": 1200,
+      "sha256": "ed0dfc962d58b8c6da42ac0ad210d04b8b3b33f2ffc7424c4f513305f0b51e44",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-holder.js",
+      "bytes": 8508,
+      "sha256": "a8e492fd5ec83458dab2119133565cfe83207b21fdea1e8b20d3fa651b5a23ff",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-native.js",
+      "bytes": 9082,
+      "sha256": "c8a4e70f31ce891d3098cdc8dbf2035ed536c864435a398e20287a7401e8d17e",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-protocol.js",
+      "bytes": 8652,
+      "sha256": "1727e7f0ce1a3e0cf64d6323378178ad75b6a16bded01d2afcf24321260133f0",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-query.js",
+      "bytes": 3508,
+      "sha256": "70dd0b401dffab9ececc73fb2c34c4940a4281876d8d770299cec521ea5d5221",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-receipts.js",
+      "bytes": 4881,
+      "sha256": "c700d51c1bb7cdf845fcf07af53eaf36de95886979b8a6171812289f1bf0ed51",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-runtime.js",
+      "bytes": 11136,
+      "sha256": "e26e58f56a88fc4ba3fb1c2c3a42481d9e8480f93bee918802db915d78816964",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-scope.js",
+      "bytes": 8845,
+      "sha256": "85324b6a3b9073b74b258264d4c8137d5651907d386a6ac17f23e2997336e8a5",
+      "mode": "0644"
+    },
+    {
       "path": "tools/lib/command-worker.js",
       "bytes": 4562,
       "sha256": "d3fc80593d4bf19028fa65e6b2cdb9ee5313682b1dce9424a551a307edd81268",
@@ -2398,8 +2512,8 @@
     },
     {
       "path": "tools/lib/contained-lock-manager.js",
-      "bytes": 85674,
-      "sha256": "f768ceb2703672cf0a352d00ff64da846e6dd6581c6b5f7594c1d65167442bcd",
+      "bytes": 85779,
+      "sha256": "9fc5a351d87923fdeb36955877eaf841e1ea95a4500b96c9eb193aae4152d0ae",
       "mode": "0644"
     },
     {
@@ -2518,20 +2632,20 @@
     },
     {
       "path": "tools/lib/lock-owner-schema.js",
-      "bytes": 5703,
-      "sha256": "94a3b462448bff54bec37f5c2286d0e6c6c25910ed336fbfd0d534f912084ec0",
+      "bytes": 5737,
+      "sha256": "e4b520be13bfc8265d69e604c6ca8c5a6067696a483a770e998e9653c3fde3d6",
       "mode": "0644"
     },
     {
       "path": "tools/lib/lock-policy.js",
-      "bytes": 8743,
-      "sha256": "0f6c8660c835bad4f29f65bb426564ad8dc143b51346de335b671fdb73a0bcc7",
+      "bytes": 8993,
+      "sha256": "40c3354564dbcc97a9b2ece5743ec52cc0686526c1bebc7f12f5df148382661f",
       "mode": "0644"
     },
     {
       "path": "tools/lib/lock-publication.js",
-      "bytes": 6418,
-      "sha256": "c1aecf6ef943314ea697fbd21a0665724bfdc1cc474ef5ff0a2d539be3636c1e",
+      "bytes": 7371,
+      "sha256": "3f99f1b488084794145ad772544662ef3105ebbbd354fd0509f748eb9a4fd28c",
       "mode": "0644"
     },
     {
@@ -2668,62 +2782,86 @@
     },
     {
       "path": "tools/lib/verification-control.js",
-      "bytes": 44961,
-      "sha256": "fc4ce77c2655a294dd7e2b4ba8cea638582aa261b05163ca098f8363915d69b1",
+      "bytes": 51908,
+      "sha256": "bd742d9d3197ae9c94d73a6275c44c4b2ff04577630bc0b000dd76a542e79b93",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-authority.js",
-      "bytes": 7818,
-      "sha256": "bb14b19515a06c9d0f65b5595a2ea735433046463cf63fb290b812f4b2c5d05c",
+      "bytes": 8037,
+      "sha256": "c2c8239a6deb34916a3cad78bfafd0c6ca01776daffd434431e64e924b384946",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-broker.m",
-      "bytes": 218242,
-      "sha256": "6ce0f7ed74db35493bb33596df69bd210e3a38b14389815bef68179953fda4e3",
+      "bytes": 221708,
+      "sha256": "de38c219e10df2127097325353c77773afed2e11cbc2f2d99c253054d519f339",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-client.js",
-      "bytes": 14806,
-      "sha256": "c472afec8aca8e4491fa899ada5639f1eceff3939ba3919d12eafc2180c2eb48",
+      "bytes": 14002,
+      "sha256": "a4c5e0c5a38d9b764ab9ba7254987ea56f35d2bf92a944efe69445053dd69302",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/verification-darwin-control.js",
+      "bytes": 9510,
+      "sha256": "65e5fdf79e836754f0f69792910a66dbea0654078615015bda16035c0e176efc",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-finalization.js",
-      "bytes": 8682,
-      "sha256": "49b1be17eedb852321041ef7d2f34017d2610c5a6aca113f7bd2a210ca8a7dad",
+      "bytes": 9424,
+      "sha256": "96e89118d0f7fa68b40da7ac554cd1e589610154e63365b885c7a124e7a1bb6c",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/verification-darwin-preparation.js",
+      "bytes": 6016,
+      "sha256": "d7af4acb1e466613a2033ad2ce6df141b29976064a00b2ddb4244851a0262c71",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/verification-darwin-preparer.js",
+      "bytes": 2586,
+      "sha256": "9b197593098246139df59722f5f78e24b28891dfe5aee51d67c8d15bb2f19dfb",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/verification-darwin-production.js",
+      "bytes": 28124,
+      "sha256": "5df377a65fe5c5c3b1ac4185cedf5b62103bca8bf424aceff84b48f61116a917",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-scope.js",
-      "bytes": 18881,
-      "sha256": "19031e9a80249e8cbb76fcad305a963e05d4079707e618ff1498f362f8d80fdd",
+      "bytes": 21396,
+      "sha256": "33e14ec12c3e19c8b84857d0da78271ded3d750e1da1b4724c2181b8e0bd2f9b",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-session-protocol.js",
-      "bytes": 8612,
-      "sha256": "47cccf9c6a57a0a7d4db7aa7c9733eb5d773ff72138105988e03d25f548dbd93",
+      "bytes": 8719,
+      "sha256": "f014c9db648e4c16a3e7cd2d6446ffcac89fa096028d6dab5375eb0e6eeb2d04",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-session.js",
-      "bytes": 23021,
-      "sha256": "7c00c68aa35dfc50706e09e63324988b7579082fded06f28e6319a8902d01f65",
+      "bytes": 21610,
+      "sha256": "f68e3897985b8d7f172caa5e60221ca329df14728db2be98fb370b8c9b9bd5b2",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-store.js",
-      "bytes": 12683,
-      "sha256": "d973f10ddec8c607115ea4dd7083903b7cefa9db7e1d16b88a356e694cf71cdd",
+      "bytes": 13121,
+      "sha256": "5846367ab75741de6207573be3f4c17bb5c84932e71062ed3b19ad8db2541a18",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-stub.c",
-      "bytes": 38860,
-      "sha256": "dc1355dd8e275d3b0085e16fb0e58b5cba4db0619bdc15fbd36bf55840991438",
+      "bytes": 39294,
+      "sha256": "15de2b87f2cc3ad33aeae91a1f5aa8f5646b2c03e5a94ca4a8caf6b847522818",
       "mode": "0644"
     },
     {
@@ -2752,8 +2890,8 @@
     },
     {
       "path": "tools/lib/verification-finalization.js",
-      "bytes": 15517,
-      "sha256": "fd1a30ef96f87d0e2b7d3ae1f8b01870d591e91bab8a6791cebde278d47f4a7e",
+      "bytes": 16273,
+      "sha256": "49ee4a6293bc429df45e186877f58cbb041a6e78b2416ab2b032588fe0e88a7f",
       "mode": "0644"
     },
     {
@@ -2764,14 +2902,14 @@
     },
     {
       "path": "tools/lib/verification-linux-namespace.c",
-      "bytes": 32858,
-      "sha256": "c90ef4afe362b65a9fb6efdef2eb666f31d7d3b9af2af6e7fbc419b3fb8d6094",
+      "bytes": 33131,
+      "sha256": "b0893a3372ea1c577fe169ecda8cd8deb3b131590cd5315f9fb9f7abd5e69c24",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-linux-namespace.js",
-      "bytes": 33377,
-      "sha256": "6204110cbd5786faaa354cb05e97dd0482546d3b28b0736662f7dd95f936ab2e",
+      "bytes": 33441,
+      "sha256": "9f29883a968f853de83b7fdc8c8af8781010d5c1463c06db5ea7be2460799487",
       "mode": "0644"
     },
     {
@@ -2788,14 +2926,14 @@
     },
     {
       "path": "tools/lib/verification-recovery.js",
-      "bytes": 7614,
-      "sha256": "8705bf4add4ed46563b4a1235623256fb35759c6ce858c63abb8875103b3cb49",
+      "bytes": 10699,
+      "sha256": "c98458a7f485ff6490087b6b0b8f50413674acbe51406858b63857898686d374",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-supervisor.js",
-      "bytes": 36533,
-      "sha256": "1ba10d73f8ce7eb2188a26c78146222978ad33c1d8877626632c874eba61289b",
+      "bytes": 36806,
+      "sha256": "c185b49fdc06c0677e07ca16d7d8e7a84e28fbad8f2a0a7d9a80ab1b83079891",
       "mode": "0644"
     },
     {
@@ -2890,14 +3028,14 @@
     },
     {
       "path": "tools/native/command-windows-job.c",
-      "bytes": 23719,
-      "sha256": "ece69d578203b9e3b6951133e6c02a8671795b45a8abe7ee5e37d78330fbc46b",
+      "bytes": 28597,
+      "sha256": "92d50bf7b7e6206a5de0adf0bdf11ec7a79e175301a1085fe798a59304aaf3ea",
       "mode": "0644"
     },
     {
       "path": "tools/native/lock-publication.c",
-      "bytes": 35687,
-      "sha256": "c9db9a1d50d9f093f7abc0e63d24a90e0105fd83f91566db96fedb117228a034",
+      "bytes": 45007,
+      "sha256": "48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b",
       "mode": "0644"
     },
     {
@@ -3446,6 +3584,48 @@
       "reason": "generated cache, dependency or build directory"
     },
     {
+      "path": "tools/lib/native/linux-x64/.build-8x5Vvg/BUILD.json",
+      "bytes": 1540,
+      "sha256": "d7ea791b9269e0c4df862dda8d36d12885c88a7f1d7597b8bd891b34c7416d7c",
+      "mode": "0644",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-8x5Vvg/lock-publication.c",
+      "bytes": 43760,
+      "sha256": "accccfa3d36531d1ef2cd85f1bc09c031f5e18c56059752fce73ad41ec770aee",
+      "mode": "0644",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-8x5Vvg/lock-publication.node",
+      "bytes": 26800,
+      "sha256": "13c89076d76f29df61be514e02388295e77079d0a429979d642e38cd5b578886",
+      "mode": "0755",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-GTWaKW/BUILD.json",
+      "bytes": 1540,
+      "sha256": "f60ea7ba4bbc9faa5daf8e858e2464fccd4c1a7e37747415937c36ed2d967750",
+      "mode": "0644",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-GTWaKW/lock-publication.c",
+      "bytes": 45007,
+      "sha256": "48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b",
+      "mode": "0644",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-GTWaKW/lock-publication.node",
+      "bytes": 26800,
+      "sha256": "3a1a504a0d6c7c3e40242a5cb5cb785933fb6b451ec9c6e2b447dc7f4268d6ef",
+      "mode": "0755",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
       "path": "tools/lib/native/linux-x64/.build-c7PTSg/BUILD.json",
       "bytes": 1540,
       "sha256": "f2f83afd096ff3d99f1f1b3b96ad5dff10c8a63008042b7f2791d202308ff8c3",
@@ -3532,28 +3712,28 @@
     {
       "path": "tools/lib/native/linux-x64/lock-publication.manifest.json",
       "bytes": 363,
-      "sha256": "fab97bd120844e575e73b1b11da3566b182c760f560d4de99d76008ef44ab1e0",
+      "sha256": "846f78ac11b5e0de3d242cca912e15f48a8fdc3d1b54e2266fd6b9639dade87b",
       "mode": "0644",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/lock-publication.node",
-      "bytes": 26376,
-      "sha256": "c6e1d663f5d3ba076be84de7238a0d9c2470beaa9ea3f3645c6161f7ea4e81f6",
+      "bytes": 26800,
+      "sha256": "3a1a504a0d6c7c3e40242a5cb5cb785933fb6b451ec9c6e2b447dc7f4268d6ef",
       "mode": "0755",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/verification-linux-namespace",
       "bytes": 39928,
-      "sha256": "6bdf07a770944059ecbcf6ed08109cc117b09fd51ed4daa0d40dda6730a761a0",
+      "sha256": "2b5d16d8be3a07d92a09f7efc60dec66c76cf9d8c2bded04f6b8ae2a7a404516",
       "mode": "0755",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/verification-linux-namespace.manifest.json",
       "bytes": 352,
-      "sha256": "1dce3b1dc2ac4a89b04fc2e1eea456321c486dc16e0189ab0a19f82494940d67",
+      "sha256": "c8ef875be05add3914721c38da411954e3ee1ccde28895c1533c555c620e393d",
       "mode": "0644",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     }

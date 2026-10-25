@@ -149,6 +149,11 @@
       "a substituted private stage cannot publish a foreign directory",
       "native refuses path traversal rather than resolving it",
       "an exhausted native admission budget retains the complete private stage"
+    ],
+    "linux_authority": [
+      "nonzero UID: three real authority scopes retain no capabilities and preserve UID mapping",
+      "current UID: the exact nested mapping determines the authority capability profile",
+      "nonzero UID: ordinary command workers remain in the zero-capability profile"
     ]
   },
   "allowed_skips_by_platform": {
