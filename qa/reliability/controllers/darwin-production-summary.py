@@ -8,6 +8,7 @@ FILES = {'darwin-production-lifecycle.py', 'run_pipeline4.py', 'external-frame'}
 TYPES = {'QAError', 'FileNotFoundError', 'PermissionError', 'TypeError', 'AttributeError', 'KeyError', 'ValueError',
     'OSError', 'TimeoutExpired', 'RuntimeError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'UnknownException'}
 PHASES = {'input', 'public-run', 'finalization-reader', 'complete'}
+PRODUCT_PHASES = {'setup', 'copy_chunk', 'test_setup', 'command', 'finalization', 'receipt_commit', 'between_tests', 'batch_finalization'}
 FAILURES = set('runner_architecture_mismatch runtime_copy_pin_mismatch node_version_failed node_version_invalid '
     'node_checksums_oversized node_headers_checksum_missing node_headers_checksum_mismatch node_headers_archive_unsafe '
     'node_headers_archive_truncated native_addon_build_failed native_addon_pin_mismatch ordinary_owner_required '
@@ -48,14 +49,18 @@ def load(path, maximum=16*1024*1024):
 def error_codes(source):
     # Only enum-shaped literals in the exact publicly supplied first-party
     # source are eligible, never arbitrary error messages or payload output.
-    codes = {'ERR_ASSERTION', 'controller_assertion_failed'}
+    codes = set('ERR_ASSERTION controller_assertion_failed ERR_INVALID_ARG_TYPE ERR_INVALID_ARG_VALUE ERR_OUT_OF_RANGE '
+        'ERR_MODULE_NOT_FOUND MODULE_NOT_FOUND ERR_DLOPEN_FAILED ERR_CHILD_PROCESS_IPC_REQUIRED ERR_IPC_CHANNEL_CLOSED '
+        'ERR_IPC_DISCONNECTED EACCES EPERM ENOENT ENOTDIR EISDIR ELOOP EEXIST ENOSPC EMFILE ENFILE ENOMEM EIO EPIPE '
+        'ETIMEDOUT EBADF EINTR ENOTSUP ENOSYS'.split())
     for name in ('verification-darwin-production.js', 'verification-darwin-preparation.js', 'verification-darwin-preparer.js',
         'verification-darwin-session.js', 'verification-darwin-session-protocol.js', 'verification-darwin-client.js',
         'verification-darwin-control.js', 'verification-darwin-finalization.js', 'verification-darwin-store.js',
-        'verification-control.js', 'verification-finalization.js', 'verification-execution.js', 'lock-publication.js'):
+        'verification-control.js', 'verification-finalization.js', 'verification-execution.js', 'lock-publication.js',
+        'verification-policy.js', 'inert-data.js', 'verification-darwin-authority.js'):
         p = source/'tools/lib'/name
         if p.is_file() and not p.is_symlink():
-            codes.update(re.findall(r"['\"]((?:verification_|native_lock_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
+            codes.update(re.findall(r"['\"]((?:verification_|native_lock_|transaction_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
     native = source/'tools/lib/verification-darwin-broker.m'
     if native.is_file() and not native.is_symlink(): codes.update(re.findall(r'@"([A-Z][A-Z0-9_]{2,100})"', native.read_text()))
     protected = source/'tools/native/lock-publication.c'
@@ -100,6 +105,10 @@ def build(private, source, controller_status, architecture):
             'KVE_KVF_ACK_verified': boolean(item.get('KVE_KVF_ACK_verified')), 'phase': terminal.get('stage') if terminal.get('stage') in PHASES else 'unknown',
             'success': boolean(terminal.get('success')), 'error_code': terminal.get('error_code') if terminal.get('error_code') in codes else None,
             'containment_reason': containment.get('reason') if containment.get('reason') in codes else None,
+            'product_stage': err.get('stage') if err.get('stage') in PRODUCT_PHASES else None,
+            'timed_out': boolean(err.get('timed_out')), 'recovery_required': boolean(err.get('recovery_required')),
+            'teardown_status': err.get('teardown', {}).get('status') if isinstance(err.get('teardown'), dict) and
+                err['teardown'].get('status') in ('completed', 'not_required', 'unconfirmed') else None,
             'stdout_sha256': digest(item.get('stdout_sha256')), 'stderr_sha256': digest(item.get('stderr_sha256'))})
     diagnostics = []
     values = raw.get('diagnostics', fallback.get('diagnostics', []))

@@ -3,8 +3,8 @@
   "files": [
     {
       "repository_path": ".github/workflows/rc5-reliability-darwin-production.yml",
-      "bytes": 3198,
-      "sha256": "7e649949d2e13719b1562f74f2fe67977b37e6941d39805206d5722de65e2f7d"
+      "bytes": 3388,
+      "sha256": "f94ed2a056c7f3c50b72a1e9349d48aa4177f6204a27bc3dfc322f80dbbcfef7"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-lifecycle.py",
@@ -13,18 +13,23 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-controller.js",
-      "bytes": 3319,
-      "sha256": "155a6db862151f3bff0fc7e2a00c36443795bf00cb3428cccc9c0d843387bb86"
+      "bytes": 3329,
+      "sha256": "09ae5bdee11d274a75bcb8e18aa5633871305e05c67d828d810f0a627a2f9cfd"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
-      "bytes": 15557,
-      "sha256": "9d224cd71a4223f57b7bccb504397f11c1b1439ee696f950bd896dc79f67f657"
+      "bytes": 16581,
+      "sha256": "c454e2044592ddc1fba62a7256cba53ff7834d370daecf2ee3183c7005728c74"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
-      "bytes": 5470,
-      "sha256": "a217335d1f9a964229048e161e9d55d300de349762ae5f27b1ed3fe43f87cfe8"
+      "bytes": 7378,
+      "sha256": "5cb46c8689321a08d84182b66782b3d3df35ee1ad8991022dbd8a3112ef1ba8e"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/test-darwin-production-request.js",
+      "bytes": 2348,
+      "sha256": "fdc0ea65b05bcdead1804a10500ba0195c951764e568adbd04b583dc42d92e32"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-install-parent.py",

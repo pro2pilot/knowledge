@@ -34,7 +34,7 @@ process.stdin.once('end', () => {
       sourceFiles: ['run.js'], tests: [{ argv: ['node', 'run.js'], cwd: '.', timeout_ms: 180000 }],
       verificationPolicy: { work_budget_ms: 240000, no_progress_ms: 0, cleanup_budget_ms: 60000 },
       nativeExecution: { darwin: { enabled: true, mode: 'isolated_copy',
-        broker_path: input.config.binary, broker_socket: input.config.socket } }
+        broker_path: input.config.binary, broker_socket: input.config.socket, copy: {} } }
     };
     process.stdout.write(JSON.stringify({ type: 'started', pid: process.pid }) + '\n');
     stage = 'public-run';

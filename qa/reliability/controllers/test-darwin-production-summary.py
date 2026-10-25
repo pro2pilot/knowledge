@@ -3,6 +3,8 @@ import copy, hashlib, importlib.util, json, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 target = Path(__file__).with_name('darwin-production-summary.py')
+if '--summary-target' in sys.argv:
+    index = sys.argv.index('--summary-target');target = Path(sys.argv[index + 1]).resolve();del sys.argv[index:index+2]
 spec = importlib.util.spec_from_file_location('production_summary', target)
 summary = importlib.util.module_from_spec(spec);spec.loader.exec_module(summary)
 
@@ -55,7 +57,8 @@ class ProductionEvidence(unittest.TestCase):
             value['installation_parent'] = {'created': True, 'exists_before': False, 'errno': 2, 'path': secret,
                 'identity': {'dev': secret, 'ino': secret}, 'message': secret}
             value['cases'][0]['terminal'].update(token=secret, result=secret, acceptances=secret,
-                error_code=secret, error={'message': secret, 'containment': {'reason': secret}})
+                error_code=secret, error={'message': secret, 'stage': secret, 'containment': {'reason': secret},
+                    'teardown': {'status': secret}, 'recovery_required': secret, 'timed_out': secret})
             value['records'] = [{'name': '001-'+secret, 'exit_code': 1, 'stdout': secret}]
             value['diagnostics'] = [{'type': 'ValueError', 'stage': 'execute', 'args': secret,
                 'frames': [{'file': 'darwin-production-lifecycle.py', 'line': 200, 'locals': secret}, {'file': secret, 'line': 1}]}]
@@ -66,6 +69,23 @@ class ProductionEvidence(unittest.TestCase):
             self.assertEqual(stages['stages'][0]['stage'], '001-unclassified-stage')
             self.assertTrue(public['installation_parent']['created']);self.assertFalse(public['installation_parent']['exists_before'])
             self.assertEqual(public['installation_parent']['errno'], 2)
+
+    def test_fixed_policy_error_and_product_phase_are_public_without_message(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder);private = root/'private';private.mkdir();source = root/'source';(source/'tools/lib').mkdir(parents=True)
+            (source/'tools/lib/verification-policy.js').write_text("throw requestError('verification_darwin_config_invalid');")
+            (source/'tools/lib/inert-data.js').write_text("dataDescriptor('transaction_input_invalid');")
+            for code in ('verification_darwin_config_invalid', 'transaction_input_invalid', 'ERR_DLOPEN_FAILED', 'EACCES'):
+                value = self.good();value['cases'][0]['terminal'].update(success=False, stage='public-run', error_code=code,
+                    error={'stage': 'setup', 'message': 'NEVER_PUBLIC_diagnostic_message', 'timed_out': False,
+                        'recovery_required': True, 'teardown': {'status': 'unconfirmed', 'secret': 'NEVER_PUBLIC_teardown'}})
+                (private/'SUMMARY.json').write_text(json.dumps(value))
+                actual, _ = summary.build(private, source, 1, 'arm64')
+                self.assertEqual(actual['cases'][0]['error_code'], code)
+                self.assertEqual(actual['cases'][0]['product_stage'], 'setup')
+                self.assertEqual(actual['cases'][0]['teardown_status'], 'unconfirmed')
+                self.assertIs(actual['cases'][0]['timed_out'], False);self.assertIs(actual['cases'][0]['recovery_required'], True)
+                self.assertNotIn('NEVER_PUBLIC', json.dumps(actual));self.assertEqual(actual['status'], 'FAIL_OR_INCOMPLETE')
 
 
 if __name__ == '__main__': unittest.main()

@@ -46,6 +46,7 @@ jobs:
         run: |
           python3 qa/reliability/controllers/verify-darwin-ci-assets.py --root . --inventory qa/reliability/DARWIN_PRODUCTION_ASSET_PINS.json
           python3 qa/reliability/controllers/test-darwin-production-summary.py
+          node qa/reliability/controllers/test-darwin-production-request.js --source qa/reliability/source/.knowledge --controller qa/reliability/controllers/darwin-production-controller.js
       - name: Execute normal public production request
         shell: bash
         run: |
