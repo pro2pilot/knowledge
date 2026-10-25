@@ -3,10 +3,10 @@
   "status": "PASS_FROZEN_SOURCE",
   "scope": "Complete source tree including source-only tests and historical test fixtures; generated state/native outputs explicitly excluded.",
   "archive": "SOURCE.zip",
-  "archive_sha256": "89b48c78172cdc0785b1cf98ad596b90c6842d785330f8f3681e0336094a8b05",
-  "archive_bytes": 1901798,
-  "file_count": 592,
-  "uncompressed_bytes": 6526440,
+  "archive_sha256": "f61b2c06bb8bdc777988a0323f104c5a3d010c9e5544a453a7a762b3f2f245ab",
+  "archive_bytes": 1918929,
+  "file_count": 601,
+  "uncompressed_bytes": 6574932,
   "files": [
     {
       "path": ".gitattributes",
@@ -1084,8 +1084,8 @@
     },
     {
       "path": "install-manifest.json",
-      "bytes": 23436,
-      "sha256": "d23ff30dd461672d72dbc4ef1601565b79b4b9ca5355e361e0ddb9ea36e516fc",
+      "bytes": 27599,
+      "sha256": "e0bdefbc7bd8ab88cf7141ec17b948a0c53cb4bb46dfcb6689039b3b2ea17c1d",
       "mode": "0644"
     },
     {
@@ -1629,6 +1629,18 @@
       "mode": "0644"
     },
     {
+      "path": "tests/helpers/reliability-storage-contender.cjs",
+      "bytes": 398,
+      "sha256": "455199e396c18c46382c50ee7ef0f922ac5b89562ded81d142e574dc01de5858",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/helpers/reliability-storage-init-ack-fault.cjs",
+      "bytes": 684,
+      "sha256": "b67219c8da4534e55277f8050177cfb28cb4739d68d47068701549e10dc52043",
+      "mode": "0644"
+    },
+    {
       "path": "tests/helpers/reliability-storage-observer.cjs",
       "bytes": 4492,
       "sha256": "2a95b51c81441fcde20036fcd6209cf8c26d93c33f9a65a1fb57b02e7d647aae",
@@ -1684,14 +1696,14 @@
     },
     {
       "path": "tests/lock-owner-native-scope.test.js",
-      "bytes": 21518,
-      "sha256": "af46942cee3af208f9d9b2a05a0994f08f502fb66051c7b2b80c5c05a374e192",
+      "bytes": 21576,
+      "sha256": "fdbb64f04c927c1478b0e4c910ac6a97b5a84b933c80265622d2780487d5f6e0",
       "mode": "0644"
     },
     {
       "path": "tests/lock-owner-recovery-budget.test.js",
-      "bytes": 3724,
-      "sha256": "caa6daf5eee6c77dfb4e1269e234d46e22e69de42abf0cfe82b47e60e2a9bb62",
+      "bytes": 3796,
+      "sha256": "365f649b62d48dac51d5e23ccb4f750c78fb322ec844efc7ee14cd1872c0a62e",
       "mode": "0644"
     },
     {
@@ -1882,8 +1894,8 @@
     },
     {
       "path": "tests/reliability-linux-authority-profile.test.js",
-      "bytes": 3360,
-      "sha256": "2ac9a961b68f5d53fa043e5d6d83791c3372e68dc74eda16d65a865daeed9c4f",
+      "bytes": 3602,
+      "sha256": "dd64ffe41315d50a4d77916015b726890cc10b3617c98092fa311643cd4e5fd0",
       "mode": "0644"
     },
     {
@@ -1923,6 +1935,12 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-lock-scope-budget.test.js",
+      "bytes": 2846,
+      "sha256": "ca8ff587473e9c7629236f7b23320e2e11204110e95891308839d818b799462c",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-lock-scope.test.js",
       "bytes": 4777,
       "sha256": "104ca2ad9dff28e3c9d38d72b574001e99f8cbe4a4b2d1984d8efc608db34bc4",
@@ -1935,6 +1953,18 @@
       "mode": "0644"
     },
     {
+      "path": "tests/reliability-native-package.test.js",
+      "bytes": 4961,
+      "sha256": "d363555cfad26d66468e917c38ba9bfaf1c5227ea8697ad75056b6ef2c75c3f1",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-recovery-deadline.test.js",
+      "bytes": 3232,
+      "sha256": "49746c31a297668a3e567d1e0b7a175bdb7c5e69dd19a0c70ce7568379f69b44",
+      "mode": "0644"
+    },
+    {
       "path": "tests/reliability-storage-cancel.test.js",
       "bytes": 4441,
       "sha256": "9aa3bbc6775a56c45d052252ccea843d310bece2974034c5fbd19b272dc30a01",
@@ -1944,6 +1974,12 @@
       "path": "tests/reliability-sync-liveness.test.js",
       "bytes": 1508,
       "sha256": "6057e61314438d43348db32195718e40444b97fe382feb7d292346c7254de2ec",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/reliability-verification-storage.test.js",
+      "bytes": 9510,
+      "sha256": "78980e0c1b9a868b86bbe1907e25d81784a6205f1c6f0bde116783800b1c772c",
       "mode": "0644"
     },
     {
@@ -2028,6 +2064,12 @@
       "path": "tests/transaction-bounded-manifest.test.js",
       "bytes": 2624,
       "sha256": "cc346282e321f9faa24817245aab8ce28bc3143280b827d93bb7c405fcc22de3",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/transaction-finite-files.test.js",
+      "bytes": 3383,
+      "sha256": "3ea41dc14b283cc4b4d5d382dbef49275eed7d387206d0ea00fa6f6a1de2c78c",
       "mode": "0644"
     },
     {
@@ -2122,8 +2164,8 @@
     },
     {
       "path": "tests/verification-native-recovery.test.js",
-      "bytes": 20302,
-      "sha256": "dd147a9423cd53e1e2c2c622b202278babe6e7084813d18b40221c6843196c8a",
+      "bytes": 20523,
+      "sha256": "e5765f51fc7f0774e536c5c56b3fc427e6c9997343295f90f0525288160ac665",
       "mode": "0644"
     },
     {
@@ -2272,8 +2314,8 @@
     },
     {
       "path": "tools/evaluation-harness.js",
-      "bytes": 11293,
-      "sha256": "971301c0efa409c294aef3dd05a0b8b15b9a73e32e32fc7f614c7d096b4cfb82",
+      "bytes": 11341,
+      "sha256": "761ff300dee8037eeb15f41109cd0e022720db6431049ec00b1b7a7dbfce06e3",
       "mode": "0644"
     },
     {
@@ -2332,8 +2374,8 @@
     },
     {
       "path": "tools/flow.js",
-      "bytes": 36747,
-      "sha256": "b3989d02b2a72fca07bc6abd2d4a0e20980fd9464b593005a03b53f85fae17ec",
+      "bytes": 36776,
+      "sha256": "6e156c93488c352ca7862554e7f35faa28e9731d6ce77eb188f515c06fe47463",
       "mode": "0644"
     },
     {
@@ -2415,21 +2457,27 @@
       "mode": "0644"
     },
     {
+      "path": "tools/lib/command-cli-worker.js",
+      "bytes": 1434,
+      "sha256": "ab041a1a9983ce6eee6760d4ae91459bd976454a43a18091fc093f849a03a672",
+      "mode": "0644"
+    },
+    {
       "path": "tools/lib/command-runner.js",
-      "bytes": 25578,
-      "sha256": "c0bdc7fadbd9cbeec6d78a6270fcacb1e4ec1a608d80acecca5f9a9a97173d63",
+      "bytes": 25896,
+      "sha256": "7e7320277ae7c4fb9cf5b4d8ad5d7ad7f2e4b674e5ca9eebfc0fbfc00aea8daf",
       "mode": "0644"
     },
     {
       "path": "tools/lib/command-runtime-prepare.js",
-      "bytes": 1279,
-      "sha256": "84d2c6d810c61812a4f7656aa29159c216386f031f487841d54e12c2df4499ae",
+      "bytes": 1339,
+      "sha256": "1dea3a610596b9f369d1e32d34e6375de3a5c9f60b21fad777c7875747900360",
       "mode": "0644"
     },
     {
       "path": "tools/lib/command-scope-proof.js",
-      "bytes": 6363,
-      "sha256": "6267b69a282abba10788b70b19f65f015dd3aa177e8b61f40fd8a703726f2426",
+      "bytes": 6758,
+      "sha256": "144903545a6d83f9b7301b795c168d25252aaaa58770ec974106f2a1e175704d",
       "mode": "0644"
     },
     {
@@ -2440,14 +2488,20 @@
     },
     {
       "path": "tools/lib/command-scope-relay.js",
-      "bytes": 6201,
-      "sha256": "507a5c3cceec8062293e7de35318217988419abd998f1bded151cbf08e58686e",
+      "bytes": 7244,
+      "sha256": "2a95c5c33233fcb68092ca80cd301ec05942dd8c4ff7c6afc06fbe5ba59b3c12",
       "mode": "0644"
     },
     {
       "path": "tools/lib/command-sync-driver.js",
       "bytes": 1524,
       "sha256": "d35c1bf7908ee2be62703adca27e30a50b081c274a0a4adaeadc6f17e8c6ebad",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/command-windows-custody.js",
+      "bytes": 5208,
+      "sha256": "bdf0545c4f57083cb30126366f8c96526d3929db91bd5becafcd4895fd66d0c1",
       "mode": "0644"
     },
     {
@@ -2458,8 +2512,8 @@
     },
     {
       "path": "tools/lib/command-windows-holder.js",
-      "bytes": 8508,
-      "sha256": "a8e492fd5ec83458dab2119133565cfe83207b21fdea1e8b20d3fa651b5a23ff",
+      "bytes": 8983,
+      "sha256": "33dae0cf84a19777696b8d70269f2c2837a3ac5b809e4cfa4d7602c1d724b208",
       "mode": "0644"
     },
     {
@@ -2476,8 +2530,8 @@
     },
     {
       "path": "tools/lib/command-windows-query.js",
-      "bytes": 3508,
-      "sha256": "70dd0b401dffab9ececc73fb2c34c4940a4281876d8d770299cec521ea5d5221",
+      "bytes": 3954,
+      "sha256": "1511b36d3ecd763c6155a53d8a0d100c678e15164bb83665b7666bbb2d0501f0",
       "mode": "0644"
     },
     {
@@ -2488,20 +2542,20 @@
     },
     {
       "path": "tools/lib/command-windows-runtime.js",
-      "bytes": 11136,
-      "sha256": "e26e58f56a88fc4ba3fb1c2c3a42481d9e8480f93bee918802db915d78816964",
+      "bytes": 11236,
+      "sha256": "347748474296981d02a011bf7920a1499a0f4fe703482e21a65a9dbec55c7813",
       "mode": "0644"
     },
     {
       "path": "tools/lib/command-windows-scope.js",
-      "bytes": 8845,
-      "sha256": "85324b6a3b9073b74b258264d4c8137d5651907d386a6ac17f23e2997336e8a5",
+      "bytes": 9269,
+      "sha256": "edbc10142a31fd2006b5ed0c09cfc2fcf5e65e045ab838f4cf5f6d773e149247",
       "mode": "0644"
     },
     {
       "path": "tools/lib/command-worker.js",
-      "bytes": 4562,
-      "sha256": "d3fc80593d4bf19028fa65e6b2cdb9ee5313682b1dce9424a551a307edd81268",
+      "bytes": 5440,
+      "sha256": "ed8abd6ba216ecaf1cece5d9b459ba84dfa38e69fff77bcb7066ba83fae46305",
       "mode": "0644"
     },
     {
@@ -2512,8 +2566,8 @@
     },
     {
       "path": "tools/lib/contained-lock-manager.js",
-      "bytes": 85779,
-      "sha256": "9fc5a351d87923fdeb36955877eaf841e1ea95a4500b96c9eb193aae4152d0ae",
+      "bytes": 86411,
+      "sha256": "01fd47241ec7e6563cdf8e742594746c6e4de7f2608d61638695b40d481d2ea6",
       "mode": "0644"
     },
     {
@@ -2608,8 +2662,8 @@
     },
     {
       "path": "tools/lib/json-transaction.js",
-      "bytes": 55316,
-      "sha256": "7479f2f5069a3c304b86f62038dc8d65c85c770aaa11feb1951c8835d336c04d",
+      "bytes": 56257,
+      "sha256": "3f18f8a45188012e620eb06ebdb3c1135f61888a0106fb5d0312a61f519eee63",
       "mode": "0644"
     },
     {
@@ -2698,8 +2752,8 @@
     },
     {
       "path": "tools/lib/release-contract.js",
-      "bytes": 8906,
-      "sha256": "758bfa507cbc7c08ddf54444edfb3d1ebd8a7aeab092b4a928d3c73f2df55607",
+      "bytes": 11451,
+      "sha256": "610e91488fad2ace5c44c5e1d2aafc76e34b3b931725b6455b1e18ca29b0496e",
       "mode": "0644"
     },
     {
@@ -2794,8 +2848,8 @@
     },
     {
       "path": "tools/lib/verification-darwin-broker.m",
-      "bytes": 221708,
-      "sha256": "de38c219e10df2127097325353c77773afed2e11cbc2f2d99c253054d519f339",
+      "bytes": 222316,
+      "sha256": "02b7dec225e3374cd9daac507c673debd539a3d8c98ce81555610c6a1365b4e4",
       "mode": "0644"
     },
     {
@@ -2812,8 +2866,8 @@
     },
     {
       "path": "tools/lib/verification-darwin-finalization.js",
-      "bytes": 9424,
-      "sha256": "96e89118d0f7fa68b40da7ac554cd1e589610154e63365b885c7a124e7a1bb6c",
+      "bytes": 9559,
+      "sha256": "63814894660ee904d976c301d309b5bfd4be5cef0d154dc76fc4cf08c3710b60",
       "mode": "0644"
     },
     {
@@ -2830,8 +2884,8 @@
     },
     {
       "path": "tools/lib/verification-darwin-production.js",
-      "bytes": 28124,
-      "sha256": "5df377a65fe5c5c3b1ac4185cedf5b62103bca8bf424aceff84b48f61116a917",
+      "bytes": 29500,
+      "sha256": "a32f399918ad2e748ce63f211e42c50aeff65714d7efe8215e2e1c0108a19fbf",
       "mode": "0644"
     },
     {
@@ -2854,8 +2908,8 @@
     },
     {
       "path": "tools/lib/verification-darwin-store.js",
-      "bytes": 13121,
-      "sha256": "5846367ab75741de6207573be3f4c17bb5c84932e71062ed3b19ad8db2541a18",
+      "bytes": 13163,
+      "sha256": "5720687f5781b35216a0afd3c69cbc664b57d6bdc56b6409d8a1d52b21655c6f",
       "mode": "0644"
     },
     {
@@ -2902,14 +2956,14 @@
     },
     {
       "path": "tools/lib/verification-linux-namespace.c",
-      "bytes": 33131,
-      "sha256": "b0893a3372ea1c577fe169ecda8cd8deb3b131590cd5315f9fb9f7abd5e69c24",
+      "bytes": 33539,
+      "sha256": "fab4cd295e01e4faa86a874d63f1a1181d483e13ffa535386b96ecc571c6a6da",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-linux-namespace.js",
-      "bytes": 33441,
-      "sha256": "9f29883a968f853de83b7fdc8c8af8781010d5c1463c06db5ea7be2460799487",
+      "bytes": 33620,
+      "sha256": "1648ab9f4d7d34c911162bcfee12a3d62fd1e8fd1d6f03b9a44b91e8e4e8ad05",
       "mode": "0644"
     },
     {
@@ -2926,8 +2980,8 @@
     },
     {
       "path": "tools/lib/verification-recovery.js",
-      "bytes": 10699,
-      "sha256": "c98458a7f485ff6490087b6b0b8f50413674acbe51406858b63857898686d374",
+      "bytes": 11597,
+      "sha256": "71139610199b0abee3960f3bf4d7577489a8f2683c7b2b4ec8fc14e7061a5491",
       "mode": "0644"
     },
     {
@@ -3514,8 +3568,8 @@
     },
     {
       "path": "tools/validate-release-artifact.js",
-      "bytes": 17597,
-      "sha256": "480e9673fc92f343035667b0098e684e3967ad7d5b31b4ae71b6e508f2f2ab8d",
+      "bytes": 17697,
+      "sha256": "ae8e6fe96f9c51065c2ceafea3d14d38e77924ac1334863db3b2fabff0e235ae",
       "mode": "0644"
     },
     {
@@ -3725,15 +3779,43 @@
     },
     {
       "path": "tools/lib/native/linux-x64/verification-linux-namespace",
-      "bytes": 39928,
-      "sha256": "2b5d16d8be3a07d92a09f7efc60dec66c76cf9d8c2bded04f6b8ae2a7a404516",
+      "bytes": 39968,
+      "sha256": "0eaf6369476497ba641b66949e3e7e6c2e7a82667ad5354de29d4874792ea175",
       "mode": "0755",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/verification-linux-namespace.manifest.json",
       "bytes": 352,
-      "sha256": "c8ef875be05add3914721c38da411954e3ee1ccde28895c1533c555c620e393d",
+      "sha256": "eb150a7276f4ac8b2ed76716043d138f7301515d38ec71cb090f77ddc7a84dbb",
+      "mode": "0644",
+      "reason": "prebuilt native output; rebuilt in each actual target job"
+    },
+    {
+      "path": "tools/lib/native/win32-arm64/command-windows-job.manifest.json",
+      "bytes": 373,
+      "sha256": "d193a7bd4fde058a84ff4610473680ee110e4e0d084dbfdd140b5e253e287665",
+      "mode": "0644",
+      "reason": "prebuilt native output; rebuilt in each actual target job"
+    },
+    {
+      "path": "tools/lib/native/win32-arm64/command-windows-job.node",
+      "bytes": 158720,
+      "sha256": "1b59f499d5224af329c315f343fbbd746db18b147ad65aaff34285712bcd8f03",
+      "mode": "0644",
+      "reason": "prebuilt native output; rebuilt in each actual target job"
+    },
+    {
+      "path": "tools/lib/native/win32-x64/command-windows-job.manifest.json",
+      "bytes": 371,
+      "sha256": "89ef2013f800750ce8930e46f216c4ac6e94891af37a5355f6eb8fb27ca748e1",
+      "mode": "0644",
+      "reason": "prebuilt native output; rebuilt in each actual target job"
+    },
+    {
+      "path": "tools/lib/native/win32-x64/command-windows-job.node",
+      "bytes": 154112,
+      "sha256": "87b6414d83ec2f52ac8db6a3797e79c9107fb3a6f34ac120b84e9f23d3082bb0",
       "mode": "0644",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     }
