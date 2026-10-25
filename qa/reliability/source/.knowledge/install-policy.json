@@ -1,0 +1,31 @@
+{
+  "schema_version": "3.2.7",
+  "install_artifact": "github_release_asset",
+  "asset_name_pattern": "^knowledge-v\\d+\\.\\d+\\.\\d+\\.zip$",
+  "canonical_release_url": "https://github.com/pro2pilot/knowledge/releases/latest",
+  "canonical_release_asset_rule": "Download the attached asset whose name matches knowledge-vX.Y.Z.zip on the latest GitHub release. Do not use a fixed version number from old docs.",
+  "forbidden_asset_names": [
+    "default.knowledge.zip",
+    ".knowledge.zip",
+    "knowledge.zip"
+  ],
+  "forbid": [
+    "git clone into target project",
+    "GitHub Code > Download ZIP",
+    "GitHub Source code (zip)",
+    "GitHub Source code (tar.gz)",
+    "release zipball_url",
+    "release tarball_url",
+    "source checkout as install package"
+  ],
+  "forbidden_target_paths": [
+    "knowledge-src/",
+    ".knowledge/.git/",
+    ".knowledge/.github/"
+  ],
+  "required_target_paths": [
+    ".knowledge/"
+  ],
+  "post_install_check": "node .knowledge/tools/install-check.js --json",
+  "first_import_command": "node .knowledge/tools/flow.js import"
+}

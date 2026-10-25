@@ -1,0 +1,105 @@
+{
+  "schema": "knowledge-darwin-ci-assets.v1",
+  "reference_commit": "4303ef4dea1520cb556a30036612842287ed2386",
+  "reference_usage": "fixture utilities only; old verdicts and runtime source pins not inherited",
+  "files": [
+    {
+      "repository_path": ".github/workflows/rc5-reliability-darwin-physical.yml",
+      "bytes": 2802,
+      "sha256": "fc7646b37fc979e9b7a0d723d45536f521922ff8a66bf60a31654d363545cb1a"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-native-compile.py",
+      "bytes": 4793,
+      "sha256": "4ce435491ecdc58826850c919fba907d2b7b51628f346c505d68d5f28bdd019b"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-native-lifecycle.py",
+      "bytes": 18446,
+      "sha256": "be3ea8706df696520764922583ace07a61bc2174a90c4f670c2873c2abb632bf"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-native-controller.js",
+      "bytes": 8583,
+      "sha256": "7a03d57a370039fe934daa55e7bf3815ae39645f1e4b0391617de9642054d91b"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-test-signal.c",
+      "bytes": 1832,
+      "sha256": "8469f764c5460696adff04ca6ca52c72dbe394292ec6b80d8513b50900ea8f03"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-public-summary.py",
+      "bytes": 11036,
+      "sha256": "d574cbe0bab0190bc406d22c754a62f08d2182599f20c2e14faec857750d8829"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/verify-darwin-ci-assets.py",
+      "bytes": 1563,
+      "sha256": "685dcc4b390324a2a4f3ab498d98dc547db26cc4cea1f5f1464619e4ef2992be"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/test-darwin-public-summary.py",
+      "bytes": 3207,
+      "sha256": "ade3ff8b670158ddb2ad522ce7bad3ba5821ffbb13c81f8af510c9b1014267dd"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/PINS.json",
+      "bytes": 92543,
+      "sha256": "168e21634a371823c8030444aa05ae993f32fa9b63fcbe614ff97de3b500db38"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/run_pipeline4.py",
+      "bytes": 92583,
+      "sha256": "05f651321793aa2fafce4d87bc49a742175446833f244a4802c36c4ede49658e"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/persistence_gate.py",
+      "bytes": 9462,
+      "sha256": "8d40301ee387e767a6e739db1e4454d06b181e7ad7d2ab87a8b1869afd086080"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-pipeline4/birth-observer.c",
+      "bytes": 3163,
+      "sha256": "4fc0f8513ade119508745e45a25445ac6595def7880481e50e444e365cac787d"
+    },
+    {
+      "repository_path": "qa/reliability/reference/qa/darwin-broker/uid-scan.c",
+      "bytes": 1286,
+      "sha256": "dec1fc9128e747bea01c224b6b40e76c5703795e4468a155326aa4e87c1c614b"
+    }
+  ],
+  "native_sources": [
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-broker.m",
+      "bytes": 198271,
+      "sha256": "0fd821d6507c92bb160d8c078c4e642755869c066331bb9392a10d4c43e18e0f"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-stub.c",
+      "bytes": 38860,
+      "sha256": "dc1355dd8e275d3b0085e16fb0e58b5cba4db0619bdc15fbd36bf55840991438"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-transport.h",
+      "bytes": 6952,
+      "sha256": "7c5a5907ea6f243d4c5ff3d84ff727f481167a41074489daf5e034b6c4e96ab8"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-uid-history.h",
+      "bytes": 5262,
+      "sha256": "067cb0c64f0ea6c6ed57927de571e7e572b3f05ff951143364a19acffa074852"
+    },
+    {
+      "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-uid-history.m",
+      "bytes": 29373,
+      "sha256": "2fef98ad495d5aaa1ab3bf0385a0a00780f781351d645cc89fbe7da5f68f9e36"
+    }
+  ],
+  "runtime_source_required": "qa/reliability/source/.knowledge",
+  "production_qualified": false,
+  "uploaded_artifacts": [
+    "summary.json",
+    "stages.json"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pro2pilot.local/schemas/knowledge/inspector-action.schema.json",
+  "title": ".knowledge Inspector Action",
+  "type": "object",
+  "required": ["id", "label", "risk", "description"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9_.-]+$" },
+    "label": { "type": "string" },
+    "description": { "type": "string" },
+    "risk": {
+      "type": "string",
+      "enum": ["read_only", "local_write", "network_or_provider", "destructive", "extension_locked"]
+    },
+    "required_entitlement": { "type": ["string", "null"] },
+    "command": { "type": ["string", "null"] },
+    "timeout_ms": { "type": "integer", "minimum": 1000 }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "knowledge-historical-lock-fixture.v1",
+  "origin": "exact audit.2 runtime extracted from supplied final audit package",
+  "archive_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
+  "purpose": "Unmodified v2 writer/reader migration fixtures; source-only; no production imports",
+  "files": [
+    {
+      "path": "tools/lib/contained-lock-manager.js",
+      "bytes": 72126,
+      "sha256": "3e089fa2c54f5884775e7a9057d2a4ad9614d477fd4f9293f98aba84c34098a6"
+    },
+    {
+      "path": "tools/lib/lock-policy.js",
+      "bytes": 8530,
+      "sha256": "8a798b370c16ba49d8abd51a73ee074a52ba97d47b45411d824524395b52a630"
+    },
+    {
+      "path": "tools/lib/lock-owner-schema.js",
+      "bytes": 3985,
+      "sha256": "a7ad7262d6e432116d6ba479a075e30125160c20d95655c88603afb78aba0a08"
+    },
+    {
+      "path": "tools/lib/json-store.js",
+      "bytes": 15412,
+      "sha256": "d8c6f1a2ba4598d25eff38f6c88680735e371f81c0dd15ea8006ac9a7de8b6f9"
+    },
+    {
+      "path": "tools/lib/strict-temp-cleanup.js",
+      "bytes": 11568,
+      "sha256": "383e420277b0d8bc167cc048df0f41d727a9845a8711eabceeab7651ea493f4a"
+    }
+  ]
+}

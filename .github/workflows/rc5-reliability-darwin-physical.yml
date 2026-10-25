@@ -1,0 +1,75 @@
+name: RC5 reliability Darwin physical lifecycle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability-20261025]
+    paths:
+      - qa/reliability/**
+      - .github/workflows/rc5-reliability-darwin-physical.yml
+
+permissions:
+  contents: read
+
+# Never cancel an active root fixture merely because another commit arrives.
+concurrency:
+  group: rc5-reliability-darwin-physical-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    name: shipping lifecycle and independent stop (${{ matrix.arch }})
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact controller and reference pins
+        shell: bash
+        run: python3 qa/reliability/controllers/verify-darwin-ci-assets.py --root . --inventory qa/reliability/DARWIN_ASSET_PINS.json
+      - name: Execute shipping and QA lifecycle cases
+        shell: bash
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/knowledge-native-private"
+          chmod 0700 "$RUNNER_TEMP/knowledge-native-private"
+          set +e
+          python3 qa/reliability/controllers/darwin-native-lifecycle.py \
+            --source qa/reliability/source/.knowledge \
+            --reference qa/reliability/reference \
+            --evidence "$RUNNER_TEMP/knowledge-native-private/lifecycle" \
+            --expected-arch '${{ matrix.arch }}' \
+            >"$RUNNER_TEMP/knowledge-native-private/controller.stdout" \
+            2>"$RUNNER_TEMP/knowledge-native-private/controller.stderr"
+          native_status=$?
+          python3 qa/reliability/controllers/darwin-public-summary.py \
+            --private "$RUNNER_TEMP/knowledge-native-private/lifecycle" \
+            --public "$RUNNER_TEMP/knowledge-native-public" \
+            --source qa/reliability/source/.knowledge \
+            --controller-status "$native_status" \
+            --expected-arch '${{ matrix.arch }}'
+          summary_status=$?
+          if [ "$summary_status" -ne 0 ]; then exit "$summary_status"; fi
+          exit "$native_status"
+      - name: Upload allowlisted public facts only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc5-reliability-darwin-physical-${{ matrix.arch }}-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/knowledge-native-public/summary.json
+            ${{ runner.temp }}/knowledge-native-public/stages.json

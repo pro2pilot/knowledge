@@ -180,7 +180,9 @@ static int same_file(const struct stat *a, const struct stat *b) {
 }
 static int take_owner_lease(int directory, owner_lease *lease) {
   if (!qualified_local_filesystem(directory)) { errno = ENOTSUP; return -1; }
-  lease->file = openat(directory, "owner.json", O_RDWR | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+  /* The published owner is immutable. Local flock does not require write
+     access, and recovery must retain the existing shared-reader contract. */
+  lease->file = openat(directory, "owner.json", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
   if (lease->file < 0) return -1;
   if (fstat(directory, &lease->directory) || fstat(lease->file, &lease->owner)) return -1;
   if (!S_ISREG(lease->owner.st_mode) || lease->owner.st_nlink != 1 || lease->owner.st_size < 1 || lease->owner.st_size > 4096) { errno = EINVAL; return -1; }
@@ -327,7 +329,9 @@ static HANDLE open_owner_file(HANDLE directory) {
   UNICODE_STRING value; value.Buffer = L"owner.json"; value.Length = 10 * sizeof(wchar_t); value.MaximumLength = value.Length;
   OBJECT_ATTRIBUTES oa; InitializeObjectAttributes(&oa, &value, OBJ_CASE_INSENSITIVE, directory, NULL);
   IO_STATUS_BLOCK io; HANDLE handle = INVALID_HANDLE_VALUE;
-  NTSTATUS status = open_relative(&handle, FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+  /* LockFileEx accepts a GENERIC_READ handle. Do not require permission to
+     alter immutable ownership bytes merely to inspect their lifetime lease. */
+  NTSTATUS status = open_relative(&handle, GENERIC_READ | SYNCHRONIZE,
     &oa, &io, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
     0x00000040 /* FILE_NON_DIRECTORY_FILE */ | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT, NULL, 0);
   if (status < 0) { SetLastError(dos_error(status)); return INVALID_HANDLE_VALUE; }
