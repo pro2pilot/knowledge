@@ -15,13 +15,13 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-native-lifecycle.py",
-      "bytes": 20418,
-      "sha256": "8a23d2e91eb8e3aa965eafc5b0a079fc83af3a8f8dca95a3edd36103a220af4e"
+      "bytes": 22072,
+      "sha256": "36056829c564dc5d559af34fbfd449796ede94dacf45c17ff594ecd2e8d53a63"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-native-controller.js",
-      "bytes": 8583,
-      "sha256": "7a03d57a370039fe934daa55e7bf3815ae39645f1e4b0391617de9642054d91b"
+      "bytes": 8886,
+      "sha256": "ce7b8331a74d17e3cc2bf1e162df2dfb252c580313eee1d7b046fbbd784d2aca"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-test-signal.c",
@@ -30,8 +30,8 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-public-summary.py",
-      "bytes": 12729,
-      "sha256": "93263c0a11eaac6a04bbde321c5eb00090629051cd10ec025b13779137737e94"
+      "bytes": 13913,
+      "sha256": "636099a903f30911db9f44043b4ae4fdfb48d88477933386fea0f32d6ee353de"
     },
     {
       "repository_path": "qa/reliability/controllers/verify-darwin-ci-assets.py",
@@ -40,8 +40,8 @@
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-public-summary.py",
-      "bytes": 5943,
-      "sha256": "5747b9b04931bf9985ad32b42ab023cb48b63628b39c6130ee1b6d6b640aa189"
+      "bytes": 6427,
+      "sha256": "c2ef1d9335df7e1d364cb39ec6cfe06b29d6b0f41d642efe82c34f0eac7390bd"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-reference-bootstrap.py",

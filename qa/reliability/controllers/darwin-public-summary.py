@@ -23,6 +23,9 @@ FAILURES=set(('runner_architecture_mismatch independent_uid_observation_unavaila
 DIAGNOSTIC_FILES={'darwin-native-lifecycle.py','run_pipeline4.py','persistence_gate.py','external-frame'}
 DIAGNOSTIC_TYPES={'QAError','FileNotFoundError','PermissionError','TypeError','AttributeError','KeyError','ValueError',
     'OSError','CalledProcessError','TimeoutExpired','RuntimeError','ImportError','ModuleNotFoundError','SyntaxError','KeyboardInterrupt','UnknownException'}
+TERMINAL_STAGES={'request','prepare','copy','authority','permit','run','command-validation','readback','close','complete'}
+TERMINAL_CODES={'ERR_ASSERTION','ADMISSION_CLOSED','DAEMON_STOPPING','COMMAND_DRAIN_INTERRUPTED_BY_TERMINAL_STOP',
+    'SPAWN_OR_RUNTIME_REJECTED','COMMAND_REJECTED','CLEANUP_BUSY'}
 STAGES=set(('protect-fixture mode-fixture node-exec-path node-system-dylibs launchctl-print-own-label '
     'launchctl-verify-own-label-absent compile-uid-scan compile-birth-observer compile-test-signal '
     'read-own-protected-registry capture-native-process-birth compare-native-process-birth '
@@ -92,6 +95,15 @@ def build(private,source,controller_status,architecture):
             observation=gate.get(key) if isinstance(gate.get(key),dict) else {}
             output[key]={'zero':boolean(observation.get('zero')),'elapsed_ms':number(observation.get('elapsed_ms'))}
         cases.append(output)
+        diagnostic=item.get('terminal_diagnostics')
+        if isinstance(diagnostic,dict):
+            output['terminal_diagnostics']={'stage':diagnostic.get('stage') if diagnostic.get('stage') in TERMINAL_STAGES else 'unknown',
+                'error_code':diagnostic.get('error_code') if diagnostic.get('error_code') in TERMINAL_CODES else None,
+                'exit_code':exit_code(diagnostic.get('exit_code')),'signal':number(diagnostic.get('signal'))}
+            for key in ('ready_observed','timed_out','stop_latched','admission_closed','guardian_reaped','permit_observed',
+                'drain_facts_confirmed','cleanup_facts_confirmed','cleanup_budget_exceeded','stderr_mentions_dev_null',
+                'stderr_mentions_spawn','stderr_eacces','stderr_eperm','stderr_syntax_error'):
+                output['terminal_diagnostics'][key]=boolean(diagnostic.get(key))
     native={}
     for name in NATIVE:
         p=source/'tools/lib'/name

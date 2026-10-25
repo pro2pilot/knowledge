@@ -61,7 +61,7 @@ if (process.argv[2] === '--authority') {
     await new Promise(() => {});
   })().catch(error => { process.send?.({ type: 'authority_failed', reason: error.message, reply: error.reply || null });process.exitCode = 1; });
 } else {
-  let input, prepared, authority, stopped = false, resultSent = false;
+  let input, prepared, authority, stopped = false, resultSent = false, commandResult, drain, stage = 'request';
   const lines = readline.createInterface({ input: process.stdin });
   let startResolve;const start = new Promise(resolve => { startResolve = resolve; });
   async function stop() {
@@ -82,7 +82,7 @@ if (process.argv[2] === '--authority') {
     const isolated = require(path.join(input.source, 'tools/lib/verification-isolated-copy'));
     const nonce = crypto.randomBytes(32).toString('hex');
     const plan = await isolated.planProject(input.project, { required: ['run.js'], cwd: '.' });
-    prepared = await rpc(input.config, { op: 'prepare', mode: 'isolated_copy', attempt_nonce: nonce,
+    stage = 'prepare';prepared = await rpc(input.config, { op: 'prepare', mode: 'isolated_copy', attempt_nonce: nonce,
       work_budget_ms: input.work_ms, cleanup_budget_ms: input.cleanup_ms });
     assert.equal(hash(canonical(prepared.descriptor)), prepared.descriptor_sha256);
     assert.equal(prepared.descriptor.capability_qualified, false);
@@ -90,19 +90,19 @@ if (process.argv[2] === '--authority') {
     send({ type: 'prepared', binding: { attempt_id: prepared.attempt_id, descriptor_sha256: prepared.descriptor_sha256,
       descriptor: prepared.descriptor } });
     const auth = { attempt_id: prepared.attempt_id, token: prepared.token };
-    await isolated.transferProject(plan, q => rpc(input.config, { ...q, ...auth }));
+    stage = 'copy';await isolated.transferProject(plan, q => rpc(input.config, { ...q, ...auth }));
     const sealed = await rpc(input.config, { op: 'readback_copy', ...auth });
     assert.equal(sealed.manifest_sha256, plan.manifest_sha256);
-    await rpc(input.config, { op: 'expect_authority', ...auth });
+    stage = 'authority';await rpc(input.config, { op: 'expect_authority', ...auth });
     authority = fork(__filename, ['--authority'], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
       env: { PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' } });
     const next = channel(authority);
     const command = { argv: [input.config.node, 'run.js'], env: {}, cwd: '.', timeout_ms: input.command_ms };
     authority.send({ config: input.config, auth, command, cleanup_ms: input.cleanup_ms });
     const registered = await next();assert.equal(registered.type, 'registered');
-    await rpc(input.config, { op: 'permit', ...auth });
+    stage = 'permit';await rpc(input.config, { op: 'permit', ...auth });
     authority.send({ type: 'go' });send({ type: 'permitted' });
-    let commandResult, drain;
+    stage = 'run';
     for (;;) {
       const message = await next();
       if (message.type === 'output') send(message);
@@ -110,12 +110,12 @@ if (process.argv[2] === '--authority') {
       else if (message.type === 'drained') { drain = message.drain;break; }
       else throw new Error(message.reason || 'authority_exit_before_drain');
     }
-    assert.equal(commandResult.exit_code, input.expected_exit || 0);
+    stage = 'command-validation';assert.equal(commandResult.exit_code, input.expected_exit || 0);
     assert.equal(commandResult.signal, null);assert.equal(commandResult.timed_out, false);
     assert.equal(drain.command_drain_proof.native_command_drain_facts_confirmed, true);
-    const copied = await rpc(input.config, { op: 'readback_copy', ...auth });
+    stage = 'readback';const copied = await rpc(input.config, { op: 'readback_copy', ...auth });
     assert.equal(copied.manifest_sha256, plan.manifest_sha256);
-    const closed = await rpc(input.config, { op: 'close', attempt_id: prepared.attempt_id,
+    stage = 'close';const closed = await rpc(input.config, { op: 'close', attempt_id: prepared.attempt_id,
       descriptor_sha256: prepared.descriptor_sha256, cleanup_budget_ms: input.cleanup_ms });
     assert.equal(closed.proof.native_cleanup_facts_confirmed, true);
     assert.equal(closed.proof.cleanup_confirmed, false);
@@ -131,7 +131,8 @@ if (process.argv[2] === '--authority') {
       try { cleanup = await rpc(input.config, { op: 'recover', attempt_id: prepared.attempt_id,
         descriptor_sha256: prepared.descriptor_sha256, cleanup_budget_ms: input.cleanup_ms }); } catch {}
     }
-    if (!resultSent) send({ type: 'result', success: false, reason: error.message, terminal: cleanup, production_accepted: false });
+    if (!resultSent) send({ type: 'result', success: false, reason: error.message, error_code: error.code || error.reply?.error || null,
+      diagnostic_stage: stage, command: commandResult || null, drain: drain || null, terminal: cleanup, production_accepted: false });
   }).finally(() => {
     if (authority && authority.exitCode === null && authority.signalCode === null) authority.kill('SIGKILL');
     lines.close();process.stdin.destroy();

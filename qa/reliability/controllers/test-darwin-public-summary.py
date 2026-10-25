@@ -48,6 +48,8 @@ class PublicAllowlist(unittest.TestCase):
             value={'status':'FAIL','failure':secret,'architecture':'arm64','source_unchanged':True,
                 'token':secret,'nonce':secret,'workspace_path':secret,'native_proofs':[{'token':secret}],
                 'cases':[{'name':'io-stop','status':'FAIL','reason':secret,'stdout':secret,'token':secret,
+                    'terminal_diagnostics':{'stage':'run','error_code':secret,'stdout':secret,'env':secret,
+                        'exit_code':1,'signal':secret,'stderr_eperm':True,'stderr_mentions_dev_null':False},
                     'gate':{'entered':{'token':secret},'result':secret,'facts_observed_before_release':True}}],
                 'records':[{'name':'001-'+secret,'exit_code':1,'timed_out':False,'raw':secret},
                            {'name':'002-compile-shipping-01-broker','exit_code':1,'timed_out':False}]}
@@ -60,6 +62,9 @@ class PublicAllowlist(unittest.TestCase):
             self.assertEqual(stages['stages'][0]['stage'],'001-unclassified-stage')
             self.assertEqual(summary['compiler_diagnostics'][0]['stderr_excerpt'],'clang: error: compile failed')
             self.assertFalse(summary['backend_qualified']);self.assertEqual(summary['production_KVE_KVF_ACK'],'NOT_RUN')
+            self.assertEqual(summary['cases'][0]['terminal_diagnostics']['exit_code'],1)
+            self.assertTrue(summary['cases'][0]['terminal_diagnostics']['stderr_eperm'])
+            self.assertIsNone(summary['cases'][0]['terminal_diagnostics']['error_code'])
     def test_subset_bad_arch_and_duplicates_cannot_claim_full_matrix(self):
         with tempfile.TemporaryDirectory() as folder:
             private=Path(folder)/'private';private.mkdir();source=Path(folder)/'source';source.mkdir()

@@ -21,6 +21,22 @@ def safe_exception(error,stage):
     return {'type':type(error).__name__ if type(error).__name__ in DIAGNOSTIC_TYPES else 'UnknownException',
         'stage':stage if stage in ('bootstrap','execute','cleanup') else 'unknown','frames':frames}
 
+def terminal_diagnostics(terminal,stderr_path,ready):
+    value=terminal if isinstance(terminal,dict) else {};command=value.get('command') or {};closed=value.get('terminal') or {}
+    proof=closed.get('proof') or {};drain=(value.get('drain') or {}).get('command_drain_proof') or {}
+    try:
+        with stderr_path.open('rb') as stream:body=stream.read(4*1024*1024)
+    except OSError:body=b''
+    return {'stage':value.get('diagnostic_stage','complete'),'error_code':value.get('error_code'),
+        'ready_observed':bool(ready),'exit_code':command.get('exit_code'),'signal':command.get('signal'),
+        'timed_out':command.get('timed_out'),'stop_latched':command.get('stop_latched'),
+        'admission_closed':command.get('admission_closed'),'guardian_reaped':command.get('guardian_reaped'),
+        'permit_observed':command.get('permit_observed'),'drain_facts_confirmed':drain.get('native_command_drain_facts_confirmed'),
+        'cleanup_facts_confirmed':proof.get('native_cleanup_facts_confirmed'),
+        'cleanup_budget_exceeded':proof.get('cleanup_budget_exceeded'),
+        'stderr_mentions_dev_null':b'/dev/null' in body,'stderr_mentions_spawn':b'spawn' in body,
+        'stderr_eacces':b'EACCES' in body,'stderr_eperm':b'EPERM' in body,'stderr_syntax_error':b'SyntaxError' in body}
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--source', required=True)
@@ -215,10 +231,14 @@ def main():
                     'elapsed_ms':(time.monotonic()-begin)*1000,'source_sha256':self.binaries['qa' if info['qa_socket'] else 'shipping']['source_sha256'],
                     'task_uid':binding['descriptor']['task_ruid'],'daemon_epoch':binding['descriptor'].get('daemon_epoch'),
                     'expected_success':expected_success,'production_accepted':False,'gate':gate_result,
-                    'events_sha256':base.sha_file(output),'stderr_sha256':base.sha_file(stderr)})
+                    'events_sha256':base.sha_file(output),'stderr_sha256':base.sha_file(stderr),
+                    'terminal_diagnostics':terminal_diagnostics(terminal,stderr,acted)})
             except BaseException as error:
                 self.case_results.append({'name':name,'status':'FAIL','reason':str(error),
-                    'elapsed_ms':(time.monotonic()-begin)*1000,'gate':gate_result})
+                    'elapsed_ms':(time.monotonic()-begin)*1000,'gate':gate_result,
+                    'events_sha256':base.sha_file(output) if output.is_file() else None,
+                    'stderr_sha256':base.sha_file(stderr) if stderr.is_file() else None,
+                    'terminal_diagnostics':terminal_diagnostics(terminal,stderr,acted)})
                 raise
             finally:
                 if daemon_paused:
