@@ -3,10 +3,10 @@
   "status": "PASS_FROZEN_SOURCE",
   "scope": "Complete source tree including source-only tests and historical test fixtures; generated state/native outputs explicitly excluded.",
   "archive": "SOURCE.zip",
-  "archive_sha256": "13d0da6768590b5b1b3ed7e5a55b77141b8727c2a6799d994c43244e62775eda",
-  "archive_bytes": 1812724,
-  "file_count": 563,
-  "uncompressed_bytes": 6247621,
+  "archive_sha256": "208d651a70be2cc6f9e5adc84a98c99547110b6cb5b287f63eefe862c211a640",
+  "archive_bytes": 1837169,
+  "file_count": 569,
+  "uncompressed_bytes": 6325354,
   "files": [
     {
       "path": ".gitattributes",
@@ -1593,6 +1593,12 @@
       "mode": "0644"
     },
     {
+      "path": "tests/helpers/reliability-linux-capability-diagnostic.cjs",
+      "bytes": 3351,
+      "sha256": "1782bef490ce56e5f776dd4ff07916de31f06046bac3a6e939b6b718e2d3a796",
+      "mode": "0644"
+    },
+    {
       "path": "tests/helpers/reliability-lock-worker.cjs",
       "bytes": 4309,
       "sha256": "efb6073c6e5bb22037465c8c584fc801d3b8a4adcc38f77c53f678a5c3dff87c",
@@ -1614,6 +1620,12 @@
       "path": "tests/helpers/reliability-sync-owner.cjs",
       "bytes": 479,
       "sha256": "9c14c0d78f64e0956c723cacceca8b2700ec1d44a2fbdbc53a361ce7e0aba896",
+      "mode": "0644"
+    },
+    {
+      "path": "tests/helpers/reliability-windows-rename-probe.c",
+      "bytes": 8056,
+      "sha256": "8e9728757df3593875e7db4c5b1cbe6e63ffc3cce5cdfc7339734b360201129f",
       "mode": "0644"
     },
     {
@@ -2133,6 +2145,12 @@
       "mode": "0644"
     },
     {
+      "path": "tools/build-command-native.js",
+      "bytes": 3658,
+      "sha256": "25dea427bd1e397d8d490a7cc9e92730e43868c3e10713c201adf33a57de81b8",
+      "mode": "0644"
+    },
+    {
       "path": "tools/build-lock-native.js",
       "bytes": 5199,
       "sha256": "3bc4d564b99f9c82cc8664815578c303e20592f5ba7bf5a2a224517e4187c66f",
@@ -2578,8 +2596,8 @@
     },
     {
       "path": "tools/lib/repair-on-touch.js",
-      "bytes": 112491,
-      "sha256": "1e45254ca2d0286b2d9dd147ed3d6ae738a99b39937c9062ef1e4bd95931e3ec",
+      "bytes": 113422,
+      "sha256": "8c6f1e90875ba46ea83c52d020277774749870523f249c9227e7009a9105ec5a",
       "mode": "0644"
     },
     {
@@ -2655,9 +2673,15 @@
       "mode": "0644"
     },
     {
+      "path": "tools/lib/verification-darwin-authority.js",
+      "bytes": 7818,
+      "sha256": "bb14b19515a06c9d0f65b5595a2ea735433046463cf63fb290b812f4b2c5d05c",
+      "mode": "0644"
+    },
+    {
       "path": "tools/lib/verification-darwin-broker.m",
-      "bytes": 212664,
-      "sha256": "cab7e889fbd3bf7f751f9e332e79b8bef50a5ea55e2cc0cc084ec841bb610268",
+      "bytes": 218242,
+      "sha256": "6ce0f7ed74db35493bb33596df69bd210e3a38b14389815bef68179953fda4e3",
       "mode": "0644"
     },
     {
@@ -2668,14 +2692,14 @@
     },
     {
       "path": "tools/lib/verification-darwin-finalization.js",
-      "bytes": 4693,
-      "sha256": "f1bdaf708b3e8cfaf7b2ba4742cf759d83546065934f5da505522cd96ab80bad",
+      "bytes": 8682,
+      "sha256": "49b1be17eedb852321041ef7d2f34017d2610c5a6aca113f7bd2a210ca8a7dad",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-darwin-scope.js",
-      "bytes": 13248,
-      "sha256": "157170c5963124d9914492373e42986430cbacacf51cb54ccc5abc9f3cbb8872",
+      "bytes": 18881,
+      "sha256": "19031e9a80249e8cbb76fcad305a963e05d4079707e618ff1498f362f8d80fdd",
       "mode": "0644"
     },
     {
@@ -2686,8 +2710,14 @@
     },
     {
       "path": "tools/lib/verification-darwin-session.js",
-      "bytes": 22891,
-      "sha256": "9674a82c388d0bbbfdfb5d7f4c671499748729e275740cfa196280efca7a8ff3",
+      "bytes": 23021,
+      "sha256": "7c00c68aa35dfc50706e09e63324988b7579082fded06f28e6319a8902d01f65",
+      "mode": "0644"
+    },
+    {
+      "path": "tools/lib/verification-darwin-store.js",
+      "bytes": 12683,
+      "sha256": "d973f10ddec8c607115ea4dd7083903b7cefa9db7e1d16b88a356e694cf71cdd",
       "mode": "0644"
     },
     {
@@ -2722,8 +2752,8 @@
     },
     {
       "path": "tools/lib/verification-finalization.js",
-      "bytes": 15415,
-      "sha256": "f10f4b96c71d0b8d9d6fd3d3d62048d2c82ce72a19614461c99c16b4539f344d",
+      "bytes": 15517,
+      "sha256": "fd1a30ef96f87d0e2b7d3ae1f8b01870d591e91bab8a6791cebde278d47f4a7e",
       "mode": "0644"
     },
     {
@@ -2734,14 +2764,14 @@
     },
     {
       "path": "tools/lib/verification-linux-namespace.c",
-      "bytes": 32503,
-      "sha256": "06c347c25a1bd081d1864a2476bef4df730e74608bd62b68ee3e2da774e4a25b",
+      "bytes": 32858,
+      "sha256": "c90ef4afe362b65a9fb6efdef2eb666f31d7d3b9af2af6e7fbc419b3fb8d6094",
       "mode": "0644"
     },
     {
       "path": "tools/lib/verification-linux-namespace.js",
-      "bytes": 33053,
-      "sha256": "5fb1360546760368e71827ac8934b45b955348a74b35138db900a7e566a61c73",
+      "bytes": 33377,
+      "sha256": "6204110cbd5786faaa354cb05e97dd0482546d3b28b0736662f7dd95f936ab2e",
       "mode": "0644"
     },
     {
@@ -2859,9 +2889,15 @@
       "mode": "0644"
     },
     {
+      "path": "tools/native/command-windows-job.c",
+      "bytes": 23719,
+      "sha256": "ece69d578203b9e3b6951133e6c02a8671795b45a8abe7ee5e37d78330fbc46b",
+      "mode": "0644"
+    },
+    {
       "path": "tools/native/lock-publication.c",
-      "bytes": 34281,
-      "sha256": "a2d0ee0fb7a1f9a3bd1aa09dca311e61701479d93d04e4876abdf79000f3ef5c",
+      "bytes": 35687,
+      "sha256": "c9db9a1d50d9f093f7abc0e63d24a90e0105fd83f91566db96fedb117228a034",
       "mode": "0644"
     },
     {
@@ -3389,6 +3425,27 @@
   ],
   "excluded": [
     {
+      "path": "tools/lib/native/linux-x64/.build-2LKmJj/BUILD.json",
+      "bytes": 1540,
+      "sha256": "e1a8ad3eef87c63c127343700fb527bbc55a5c1027d5b3b530010c69cc7af46f",
+      "mode": "0644",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-2LKmJj/lock-publication.c",
+      "bytes": 35687,
+      "sha256": "c9db9a1d50d9f093f7abc0e63d24a90e0105fd83f91566db96fedb117228a034",
+      "mode": "0644",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
+      "path": "tools/lib/native/linux-x64/.build-2LKmJj/lock-publication.node",
+      "bytes": 26376,
+      "sha256": "c6e1d663f5d3ba076be84de7238a0d9c2470beaa9ea3f3645c6161f7ea4e81f6",
+      "mode": "0755",
+      "reason": "generated cache, dependency or build directory"
+    },
+    {
       "path": "tools/lib/native/linux-x64/.build-c7PTSg/BUILD.json",
       "bytes": 1540,
       "sha256": "f2f83afd096ff3d99f1f1b3b96ad5dff10c8a63008042b7f2791d202308ff8c3",
@@ -3475,28 +3532,28 @@
     {
       "path": "tools/lib/native/linux-x64/lock-publication.manifest.json",
       "bytes": 363,
-      "sha256": "488cc438ad1d9ab27ee1efe2bc72c7c142025598865d07c23b3bee24d6d6a6c0",
+      "sha256": "fab97bd120844e575e73b1b11da3566b182c760f560d4de99d76008ef44ab1e0",
       "mode": "0644",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/lock-publication.node",
       "bytes": 26376,
-      "sha256": "4e62280e7e0d63008c23e7b63b85970e9038853a0bde9eab2f363853444766f9",
+      "sha256": "c6e1d663f5d3ba076be84de7238a0d9c2470beaa9ea3f3645c6161f7ea4e81f6",
       "mode": "0755",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/verification-linux-namespace",
       "bytes": 39928,
-      "sha256": "de49ea1190229f02f198edc1ae140f6df74771be6e3249e832362c3fdf2d2c81",
+      "sha256": "6bdf07a770944059ecbcf6ed08109cc117b09fd51ed4daa0d40dda6730a761a0",
       "mode": "0755",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     },
     {
       "path": "tools/lib/native/linux-x64/verification-linux-namespace.manifest.json",
       "bytes": 352,
-      "sha256": "5c558a878014657f3a21ff23cec55e1894d19f4cc7af71168ea88402c4849382",
+      "sha256": "1dce3b1dc2ac4a89b04fc2e1eea456321c486dc16e0189ab0a19f82494940d67",
       "mode": "0644",
       "reason": "prebuilt native output; rebuilt in each actual target job"
     }

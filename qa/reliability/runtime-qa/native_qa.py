@@ -319,7 +319,22 @@ def main():
             compiler = shutil.which('cl.exe')
             if not compiler:
                 raise Failure('Visual C developer environment is unavailable.')
-            command += ['--compiler', compiler, '--node-lib', download(version, 'win-' + host['architecture'] + '/node.lib')]
+            node_lib = download(version, 'win-' + host['architecture'] + '/node.lib')
+            command += ['--compiler', compiler, '--node-lib', node_lib]
+            run('build-command-job-addon-compile-only', [node, source / 'tools/build-command-native.js',
+                '--headers', headers, '--compiler', compiler, '--node-lib', node_lib,
+                '--output', native_destination], cwd=source, timeout=180)
+            result['windows_command_job'] = {'status': 'PASS_COMPILE_ONLY',
+                'runtime_qualification': 'NOT_RUN', 'scope': 'Compilation only; no custody, drain or recovery qualification.'}
+            # Diagnose the actual Win32/NT relative rename boundary, including
+            # no-replace collisions with a live owner-inode lease. This probe
+            # uses only controller-owned fixtures and is not a mock provider.
+            probe_source = source / 'tests/helpers/reliability-windows-rename-probe.c'
+            probe_binary = scratch / 'windows-relative-rename-probe.exe'
+            run('build-windows-relative-rename-probe', [compiler, '/nologo', '/std:c11', '/W4', '/O2',
+                '/Fe' + str(probe_binary), '/Fo' + str(scratch / 'windows-relative-rename-probe.obj'), probe_source], cwd=scratch)
+            result['windows_relative_rename_probe'] = {'source_sha256': file_sha(probe_source), 'binary_sha256': file_sha(probe_binary)}
+            run('windows-relative-rename-api-comparison', [probe_binary, scratch / 'windows-rename-fixture'], cwd=scratch)
         run('build-native-addon', command, cwd=source, timeout=180)
         if host['platform'] == 'linux':
             c_file = source / 'tools/lib/verification-linux-namespace.c'
@@ -335,6 +350,11 @@ def main():
                 'schema_version': 'knowledge-command-native-binary.v1', 'platform': 'linux', 'architecture': host['architecture'],
                 'binary': binary.name, 'source_sha256': file_sha(c_file), 'binary_sha256': file_sha(binary),
                 'binary_bytes': binary.stat().st_size}, indent=2) + '\n')
+            # Preserve actual setup stage/errno and read-only host policy;
+            # observation completion is not feature qualification. The full
+            # subsequent suite retains every existing pass/fail assertion.
+            run('linux-namespace-capability-diagnostic',
+                [node, source / 'tests/helpers/reliability-linux-capability-diagnostic.cjs'], cwd=source, timeout=90)
         info = "const q=require(process.argv[1]).qualifyNativePublication();console.log(JSON.stringify({node:process.version,napi:process.versions.napi,qualified:q.info,manifest:q.manifest}));"
         run('qualified-addon-current-runtime', [node, '-e', info, source / 'tools/lib/lock-publication.js'], cwd=source)
         tests(node, PRIMARY_TESTS, 'current-runtime-common-locks', source, host['platform'], 'main')
@@ -377,7 +397,7 @@ def main():
             for entry in sorted(native_destination.iterdir()):
                 if entry.is_file() and (entry.name.endswith(('.node', '.manifest.json')) or entry.name == 'verification-linux-namespace'):
                     shutil.copy2(entry, exported / entry.name)
-                elif entry.is_dir() and entry.name.startswith('.build-') and (entry / 'BUILD.json').is_file():
+                elif entry.is_dir() and entry.name.startswith(('.build-', '.command-build-')) and (entry / 'BUILD.json').is_file():
                     shutil.copy2(entry / 'BUILD.json', exported / (entry.name.lstrip('.') + '-BUILD.json'))
         save()
         inventory = {str(file.relative_to(public)).replace(os.sep, '/'): {'bytes': file.stat().st_size, 'sha256': file_sha(file)}
