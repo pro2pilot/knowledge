@@ -1,0 +1,287 @@
+{
+  "schema_version": "knowledge-continuation-extra-cases.v1",
+  "cohorts": {
+    "macos-lock-preflight": {
+      "kind": "tap", "files": ["tests/reliability-macos-lock-preflight.test.js"], "platforms": ["darwin"],
+      "timeout_seconds": 90, "count": 8,
+      "cases": [
+        "absent Team lock discovery returns null without creating any storage",
+        "preflight returns immutable token-free exact scope without changing owner or native state",
+        "path traversal or non-Team input is rejected before discovery",
+        "a mismatched owner scope digest never becomes a parent observation request",
+        "byte-identical owner replacement is rejected by original inode binding",
+        "oversized scope data is rejected by the admitted bounded reader",
+        "scope metadata cannot carry an embedded authorization token",
+        "owner mutation while scope bytes are read cannot be cached for a successor"
+      ]
+    },
+    "macos-custody": {
+      "kind": "tap", "files": ["tests/reliability-macos-custody.test.js"], "platforms": ["darwin"],
+      "timeout_seconds": 90, "count": 1,
+      "cases": ["independent custody survives planned command retirement and kills double-fault writers without storage"]
+    },
+    "watcher-attempt-ownership": {
+      "kind": "tap",
+      "files": [
+        "tests/watch-attempt-ownership.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "timeout_seconds": 420,
+      "count": 30,
+      "cases": [
+        "watcher state initializes exclusively and follows its own atomic replacement inode",
+        "an existing legacy or foreign watcher record is never adopted on initialization",
+        "state pathname replacement refuses writes and removal without changing successor bytes",
+        "same-inode byte changes revoke state ownership without deleting the changed record",
+        "replacement of a captured watchers directory preserves the successor subtree",
+        "symbolic-link replacement of state is refused and its target remains untouched",
+        "an atomic write retry rechecks ownership and preserves a successor introduced after the first obstruction",
+        "oversized state payload is rejected before initial directories or existing bytes are changed",
+        "a state file growing after fstat is read through a bounded descriptor buffer",
+        "repeat removal never deletes a new record created after the own record was removed",
+        "real daemon preserves attempt identity through heartbeat, source event, sync finish and normal stop",
+        "a foreign aggregate slot is preserved even while the local watcher state remains its own",
+        "malformed aggregate data remains intact and its primary callback error survives shutdown",
+        "aggregate publication retry refuses a newly foreign slot before overwriting it",
+        "a legitimate aggregate change during shutdown is rebased before stopping the own row",
+        "an own-slot replacement after one legitimate rebase is refused without overwriting its bytes",
+        "continuous aggregate contention has a bounded retry budget and preserves the last competing publication",
+        "actual sync preserves newer watcher rows and history published after its initial read",
+        "actual hook installation preserves watcher rows published after its first aggregate read",
+        "actual hook installation refuses malformed aggregate before changing managed hooks",
+        "actual sync refuses malformed watcher collection before queue or report writes",
+        "real daemon refuses successor state at the heartbeat writer boundary",
+        "real daemon refuses successor state at the event writer boundary",
+        "real daemon refuses successor state at the trigger writer boundary",
+        "real daemon refuses successor state at the finish writer boundary",
+        "real daemon refuses successor state at the shutdown writer boundary",
+        "legitimate aggregate changes at fsync are rebased while preserving latest fields and other rows",
+        "legitimate aggregate changes at retry are rebased while preserving latest fields and other rows",
+        "actual sync routing failure patch preserves a later competing publication",
+        "actual sync routing success patch preserves a later competing publication"
+      ]
+    },
+    "watcher-control": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-watcher-control.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "timeout_seconds": 90,
+      "count": 17,
+      "cases": [
+        "watch policy retains original per-sync budgets and gives pre-start publication its own bounded allowance",
+        "help and already-cancelled invocation create no native scope or control listener",
+        "stop closes admission and begins the same cleanup epoch before asking the worker to write stopped state",
+        "a stalled worker cannot postpone independent native cancellation beyond the one cleanup allowance",
+        "epoch renewal waits for complete old scope and requests a full rescan for the subscription gap",
+        "observer callback failure drains native owner instead of escaping the event handler",
+        "unexplained control-channel loss aborts the native owner and cannot renew",
+        "owned worker waits for command drain before publishing healthy sync completion",
+        "owned worker cancels active sync before any durable stopped publication and waits for actual command result",
+        "explicit cancellation supersedes graceful epoch rollover while a sync is running",
+        "renewed worker requests a full scan without waiting for a new source event",
+        "watch startup failure may publish its first stopped row but never claims healthy or running",
+        "a pre-start state write that consumes the permit budget cannot admit a late native command",
+        "stop revokes an outstanding permission request before native command admission",
+        "unconfirmed inner sync cleanup cannot publish a healthy completion or durable-success terminal",
+        "successful daemon exit requires independently confirmed durable state stop",
+        "successful daemon exit requires independently confirmed native descendant drain"
+      ]
+    },
+    "watcher-native": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-watcher-native.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "timeout_seconds": 240,
+      "count": 3,
+      "cases": [
+        "watcher controller SIGKILL drains an admitted detached producer before its delayed write",
+        "graceful watcher stop publishes interruption only after managed sync tree drain",
+        "synchronous watcher-state fsync stall cannot block stop admission or outer native tree drain"
+      ]
+    },
+    "watcher-runtime-safety": {
+      "kind": "json-selftest",
+      "files": [
+        "tools/self-test-watch-runtime-safety.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "timeout_seconds": 180,
+      "count": 20,
+      "cases": [
+        "real watcher detects its probe and completes actual sync-tracked command",
+        "smoke result confirms teardown before PASS",
+        "smoke never overwrites or deletes existing user probe filename",
+        "smoke removes only its unique temporary probe",
+        "smoke shutdown clears live watcher status",
+        "smoke propagates real sync failure instead of reporting PASS",
+        "failed smoke cleans up child and temporary probe",
+        "failed smoke preserves unrelated file content",
+        "watcher reports nonzero sync without fabricating successful maintenance time",
+        "watch subscriptions exclude transient runtime trees before native traversal",
+        "custom stateRoot heartbeat does not trigger a sync feedback loop",
+        "graceful watcher stop waits for owned active sync child to terminate",
+        "confirmed native drain prevents late sync writes without interpreting namespace-local PID numbers",
+        "terminated watcher leaves no runtime watcher record",
+        "unavailable native and fallback watchers fail closed",
+        "watch-start failure confirms native drain and preserves its primary refusal",
+        "watch-start failure does not leave false healthy running state",
+        "invalid watch timing is rejected before state writes",
+        "watch-maintenance.js help exits without starting or writing a watcher",
+        "watch-smoke.js help exits without starting or writing a watcher"
+      ]
+    },
+    "macos-workspace-protocol": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-workspace-protocol.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 9,
+      "cases": [
+        "writable descriptors use a separate immutable KVS3 binding and never satisfy readonly admission",
+        "writable admission binds native source runtime host boot epoch allocation and nonce",
+        "native writable root identity requires reserved group owner permissions and nonoverlapping canonical roots",
+        "descriptor and wrapper validation reject executable values without invoking them",
+        "writable cleanup observation binds the unchanged descriptor and is never a current acceptance proof",
+        "writable cleanup requires all independent closure facts including authority exit",
+        "writable scope reboot observations consume their own bounded epoch and cannot reuse old clocks",
+        "foreign-platform writable queries never guess a native cleanup result",
+        "writable query performs only probe and observe_scope through actual Buffer-input spawnSync"
+      ]
+    },
+    "macos-command-runner": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-command-runner.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 26,
+      "cases": [
+        "modeled Mac controller accepts only terminal native closure and both exact writer exits",
+        "modeled Mac controller rejects a result before native terminal closure",
+        "modeled Mac controller never accepts exit notification without the writer exit proof",
+        "modeled Mac controller binds output bytes to the independently received helper digest",
+        "modeled Mac controller refuses a different authority UID before any leaf execution",
+        "modeled Mac controller rejects send callback errors and still requests scope cleanup",
+        "modeled Mac setup callback loss cannot outlive its setup plus cleanup deadlines",
+        "modeled Mac cancellation interrupts a never-returning start callback",
+        "modeled Mac authority-exit notification loss stays finite and cannot imply closure",
+        "modeled Mac abort cannot wait forever on a failed native stop RPC",
+        "modeled Mac recovery success without a typed native closure remains unconfirmed",
+        "modeled fixed Mac worker binds native scope and protected package before running trusted Flow",
+        "modeled fixed Mac worker refuses every root flag alias outside the registered workspace",
+        "modeled fixed Mac worker refuses a caller-supplied untrusted package root alias",
+        "modeled fixed Mac worker refuses descriptor substitution before project chdir",
+        "modeled fixed Mac worker closes leaf admission after terminal drain",
+        "modeled fixed Mac worker cannot evaluate a caller-selected nested authority module",
+        "modeled fixed Mac worker preserves the explicit nested evaluation project and state roots",
+        "modeled fixed Mac worker rejects an already-cancelled leaf before native admission",
+        "modeled Mac session rejects a non-pinned runtime before preparing any native scope",
+        "modeled Mac session stops a mismatched registered workspace and never exposes its bearer token",
+        "modeled Mac session requires strict per-command UID sweep facts before any second command",
+        "modeled Mac session binds ordinary command proof digest independently from writable cleanup facts",
+        "modeled Mac session removes controller capabilities and puts leaf temp paths in registered scratch",
+        "modeled Mac session cancellation closes admission even if an in-flight native command later replies successfully",
+        "modeled Mac session rejects concurrent commands before a second native admission"
+      ]
+    },
+    "macos-worker-envelope": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-worker-envelope.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 8,
+      "cases": [
+        "macos envelope installs first, is immutable, and imports the fixed Flow/evaluation graph",
+        "macos envelope rejects late package imports before any operation is admitted",
+        "macos envelope denies every child_process entrypoint, including direct ChildProcess.spawn",
+        "macos envelope cannot have subprocess guards replaced or bypassed by native process bindings",
+        "macos envelope denies other code-loading and worker creation surfaces",
+        "macos envelope refuses repository modules before their source can execute",
+        "macos envelope denies arbitrary native loads even when dlopen is invoked directly",
+        "macos envelope rejects a mismatched protected root"
+      ]
+    },
+    "macos-native-authority": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-native-authority.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 120,
+      "count": 3,
+      "cases": [
+        "production KVS3 decoder separates fixed workspace GID from never-reused private RUID",
+        "production KVS3 FD predicate binds the separately provisioned writable inode and exact credentials",
+        "writable sandbox grants only pinned literal exec and data operations, never project mode or ACL mutation"
+      ]
+    },
+    "macos-boolean-wire": {
+      "kind": "tap",
+      "files": [
+        "tests/reliability-darwin-boolean-wire.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 120,
+      "count": 3,
+      "cases": [
+        "native readonly closure boxes UID emptiness as JSON boolean rather than integer",
+        "native reboot closure boxes UID emptiness and late-budget refusal as JSON booleans",
+        "real Darwin Foundation serializes exact production closure expressions as strict booleans"
+      ]
+    },
+    "repair-producer-dependency-closure": {
+      "kind": "tap",
+      "files": [
+        "tests/repair-producer-dependency-closure.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "timeout_seconds": 120,
+      "count": 8,
+      "cases": [
+        "current generated producer closures include all recursive literal and qualified native control dependencies",
+        "an unapproved producer cannot acquire child_process merely because native observers use it",
+        "an unapproved dynamic module is rejected even in an otherwise approved native control module",
+        "a missing transitive Mac control pin is rejected before accepting a generated producer closure",
+        "fixed native backend selector cannot become an environment-controlled loader",
+        "removing lock-publication pin refusal cannot retain the approved dynamic native load exception",
+        "removing Windows native snapshot validation cannot retain the approved dynamic load exception",
+        "the trusted generated-producer no-git guard remains mandatory"
+      ]
+    }
+  }
+}

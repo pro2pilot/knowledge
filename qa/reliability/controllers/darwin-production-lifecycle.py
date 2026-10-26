@@ -78,7 +78,7 @@ def diagnostic(error, stage):
 def main():
     ap = argparse.ArgumentParser();ap.add_argument('--source', required=True);ap.add_argument('--reference', required=True)
     ap.add_argument('--evidence', required=True);ap.add_argument('--expected-arch', required=True, choices=('x86_64', 'arm64'))
-    ap.add_argument('--case-set', choices=('normal', 'basic', 'failures'), default='normal')
+    ap.add_argument('--case-set', choices=('normal', 'basic', 'failures', 'writable'), default='normal')
     args = ap.parse_args()
     evidence = Path(args.evidence).resolve();source = Path(args.source).resolve(strict=True)
     if platform.system() != 'Darwin' or os.environ.get('GITHUB_ACTIONS') != 'true':
@@ -401,7 +401,8 @@ def main():
                     self.check(entry.get('state') == 'closed' and entry.get('admission_closed') is True and
                         entry.get('spawn_intent') is False and entry.get('authority_spawn_intent') is False,
                         'normal_unresolved_spawn_preserve_fixture')
-                    for role in ('launch_stub', 'root_child', 'authority', 'controller', 'command_identity'):
+                    for role in ('launch_stub', 'root_child', 'authority', 'controller', 'command_identity',
+                                 'state_writer', 'state_guardian', 'authority_guardian'):
                         if entry.get(role):
                             observed = self.compare_birth(entry[role])
                             self.check(observed.get('state') in ('absent', 'replaced'), 'normal_actor_birth_preserve_fixture')
@@ -416,7 +417,7 @@ for attempt,entry in (state or {}).get('attempts',{}).items():
  saved=entry['admission_inode'];fd=os.open(os.path.join(registry,attempt+'.admission'),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
  s=os.fstat(fd);assert stat.S_ISREG(s.st_mode) and s.st_uid==0 and s.st_nlink==1 and not stat.S_IMODE(s.st_mode)&0o077 and s.st_dev==saved['device'] and s.st_ino==saved['inode']
  fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);held.append(fd)
- for role in ('launch_stub','root_child','authority','controller','command_identity'):
+ for role in ('launch_stub','root_child','authority','controller','command_identity','state_writer','state_guardian','authority_guardian'):
   identity=entry.get(role)
   if identity:
    r=subprocess.run([birth_observer,str(identity['pid']),str(identity['unique_id']),str(identity['start_sec']),str(identity['start_usec'])],capture_output=True,timeout=10)
@@ -467,13 +468,24 @@ for fd in held: os.close(fd)
                 inputs['failure_assets'] = {name: base.sha_file(Path(__file__).with_name(name)) for name in (
                     'darwin-production-failure-cases.py', 'darwin-production-failure-caller.js', 'darwin-production-control.js',
                     'darwin-production-process-observer.c', 'darwin-test-signal.c', 'darwin-production-failure-summary.py')}
+            if args.case_set == 'writable':
+                inputs['writable_assets'] = {name: base.sha_file(Path(__file__).with_name(name)) for name in (
+                    'macos-writable-lifecycle.py', 'macos-workspace-provision.c', 'darwin-production-failure-cases.py',
+                    'darwin-production-process-observer.c', 'darwin-test-signal.c')}
             base.private_file(evidence/'INPUTS.json', base.canonical(inputs))
             self.prepare_runtime();self.compile_uid_scan();self.compile_birth_observer();self.compile_pair(False)
             if args.case_set == 'failures':
                 self.failure_helpers = failure_module.compile_helpers(self, base, Path(__file__).parent)
             self.fixture_path();st = self.fixture.lstat();self.fixture_identity = {'dev': st.st_dev, 'ino': st.st_ino}
             base.private_file(evidence/'created-fixture.json', base.canonical(self.fixture_identity))
-            info = self.setup_normal();self.case_protected_executable(info);self.case_normal(info)
+            info = self.setup_normal()
+            if args.case_set == 'writable':
+                writable_path = Path(__file__).with_name('macos-writable-lifecycle.py')
+                writable_spec = importlib.util.spec_from_file_location('production_writable_cases', writable_path)
+                writable_module = importlib.util.module_from_spec(writable_spec);writable_spec.loader.exec_module(writable_module)
+                writable_module.run_cases(self, base, info, Path(__file__).parent)
+            else:
+                self.case_protected_executable(info);self.case_normal(info)
             if args.case_set == 'basic':
                 for name in ('scratch_readonly', 'silent_long', 'exit7'): self.case_basic(info, name)
             if args.case_set == 'failures':
@@ -481,7 +493,7 @@ for fd in held: os.close(fd)
                     failure_module.run_case(self, base, info, Path(__file__).parent, self.failure_helpers, name)
             self.cleanup()
             self.status = {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
-                           'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL'}[args.case_set]
+                           'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'writable': 'PASS_PHYSICAL_MACOS_WRITABLE'}[args.case_set]
 
     runner = Runner();failure = None;diagnostics = [];raw_traceback = None
     try: runner.execute()
@@ -504,10 +516,11 @@ for fd in held: os.close(fd)
                 'protected_executable_contract': runner.protected_contract,
                 'installation_parent': runner.install_parent_observation,
                 'records': runner.records, 'diagnostics': diagnostics, 'raw_traceback': raw_traceback,
-                'release_gate_qualified': False, 'scope': 'Normal public production request on disposable hosted macOS; other production failures have separate gates.'}
+                'release_gate_qualified': False, 'scope': ('Administrator-provisioned writable macOS public Flow/evaluation and independent actor/UID closure; not readonly isolated-copy.'
+                    if args.case_set == 'writable' else 'Normal public production request on disposable hosted macOS; other production failures have separate gates.')}
             (evidence/'SUMMARY.json').write_text(json.dumps(summary, indent=2)+'\n')
     return 0 if runner.status == {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
-                                  'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL'}[args.case_set] else 1
+                                  'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'writable': 'PASS_PHYSICAL_MACOS_WRITABLE'}[args.case_set] else 1
 
 
 if __name__ == '__main__':

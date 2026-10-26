@@ -1,0 +1,78 @@
+'use strict';
+
+// Exact independent native custody sweep; kernel observations are modeled.
+// Physical hostile scheduling/FIFO/controller-death cases run separately on macOS.
+const test = require('node:test'), assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+const cp = require('node:child_process'), crypto = require('node:crypto');
+const source = fs.readFileSync(path.join(__dirname, '../tools/lib/verification-darwin-broker.m'), 'utf8');
+const compiler = process.env.CC || 'cc';
+function section(from, to) {
+  const a = source.indexOf(from), b = source.indexOf(to, a);
+  assert.ok(a >= 0 && b > a);return source.slice(a, b);
+}
+test('independent custody survives planned command retirement and kills double-fault writers without storage',
+  { skip: cp.spawnSync(compiler, ['--version']).status !== 0 }, () => {
+    const root = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'macos-custody-core-'));
+    try {
+      const code = `#define _GNU_SOURCE 1
+#include <sys/types.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <signal.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+struct KIdentity { unsigned pid,birth; };
+struct KExactBirth { struct KIdentity identity;bool present; };
+struct KObservation { bool valid,abort_latched,planned_terminal;char attempt[65]; };
+static struct KObservation observation;
+static _Atomic bool gClockFailed,gStopping;
+static uint64_t clockValue;
+static int kernel[16],signals[16];
+static uint64_t nowMS(void){return clockValue;}
+static struct KObservation observationCopy(void){return observation;}
+static int observeBirth(struct KExactBirth saved,struct KIdentity *out){*out=saved.identity;return saved.present?kernel[saved.identity.pid]:0;}
+static bool sameObservedBirth(const struct KIdentity *a,const struct KIdentity *b){return a->pid==b->pid&&a->birth==b->birth;}
+static void signalObservedBirth(struct KExactBirth saved,uid_t owner,uid_t alternate,int sig){
+ (void)owner;(void)alternate;if(sig!=SIGKILL)exit(90);if(kernel[saved.identity.pid]==1)signals[saved.identity.pid]++;}
+${section('#define K_MACOS_WRITER_CUSTODY_CAP', 'static bool macosRetainActor(')}
+${section('static bool macosSweepWriterCustody(', 'static bool macosWriterPermit(')}
+static void check(bool ok,const char *label){if(!ok){fprintf(stderr,"FAIL %s\\n",label);exit(1);}printf("PASS %s\\n",label);}
+static void reset(void){memset(gMacosCustody,0,sizeof(gMacosCustody));memset(&observation,0,sizeof(observation));
+ memset(signals,0,sizeof(signals));for(unsigned i=0;i<16;i++)kernel[i]=1;clockValue=100;gClockFailed=false;gStopping=false;
+ struct KMacosWriterCustody item={.valid=true,.owner=501,.deadline=1000,
+ .controller={.identity={1,1},.present=true},.writer={.identity={2,2},.present=true},.guardian={.identity={3,3},.present=true}};
+ strcpy(item.attempt,"attempt");gMacosCustody[0]=item;}
+int main(void){
+ reset();check(macosSweepWriterCustody()&&signals[2]==0&&signals[3]==0,"healthy-writer-retained");
+ observation.valid=false;observation.planned_terminal=true;strcpy(observation.attempt,"attempt");
+ check(macosSweepWriterCustody()&&signals[2]==0,"planned-command-retirement-does-not-release-or-kill-writer");
+ kernel[1]=0;check(macosSweepWriterCustody()&&signals[2]==1&&signals[3]==1&&gMacosCustody[0].stopped,"controller-loss-stops-both-exact-actors");
+ kernel[1]=1;macosSweepWriterCustody();check(signals[2]==2&&gMacosCustody[0].stopped,"owner-reappearance-cannot-reopen-stopped-custody");
+ reset();kernel[1]=kernel[3]=0;check(macosSweepWriterCustody()&&signals[2]==1,"guardian-and-controller-death-still-kills-writer");
+ reset();kernel[3]=-1;check(macosSweepWriterCustody()&&signals[2]==1,"unknown-guardian-is-stop-not-cleanup");
+ reset();clockValue=1000;check(macosSweepWriterCustody()&&signals[2]==1,"original-deadline-is-not-renewed");
+ reset();gClockFailed=true;check(macosSweepWriterCustody()&&signals[2]==1,"clock-failure-keeps-custody-and-stops-writer");
+ reset();gStopping=true;check(macosSweepWriterCustody()&&signals[2]==1,"daemon-stop-preserves-enforcement");
+ reset();kernel[2]=0;check(macosSweepWriterCustody()&&gMacosCustody[0].valid&&signals[3]==0,"writer-exit-alone-retains-live-guardian");
+ kernel[3]=0;check(!macosSweepWriterCustody()&&!gMacosCustody[0].valid,"only-both-exact-exits-retire-custody");
+ reset();observation.abort_latched=true;strcpy(observation.attempt,"other");macosSweepWriterCustody();check(signals[2]==0,"other-attempt-abort-does-not-kill-this-writer");
+ strcpy(observation.attempt,"attempt");macosSweepWriterCustody();check(signals[2]==1,"matching-abort-stops-writer");
+ reset();gMacosCustody[1]=gMacosCustody[0];gMacosCustody[1].authority=true;
+ gMacosCustody[1].writer.identity.pid=4;gMacosCustody[1].guardian.identity.pid=5;kernel[4]=kernel[5]=0;
+ check(macosSweepWriterCustody()&&gMacosCustody[0].valid&&!gMacosCustody[1].valid,"authority-retirement-does-not-release-state-writer");
+ reset();gMacosCustody[0].stopped=true;check(macosSweepWriterCustody()&&signals[2]==1,"restart-kill-only-ticket-cannot-resume-work");
+ return 0;}
+`;
+      const file = path.join(root, 'custody.c'), binary = path.join(root, 'custody');fs.writeFileSync(file, code);
+      const built = cp.spawnSync(compiler, ['-std=c11', '-Wall', '-Wextra', '-pthread', file, '-o', binary], { encoding: 'utf8', timeout: 15000 });
+      assert.equal(built.status, 0, built.stderr || built.error?.message);
+      const result = cp.spawnSync(binary, [], { encoding: 'utf8', timeout: 5000 });
+      assert.equal(result.status, 0, result.stderr || result.stdout);assert.equal(result.stdout.trim().split('\n').length, 15);
+      console.log(JSON.stringify({ scope: 'exact-native-custody-sweep; modeled-kernel; not-macOS-qualification',
+        source_sha256: crypto.createHash('sha256').update(source).digest('hex'), checks: result.stdout.trim().split('\n') }));
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });

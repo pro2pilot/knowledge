@@ -33,8 +33,12 @@ jobs:
       max-parallel: 6
       matrix:
         include:
-          - { id: macos-x64, runner: macos-15-intel, platform: darwin, arch: x64 }
-          - { id: macos-arm64, runner: macos-15, platform: darwin, arch: arm64 }
+          - { id: linux-x64, runner: ubuntu-22.04, platform: linux, arch: x64 }
+          - { id: windows-x64, runner: windows-2022, platform: win32, arch: x64 }
+          - { id: windows-arm64, runner: windows-11-arm, platform: win32, arch: arm64 }
+          - { id: macos-x64-writable, runner: macos-15-intel, platform: darwin, arch: x64, macos_cohort: writable }
+          - { id: macos-arm64-writable, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: writable }
+          - { id: macos-arm64-failures, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: failures }
     defaults:
       run:
         shell: bash
@@ -57,9 +61,9 @@ jobs:
       - name: Reconstruct and verify the exact frozen source
         run: |
           python qa/reliability/linux-final-01/transport/rehydrate_zip.py --base qa/reliability/runtime-qa/SOURCE.zip --descriptor qa/reliability/linux-final-01/transport/TRANSPORT.json --out qa/reliability/linux-final-01/SOURCE.zip
-          python qa/reliability/continuation-20261026/prepare.py --base-archive qa/reliability/linux-final-01/SOURCE.zip --base-manifest qa/reliability/linux-final-01/SOURCE_MANIFEST.json --overlay qa/reliability/continuation-20261026/frozen-compat-02/OVERLAY.json --out continuation-source
+          python qa/reliability/continuation-20261026/prepare.py --base-archive qa/reliability/linux-final-01/SOURCE.zip --base-manifest qa/reliability/linux-final-01/SOURCE_MANIFEST.json --overlay qa/reliability/continuation-20261026/frozen-integrated-03/OVERLAY.json --out continuation-source
       - name: Execute source-bound native and public tests
-        run: python qa/reliability/continuation-20261026/run-ci.py --prepared continuation-source --out continuation-evidence --platform '${{ matrix.platform }}' --arch '${{ matrix.arch }}' --phase '${{ github.event.inputs.phase || 'diagnostic' }}'
+        run: python qa/reliability/continuation-20261026/run-ci.py --prepared continuation-source --out continuation-evidence --platform '${{ matrix.platform }}' --arch '${{ matrix.arch }}' --phase '${{ github.event.inputs.phase || 'diagnostic' }}' --macos-cohort '${{ matrix.macos_cohort || 'combined' }}'
       - name: Retain public evidence only
         if: always()
         uses: actions/upload-artifact@v4

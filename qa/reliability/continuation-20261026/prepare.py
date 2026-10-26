@@ -20,6 +20,7 @@ EXTRA_SOURCE_PATHS = frozenset({
     'tools/lib/macos-command-runner.js',
     'tools/lib/macos-command-scope.js',
     'tools/lib/macos-command-worker.js',
+    'tools/lib/macos-lock-preflight.js',
     'tools/lib/macos-worker-envelope.js',
     'tools/lib/macos-workspace-protocol.js',
     'tools/lib/macos-workspace-session.js',
@@ -27,11 +28,14 @@ EXTRA_SOURCE_PATHS = frozenset({
     'tests/reliability-darwin-boolean-wire.test.js',
     'tests/reliability-darwin-scope-query.test.js',
     'tests/reliability-macos-command-runner.test.js',
+    'tests/reliability-macos-lock-preflight.test.js',
+    'tests/reliability-macos-custody.test.js',
     'tests/reliability-macos-native-authority.test.js',
     'tests/reliability-macos-worker-envelope.test.js',
     'tests/reliability-macos-workspace-protocol.test.js',
     'tests/reliability-watcher-control.test.js',
     'tests/reliability-watcher-native.test.js',
+    'tests/repair-producer-dependency-closure.test.js',
 })
 
 
