@@ -216,8 +216,14 @@ def main():
             os.close(fd)
         fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
         identity = lambda value: tuple(getattr(value, key) for key in fields)
-        if len(body) > maximum or len(body) != opened.st_size or any(identity(value) != identity(opened) for value in [before, after, file.lstat()]):
-            raise Failure('Input changed during bounded read: ' + str(file))
+        named_after = file.lstat()
+        if len(body) > maximum or len(body) != opened.st_size or any(identity(value) != identity(opened) for value in [before, after, named_after]):
+            snapshots = {'before': before, 'opened': opened, 'after': after, 'named_after': named_after}
+            differences = {key: {name: getattr(value, key) for name, value in snapshots.items()}
+                           for key in fields if len({getattr(value, key) for value in snapshots.values()}) != 1}
+            raise Failure('Input changed during bounded read: ' + str(file) + ' ' + json.dumps({
+                'differing_fields': differences, 'observed_bytes': len(body), 'opened_bytes': opened.st_size,
+                'observed_sha256': sha(body), 'maximum': maximum}, sort_keys=True))
         return bytes(body), {'bytes': len(body), 'sha256': sha(body), 'mode': format(stat.S_IMODE(opened.st_mode), '04o')}
 
     def generated(relative, directory=False):
