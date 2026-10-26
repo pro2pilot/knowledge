@@ -2469,6 +2469,17 @@ static void advanceCleanup(void) {
     }
     bool facts=uidExclusive&&excluded&&zero&&authorityExited&&observed&&intents&&!gRun.pid&&guardianGone&&rootChildGone;
     if(!facts&&nowMS()<gCloseDeadline){if(lock>=0)close(lock);return;}
+    /* The reactor latches an authenticated planned close before enqueuing it.
+     * Physical stop may therefore finish before the actor binds its waiter.
+     * Keep the revoked admission and exclusion until that queued caller is
+     * bound; otherwise this same caller would only receive retired history.
+     * Cancellation, owner loss and the original deadline still end this wait.
+     * No retrospective current receipt or new cleanup epoch is created. */
+    uint64_t terminalPublicationNow=nowMS();
+    if(facts&&gCloseWaiter<0&&terminalPublicationNow<gCloseDeadline
+        &&!atomic_load(&gClockFailed)&&plannedAttempt(e)&&!abortedAttempt(e)){
+        if(lock>=0)close(lock);return;
+    }
     if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
     bool confirmed=facts&&!gPoisoned&&!atomic_load(&gClockFailed)&&validUIDAllocation(e);NSString *state=confirmed?@"closed":@"cleanup_unconfirmed";
     /* The current-history check can itself perform slow durable I/O. */

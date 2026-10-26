@@ -1,7 +1,7 @@
 {
   "schema": "knowledge-reliability-native-source-pins.v1",
   "base_audit2_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
-  "scope": "Mac05 source603 plus reviewed broker/stub clock guards, session stop fencing, storage parent binding, fixed proof diagnostics. Actual native qualification pending. Actual UTF8 envelope cap preserved separately from bounded inert admission.",
+  "scope": "Mac06b exact603 plus planned-close waiter publication fencing. Native gate pending.",
   "files": {
     ".gitattributes": "fd39cfa01f1688563d76c600e65c86c91820b9b2a77ee1abb7707151ccc8cea1",
     ".gitignore": "35eccdde5015c84da14233506c23a183644ff8b582ec20800ed089981777bd59",
@@ -478,7 +478,7 @@
     "tools/lib/token-estimate.js": "e3915f6f5e791d88de86ee2556d64c1e0311ec34251edb6496abf05f2f252033",
     "tools/lib/verification-control.js": "bd742d9d3197ae9c94d73a6275c44c4b2ff04577630bc0b000dd76a542e79b93",
     "tools/lib/verification-darwin-authority.js": "c2c8239a6deb34916a3cad78bfafd0c6ca01776daffd434431e64e924b384946",
-    "tools/lib/verification-darwin-broker.m": "70b10168b5e940802033af2d555be3e7f4a24e35769f91b1fc633a05a5ab7ad6",
+    "tools/lib/verification-darwin-broker.m": "e4c5e82d2b018fc759bb2778a5106f28cf161c8c4a7ec3f7243fcf0bd2b26cce",
     "tools/lib/verification-darwin-client.js": "a4c5e0c5a38d9b764ab9ba7254987ea56f35d2bf92a944efe69445053dd69302",
     "tools/lib/verification-darwin-control.js": "59cded4d9ec97b25d522af1f9fd619b8acd46a7061ff84ccd25c9317557d8978",
     "tools/lib/verification-darwin-finalization.js": "63814894660ee904d976c301d309b5bfd4be5cef0d154dc76fc4cf08c3710b60",
