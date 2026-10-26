@@ -1,0 +1,48 @@
+{
+  "base_archive_sha256": "31f16c7f0c962831c8cc61dcfb37d71b86bbd6667914cfabcb646f03a3bf40a8",
+  "base_file_count": 638,
+  "file_count": 639,
+  "unchanged_files": 636,
+  "deltas": [
+    {
+      "path": "tests/reliability-progress-graceful-close.test.js",
+      "before": null,
+      "after": {
+        "path": "tests/reliability-progress-graceful-close.test.js",
+        "bytes": 4954,
+        "sha256": "f75d74c0513270766410f3f766edfc698b7c5835ef548ec5c111337952eaf1d5",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-progress.js",
+      "before": {
+        "path": "tools/lib/verification-progress.js",
+        "bytes": 4145,
+        "sha256": "8aa15909861e7e6cc1eef377ca38c98716bed7f1bbe77eecdfceb8368d208f18",
+        "mode": "0644"
+      },
+      "after": {
+        "path": "tools/lib/verification-progress.js",
+        "bytes": 6427,
+        "sha256": "a89acd5d8af7702de80c417533b99f34a56cefcc34e8ae2241c14bc5b2c68bee",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-supervisor.js",
+      "before": {
+        "path": "tools/lib/verification-supervisor.js",
+        "bytes": 41460,
+        "sha256": "5e5efae958d88787eb66837d8943dd46820f9d2bd19e515efd3da71ece83b60a",
+        "mode": "0644"
+      },
+      "after": {
+        "path": "tools/lib/verification-supervisor.js",
+        "bytes": 42173,
+        "sha256": "8727b8df92fb0b881294745c7b74d8643494a33aeeb9756f2f7f13eb1bfb11f7",
+        "mode": "0644"
+      }
+    }
+  ]
+}

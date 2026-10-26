@@ -1,0 +1,47 @@
+name: RC5 final Linux reliability and public acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability-20261025]
+    paths: ['qa/reliability/linux-final-01/**', '.github/workflows/rc5-reliability-linux-final.yml']
+permissions:
+  contents: read
+concurrency:
+  group: rc5-reliability-linux-final-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  linux-reliability:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rehydrate exact source bytes from pinned ancestor
+        run: python qa/reliability/linux-final-01/transport/rehydrate_zip.py --base qa/reliability/runtime-qa/SOURCE.zip --descriptor qa/reliability/linux-final-01/transport/TRANSPORT.json --out qa/reliability/linux-final-01/SOURCE.zip
+      - name: Build native helpers and run real lifecycle and public tests
+        run: python qa/reliability/linux-final-01/native_qa.py --archive qa/reliability/linux-final-01/SOURCE.zip --manifest qa/reliability/linux-final-01/SOURCE_MANIFEST.json --out linux-final
+      - name: Retain exact raw evidence and current native artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-linux-final-${{ matrix.os }}-${{ matrix.arch }}
+          path: linux-final/public/**
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90

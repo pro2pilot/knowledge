@@ -1,0 +1,894 @@
+{
+  "schema_version": "knowledge-native-qa-case-policy.v1",
+  "required_cases": {
+    "main": [
+      "stable canonical UTF-8 owner is accepted unchanged",
+      "owner growth after metadata checks cannot exceed the read budget",
+      "same-size owner rewrite during the read is rejected",
+      "invalid UTF-8 is rejected before canonical owner acceptance",
+      "a premature read EOF cannot produce a complete owner snapshot",
+      "owner swapped to FIFO between validation and open does not block",
+      "owner swapped to symlink before open stays rejected",
+      "hardlinked owner stays rejected without removing evidence",
+      "parent symlink replacement is rejected even when the owner inode is unchanged",
+      "a cleanup retry is not admitted after a delayed wait exhausts its original budget",
+      "a successful remove admitted within budget may complete after that budget",
+      "a retry within the original cleanup budget still succeeds",
+      "current elapsed budget survives rollback wall clock (owned process)",
+      "current elapsed budget survives frozen wall clock (owned process)",
+      "current elapsed budget survives forward wall clock (owned process)",
+      "legacy elapsed budget survives rollback wall clock (owned process)",
+      "legacy elapsed budget survives frozen wall clock (owned process)",
+      "legacy elapsed budget survives forward wall clock (owned process)",
+      "windows_release_model elapsed budget survives rollback wall clock (owned process)",
+      "windows_release_model elapsed budget survives frozen wall clock (owned process)",
+      "windows_release_model elapsed budget survives forward wall clock (owned process)",
+      "current starts no new operation after its final retry sleep crosses the budget",
+      "legacy starts no new operation after its final retry sleep crosses the budget",
+      "windows_release_model starts no new operation after its final retry sleep crosses the budget",
+      "a real healthy legacy v2 publisher delayed beyond two seconds may publish and release within the new contender budget",
+      "aged ownerless storage waits only its original budget, stays physically unchanged, and remains a read-only finding",
+      "malformed owner published during an initialization wait remains an immediate strict refusal",
+      "a symlink replacing an initializing directory is refused and its owned target remains unchanged",
+      "replacement of empty initializing directories cannot restart the acquisition budget",
+      "new owners use v3 and a kernel lease in the existing v1 layout and release by exact ownership",
+      "canonical v1 owners remain readable but absent-PID and age do not authorize recovery",
+      "a pre-v1 legacy .lock never gains a host/PID scope from its hostname",
+      "null v2 native scope is retained even when the recorded PID is absent",
+      "a kernel-derived scope cannot be supplied through the acquisition request",
+      "foreign boot scope cannot invoke the PID probe",
+      "same hostname and unrelated PID namespace cannot invoke the PID probe",
+      "an occupied scoped PID is retained despite a different recorded start tick",
+      "invalid procfs magic prevents automatic recovery and does not prevent exact-owner release",
+      "lost native scope after ESRCH cannot authorize recovery",
+      "strict native identity parser rejects missing, extra, reordered and mistyped coordinates",
+      "pinned manager rejects malformed identity even if the canonical reader is replaced",
+      "real exited Linux child permits recovery in its proven native coordinate",
+      "process stat and NSpid parsers bind exact native coordinates, including parentheses in comm",
+      "the non-Linux native-observer branch returns an unqualified owner (branch simulation)",
+      "an owner created without native observation still acquires and releases normally",
+      "contradictory ESRCH cannot evict a still-present scoped process",
+      "hidepid visibility prevents automatic death inference even with ESRCH",
+      "missing anchored proc mount identity prevents automatic death inference",
+      "proc mount visibility change during a death probe remains unknown",
+      "target proc visibility denied after ESRCH remains unknown",
+      "the native procfs anchor is one bounded process-lifetime descriptor across lock releases",
+      "a delayed recovery callback cannot create a new owner after the original budget",
+      "remote age expiry alone never grants eviction of a valid owner",
+      "an unknown local process-probe error never grants stale recovery",
+      "an aged live local owner remains exclusive",
+      "a permission-denied process observation remains exclusive",
+      "an observed exited child permits recovery only when native ownership scope is qualified",
+      "legacy remote locks also retain unknown ownership beyond the diagnostic age",
+      "a delayed legacy v2 stale reclaimer cannot move a newer live owner",
+      "a previously recovered generation reappearing is refused without mutation",
+      "an empty retained generation is not replaced by a public directory",
+      "a retained generation alias cannot redirect or authorize recovery",
+      "an interruption after recovery leaves a fence and permits a later fresh acquire",
+      "the exact audit2 reader preserves a held v3 owner it cannot interpret",
+      "a current contender preserves a live audit2 writer and can acquire after its release",
+      "legacy ownerless publication remains unknown to the current writer regardless of age",
+      "byte-identical owner replacement cannot turn a live writer lease into recovery authority",
+      "a copied directory containing identical owner bytes cannot impersonate the original generation",
+      "owner replacement after native publication cannot receive an acquisition acknowledgment",
+      "an untouched original inode still supports normal acquire and exact release",
+      "real SIGKILL before owner preparation leaves no public ownerless lock",
+      "real SIGKILL after publication before acknowledgment recovers without waiting on wall age",
+      "a paused prepared publisher cannot replace an intervening live owner",
+      "competing real processes serialize every mutation with the normal production budget",
+      "legacy ownerless public state is preserved, including after its diagnostic grace",
+      "slow preparation cannot admit work after the original acquisition deadline",
+      "wall-clock jumps do not reset the elapsed contender budget",
+      "a v3 reclaimer holds the old owner lease while paused before namespace retirement",
+      "real process exit is recoverable even when the optional procfs identity was unavailable",
+      "garbage collection of the JS handle cannot release a live native writer lease",
+      "repeated ordinary owner reads and unsuccessful probes never unlock the holder",
+      "a physically copied pinned runtime can acquire and release without a compiler or PATH helper",
+      "loader rejects missing-binary before any public lock layout",
+      "loader rejects changed-binary before any public lock layout",
+      "loader rejects changed-source before any public lock layout",
+      "loader rejects wrong-platform before any public lock layout",
+      "loader rejects unknown-manifest-field before any public lock layout",
+      "loader rejects hardlinked-binary before any public lock layout",
+      "POSIX directory and owner permissions retain the existing caller umask contract",
+      "an exited owner remains recoverable when its immutable file is physically read-only",
+      "relaxing lease write access does not authorize an unreadable owner",
+      "native prebuilt is pinned to current source, host and N-API 8",
+      "one native operation publishes the complete prepared directory",
+      "native refuses a hardlinked prepared owner inode without publishing it",
+      "native refuses an oversized prepared owner before allocating or publishing",
+      "native no-replace preserves an existing empty-directory",
+      "native no-replace preserves an existing nonempty-directory",
+      "native no-replace preserves an existing file",
+      "a substituted private parent cannot publish outside the anchored layout",
+      "a substituted private stage cannot publish a foreign directory",
+      "native refuses path traversal rather than resolving it",
+      "an exhausted native admission budget retains the complete private stage",
+      "a requested invalid execution scope never falls back to a process-only owner",
+      "normal release keeps the native owner lease until its actual child scope has drained",
+      "a free owner-inode lease cannot reclaim a still-active immutable execution scope",
+      "changed immutable scope bytes cannot authorize release or recovery"
+    ],
+    "node18": [
+      "the exact audit2 reader preserves a held v3 owner it cannot interpret",
+      "a current contender preserves a live audit2 writer and can acquire after its release",
+      "legacy ownerless publication remains unknown to the current writer regardless of age",
+      "byte-identical owner replacement cannot turn a live writer lease into recovery authority",
+      "a copied directory containing identical owner bytes cannot impersonate the original generation",
+      "owner replacement after native publication cannot receive an acquisition acknowledgment",
+      "an untouched original inode still supports normal acquire and exact release",
+      "real SIGKILL before owner preparation leaves no public ownerless lock",
+      "real SIGKILL after publication before acknowledgment recovers without waiting on wall age",
+      "a paused prepared publisher cannot replace an intervening live owner",
+      "competing real processes serialize every mutation with the normal production budget",
+      "legacy ownerless public state is preserved, including after its diagnostic grace",
+      "slow preparation cannot admit work after the original acquisition deadline",
+      "wall-clock jumps do not reset the elapsed contender budget",
+      "a v3 reclaimer holds the old owner lease while paused before namespace retirement",
+      "real process exit is recoverable even when the optional procfs identity was unavailable",
+      "garbage collection of the JS handle cannot release a live native writer lease",
+      "repeated ordinary owner reads and unsuccessful probes never unlock the holder",
+      "a physically copied pinned runtime can acquire and release without a compiler or PATH helper",
+      "loader rejects missing-binary before any public lock layout",
+      "loader rejects changed-binary before any public lock layout",
+      "loader rejects changed-source before any public lock layout",
+      "loader rejects wrong-platform before any public lock layout",
+      "loader rejects unknown-manifest-field before any public lock layout",
+      "loader rejects hardlinked-binary before any public lock layout",
+      "POSIX directory and owner permissions retain the existing caller umask contract",
+      "an exited owner remains recoverable when its immutable file is physically read-only",
+      "relaxing lease write access does not authorize an unreadable owner",
+      "native prebuilt is pinned to current source, host and N-API 8",
+      "one native operation publishes the complete prepared directory",
+      "native refuses a hardlinked prepared owner inode without publishing it",
+      "native refuses an oversized prepared owner before allocating or publishing",
+      "native no-replace preserves an existing empty-directory",
+      "native no-replace preserves an existing nonempty-directory",
+      "native no-replace preserves an existing file",
+      "a substituted private parent cannot publish outside the anchored layout",
+      "a substituted private stage cannot publish a foreign directory",
+      "native refuses path traversal rather than resolving it",
+      "an exhausted native admission budget retains the complete private stage"
+    ],
+    "linux_authority": [
+      "nonzero UID: three real authority scopes retain no capabilities and preserve UID mapping",
+      "current UID: the exact nested mapping determines the authority capability profile",
+      "nonzero UID: ordinary command workers remain in the zero-capability profile"
+    ],
+    "windows_commands": [
+      "budgets preserve long work, default no-progress disabled, invalid values rejected",
+      "real native command and trailing pipe bytes complete only after drain",
+      "silent long work is allowed without a configured progress deadline",
+      "native guard reports the real nonzero exit without fabricating success",
+      "output noise cannot extend the absolute work deadline",
+      "output noise is not meaningful progress",
+      "wall-clock rollback does not shorten or invert the monotonic duration",
+      "detached descendants that close both output pipes are drained before acceptance",
+      "AbortSignal stops an admitted command independently of its I/O",
+      "bounded output overflow drains the scope and cannot return a successful candidate",
+      "persistent command session supports nested native scopes and drains between commands",
+      "scope proof distinguishes a live session from its immutable native finality",
+      "invalid UTF-8 stdout cannot become a successful semantic candidate",
+      "concurrent session request is refused without disturbing the first admitted command",
+      "a session budget closes native admission even if its caller never requests drain",
+      "a throwing output consumer causes native drain and preserves its error category",
+      "ordinary Flow runs all steps, binds its full evidence log and drains before success",
+      "evaluation runs its real producer path with a separate state root and native cleanup",
+      "Team Flow publishes scope before command admission and releases after drain",
+      "an actual admitted Flow can be cancelled while a command performs unending work",
+      "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller",
+      "concurrent Team Flow cannot execute any command before the first scope drains and releases",
+      "Windows Job has a live exact root and signed finality after both holders close",
+      "Windows primary holder crash drains admitted descendants and leaves survivor proof",
+      "Windows secondary holder crash drains admitted descendants and leaves survivor proof",
+      "Windows primary receipt fsync stall and crash does not stop the other native holder",
+      "Windows secondary receipt fsync stall and crash does not stop the other native holder",
+      "Windows both holders crash before receipt keeps missing Job closure unconfirmed",
+      "Windows native watchdogs cancel active work while both holder JavaScript loops are blocked",
+      "Windows fresh observer rejects forged terminal files, wrong root birth and cross-scope replay",
+      "Windows primary launcher crash preserves native holder drain and survivor receipt",
+      "Windows secondary launcher crash preserves native holder drain and survivor receipt",
+      "Windows original CLI crash leaves independent B custody proof and a new Team Flow recovers",
+      "Windows nested fixed Flow cancellation preserves a custodian outside every owned ancestor Job",
+      "Windows bootstrap crash during primary before_resume confirms every recorded native birth exits",
+      "Windows bootstrap crash during primary preload confirms every recorded native birth exits",
+      "Windows bootstrap crash during primary native_load confirms every recorded native birth exits",
+      "Windows bootstrap crash during primary crypto confirms every recorded native birth exits",
+      "Windows bootstrap crash during secondary receipt_store confirms every recorded native birth exits",
+      "Windows bootstrap cancel during primary native_load confirms every recorded native birth exits",
+      "actual invocation worker accepts its exact native birth before validating the project request",
+      "actual invocation worker rejects missing immutable binding before project admission",
+      "actual invocation worker rejects different scope digest before project admission",
+      "actual invocation worker rejects recomputed digest for another native birth before project admission",
+      "actual invocation worker rejects noncanonical invocation nonce before project admission",
+      "holder channel binds one peer and preserves the final message before actual EOF",
+      "holder channel rejects an incorrect capability without consuming the valid peer slot",
+      "holder channel rejects truncated final message",
+      "holder channel rejects invalid UTF8",
+      "holder channel rejects nonobject JSON",
+      "holder channel rejects oversized line",
+      "public evaluation rejects directory_symlink before repository commands and confirms outer drain",
+      "public evaluation rejects hardlinked_file before repository commands and confirms outer drain",
+      "sync parent channel preserves positive result",
+      "sync parent channel preserves expected-failure result",
+      "sync parent channel confirms driver exit after reader-close",
+      "sync parent channel confirms driver exit after parent-crash"
+    ],
+    "selftest_budget": [
+      "public owner semantic scenarios reach their observation under real slow preparation"
+    ],
+    "public_kve": [
+      "public verification persists the exact whole invocation before its first claim",
+      "cancellation of a blocked first claim performs exact automatic recovery before a new public verification",
+      "original caller crash before active publication permits external exact recovery and a new public verification"
+    ]
+  },
+  "allowed_skips_by_platform": {
+    "linux": [],
+    "darwin": [
+      "normal release keeps the native owner lease until its actual child scope has drained",
+      "a free owner-inode lease cannot reclaim a still-active immutable execution scope",
+      "changed immutable scope bytes cannot authorize release or recovery",
+      "foreign boot scope cannot invoke the PID probe",
+      "same hostname and unrelated PID namespace cannot invoke the PID probe",
+      "an occupied scoped PID is retained despite a different recorded start tick",
+      "invalid procfs magic prevents automatic recovery and does not prevent exact-owner release",
+      "lost native scope after ESRCH cannot authorize recovery",
+      "strict native identity parser rejects missing, extra, reordered and mistyped coordinates",
+      "real exited Linux child permits recovery in its proven native coordinate",
+      "contradictory ESRCH cannot evict a still-present scoped process",
+      "hidepid visibility prevents automatic death inference even with ESRCH",
+      "missing anchored proc mount identity prevents automatic death inference",
+      "proc mount visibility change during a death probe remains unknown",
+      "target proc visibility denied after ESRCH remains unknown",
+      "the native procfs anchor is one bounded process-lifetime descriptor across lock releases",
+      "a delayed legacy v2 stale reclaimer cannot move a newer live owner",
+      "a previously recovered generation reappearing is refused without mutation",
+      "an empty retained generation is not replaced by a public directory",
+      "a retained generation alias cannot redirect or authorize recovery",
+      "an interruption after recovery leaves a fence and permits a later fresh acquire"
+    ],
+    "win32": [
+      "normal release keeps the native owner lease until its actual child scope has drained",
+      "a free owner-inode lease cannot reclaim a still-active immutable execution scope",
+      "changed immutable scope bytes cannot authorize release or recovery",
+      "foreign boot scope cannot invoke the PID probe",
+      "same hostname and unrelated PID namespace cannot invoke the PID probe",
+      "an occupied scoped PID is retained despite a different recorded start tick",
+      "invalid procfs magic prevents automatic recovery and does not prevent exact-owner release",
+      "lost native scope after ESRCH cannot authorize recovery",
+      "strict native identity parser rejects missing, extra, reordered and mistyped coordinates",
+      "real exited Linux child permits recovery in its proven native coordinate",
+      "contradictory ESRCH cannot evict a still-present scoped process",
+      "hidepid visibility prevents automatic death inference even with ESRCH",
+      "missing anchored proc mount identity prevents automatic death inference",
+      "proc mount visibility change during a death probe remains unknown",
+      "target proc visibility denied after ESRCH remains unknown",
+      "the native procfs anchor is one bounded process-lifetime descriptor across lock releases",
+      "a delayed legacy v2 stale reclaimer cannot move a newer live owner",
+      "a previously recovered generation reappearing is refused without mutation",
+      "an empty retained generation is not replaced by a public directory",
+      "a retained generation alias cannot redirect or authorize recovery",
+      "an interruption after recovery leaves a fence and permits a later fresh acquire",
+      "POSIX directory and owner permissions retain the existing caller umask contract",
+      "relaxing lease write access does not authorize an unreadable owner",
+      "owner swapped to FIFO between validation and open does not block",
+      "owner swapped to symlink before open stays rejected",
+      "parent symlink replacement is rejected even when the owner inode is unchanged",
+      "replacement of empty initializing directories cannot restart the acquisition budget",
+      "scope proof distinguishes a live session from its immutable native finality",
+      "a session budget closes native admission even if its caller never requests drain",
+      "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller"
+    ]
+  },
+  "note": "Exact named physical/native, portable model, I/O and transport assertions. Nested cases are counted separately; no Linux runtime skips accepted.",
+  "nested_required_paths": {
+    "linux_runtime": [
+      [
+        "collect-metrics refuses an output directory symlink without writing elsewhere"
+      ],
+      [
+        "generate-pr-summary refuses an output directory symlink without writing elsewhere"
+      ],
+      [
+        "evaluation-harness refuses an output directory symlink without writing elsewhere"
+      ],
+      [
+        "build-visual-inspector refuses an output directory symlink without writing elsewhere"
+      ],
+      [
+        "collect-metrics preflights every output before replacing the first (symlink)"
+      ],
+      [
+        "collect-metrics preflights every output before replacing the first (hardlink)"
+      ],
+      [
+        "collect-metrics preflights every output before replacing the first (directory)"
+      ],
+      [
+        "build-visual-inspector preflights every output before replacing the first (symlink)"
+      ],
+      [
+        "build-visual-inspector preflights every output before replacing the first (hardlink)"
+      ],
+      [
+        "build-visual-inspector preflights every output before replacing the first (directory)"
+      ],
+      [
+        "evaluation refuses a hardlinked report before invoking children"
+      ],
+      [
+        "PR summary in a separate state root reports its actual output"
+      ],
+      [
+        "Inspector in a separate state root reports both actual outputs"
+      ],
+      [
+        "Team refuses unattested outside workspace state redirection"
+      ],
+      [
+        "Team refuses unattested sibling workspace state redirection"
+      ],
+      [
+        "Team uses the requested repo when two repositories share a workspace ID"
+      ],
+      [
+        "Team refuses a symlink inside its canonical workspace state"
+      ],
+      [
+        "Team accepts a custom state root bound to an actual v2 flow start"
+      ],
+      [
+        "budgets preserve long work, default no-progress disabled, invalid values rejected"
+      ],
+      [
+        "real native command and trailing pipe bytes complete only after drain"
+      ],
+      [
+        "silent long work is allowed without a configured progress deadline"
+      ],
+      [
+        "native guard reports the real nonzero exit without fabricating success"
+      ],
+      [
+        "output noise cannot extend the absolute work deadline"
+      ],
+      [
+        "output noise is not meaningful progress"
+      ],
+      [
+        "wall-clock rollback does not shorten or invert the monotonic duration"
+      ],
+      [
+        "detached descendants that close both output pipes are drained before acceptance"
+      ],
+      [
+        "AbortSignal stops an admitted command independently of its I/O"
+      ],
+      [
+        "bounded output overflow drains the scope and cannot return a successful candidate"
+      ],
+      [
+        "persistent command session supports nested native scopes and drains between commands"
+      ],
+      [
+        "scope proof distinguishes a live session from its immutable native finality"
+      ],
+      [
+        "invalid UTF-8 stdout cannot become a successful semantic candidate"
+      ],
+      [
+        "concurrent session request is refused without disturbing the first admitted command"
+      ],
+      [
+        "a session budget closes native admission even if its caller never requests drain"
+      ],
+      [
+        "a throwing output consumer causes native drain and preserves its error category"
+      ],
+      [
+        "public evaluation rejects directory_symlink before repository commands and confirms outer drain"
+      ],
+      [
+        "public evaluation rejects hardlinked_file before repository commands and confirms outer drain"
+      ],
+      [
+        "ordinary Flow runs all steps, binds its full evidence log and drains before success"
+      ],
+      [
+        "evaluation runs its real producer path with a separate state root and native cleanup"
+      ],
+      [
+        "Team Flow publishes scope before command admission and releases after drain"
+      ],
+      [
+        "an actual admitted Flow can be cancelled while a command performs unending work"
+      ],
+      [
+        "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller"
+      ],
+      [
+        "concurrent Team Flow cannot execute any command before the first scope drains and releases"
+      ],
+      [
+        "holder channel binds one peer and preserves the final message before actual EOF"
+      ],
+      [
+        "holder channel rejects an incorrect capability without consuming the valid peer slot"
+      ],
+      [
+        "holder channel rejects truncated final message"
+      ],
+      [
+        "holder channel rejects invalid UTF8"
+      ],
+      [
+        "holder channel rejects nonobject JSON"
+      ],
+      [
+        "holder channel rejects oversized line"
+      ],
+      [
+        "actual invocation worker accepts its exact native birth before validating the project request"
+      ],
+      [
+        "actual invocation worker rejects missing immutable binding before project admission"
+      ],
+      [
+        "actual invocation worker rejects different scope digest before project admission"
+      ],
+      [
+        "actual invocation worker rejects recomputed digest for another native birth before project admission"
+      ],
+      [
+        "actual invocation worker rejects noncanonical invocation nonce before project admission"
+      ],
+      [
+        "public verification persists the exact whole invocation before its first claim"
+      ],
+      [
+        "cancellation of a blocked first claim performs exact automatic recovery before a new public verification"
+      ],
+      [
+        "original caller crash before active publication permits external exact recovery and a new public verification"
+      ],
+      [
+        "nonzero UID: three real authority scopes retain no capabilities and preserve UID mapping"
+      ],
+      [
+        "current UID: the exact nested mapping determines the authority capability profile"
+      ],
+      [
+        "nonzero UID: ordinary command workers remain in the zero-capability profile"
+      ],
+      [
+        "Linux namespace link provider survives denied nsfs getattr and still creates and drains actual scopes"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "deny-link"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "truncate-link"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "wrong-type"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "leading-zero"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "overflow"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "changed-link"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "wrong-proc-device"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations",
+        "non-proc-link"
+      ],
+      [
+        "Linux namespace link provider refuses denied, truncated, substituted and non-procfs link observations"
+      ],
+      [
+        "Linux link proof keeps exact birth finality separate from a matching namespace number and retains legacy device checks"
+      ],
+      [
+        "Linux versioned namespace descriptors reject invented devices, mixed providers and noncanonical identifiers"
+      ],
+      [
+        "Linux link scope closure requires a fresh bound observation before and after real namespace drain"
+      ],
+      [
+        "Linux same live birth with inconsistent translated PID is unconfirmed, never old-birth completion"
+      ],
+      [
+        "Linux pidfd binding rejects another live or exited process handle before using its exit state",
+        "other-live-handle"
+      ],
+      [
+        "Linux pidfd binding rejects another live or exited process handle before using its exit state",
+        "other-exited-handle"
+      ],
+      [
+        "Linux pidfd binding rejects another live or exited process handle before using its exit state"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain",
+        "denied-fdinfo"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain",
+        "truncated-fdinfo"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain",
+        "nul-fdinfo"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain",
+        "duplicate-pid"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain",
+        "duplicate-chain"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain",
+        "extra-chain-member"
+      ],
+      [
+        "Linux pidfd fdinfo must contain exactly one complete matching Pid and full NSpid chain"
+      ],
+      [
+        "a requested invalid execution scope never falls back to a process-only owner"
+      ],
+      [
+        "normal release keeps the native owner lease until its actual child scope has drained"
+      ],
+      [
+        "a free owner-inode lease cannot reclaim a still-active immutable execution scope"
+      ],
+      [
+        "changed immutable scope bytes cannot authorize release or recovery"
+      ],
+      [
+        "Linux missing monotonic clock rejects namespace admission instead of extending the budget"
+      ],
+      [
+        "Linux backward or invalid monotonic observations fail before namespace admission",
+        "rollback"
+      ],
+      [
+        "Linux backward or invalid monotonic observations fail before namespace admission",
+        "negative-seconds"
+      ],
+      [
+        "Linux backward or invalid monotonic observations fail before namespace admission",
+        "negative-nanoseconds"
+      ],
+      [
+        "Linux backward or invalid monotonic observations fail before namespace admission",
+        "invalid-nanoseconds"
+      ],
+      [
+        "Linux backward or invalid monotonic observations fail before namespace admission",
+        "millisecond-overflow"
+      ],
+      [
+        "Linux backward or invalid monotonic observations fail before namespace admission"
+      ],
+      [
+        "Linux clock loss after real ready yields no successful receipt and the admitted namespace actually drains"
+      ],
+      [
+        "Linux rechecks monotonic clock after permit input before releasing the actual worker"
+      ],
+      [
+        "Linux exact-child stop reports clock uncertainty separately from actual process exit",
+        "entry-eio"
+      ],
+      [
+        "Linux exact-child stop reports clock uncertainty separately from actual process exit",
+        "after-pidfd-exit-eio"
+      ],
+      [
+        "Linux exact-child stop reports clock uncertainty separately from actual process exit"
+      ],
+      [
+        "native close waits for its actual control EOF when keeper exit is delivered first"
+      ],
+      [
+        "native close rejects partial_line despite a real successful keeper exit"
+      ],
+      [
+        "native close rejects duplicate_closed despite a real successful keeper exit"
+      ],
+      [
+        "native close rejects unknown_after_closed despite a real successful keeper exit"
+      ],
+      [
+        "modeled scope query exhaustion prevents a new relay invocation"
+      ],
+      [
+        "modeled relay receives only the fractional remaining allowance without transport grace"
+      ],
+      [
+        "modeled late positive relay reply cannot authorize closure"
+      ],
+      [
+        "modeled late local positive reply cannot authorize closure"
+      ],
+      [
+        "modeled submillisecond remainder cannot start a relay with a fresh millisecond"
+      ],
+      [
+        "modeled scope validation consumes the original query allowance"
+      ],
+      [
+        "modeled exhausted validation cannot admit a native query"
+      ],
+      [
+        "modeled timely native replies and local-only lineage refusal keep their meaning"
+      ],
+      [
+        "modeled relay preserves digest, transport-status and proof-status admission predicates"
+      ],
+      [
+        "modeled invalid scope and invalid time budgets remain refused without observations"
+      ],
+      [
+        "actual Linux new Team Flow recovers through relay with the old outer namespace inode retained"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "visible"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "hidden"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "ambiguous"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "unavailable"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "hidden-after"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "changed-row"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "changed-mount"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "changed-root"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "appeared-before"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "appeared-after"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "denied-directory"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "pidfd-visible"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH",
+        "pidfd-denied"
+      ],
+      [
+        "Linux native absence requires current visible procfs, even when pidfd returns ESRCH"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "default"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-0"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-off"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-2"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-4"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-invisible"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-unknown"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-duplicate"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "hidepid-left"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "duplicate-row"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "missing-row"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "wrong-device"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "noncanonical-device"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "wrong-fs"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "wrong-root"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "wrong-mountpoint"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "extra-fields"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "duplicate-fd-id"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "noncanonical-fd-id"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "overflow-fd-id"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses",
+        "oversize"
+      ],
+      [
+        "Linux native proc visibility parser rejects hidden, malformed and ambiguous witnesses"
+      ],
+      [
+        "Linux native bounded visibility reader rejects truncation and embedded NUL",
+        "short"
+      ],
+      [
+        "Linux native bounded visibility reader rejects truncation and embedded NUL",
+        "exact-maximum"
+      ],
+      [
+        "Linux native bounded visibility reader rejects truncation and embedded NUL",
+        "oversize"
+      ],
+      [
+        "Linux native bounded visibility reader rejects truncation and embedded NUL",
+        "empty"
+      ],
+      [
+        "Linux native bounded visibility reader rejects truncation and embedded NUL",
+        "nul"
+      ],
+      [
+        "Linux native bounded visibility reader rejects truncation and embedded NUL"
+      ],
+      [
+        "Linux native live-child and waited-child observations use the actual helper and proc mount"
+      ],
+      [
+        "Linux natural worker exit 0 keeps work failure separate from native cleanup"
+      ],
+      [
+        "Linux natural worker exit 7 keeps work failure separate from native cleanup"
+      ],
+      [
+        "Linux natural worker exit 0 with malformed control keeps work failure separate from native cleanup"
+      ],
+      [
+        "Linux natural worker exit 0 with keeper SIGKILL keeps work failure separate from native cleanup"
+      ],
+      [
+        "ordinary Flow permits a real silent 125-second step with default work and progress budgets"
+      ],
+      [
+        "sync parent channel preserves positive result"
+      ],
+      [
+        "sync parent channel preserves expected-failure result"
+      ],
+      [
+        "sync parent channel confirms driver exit after reader-close"
+      ],
+      [
+        "sync parent channel confirms driver exit after parent-crash"
+      ],
+      [
+        "progress final frame drains and both stream directions close before success"
+      ],
+      [
+        "progress truncated frame after work completion cannot be accepted as normal EOF"
+      ],
+      [
+        "progress malformed complete frame after work completion stays a protocol failure"
+      ],
+      [
+        "progress peer reset never becomes graceful producer completion"
+      ],
+      [
+        "progress completion after its original deadline cannot succeed"
+      ],
+      [
+        "progress pending flush respects its original deadline under real backpressure"
+      ],
+      [
+        "absent optional progress channel preserves bounded producer API compatibility"
+      ],
+      [
+        "public update planner rejects an oversized sparse source before producing actions"
+      ],
+      [
+        "public update planner bounds the existing destination as well as the source"
+      ],
+      [
+        "same-size source rewrite with restored mtime cannot produce a stale update plan"
+      ],
+      [
+        "ordinary source files remain usable by the public update planner"
+      ],
+      [
+        "canonical ZIP extracted by unzip launches its Linux helper with original bytes"
+      ],
+      [
+        "ZIP admission rejects a CRC-valid Linux helper whose execute mode was removed"
+      ],
+      [
+        "atomic replacement applies execute mode before publication and preserves launchability"
+      ],
+      [
+        "public updater repairs same-byte helper permissions and the installed helper starts"
+      ]
+    ]
+  }
+}
