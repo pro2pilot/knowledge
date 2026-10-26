@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Strict public evidence for the normal production gate; raw stays private."""
-import argparse, hashlib, json, math, os, re
+import argparse, hashlib, importlib.util, json, math, os, re
 from pathlib import Path
 
 HEX = re.compile(r'^[a-f0-9]{64}$')
@@ -15,6 +15,11 @@ PROOF_DIAGNOSTICS = {'proof_top_current', 'proof_body_current', 'proof_reply_fla
 PROTECTED_CASES = {'search_only_ancestor': True, 'readable_ancestor': True, 'leaf_write_acl': False,
     'parent_write_acl': False, 'leaf_read_acl': True, 'leaf_symlink': False, 'writable_ancestor': False, 'unsearchable_ancestor': False}
 BEFORE_PROTECTED_SOURCE_SHA = '48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b'
+BASIC_CASES = {'normal': 0, 'scratch_readonly': 0, 'silent_long': 0, 'exit7': 7}
+FAILURE_CASES = {'cancel', 'authority_death', 'controller_death', 'paused_storage_cancel', 'paused_storage_controller_death',
+    'paused_storage_guardian_death', 'double_storage_guardian_controller_death'}
+FAILURE_ASSETS = {'darwin-production-failure-cases.py', 'darwin-production-failure-caller.js', 'darwin-production-control.js',
+    'darwin-production-process-observer.c', 'darwin-test-signal.c', 'darwin-production-failure-summary.py'}
 FAILURES = set('runner_architecture_mismatch runtime_copy_pin_mismatch node_version_failed node_version_invalid '
     'node_checksums_oversized node_headers_checksum_missing node_headers_checksum_mismatch node_headers_archive_unsafe '
     'node_headers_archive_truncated native_addon_build_failed native_addon_pin_mismatch ordinary_owner_required '
@@ -25,16 +30,29 @@ FAILURES = set('runner_architecture_mismatch runtime_copy_pin_mismatch node_vers
     'stub_pair_mismatch_shipping uid_scan_compile_failed birth_observer_compile_failed protected_install_parent_unavailable '
     'install_parent_creation_unconfirmed public_writer_cleanup_unconfirmed_preserve_fixture protected_baseline_source_pin_mismatch '
     'protected_baseline_compile_failed protected_executable_contract_failed protected_executable_hash_mismatch '
-    'protected_search_denial_not_observed protected_write_acl_fixture_inactive'.split())
+    'protected_search_denial_not_observed protected_write_acl_fixture_inactive public_production_case_invalid '
+    'public_production_basic_failed production_failure_helper_compile_failed production_failure_case_invalid '
+    'production_failure_case_deadline production_failure_helper_timeout_preserve_fixture production_failure_helper_protocol '
+    'production_failure_helper_exit_mismatch production_failure_actor_binding production_failure_actor_parent_binding '
+    'production_failure_signal_unconfirmed production_failure_UID_unconfirmed production_failure_UID_cleanup_deadline '
+    'production_failure_actor_exit_unconfirmed production_failure_caller_exited_before_action production_failure_execution_not_observed '
+    'production_failure_registry_actor_mismatch production_failure_cancel_not_durable production_failure_paused_writer_missing '
+    'production_failure_live_writer_reclaimed production_failure_live_writer_claim_lost production_failure_caller_exit_invalid '
+    'production_failure_caller_output_oversized production_failure_caller_protocol production_failure_unexpected_acceptance '
+    'production_failure_attempt_replaced production_failure_recovery_failed production_failure_terminal_not_confirmed '
+    'production_failure_project_mutated'.split())
 STAGES = set('node-version node-exec-path node-system-dylibs compile-lock-addon compile-uid-scan compile-birth-observer '
     'canonical-roots-must-be-absent init-production bootstrap-production capture-production-daemon probe-production '
-    'read-production-registry public-production-normal bootout-production post-stop-production-uid '
+    'read-production-registry public-production-normal public-production-scratch_readonly public-production-silent_long '
+    'public-production-exit7 bootout-production post-stop-production-uid '
     'verify-owned-canonical-inodes remove-owned-canonical-inodes verify-owned-fixture remove-owned-fixture '
     'protect-fixture mode-fixture launchctl-print-own-label launchctl-verify-own-label-absent compare-native-process-birth '
     'ensure-protected-install-parent remove-created-install-parent compile-protected-before-addon create-protected-fixture '
     'mode-protected-readable acl-protected-leaf-write prove-protected-leaf-write acl-protected-leaf-reset restore-protected-fixture '
     'acl-protected-parent-write prove-protected-parent-write acl-protected-parent-reset acl-protected-leaf-read '
-    'symlink-protected-fixture mode-protected-writable mode-protected-no-search'.split())
+    'symlink-protected-fixture mode-protected-writable mode-protected-no-search compile-production-process-observer '
+    'compile-production-signal production-failure-status production-failure-cancel production-failure-recover '
+    'production-failure-capture-parent production-failure-signal-exact production-failure-uid-observation'.split())
 
 
 def digest(value): return value if isinstance(value, str) and HEX.fullmatch(value) else None
@@ -68,7 +86,7 @@ def error_codes(source):
         'verification-darwin-session.js', 'verification-darwin-session-protocol.js', 'verification-darwin-client.js',
         'verification-darwin-control.js', 'verification-darwin-finalization.js', 'verification-darwin-store.js',
         'verification-control.js', 'verification-finalization.js', 'verification-execution.js', 'lock-publication.js',
-        'verification-policy.js', 'inert-data.js', 'verification-darwin-authority.js'):
+        'verification-policy.js', 'inert-data.js', 'verification-darwin-authority.js', 'verification-darwin-storage-guardian.js'):
         p = source/'tools/lib'/name
         if p.is_file() and not p.is_symlink():
             codes.update(re.findall(r"['\"]((?:verification_|native_lock_|transaction_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
@@ -133,21 +151,37 @@ def protected_contract(raw, codes, addon):
         **{key: digest(raw.get(key)) for key in ('before_source_sha256', 'after_source_sha256', 'before_binary_sha256', 'after_binary_sha256')}}
 
 
-def build(private, source, controller_status, architecture):
+def build(private, source, controller_status, architecture, case_set='normal'):
     raw = load(private/'SUMMARY.json');inputs = load(private/'INPUTS.json', 4*1024*1024)
     fallback = load(private/'DIAGNOSTIC.json', 65536);codes = error_codes(source)
-    # The frozen controller has one reviewed case. Do not silently discard
-    # an extra, malformed or unreviewed case and still certify this cohort.
+    expected_cases = {'normal': 0} if case_set == 'normal' else BASIC_CASES if case_set == 'basic' else \
+        {'normal': 0, **{name: None for name in FAILURE_CASES}} if case_set == 'failures' else {}
+    failure_reducer = None
+    if case_set == 'failures':
+        helper = Path(__file__).with_name('darwin-production-failure-summary.py')
+        spec = importlib.util.spec_from_file_location('production_failure_summary', helper)
+        failure_reducer = importlib.util.module_from_spec(spec);spec.loader.exec_module(failure_reducer)
+    # Do not silently discard an extra, malformed or unreviewed case and still
+    # certify the explicitly selected frozen cohort.
     raw_cases = raw.get('cases')
-    case_inventory_valid = isinstance(raw_cases, list) and len(raw_cases) == 1 and \
-        isinstance(raw_cases[0], dict) and raw_cases[0].get('name') == 'normal'
+    case_inventory_valid = bool(expected_cases) and isinstance(raw_cases, list) and len(raw_cases) == len(expected_cases) and \
+        all(isinstance(item, dict) and item.get('name') in expected_cases for item in raw_cases) and \
+        {item['name'] for item in raw_cases} == set(expected_cases)
     cases = []
     for item in raw.get('cases', []) if isinstance(raw.get('cases'), list) else []:
-        if not isinstance(item, dict) or item.get('name') != 'normal': continue
+        if not isinstance(item, dict) or item.get('name') not in expected_cases: continue
+        if case_set == 'failures' and item['name'] in FAILURE_CASES:
+            row = failure_reducer.reduce_case(item, codes)
+            row.update(stdout_sha256=digest(item.get('stdout_sha256')), stderr_sha256=digest(item.get('stderr_sha256')))
+            cases.append(row);continue
         terminal = item.get('terminal') if isinstance(item.get('terminal'), dict) else {}
         err = terminal.get('error') if isinstance(terminal.get('error'), dict) else {}
         containment = err.get('containment') if isinstance(err.get('containment'), dict) else {}
-        cases.append({'name': 'normal', 'status': item.get('status') if item.get('status') in ('PASS_PHYSICAL_PRODUCTION', 'FAIL') else 'UNCONFIRMED',
+        record = None
+        if isinstance(terminal.get('result'), list) and len(terminal['result']) == 1 and isinstance(terminal['result'][0], dict):
+            record = terminal['result'][0].get('record')
+        record = record if isinstance(record, dict) else {}
+        cases.append({'name': item['name'], 'status': item.get('status') if item.get('status') in ('PASS_PHYSICAL_PRODUCTION', 'FAIL') else 'UNCONFIRMED',
             'elapsed_ms': number(item.get('elapsed_ms')), 'controller_exit_code': exit_code(item.get('controller_exit_code')),
             'KVE_KVF_ACK_verified': boolean(item.get('KVE_KVF_ACK_verified')), 'phase': terminal.get('stage') if terminal.get('stage') in PHASES else 'unknown',
             'success': boolean(terminal.get('success')), 'error_code': terminal.get('error_code') if terminal.get('error_code') in codes else None,
@@ -157,7 +191,15 @@ def build(private, source, controller_status, architecture):
             'timed_out': boolean(err.get('timed_out')), 'recovery_required': boolean(err.get('recovery_required')),
             'teardown_status': err.get('teardown', {}).get('status') if isinstance(err.get('teardown'), dict) and
                 err['teardown'].get('status') in ('completed', 'not_required', 'unconfirmed') else None,
-            'stdout_sha256': digest(item.get('stdout_sha256')), 'stderr_sha256': digest(item.get('stderr_sha256'))})
+            'stdout_sha256': digest(item.get('stdout_sha256')), 'stderr_sha256': digest(item.get('stderr_sha256')),
+            'expected_exit_code': expected_cases[item['name']], 'execution_exit_code': exit_code(record.get('exit_code')),
+            'execution_status': record.get('status') if record.get('status') in ('pass', 'fail') else None,
+            'observed_elapsed_ms': number(terminal.get('observed_elapsed_ms')),
+            'finalized_accepted': terminal.get('finalized', {}).get('status') == 'accepted' if isinstance(terminal.get('finalized'), dict) else False,
+            'acceptance_count': len(terminal['acceptances']) if isinstance(terminal.get('acceptances'), list) else None,
+            'source_unchanged': boolean(terminal.get('source_unchanged')),
+            'no_progress_ms': number(terminal.get('budget', {}).get('no_progress_ms')) if isinstance(terminal.get('budget'), dict) else None,
+            'copy_only_progress_monitor': terminal.get('budget', {}).get('progress_monitored_operations') == ['native_copy_chunk'] if isinstance(terminal.get('budget'), dict) else False})
     diagnostics = []
     values = raw.get('diagnostics', fallback.get('diagnostics', []))
     for item in values[:4] if isinstance(values, list) else []:
@@ -182,7 +224,7 @@ def build(private, source, controller_status, architecture):
         stages.append({'stage': name if known else match[1]+'-unclassified-stage', 'stage_name_sha256': sha(name.encode()),
             'exit_code': exit_code(item.get('exit_code')), 'timed_out': boolean(item.get('timed_out')),
             'elapsed_ms': number(item.get('elapsed_ms')), 'stdout_sha256': digest(item.get('stdout_sha256')), 'stderr_sha256': digest(item.get('stderr_sha256'))})
-        if known and re.fullmatch(r'compile-(?:lock-addon|protected-before-addon|uid-scan|birth-observer|shipping-\d{2}-(?:broker|stub))', suffix):
+        if known and re.fullmatch(r'compile-(?:lock-addon|protected-before-addon|uid-scan|birth-observer|production-process-observer|production-signal|shipping-\d{2}-(?:broker|stub))', suffix):
             stderr = private/(name+'.stderr.raw')
             if stderr.is_file() and not stderr.is_symlink() and stderr.stat().st_size <= 4*1024*1024:
                 compiler_diagnostics.append({'stage': name, 'stderr_excerpt': compile_excerpt(stderr.read_bytes(), private, source)})
@@ -196,23 +238,50 @@ def build(private, source, controller_status, architecture):
     source_rows = inputs.get('files') if isinstance(inputs.get('files'), list) else []
     valid_inputs = input_inventory_valid(source, source_rows) and all(digest(inputs.get(key)) for key in
         ('controller_sha256', 'lifecycle_sha256', 'reference_runner_sha256'))
+    if case_set == 'basic': valid_inputs = valid_inputs and all(digest(inputs.get(key)) for key in ('matrix_controller_sha256', 'workloads_sha256'))
+    failure_assets = inputs.get('failure_assets') if isinstance(inputs.get('failure_assets'), dict) else {}
+    failure_helpers = raw.get('failure_helper_pins') if isinstance(raw.get('failure_helper_pins'), dict) else {}
+    if case_set == 'failures':
+        valid_inputs = valid_inputs and set(failure_assets) == FAILURE_ASSETS and all(digest(value) for value in failure_assets.values()) and \
+            set(failure_helpers) == {'process_observer_pin', 'signal_pin'} and all(isinstance(value, dict) and \
+                set(value) == {'source_sha256', 'binary_sha256'} and all(digest(part) for part in value.values()) for value in failure_helpers.values()) and \
+            failure_helpers['process_observer_pin']['source_sha256'] == failure_assets['darwin-production-process-observer.c'] and \
+            failure_helpers['signal_pin']['source_sha256'] == failure_assets['darwin-test-signal.c']
     actual_arch = 'x64' if architecture == 'x86_64' else 'arm64'
-    passed = controller_status == 0 and raw.get('status') == 'PASS_PHYSICAL_PRODUCTION_NORMAL' and raw.get('source_unchanged') is True and \
-        raw.get('cleanup_confirmed') is True and raw.get('architecture') == architecture and case_inventory_valid and len(cases) == 1 and \
-        cases[0]['status'] == 'PASS_PHYSICAL_PRODUCTION' and cases[0]['success'] is True and cases[0]['KVE_KVF_ACK_verified'] is True and \
-        cases[0]['controller_exit_code'] == 0 and \
+    expected_status = {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
+        'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL'}.get(case_set)
+    accepted_cases = all(case['status'] == 'PASS_PHYSICAL_PRODUCTION_FAILURE' if case['name'] in FAILURE_CASES and case_set == 'failures' else \
+        case['status'] == 'PASS_PHYSICAL_PRODUCTION' and case['success'] is True and case['KVE_KVF_ACK_verified'] is True and \
+        case['controller_exit_code'] == 0 for case in cases)
+    passed = controller_status == 0 and raw.get('status') == expected_status and raw.get('source_unchanged') is True and \
+        raw.get('cleanup_confirmed') is True and raw.get('architecture') == architecture and case_inventory_valid and len(cases) == len(expected_cases) and \
+        accepted_cases and \
         len(binaries) == 1 and binaries[0]['kind'] == 'shipping' and binaries[0]['qa_io_enabled'] is False and \
         all(binaries[0][key] for key in ('broker_sha256', 'stub_sha256', 'source_sha256', 'stub_source_sha256')) and \
         digest(addon.get('source_sha256')) and digest(addon.get('binary_sha256')) and \
         addon.get('platform') == 'darwin' and addon.get('architecture') == actual_arch and valid_inputs and \
         executable_contract['status'] == 'PASS_PHYSICAL_PAIRED'
+    if case_set == 'basic':
+        passed = passed and raw.get('case_set') == 'basic' and all(case['name'] == 'normal' or \
+            case['execution_exit_code'] == case['expected_exit_code'] and \
+            case['execution_status'] == ('pass' if case['expected_exit_code'] == 0 else 'fail') and \
+            case['finalized_accepted'] and case['acceptance_count'] == 1 and case['source_unchanged'] is True and \
+            (case['name'] != 'silent_long' or case['observed_elapsed_ms'] is not None and case['observed_elapsed_ms'] >= 125000 and \
+                case['no_progress_ms'] == 500 and case['copy_only_progress_monitor']) for case in cases)
+    if case_set == 'failures': passed = passed and raw.get('case_set') == 'failures'
     manifest_sha = sha(json.dumps(source_rows, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()) if source_rows else None
-    summary = {'schema': 'knowledge-darwin-production-public.v1', 'status': 'PASS_PRODUCTION_NORMAL_GATE' if passed else 'FAIL_OR_INCOMPLETE',
+    summary = {'schema': 'knowledge-darwin-production-public.v1', 'status': \
+        {'basic': 'PASS_PRODUCTION_BASIC_MATRIX', 'failures': 'PASS_PRODUCTION_FAILURE_MATRIX', 'normal': 'PASS_PRODUCTION_NORMAL_GATE'}[case_set] if passed else 'FAIL_OR_INCOMPLETE',
+        'case_set': case_set if case_set in ('normal', 'basic', 'failures') else 'invalid',
         'controller_exit_code': controller_status, 'architecture': raw.get('architecture') if raw.get('architecture') in ('x86_64', 'arm64') else None,
         'expected_architecture': architecture, 'source_unchanged': boolean(raw.get('source_unchanged')), 'cleanup_confirmed': boolean(raw.get('cleanup_confirmed')),
         'exact_source_inventory_verified': bool(valid_inputs), 'exact_case_inventory_verified': bool(case_inventory_valid),
         'source_manifest_sha256': manifest_sha, 'source_manifest_file_count': len(source_rows),
         'controller_sha256': digest(inputs.get('controller_sha256')), 'lifecycle_sha256': digest(inputs.get('lifecycle_sha256')),
+        'matrix_controller_sha256': digest(inputs.get('matrix_controller_sha256')), 'workloads_sha256': digest(inputs.get('workloads_sha256')),
+        'failure_assets': {name: digest(failure_assets.get(name)) for name in sorted(FAILURE_ASSETS)} if case_set == 'failures' else None,
+        'failure_helper_pins': {name: {key: digest(value.get(key)) for key in ('source_sha256', 'binary_sha256')}
+            for name, value in failure_helpers.items() if name in ('process_observer_pin', 'signal_pin') and isinstance(value, dict)} if case_set == 'failures' else None,
         'reference_runner_sha256': digest(inputs.get('reference_runner_sha256')), 'cases': cases, 'compiled_pairs': binaries,
         'native_addon': {key: digest(addon.get(key)) for key in ('source_sha256', 'binary_sha256')}, 'diagnostics': diagnostics,
         'protected_executable_contract': executable_contract,
@@ -220,7 +289,7 @@ def build(private, source, controller_status, architecture):
         'failure_code': raw.get('failure') if raw.get('failure') in FAILURES else ('private_failure' if raw.get('failure') else None),
         'workflow_commit': os.environ.get('GITHUB_SHA') if re.fullmatch('[a-f0-9]{40}', os.environ.get('GITHUB_SHA', '')) else None,
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID') if re.fullmatch('[0-9]+', os.environ.get('GITHUB_RUN_ID', '')) else None,
-        'release_gate_qualified': False, 'scope': 'Normal public KVE/KVF/ACK only; independent stop and other failures remain separately qualified.',
+        'release_gate_qualified': False, 'scope': 'Fixed public production cohort; paused storage plus controller death includes explicitly operator-assisted storage exit. Kernel I/O stalls and release qualification remain separate.',
         'raw_evidence_scope': 'runner-private; tokens, raw native replies, account/host identifiers, paths and payload output excluded'}
     parent = raw.get('installation_parent') if isinstance(raw.get('installation_parent'), dict) else {}
     summary['installation_parent'] = {key: boolean(parent.get(key)) for key in
@@ -233,15 +302,17 @@ def build(private, source, controller_status, architecture):
 def main():
     ap = argparse.ArgumentParser();ap.add_argument('--private', required=True);ap.add_argument('--public', required=True)
     ap.add_argument('--source', required=True);ap.add_argument('--controller-status', type=int, required=True)
-    ap.add_argument('--expected-arch', choices=('x86_64', 'arm64'), required=True);args = ap.parse_args()
+    ap.add_argument('--expected-arch', choices=('x86_64', 'arm64'), required=True)
+    ap.add_argument('--case-set', choices=('normal', 'basic', 'failures'), default='normal');args = ap.parse_args()
     private = Path(args.private).resolve();public = Path(args.public).resolve();source = Path(args.source).resolve()
     if public == private or public.is_relative_to(private) or private.is_relative_to(public): raise SystemExit('public_private_overlap')
-    summary, stages = build(private, source, args.controller_status, args.expected_arch)
+    summary, stages = build(private, source, args.controller_status, args.expected_arch, args.case_set)
     public.mkdir(mode=0o755, parents=True, exist_ok=False)
     for name, value in (('summary.json', summary), ('stages.json', stages)):
         p = public/name;p.write_text(json.dumps(value, indent=2, sort_keys=True)+'\n');p.chmod(0o644)
     print(json.dumps({'status': summary['status'], 'public_files': ['summary.json', 'stages.json'], 'release_gate_qualified': False}))
-    return 0 if summary['status'] == 'PASS_PRODUCTION_NORMAL_GATE' else 1
+    return 0 if summary['status'] == {'basic': 'PASS_PRODUCTION_BASIC_MATRIX', 'failures': 'PASS_PRODUCTION_FAILURE_MATRIX',
+                                    'normal': 'PASS_PRODUCTION_NORMAL_GATE'}[args.case_set] else 1
 
 
 if __name__ == '__main__': raise SystemExit(main())

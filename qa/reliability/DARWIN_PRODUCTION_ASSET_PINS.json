@@ -3,13 +3,13 @@
   "files": [
     {
       "repository_path": ".github/workflows/rc5-reliability-darwin-production.yml",
-      "bytes": 3510,
-      "sha256": "6af26bff63aea9c55bdfb80640122b5d9b3173d78e504fc6658853db0a0cde73"
+      "bytes": 3673,
+      "sha256": "b07aa5e8150b4812c7633a9cc3814a48d9f515918d861dd10306ff787f0c0406"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-lifecycle.py",
-      "bytes": 36309,
-      "sha256": "13cd30dad77cdd0f9b37cf541cb128447e409d0027305c391f6fd90466c2a11b"
+      "bytes": 40281,
+      "sha256": "1efea2e51fe27ff0386e08d7f9c8ceed772430982b9585a36ceb98570163b992"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-controller.js",
@@ -17,19 +17,64 @@
       "sha256": "09ae5bdee11d274a75bcb8e18aa5633871305e05c67d828d810f0a627a2f9cfd"
     },
     {
+      "repository_path": "qa/reliability/controllers/darwin-test-signal.c",
+      "bytes": 1832,
+      "sha256": "8469f764c5460696adff04ca6ca52c72dbe394292ec6b80d8513b50900ea8f03"
+    },
+    {
       "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
-      "bytes": 21618,
-      "sha256": "cac40c57266c8bb93d12768a005e54912e659be7d479d19292940ff06fbfa444"
+      "bytes": 29292,
+      "sha256": "a00295aaf27680029118718185052ffb6e3a2019d2f67f23ef2f3af407f14157"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
-      "bytes": 10960,
-      "sha256": "d97c774581d9672c2fe25f7df6662fe86cecac366f90fbe478fd9e0195e32201"
+      "bytes": 19487,
+      "sha256": "1b5383cc69f948f030fb6fcf21a7c4ed1cc891e5728dde24f9644e07ed8906de"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-request.js",
       "bytes": 2348,
       "sha256": "fdc0ea65b05bcdead1804a10500ba0195c951764e568adbd04b583dc42d92e32"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-matrix-controller.js",
+      "bytes": 4226,
+      "sha256": "f802fdca229727d9b483ded00701d52095708d031f81a4e957d37332e40f5b57"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-workloads.js",
+      "bytes": 3018,
+      "sha256": "58b2bf20ab2fef662dc4da9bf3fd60e5deb3f79550627d856a091f67c1638860"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-failure-cases.py",
+      "bytes": 18825,
+      "sha256": "8bbdcf1a9737127ec89bf4d6cb469caf7989975257fe93f5fbee6172ef13b6be"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-failure-caller.js",
+      "bytes": 4289,
+      "sha256": "fd2232eba671adaec3818e00fb757fe7693e80ca391b73cc53e3874e7d1756d5"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-control.js",
+      "bytes": 2523,
+      "sha256": "41fc8a34ecf3ba79840407b608353d8952e17d0b1f6ee70efc5984da3447ea1f"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-process-observer.c",
+      "bytes": 2715,
+      "sha256": "15673ea712aa036b5dccf50d4a21e9af6316dcfc1988e4e9d6942ad381f0b294"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-production-failure-summary.py",
+      "bytes": 6070,
+      "sha256": "7014a9040de7af07195caeca73a56c93c0dc8240303d8bc91dd4592a770025b4"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/test-darwin-production-failures.py",
+      "bytes": 6671,
+      "sha256": "fe26184239cb384833d6efb3b7a1d5532e6cb17d16e1aa3cc1441774db5ee9e7"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-protected-executable-probe.js",
@@ -106,7 +151,8 @@
   ],
   "production_qualified": false,
   "runtime_source_required": "qa/reliability/source/.knowledge",
-  "scope": "Mac05 source603 plus reviewed broker/stub clock guards, session stop fencing, storage parent binding, fixed proof diagnostics. Actual native qualification pending. Actual UTF8 envelope cap preserved separately from bounded inert admission.",
+  "case_set": "failures",
+  "scope": "Actual public normal plus seven production failure scenarios; double M+G loss is explicitly fail-closed and operator-assisted fixture cleanup, never autonomous recovery.",
   "uploaded_artifacts": [
     "summary.json",
     "stages.json"

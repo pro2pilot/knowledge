@@ -78,6 +78,7 @@ def diagnostic(error, stage):
 def main():
     ap = argparse.ArgumentParser();ap.add_argument('--source', required=True);ap.add_argument('--reference', required=True)
     ap.add_argument('--evidence', required=True);ap.add_argument('--expected-arch', required=True, choices=('x86_64', 'arm64'))
+    ap.add_argument('--case-set', choices=('normal', 'basic', 'failures'), default='normal')
     args = ap.parse_args()
     evidence = Path(args.evidence).resolve();source = Path(args.source).resolve(strict=True)
     if platform.system() != 'Darwin' or os.environ.get('GITHUB_ACTIONS') != 'true':
@@ -89,6 +90,13 @@ def main():
     spec = importlib.util.spec_from_file_location('production_fixture_utilities', module_path)
     base = importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
     controller = Path(__file__).with_name('darwin-production-controller.js')
+    matrix_controller = Path(__file__).with_name('darwin-production-matrix-controller.js')
+    matrix_workloads = Path(__file__).with_name('darwin-production-workloads.js')
+    failure_module = None
+    if args.case_set == 'failures':
+        failure_path = Path(__file__).with_name('darwin-production-failure-cases.py')
+        failure_spec = importlib.util.spec_from_file_location('production_failure_cases', failure_path)
+        failure_module = importlib.util.module_from_spec(failure_spec);failure_spec.loader.exec_module(failure_module)
 
     class Runner(base.Runner):
         def __init__(self):
@@ -104,6 +112,7 @@ def main():
             self.install_parent_observation = None;self.install_parent_identity = None
             self.protected_contract = {'cases': [], 'status': 'NOT_RUN'}
             self.addon_path = None;self.before_addon_path = None
+            self.failure_helpers = None
 
         def run(self, name, argv, timeout=120, data=None, root=False):
             result = super().run(name, argv, timeout=timeout, data=data, root=root)
@@ -327,6 +336,30 @@ def main():
             row['status'] = 'PASS_PHYSICAL_PRODUCTION';row['KVE_KVF_ACK_verified'] = True
             self.public_completed = True
 
+        def case_basic(self, info, name):
+            self.check(name in ('scratch_readonly', 'silent_long', 'exit7'), 'public_production_case_invalid')
+            project = evidence/('project-'+name);project.mkdir(mode=0o700)
+            request = {'source': str(self.runtime_copy), 'project': str(project), 'case_name': name,
+                'config': {key: str(info[key]) for key in ('binary', 'socket')}}
+            begin = time.monotonic();self.public_started = True;self.public_completed = False
+            result = self.run('public-production-'+name, [str(info['node']), str(matrix_controller)],
+                data=base.canonical(request), timeout=330)
+            terminal = None
+            for line in result.stdout.splitlines():
+                try: event = json.loads(line)
+                except Exception: continue
+                if event.get('type') == 'result':
+                    self.check(terminal is None, 'duplicate_production_result');terminal = event
+            row = {'name': name, 'status': 'FAIL', 'elapsed_ms': (time.monotonic()-begin)*1000,
+                'controller_exit_code': result.returncode, 'terminal': terminal,
+                'stdout_sha256': base.sha_bytes(result.stdout), 'stderr_sha256': base.sha_bytes(result.stderr)}
+            self.case_results.append(row)
+            self.check(result.returncode == 0 and terminal and terminal.get('success') is True and
+                terminal.get('case_name') == name and terminal.get('source_unchanged') is True,
+                'public_production_basic_failed')
+            row['status'] = 'PASS_PHYSICAL_PRODUCTION';row['KVE_KVF_ACK_verified'] = True
+            self.public_completed = True
+
         def cleanup(self):
             if self.fixture is None and not self.root_identities and self.install_parent_identity is None: return
             if self.bootstrapped:
@@ -420,14 +453,30 @@ for fd in held: os.close(fd)
         def execute(self):
             self.check(platform.machine() == args.expected_arch, 'runner_architecture_mismatch')
             self.make_private_evidence()
-            base.private_file(evidence/'INPUTS.json', base.canonical({'files': self.input_pins,
+            inputs = {'files': self.input_pins,
                 'controller_sha256': base.sha_file(controller), 'lifecycle_sha256': base.sha_file(Path(__file__)),
-                'reference_runner_sha256': base.sha_file(module_path)}))
+                'reference_runner_sha256': base.sha_file(module_path)}
+            if args.case_set == 'basic':
+                inputs.update(matrix_controller_sha256=base.sha_file(matrix_controller), workloads_sha256=base.sha_file(matrix_workloads))
+            if args.case_set == 'failures':
+                inputs['failure_assets'] = {name: base.sha_file(Path(__file__).with_name(name)) for name in (
+                    'darwin-production-failure-cases.py', 'darwin-production-failure-caller.js', 'darwin-production-control.js',
+                    'darwin-production-process-observer.c', 'darwin-test-signal.c', 'darwin-production-failure-summary.py')}
+            base.private_file(evidence/'INPUTS.json', base.canonical(inputs))
             self.prepare_runtime();self.compile_uid_scan();self.compile_birth_observer();self.compile_pair(False)
+            if args.case_set == 'failures':
+                self.failure_helpers = failure_module.compile_helpers(self, base, Path(__file__).parent)
             self.fixture_path();st = self.fixture.lstat();self.fixture_identity = {'dev': st.st_dev, 'ino': st.st_ino}
             base.private_file(evidence/'created-fixture.json', base.canonical(self.fixture_identity))
-            info = self.setup_normal();self.case_protected_executable(info);self.case_normal(info);self.cleanup()
-            self.status = 'PASS_PHYSICAL_PRODUCTION_NORMAL'
+            info = self.setup_normal();self.case_protected_executable(info);self.case_normal(info)
+            if args.case_set == 'basic':
+                for name in ('scratch_readonly', 'silent_long', 'exit7'): self.case_basic(info, name)
+            if args.case_set == 'failures':
+                for name in failure_module.CASES:
+                    failure_module.run_case(self, base, info, Path(__file__).parent, self.failure_helpers, name)
+            self.cleanup()
+            self.status = {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
+                           'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL'}[args.case_set]
 
     runner = Runner();failure = None;diagnostics = [];raw_traceback = None
     try: runner.execute()
@@ -442,15 +491,18 @@ for fd in held: os.close(fd)
             except BaseException: unchanged = False
             if not unchanged: runner.status = 'FAIL';failure = (failure or '')+';source_changed'
             summary = {'schema': 'knowledge-darwin-production-physical.v1', 'status': runner.status, 'failure': failure,
+                'case_set': args.case_set,
                 'architecture': platform.machine(), 'source_unchanged': unchanged, 'cases': runner.case_results,
                 'cleanup_confirmed': runner.cleanup_confirmed, 'binary_history': runner.binary_history,
                 'native_addon': runner.native_manifest, 'installed_bindings': runner.installed_bindings,
+                'failure_helper_pins': {name: value for name, value in (runner.failure_helpers or {}).items() if name.endswith('_pin')},
                 'protected_executable_contract': runner.protected_contract,
                 'installation_parent': runner.install_parent_observation,
                 'records': runner.records, 'diagnostics': diagnostics, 'raw_traceback': raw_traceback,
                 'release_gate_qualified': False, 'scope': 'Normal public production request on disposable hosted macOS; other production failures have separate gates.'}
             (evidence/'SUMMARY.json').write_text(json.dumps(summary, indent=2)+'\n')
-    return 0 if runner.status == 'PASS_PHYSICAL_PRODUCTION_NORMAL' else 1
+    return 0 if runner.status == {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
+                                  'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL'}[args.case_set] else 1
 
 
 if __name__ == '__main__':

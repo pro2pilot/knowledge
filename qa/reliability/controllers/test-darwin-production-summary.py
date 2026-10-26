@@ -109,6 +109,109 @@ class ProductionEvidence(unittest.TestCase):
             self.assertTrue(public['installation_parent']['created']);self.assertFalse(public['installation_parent']['exists_before'])
             self.assertEqual(public['installation_parent']['errno'], 2)
 
+    def test_basic_matrix_requires_exact_cases_real_silence_and_failed_exit7(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder);private = root/'private';private.mkdir();source = root/'source';source.mkdir()
+            (source/'seed.js').write_bytes(b'fixture');(source/'seed.js').chmod(0o600)
+            inputs = {'files': [{'path': 'source/seed.js', 'bytes': 7, 'sha256': hashlib.sha256(b'fixture').hexdigest(), 'executable': False}],
+                **{key: 'c'*64 for key in ('controller_sha256', 'lifecycle_sha256', 'reference_runner_sha256',
+                    'matrix_controller_sha256', 'workloads_sha256')}}
+            (private/'INPUTS.json').write_text(json.dumps(inputs))
+            def good():
+                value = self.good();value.update(case_set='basic', status='PASS_PHYSICAL_PRODUCTION_BASIC')
+                for name, expected in (('scratch_readonly', 0), ('silent_long', 0), ('exit7', 7)):
+                    row = copy.deepcopy(value['cases'][0]);row['name'] = name
+                    row['terminal'].update(case_name=name, expected_exit=expected, source_unchanged=True,
+                        observed_elapsed_ms=125001 if name == 'silent_long' else 5000,
+                        result=[{'record': {'status': 'pass' if expected == 0 else 'fail', 'exit_code': expected}}],
+                        finalized={'status': 'accepted'}, acceptances=[{'private_receipt': 'NEVER_PUBLIC_acceptance'}],
+                        budget={'no_progress_ms': 500 if name == 'silent_long' else 0,
+                            'progress_monitored_operations': ['native_copy_chunk']})
+                    value['cases'].append(row)
+                return value
+            variants = [('valid', good(), 0)]
+            for name, mutate in (
+                ('missing', lambda v: v['cases'].pop()),
+                ('duplicate', lambda v: v['cases'].__setitem__(3, copy.deepcopy(v['cases'][2]))),
+                ('extra', lambda v: v['cases'].append({'name': 'unknown'})),
+                ('exit7-mislabeled-pass', lambda v: v['cases'][3]['terminal']['result'][0]['record'].update(status='pass')),
+                ('exit7-wrong-code', lambda v: v['cases'][3]['terminal']['result'][0]['record'].update(exit_code=0)),
+                ('short-silence', lambda v: v['cases'][2]['terminal'].update(observed_elapsed_ms=124999)),
+                ('disabled-progress-policy', lambda v: v['cases'][2]['terminal']['budget'].update(no_progress_ms=0)),
+                ('opaque-progress-policy', lambda v: v['cases'][2]['terminal']['budget'].update(progress_monitored_operations=['command'])),
+                ('unfinalized', lambda v: v['cases'][1]['terminal'].update(finalized={'status': 'unconfirmed'}))):
+                value = good();mutate(value);variants.append((name, value, 1))
+            for name, value, expected in variants:
+                with self.subTest(name=name):
+                    (private/'SUMMARY.json').write_text(json.dumps(value));public = root/name
+                    result = subprocess.run([sys.executable, str(target), '--private', str(private), '--public', str(public),
+                        '--source', str(source), '--controller-status', '0', '--expected-arch', 'arm64', '--case-set', 'basic'],
+                        capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, expected, result.stdout+result.stderr)
+                    actual = json.loads((public/'summary.json').read_text())
+                    self.assertNotIn('NEVER_PUBLIC', json.dumps(actual))
+                    self.assertEqual(actual['status'], 'PASS_PRODUCTION_BASIC_MATRIX' if expected == 0 else 'FAIL_OR_INCOMPLETE')
+            (private/'SUMMARY.json').write_text(json.dumps(good()))
+            actual, _ = summary.build(private, source, 0, 'arm64')
+            self.assertEqual(actual['status'], 'FAIL_OR_INCOMPLETE', 'the normal gate must not accept a different case cohort')
+            inputs.pop('workloads_sha256');(private/'INPUTS.json').write_text(json.dumps(inputs))
+            actual, _ = summary.build(private, source, 0, 'arm64', 'basic')
+            self.assertEqual(actual['status'], 'FAIL_OR_INCOMPLETE')
+
+    def test_failure_cohort_requires_every_exact_case_and_native_helper_binding(self):
+        fixture_path = Path(__file__).with_name('test-darwin-production-failures.py')
+        fixture_spec = importlib.util.spec_from_file_location('failure_fixture', fixture_path)
+        fixtures = importlib.util.module_from_spec(fixture_spec);fixture_spec.loader.exec_module(fixtures)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder);private = root/'private';private.mkdir();source = root/'source'
+            lib = source/'tools/lib';lib.mkdir(parents=True)
+            code = b"const codes = ['verification_cancelled','verification_darwin_transport_failed'];\n"
+            file = lib/'verification-darwin-production.js';file.write_bytes(code);file.chmod(0o600)
+            inputs = {'files': [{'path': 'source/tools/lib/verification-darwin-production.js', 'bytes': len(code),
+                'sha256': hashlib.sha256(code).hexdigest(), 'executable': False}],
+                **{key: 'c'*64 for key in ('controller_sha256', 'lifecycle_sha256', 'reference_runner_sha256')},
+                'failure_assets': {name: 'd'*64 for name in summary.FAILURE_ASSETS}}
+            (private/'INPUTS.json').write_text(json.dumps(inputs))
+
+            def good():
+                value = self.good();value.update(case_set='failures', status='PASS_PHYSICAL_PRODUCTION_FAILURES',
+                    failure_helper_pins={name: {'source_sha256': 'd'*64, 'binary_sha256': 'e'*64}
+                        for name in ('process_observer_pin', 'signal_pin')})
+                value['cases'].extend(fixtures.fixture(name) for name in sorted(summary.FAILURE_CASES))
+                return value
+
+            variants = [('valid', good(), 0)]
+            for name, mutate in (
+                ('missing', lambda v: v['cases'].pop()),
+                ('duplicate', lambda v: v['cases'].__setitem__(2, copy.deepcopy(v['cases'][1]))),
+                ('unknown-extra', lambda v: v['cases'].append({'name': 'unknown'})),
+                ('malformed-extra', lambda v: v['cases'].append(None)),
+                ('failed-helper-tail', lambda v: v['cases'][1].update(controller_exit_code=1)),
+                ('unconfirmed-cleanup', lambda v: v['cases'][1]['observations'].update(cleanup_confirmed=False)),
+                ('alive-authority', lambda v: v['cases'][1]['observations']['authority_exit'].update(state='same_running')),
+                ('positive-ACK', lambda v: v['cases'][1]['terminal'].update(acceptances=[{'signature': 'NEVER_PUBLIC_ACK'}])),
+                ('no-helper-pins', lambda v: v.update(failure_helper_pins={})),
+                ('wrong-helper-source', lambda v: v['failure_helper_pins']['signal_pin'].update(source_sha256='f'*64)),
+                ('different-case-set', lambda v: v.update(case_set='basic'))):
+                value = good();mutate(value);variants.append((name, value, 1))
+            for name, value, expected in variants:
+                with self.subTest(name=name):
+                    for row in value['cases']:
+                        if isinstance(row, dict): row['raw_secret'] = 'NEVER_PUBLIC_RAW_RECEIPT'
+                    (private/'SUMMARY.json').write_text(json.dumps(value));public = root/name
+                    result = subprocess.run([sys.executable, str(target), '--private', str(private), '--public', str(public),
+                        '--source', str(source), '--controller-status', '0', '--expected-arch', 'arm64', '--case-set', 'failures'],
+                        capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, expected, result.stdout+result.stderr)
+                    actual = json.loads((public/'summary.json').read_text())
+                    self.assertNotIn('NEVER_PUBLIC', json.dumps(actual))
+                    self.assertEqual(actual['status'], 'PASS_PRODUCTION_FAILURE_MATRIX' if expected == 0 else 'FAIL_OR_INCOMPLETE')
+            (private/'SUMMARY.json').write_text(json.dumps(good()))
+            inputs['failure_assets'].pop('darwin-test-signal.c')
+            (private/'INPUTS.json').write_text(json.dumps(inputs))
+            actual, _ = summary.build(private, source, 0, 'arm64', 'failures')
+            self.assertEqual(actual['status'], 'FAIL_OR_INCOMPLETE')
+
     def test_fixed_policy_error_and_product_phase_are_public_without_message(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder);private = root/'private';private.mkdir();source = root/'source';(source/'tools/lib').mkdir(parents=True)

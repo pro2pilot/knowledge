@@ -1,4 +1,4 @@
-name: RC5 reliability Darwin production normal gate
+name: RC5 reliability Darwin production failures matrix
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   normal:
     name: public KVE KVF ACK (${{ matrix.arch }})
-    timeout-minutes: 25
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -48,8 +48,9 @@ jobs:
         run: |
           python3 qa/reliability/controllers/verify-darwin-ci-assets.py --root . --inventory qa/reliability/DARWIN_PRODUCTION_ASSET_PINS.json
           python3 qa/reliability/controllers/test-darwin-production-summary.py
+          python3 qa/reliability/controllers/test-darwin-production-failures.py
           node qa/reliability/controllers/test-darwin-production-request.js --source qa/reliability/source/.knowledge --controller qa/reliability/controllers/darwin-production-controller.js
-      - name: Execute normal public production request
+      - name: Execute normal and failures public production cases
         shell: bash
         run: |
           umask 077
@@ -60,6 +61,7 @@ jobs:
             --source qa/reliability/source/.knowledge \
             --reference qa/reliability/reference \
             --evidence "$RUNNER_TEMP/knowledge-production-private/normal" \
+            --case-set failures \
             --expected-arch '${{ matrix.arch }}' \
             >"$RUNNER_TEMP/knowledge-production-private/controller.stdout" \
             2>"$RUNNER_TEMP/knowledge-production-private/controller.stderr"
@@ -69,6 +71,7 @@ jobs:
             --public "$RUNNER_TEMP/knowledge-production-public" \
             --source qa/reliability/source/.knowledge \
             --controller-status "$native_status" \
+            --case-set failures \
             --expected-arch '${{ matrix.arch }}'
           summary_status=$?
           if [ "$summary_status" -ne 0 ]; then exit "$summary_status"; fi
