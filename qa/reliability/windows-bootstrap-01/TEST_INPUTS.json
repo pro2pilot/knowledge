@@ -1,0 +1,103 @@
+{
+  "at_utc": "2026-10-26T14:05:00Z",
+  "status": "FROZEN_NATIVE_WINDOWS_NOT_RUN",
+  "files": {
+    "tests/reliability-command-runner.test.js": {
+      "count": 16,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "windows_skips": [
+        "scope proof distinguishes a live session from its immutable native finality",
+        "a session budget closes native admission even if its caller never requests drain"
+      ],
+      "scope": "actual native commands plus one budget unit case",
+      "sha256": "3b9d0990480c0da131330b721d0f3b6013d3fbeddc5bec97e117229d5fbfd188"
+    },
+    "tests/reliability-flow-owned.test.js": {
+      "count": 6,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "windows_skips": [
+        "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller"
+      ],
+      "scope": "actual Flow/evaluation/Team",
+      "sha256": "83df55c730ca8200526bfec7c80796f1aa345039a7f5c68db3e44e12f0e3a8bd"
+    },
+    "tests/reliability-windows-command-lifecycle.test.js": {
+      "count": 10,
+      "platforms": [
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "actual native holders/crash/receipt/launcher; modeled JS stall only",
+      "sha256": "1cc3f3dd00d6ae737d4ca6434af91fe77fb50f3ec129b6bb0ded07c7a825728f"
+    },
+    "tests/reliability-windows-team-crash.test.js": {
+      "count": 2,
+      "platforms": [
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "actual original CLI SIGKILL and nested ancestor cancellation; custom outer membership is enforced by native custodian",
+      "sha256": "9ee6dbbcd409570422ffe9354639d36edf4b903eae3c9e422dd06ec3e6f009ce"
+    },
+    "tests/reliability-windows-bootstrap.test.js": {
+      "count": 6,
+      "platforms": [
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "actual JOB_LIST pre-resume/preload/native-load/crypto/store crash and cancellation; modeled JS holds",
+      "sha256": "e42a5d9f0713088a3227ed50ed617d13c97ca556e189a515e461dc1b9dae81ca"
+    },
+    "tests/reliability-invocation-worker.test.js": {
+      "count": 5,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "actual native worker admission; missing/digest/birth/nonce negatives",
+      "sha256": "c865a1682f9cd07c33993aaa270f787aa78f65be3edc607d19996d7c7296efb1"
+    },
+    "tests/reliability-holder-channel.test.js": {
+      "count": 6,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "actual loopback transport; no native Job proof",
+      "sha256": "57ec34a07684ca900d2e7e7168863cc329a6580998037836afefa66f86d4339c"
+    },
+    "tests/reliability-evaluation-preflight.test.js": {
+      "count": 2,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "actual public evaluation/outer drain and unsafe-output negative",
+      "sha256": "0ab50f0358a8ff00d32514f5e8810cf1f273ad77fa64161ef31b827b8cf67290"
+    },
+    "tests/reliability-kve-invocation-public.test.js": {
+      "count": 3,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "windows_skips": [],
+      "scope": "Actual public KVE first publication, cancellation/recovery and original caller crash/restart",
+      "sha256": "04f087b9f9a1cfd554f81921ebc15cadafc95ee3853b4767c91e6e836dc81ad5"
+    }
+  },
+  "windows_expected_tests": 56,
+  "windows_expected_executed": 53,
+  "windows_expected_skips": 3,
+  "note": "Exact frozen source case plan. Portable transport/model checks are distinguished from actual native ownership; three Linux-only scenarios are not Windows-qualified.",
+  "source_zip_sha256": "5d9499fb1d974588b27c56a124d7c55a8933add44d702a70bd0cefb8b8005ef9"
+}

@@ -1,0 +1,282 @@
+[
+  {
+    "name": "budgets preserve long work, default no-progress disabled, invalid values rejected",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "real native command and trailing pipe bytes complete only after drain",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "silent long work is allowed without a configured progress deadline",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "native guard reports the real nonzero exit without fabricating success",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "output noise cannot extend the absolute work deadline",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "output noise is not meaningful progress",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "wall-clock rollback does not shorten or invert the monotonic duration",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "detached descendants that close both output pipes are drained before acceptance",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "AbortSignal stops an admitted command independently of its I/O",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "bounded output overflow drains the scope and cannot return a successful candidate",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "persistent command session supports nested native scopes and drains between commands",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "scope proof distinguishes a live session from its immutable native finality",
+    "skip": true,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "invalid UTF-8 stdout cannot become a successful semantic candidate",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "concurrent session request is refused without disturbing the first admitted command",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "a session budget closes native admission even if its caller never requests drain",
+    "skip": true,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "a throwing output consumer causes native drain and preserves its error category",
+    "skip": false,
+    "file": "tests/reliability-command-runner.test.js"
+  },
+  {
+    "name": "ordinary Flow runs all steps, binds its full evidence log and drains before success",
+    "skip": false,
+    "file": "tests/reliability-flow-owned.test.js"
+  },
+  {
+    "name": "evaluation runs its real producer path with a separate state root and native cleanup",
+    "skip": false,
+    "file": "tests/reliability-flow-owned.test.js"
+  },
+  {
+    "name": "Team Flow publishes scope before command admission and releases after drain",
+    "skip": false,
+    "file": "tests/reliability-flow-owned.test.js"
+  },
+  {
+    "name": "an actual admitted Flow can be cancelled while a command performs unending work",
+    "skip": false,
+    "file": "tests/reliability-flow-owned.test.js"
+  },
+  {
+    "name": "a new Team Flow recovers the exact old scope after SIGKILL of the CLI controller",
+    "skip": true,
+    "file": "tests/reliability-flow-owned.test.js"
+  },
+  {
+    "name": "concurrent Team Flow cannot execute any command before the first scope drains and releases",
+    "skip": false,
+    "file": "tests/reliability-flow-owned.test.js"
+  },
+  {
+    "name": "Windows Job has a live exact root and signed finality after both holders close",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows primary holder crash drains admitted descendants and leaves survivor proof",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows secondary holder crash drains admitted descendants and leaves survivor proof",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows primary receipt fsync stall and crash does not stop the other native holder",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows secondary receipt fsync stall and crash does not stop the other native holder",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows both holders crash before receipt keeps missing Job closure unconfirmed",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows native watchdogs cancel active work while both holder JavaScript loops are blocked",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows fresh observer rejects forged terminal files, wrong root birth and cross-scope replay",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows primary launcher crash preserves native holder drain and survivor receipt",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows secondary launcher crash preserves native holder drain and survivor receipt",
+    "skip": false,
+    "file": "tests/reliability-windows-command-lifecycle.test.js"
+  },
+  {
+    "name": "Windows original CLI crash leaves independent B custody proof and a new Team Flow recovers",
+    "skip": false,
+    "file": "tests/reliability-windows-team-crash.test.js"
+  },
+  {
+    "name": "Windows nested fixed Flow cancellation preserves a custodian outside every owned ancestor Job",
+    "skip": false,
+    "file": "tests/reliability-windows-team-crash.test.js"
+  },
+  {
+    "name": "Windows bootstrap crash during primary before_resume confirms every recorded native birth exits",
+    "skip": false,
+    "file": "tests/reliability-windows-bootstrap.test.js"
+  },
+  {
+    "name": "Windows bootstrap crash during primary preload confirms every recorded native birth exits",
+    "skip": false,
+    "file": "tests/reliability-windows-bootstrap.test.js"
+  },
+  {
+    "name": "Windows bootstrap crash during primary native_load confirms every recorded native birth exits",
+    "skip": false,
+    "file": "tests/reliability-windows-bootstrap.test.js"
+  },
+  {
+    "name": "Windows bootstrap crash during primary crypto confirms every recorded native birth exits",
+    "skip": false,
+    "file": "tests/reliability-windows-bootstrap.test.js"
+  },
+  {
+    "name": "Windows bootstrap crash during secondary receipt_store confirms every recorded native birth exits",
+    "skip": false,
+    "file": "tests/reliability-windows-bootstrap.test.js"
+  },
+  {
+    "name": "Windows bootstrap cancel during primary native_load confirms every recorded native birth exits",
+    "skip": false,
+    "file": "tests/reliability-windows-bootstrap.test.js"
+  },
+  {
+    "name": "actual invocation worker accepts its exact native birth before validating the project request",
+    "skip": false,
+    "file": "tests/reliability-invocation-worker.test.js"
+  },
+  {
+    "name": "actual invocation worker rejects missing immutable binding before project admission",
+    "skip": false,
+    "file": "tests/reliability-invocation-worker.test.js"
+  },
+  {
+    "name": "actual invocation worker rejects different scope digest before project admission",
+    "skip": false,
+    "file": "tests/reliability-invocation-worker.test.js"
+  },
+  {
+    "name": "actual invocation worker rejects recomputed digest for another native birth before project admission",
+    "skip": false,
+    "file": "tests/reliability-invocation-worker.test.js"
+  },
+  {
+    "name": "actual invocation worker rejects noncanonical invocation nonce before project admission",
+    "skip": false,
+    "file": "tests/reliability-invocation-worker.test.js"
+  },
+  {
+    "name": "holder channel binds one peer and preserves the final message before actual EOF",
+    "skip": false,
+    "file": "tests/reliability-holder-channel.test.js"
+  },
+  {
+    "name": "holder channel rejects an incorrect capability without consuming the valid peer slot",
+    "skip": false,
+    "file": "tests/reliability-holder-channel.test.js"
+  },
+  {
+    "name": "holder channel rejects truncated final message",
+    "skip": false,
+    "file": "tests/reliability-holder-channel.test.js"
+  },
+  {
+    "name": "holder channel rejects invalid UTF8",
+    "skip": false,
+    "file": "tests/reliability-holder-channel.test.js"
+  },
+  {
+    "name": "holder channel rejects nonobject JSON",
+    "skip": false,
+    "file": "tests/reliability-holder-channel.test.js"
+  },
+  {
+    "name": "holder channel rejects oversized line",
+    "skip": false,
+    "file": "tests/reliability-holder-channel.test.js"
+  },
+  {
+    "name": "public evaluation rejects directory_symlink before repository commands and confirms outer drain",
+    "skip": false,
+    "file": "tests/reliability-evaluation-preflight.test.js"
+  },
+  {
+    "name": "public evaluation rejects hardlinked_file before repository commands and confirms outer drain",
+    "skip": false,
+    "file": "tests/reliability-evaluation-preflight.test.js"
+  },
+  {
+    "name": "public verification persists the exact whole invocation before its first claim",
+    "skip": false,
+    "file": "tests/reliability-kve-invocation-public.test.js"
+  },
+  {
+    "name": "cancellation of a blocked first claim performs exact automatic recovery before a new public verification",
+    "skip": false,
+    "file": "tests/reliability-kve-invocation-public.test.js"
+  },
+  {
+    "name": "original caller crash before active publication permits external exact recovery and a new public verification",
+    "skip": false,
+    "file": "tests/reliability-kve-invocation-public.test.js"
+  }
+]
