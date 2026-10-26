@@ -1,0 +1,188 @@
+{
+  "schema_version": "knowledge-windows-custody-input-derivation.v1",
+  "base_archive_sha256": "9f23726b5c23ad71419099ba743c5f1c52637748267851651a6b9027a1bfef46",
+  "base_manifest": "BASE_SOURCE_MANIFEST.json",
+  "cohorts": {
+    "before": {
+      "manifest": "SOURCE_MANIFEST_BEFORE.json",
+      "archive_sha256": "d6bd84a91ac6df909b67776edb755f3d11bc19db1f33596185de9ad45c2daa41",
+      "archive_bytes": 6723578,
+      "overlays": [
+        {
+          "path": "tests/helpers/reliability-windows-custody-trace.cjs",
+          "asset": "overlays/before--tests--helpers--reliability-windows-custody-trace.cjs",
+          "before": null,
+          "after": {
+            "path": "tests/helpers/reliability-windows-custody-trace.cjs",
+            "bytes": 4748,
+            "sha256": "28272d88db67d272714b0519f6e7d8a9efd9121a9a5da652d62fedd3b3fa1927",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+          "asset": "overlays/before--tests--helpers--reliability-windows-holder-stall.cjs",
+          "before": {
+            "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+            "bytes": 2064,
+            "sha256": "33aaf6afa15f0ecf458031e6c866b3daee75d6f0c543eb8149658625d08d63d2",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+            "bytes": 2147,
+            "sha256": "1849d3d01f5c151cc66794927014f076e89b6c52f099093526e502bf08ddd9f7",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/reliability-command-runner.test.js",
+          "asset": "overlays/before--tests--reliability-command-runner.test.js",
+          "before": {
+            "path": "tests/reliability-command-runner.test.js",
+            "bytes": 9742,
+            "sha256": "e2e4457186b77e37f886c56267ffc354fc19730457f582d5da734f9560acb57f",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/reliability-command-runner.test.js",
+            "bytes": 9888,
+            "sha256": "3b9d0990480c0da131330b721d0f3b6013d3fbeddc5bec97e117229d5fbfd188",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/reliability-windows-command-lifecycle.test.js",
+          "asset": "overlays/before--tests--reliability-windows-command-lifecycle.test.js",
+          "before": {
+            "path": "tests/reliability-windows-command-lifecycle.test.js",
+            "bytes": 11155,
+            "sha256": "c75bb9386ccfe6aff6f41d066af7084f3f7214f7592078402b4f0b33ae0863ae",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/reliability-windows-command-lifecycle.test.js",
+            "bytes": 13235,
+            "sha256": "c0a1a0e51b09314e114cbb17e617a67b30b60b4894a59016c1916b659ca829a6",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/reliability-windows-team-crash.test.js",
+          "asset": "overlays/before--tests--reliability-windows-team-crash.test.js",
+          "before": {
+            "path": "tests/reliability-windows-team-crash.test.js",
+            "bytes": 6980,
+            "sha256": "6758c11c128f459a3770d3de3440402a76057fe8c4dda1f0957200d3cd2a8453",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/reliability-windows-team-crash.test.js",
+            "bytes": 8058,
+            "sha256": "9ee6dbbcd409570422ffe9354639d36edf4b903eae3c9e422dd06ec3e6f009ce",
+            "mode": "0644"
+          }
+        }
+      ]
+    },
+    "after": {
+      "manifest": "SOURCE_MANIFEST_AFTER.json",
+      "archive_sha256": "e26d33824e988bdd1c21e2e086de20ba21dcc5d42b4784fd816baf1d492ac894",
+      "archive_bytes": 6723827,
+      "overlays": [
+        {
+          "path": "tests/helpers/reliability-windows-custody-trace.cjs",
+          "asset": "overlays/after--tests--helpers--reliability-windows-custody-trace.cjs",
+          "before": null,
+          "after": {
+            "path": "tests/helpers/reliability-windows-custody-trace.cjs",
+            "bytes": 4748,
+            "sha256": "28272d88db67d272714b0519f6e7d8a9efd9121a9a5da652d62fedd3b3fa1927",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+          "asset": "overlays/after--tests--helpers--reliability-windows-holder-stall.cjs",
+          "before": {
+            "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+            "bytes": 2064,
+            "sha256": "33aaf6afa15f0ecf458031e6c866b3daee75d6f0c543eb8149658625d08d63d2",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/helpers/reliability-windows-holder-stall.cjs",
+            "bytes": 2147,
+            "sha256": "1849d3d01f5c151cc66794927014f076e89b6c52f099093526e502bf08ddd9f7",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/reliability-command-runner.test.js",
+          "asset": "overlays/after--tests--reliability-command-runner.test.js",
+          "before": {
+            "path": "tests/reliability-command-runner.test.js",
+            "bytes": 9742,
+            "sha256": "e2e4457186b77e37f886c56267ffc354fc19730457f582d5da734f9560acb57f",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/reliability-command-runner.test.js",
+            "bytes": 9888,
+            "sha256": "3b9d0990480c0da131330b721d0f3b6013d3fbeddc5bec97e117229d5fbfd188",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/reliability-windows-command-lifecycle.test.js",
+          "asset": "overlays/after--tests--reliability-windows-command-lifecycle.test.js",
+          "before": {
+            "path": "tests/reliability-windows-command-lifecycle.test.js",
+            "bytes": 11155,
+            "sha256": "c75bb9386ccfe6aff6f41d066af7084f3f7214f7592078402b4f0b33ae0863ae",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/reliability-windows-command-lifecycle.test.js",
+            "bytes": 13235,
+            "sha256": "c0a1a0e51b09314e114cbb17e617a67b30b60b4894a59016c1916b659ca829a6",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tests/reliability-windows-team-crash.test.js",
+          "asset": "overlays/after--tests--reliability-windows-team-crash.test.js",
+          "before": {
+            "path": "tests/reliability-windows-team-crash.test.js",
+            "bytes": 6980,
+            "sha256": "6758c11c128f459a3770d3de3440402a76057fe8c4dda1f0957200d3cd2a8453",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tests/reliability-windows-team-crash.test.js",
+            "bytes": 8058,
+            "sha256": "9ee6dbbcd409570422ffe9354639d36edf4b903eae3c9e422dd06ec3e6f009ce",
+            "mode": "0644"
+          }
+        },
+        {
+          "path": "tools/lib/command-windows-runtime.js",
+          "asset": "overlays/after--tools--lib--command-windows-runtime.js",
+          "before": {
+            "path": "tools/lib/command-windows-runtime.js",
+            "bytes": 11236,
+            "sha256": "347748474296981d02a011bf7920a1499a0f4fe703482e21a65a9dbec55c7813",
+            "mode": "0644"
+          },
+          "after": {
+            "path": "tools/lib/command-windows-runtime.js",
+            "bytes": 11485,
+            "sha256": "314dcd4589fe25385080cd091bcebcba7e7c44335d50dc4c1fbb1a9d3595f26c",
+            "mode": "0644"
+          }
+        }
+      ]
+    }
+  },
+  "scope": "Only known source bytes are combined. No native results are synthesized. Before and after have identical tests; only command-windows-runtime.js differs between them."
+}

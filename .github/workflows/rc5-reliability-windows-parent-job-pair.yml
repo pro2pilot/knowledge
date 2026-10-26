@@ -1,0 +1,65 @@
+name: RC5 reliability Windows parent Job matched pair
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability-20261025]
+    paths: ['qa/reliability/windows-parent-job-pair/**', '.github/workflows/rc5-reliability-windows-parent-job-pair.yml']
+permissions:
+  contents: read
+concurrency:
+  group: rc5-reliability-windows-parent-job-pair-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows-custody:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+            cohort: before
+            manifest: SOURCE_MANIFEST_BEFORE.json
+          - os: windows-2022
+            arch: x64
+            cohort: after
+            manifest: SOURCE_MANIFEST_AFTER.json
+          - os: windows-11-arm
+            arch: arm64
+            cohort: before
+            manifest: SOURCE_MANIFEST_BEFORE.json
+          - os: windows-11-arm
+            arch: arm64
+            cohort: after
+            manifest: SOURCE_MANIFEST_AFTER.json
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set Visual C environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Derive exact source input from pinned runtime05
+        run: python qa/reliability/windows-parent-job-pair/derive_inputs.py --base-archive qa/reliability/runtime-qa/SOURCE.zip --cohort ${{ matrix.cohort }} --out derived-input
+      - name: Run identical actual Windows scenarios for declared cohort
+        run: python qa/reliability/windows-parent-job-pair/native_qa.py --archive derived-input/${{ matrix.cohort }}.zip --manifest qa/reliability/windows-parent-job-pair/${{ matrix.manifest }} --out windows-parent-job-pair
+      - name: Retain raw result and input derivation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reliability-windows-parent-job-${{ matrix.cohort }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            windows-parent-job-pair/public/**
+            derived-input/DERIVATION.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
