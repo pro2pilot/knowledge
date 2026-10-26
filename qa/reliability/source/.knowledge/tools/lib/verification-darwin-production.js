@@ -17,6 +17,7 @@ const finalization = require('./verification-finalization');
 const darwinFinalization = require('./verification-darwin-finalization');
 const control = require('./verification-control');
 const adapter = require('./verification-darwin-control');
+const storageGuardian = require('./verification-darwin-storage-guardian');
 const PROTOCOL = 'knowledge-darwin-production.v1';
 const STORE_PROTOCOL = 'knowledge-darwin-storage.v1';
 const AUTHORITY_PROTOCOL = 'knowledge-darwin-authority.v1';
@@ -35,16 +36,16 @@ function guardInput(request, timeoutMs, started) {
   if (!config?.enabled) throw failure('verification_darwin_opt_in_required');
   return config;
 }
-function childChannel(file, protocol, { onEvent, onUnexpectedExit, autoExit = false } = {}) {
+function childChannel(file, protocol, { onEvent, onUnexpectedExit, autoExit = false, guardian } = {}) {
   const args = file === 'verification-darwin-store.js' ? [path.join(__dirname, file), String(process.pid)] : [path.join(__dirname, file)];
-  const child = spawn(process.execPath, args, {
+  const child = file === 'verification-darwin-store.js' ? storageGuardian.createStorageChild(guardian) : spawn(process.execPath, args, {
     env: native.nativeEnv(), stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true
   });
   let sequence = 0, pending, allowedExit = autoExit, exited = false, disconnected = false, closed = false;
   let exitCode = null, signal = null, chain = Promise.resolve();
   const waiters = new Set();
   const snapshot = () => ({ pid: child.pid || null, exit_observed: exited, ipc_closed: disconnected,
-    exit_code: exitCode, signal });
+    exit_code: exitCode, signal, ...(child.storageSnapshot ? { storage_guardian: child.storageSnapshot() } : {}) });
   function notifyExit() {
     if (exited && disconnected) for (const done of waiters) done(snapshot());
   }
@@ -114,7 +115,7 @@ function childChannel(file, protocol, { onEvent, onUnexpectedExit, autoExit = fa
     },
     async terminate(deadline) {
       allowedExit = true;closed = true;rejectPending('verification_darwin_cancelled');
-      if (!exited) child.kill('SIGKILL');
+      if (!exited) { if (child.stopWithin) child.stopWithin(deadline);else child.kill('SIGKILL'); }
       const observed = await this.waitExit(deadline);
       if (!observed.exit_observed || !observed.ipc_closed) {
         if (child.connected) child.disconnect();child.unref();
@@ -137,6 +138,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   let phaseDeadline = workDeadline, cleanupDeadline, workElapsed, workComplete = false;
   let stopped = false, primary, session, store, authority, poller, finalizer, owner, descriptor, plan;
   let terminalCommitStarted = false, terminalCommitObserved = null;
+  let storageCapability;
   let polling = false, timer, pollTimer, parentChannel, lastProgress = clock(), progressAvailable = false;
   let phaseName = 'setup', copyFiles = 0, copyBytes = 0, preparedResolve, registeredResolve, completedResolve;
   const registered = new Promise(resolve => { registeredResolve = resolve; });
@@ -146,6 +148,11 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   const interrupted = new Promise((_, reject) => { rejectStopped = reject; });
   interrupted.catch(() => {});
   const deadline = () => cleanupDeadline || workDeadline;
+  const guardedStorage = extra => childChannel('verification-darwin-store.js', STORE_PROTOCOL, {
+    ...extra, guardian: { config: { ...config, broker_path: storageCapability?.broker_path || config.broker_path },
+      source_sha256: storageCapability?.source_sha256, deadline_ns: String(deadline()),
+      cleanup_ms: policy.cleanup_budget_ms, phase: cleanupDeadline ? 'cleanup' : 'work' }
+  });
   function guard() {
     if (stopped) throw primary || failure('verification_darwin_cancelled');
     if (!left(deadline())) throw failure(workComplete ? 'verification_cleanup_unconfirmed' : 'verification_timeout');
@@ -178,7 +185,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   }
   async function poll() {
     if (!polling || stopped || !owner || poller) return;
-    const current = childChannel('verification-darwin-store.js', STORE_PROTOCOL);poller = current;
+    const current = guardedStorage();poller = current;
     try {
       const value = await current.request('status_only', { request });
       const exit = await current.finish(deadline());
@@ -207,7 +214,8 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   const main = async () => {
     // An unavailable broker must not reserve a project claim.
     const capability = await sessions.probeSession(config, { signal: abort.signal, setupBudgetMs: Math.max(1, Math.floor(left(workDeadline))) });guard();
-    store = childChannel('verification-darwin-store.js', STORE_PROTOCOL, {
+    storageCapability = capability;
+    store = guardedStorage({
       onUnexpectedExit: interrupt,
       onEvent: async (event, child) => {
         guard();
@@ -327,7 +335,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
       { work_elapsed_ms: workElapsed, cleanup_budget_ms: policy.cleanup_budget_ms });guard();
     await store.request('verify_acceptance', { ids: complete.result.map(item => item.record.execution_id), acceptance });guard();
     const storageExit = await store.finish(cleanupDeadline);guard();
-    finalizer = childChannel('verification-darwin-store.js', STORE_PROTOCOL, { onUnexpectedExit: interrupt });
+    finalizer = guardedStorage({ onUnexpectedExit: interrupt });
     terminalCommitStarted = true;
     const finish = await finalizer.request('finish_only', { request, owner, deadline_ns: String(cleanupDeadline), input: {
       outcome: 'passed', cleanup_proof: control.bindCleanupProof(owner, teardown), ack_sha256: finalization.digest([acceptance]),
@@ -353,7 +361,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
     // lost init ACK can select only our random startup nonce, never a different
     // current attempt with an identical request or an older reservation.
     if (store && observed.every(value => value.exit_observed && value.ipc_closed) && left(cleanupDeadline) > 0) {
-      const reclaimer = childChannel('verification-darwin-store.js', STORE_PROTOCOL);
+      const reclaimer = guardedStorage();
       let recoveryTimer;
       try {
         const result = await Promise.race([reclaimer.request('recover_only', { request, owner,

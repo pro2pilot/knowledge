@@ -11,6 +11,7 @@ const IMPLEMENTATION_PATHS = Object.freeze([
   'tools/lib/verification-darwin-production.js',
   'tools/lib/verification-darwin-authority.js',
   'tools/lib/verification-darwin-store.js',
+  'tools/lib/verification-darwin-storage-guardian.js',
   'tools/lib/verification-darwin-finalization.js',
   'tools/lib/verification-darwin-session.js',
   'tools/lib/verification-darwin-session-protocol.js',

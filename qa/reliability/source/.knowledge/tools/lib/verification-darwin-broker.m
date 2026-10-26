@@ -3019,7 +3019,270 @@ static int client(bool run) {
         for(unsigned i=0;i<4;i++)if(modified[i])fcntl((int)i,F_SETFL,originals[i]);
     }
 }
-int main(int argc,char **argv) {@autoreleasepool {
+/* STORAGE_GUARDIAN_BEGIN
+ * Ordinary-UID fixed storage guardian. This local CLI never enters the root
+ * daemon, accepts a project command, or issues a broker RPC. The existing
+ * protected executable/source pin covers this exact implementation.
+ */
+struct KStorageBirth {
+    pid_t pid;uid_t uid;uint64_t unique,parent_unique,start_sec,start_usec;uint32_t version;
+};
+static volatile sig_atomic_t kvsSignal;
+static void kvsSignalStop(int ignored) { (void)ignored;kvsSignal=1; }
+static bool kvsDecimal(const char *s,uint64_t maximum,uint64_t *out) {
+    if(!s||!*s||(*s=='0'&&s[1]))return false;uint64_t value=0;
+    for(const unsigned char *p=(const unsigned char*)s;*p;p++){
+        if(*p<'0'||*p>'9'||(uint64_t)(*p-'0')>maximum||value>(maximum-(uint64_t)(*p-'0'))/10)return false;
+        value=value*10+(uint64_t)(*p-'0');}
+    *out=value;return true;
+}
+static bool kvsNonce(const char *s) {
+    if(!s||strlen(s)!=64)return false;
+    for(unsigned i=0;i<64;i++)if(!((s[i]>='0'&&s[i]<='9')||(s[i]>='a'&&s[i]<='f')))return false;
+    return true;
+}
+static uint64_t kvsNow(void) {
+    /* Node's macOS uv__hrtime uses mach_continuous_time. CLOCK_MONOTONIC
+     * is a different Darwin clock and must not interpret Node deadlines. */
+    struct timespec ts;
+#if defined(__APPLE__)
+    const clockid_t kind=CLOCK_MONOTONIC_RAW;
+#else
+    const clockid_t kind=CLOCK_MONOTONIC; /* exact portable test only */
+#endif
+    if(clock_gettime(kind,&ts)||ts.tv_sec<0||ts.tv_nsec<0||ts.tv_nsec>=1000000000L
+        ||(uint64_t)ts.tv_sec>(UINT64_MAX-(uint64_t)ts.tv_nsec)/1000000000ull)return 0;
+    return (uint64_t)ts.tv_sec*1000000000ull+(uint64_t)ts.tv_nsec;
+}
+static bool kvsReadBirth(pid_t pid,struct KStorageBirth *out) {
+#if defined(__APPLE__)
+    struct KIdentity v;if(!freshIdentity(pid,&v))return false;
+    *out=(struct KStorageBirth){.pid=pid,.uid=v.bsd.pbi_ruid,.unique=v.unique.uniqueid,
+        .parent_unique=v.unique.parent_uniqueid,.start_sec=v.bsd.pbi_start_tvsec,
+        .start_usec=v.bsd.pbi_start_tvusec,.version=(uint32_t)v.unique.pidversion};return true;
+#elif defined(KNOWLEDGE_STORAGE_GUARDIAN_PORTABLE_TEST)
+    /* Linux test host: actual proc start identity, never a Darwin proof. */
+    char name[80],data[4096];snprintf(name,sizeof(name),"/proc/%d/stat",pid);
+    int fd=open(name,O_RDONLY|O_CLOEXEC|O_NOFOLLOW);if(fd<0){if(errno==ENOENT)errno=ESRCH;return false;}
+    ssize_t n=read(fd,data,sizeof(data)-1);struct stat st;int rc=fstat(fd,&st);close(fd);
+    if(n<=0||rc){return false;}data[n]=0;char *end=strrchr(data,')');if(!end||end[1]!=' ')return false;
+    char *cursor=end+2,*save=NULL,*word=strtok_r(cursor," ",&save);unsigned field=3;uint64_t start=0,parent=0;
+    while(word){if(field==4&&!kvsDecimal(word,INT_MAX,&parent))return false;
+        if(field==22){if(!kvsDecimal(word,UINT64_MAX,&start))return false;break;}
+        field++;word=strtok_r(NULL," ",&save);}
+    if(!start)return false;
+    *out=(struct KStorageBirth){.pid=pid,.uid=st.st_uid,.unique=start,.parent_unique=parent,
+        .start_sec=start,.start_usec=0,.version=(uint32_t)(start%2147483647u)+1};return true;
+#else
+#error "Storage guardian requires Darwin or explicit portable-test extraction"
+#endif
+}
+static bool kvsSame(const struct KStorageBirth *a,const struct KStorageBirth *b) {
+    return a->pid==b->pid&&a->uid==b->uid&&a->unique==b->unique&&a->start_sec==b->start_sec
+        &&a->start_usec==b->start_usec&&a->version==b->version;
+}
+static int kvsObserve(const struct KStorageBirth *saved) {
+    struct KStorageBirth current;errno=0;
+    if(kvsReadBirth(saved->pid,&current))return kvsSame(saved,&current)?1:0;
+    return errno==ESRCH?0:-1;
+}
+static bool kvsSignalExact(const struct KStorageBirth *saved) {
+    struct KStorageBirth current;errno=0;
+    if(!kvsReadBirth(saved->pid,&current))return errno==ESRCH;
+    if(!kvsSame(saved,&current))return true;
+#if defined(__APPLE__)
+    KSignalToken call=NULL;void *symbol=dlsym(RTLD_DEFAULT,"proc_signal_with_audittoken");memcpy(&call,&symbol,sizeof(call));
+    if(!call)return false;audit_token_t token={{0}};token.val[5]=(uint32_t)saved->pid;token.val[7]=saved->version;
+    int rc=call(&token,SIGKILL);return rc==0||rc==ESRCH;
+#else
+    int fd=(int)syscall(SYS_pidfd_open,saved->pid,0);if(fd<0)return errno==ESRCH;
+    /* Bind the opened pidfd to a repeated exact birth before any signal. */
+    struct KStorageBirth after;bool ok=kvsReadBirth(saved->pid,&after)&&kvsSame(saved,&after);
+    if(ok)ok=syscall(SYS_pidfd_send_signal,fd,SIGKILL,NULL,0)==0||errno==ESRCH;
+    close(fd);return ok;
+#endif
+}
+static int kvsBirthJSON(char *out,size_t size,const struct KStorageBirth *b) {
+    return snprintf(out,size,"{\"pid\":%d,\"ruid\":%u,\"unique_id\":\"%llu\",\"parent_unique_id\":\"%llu\","
+        "\"start_sec\":%llu,\"start_usec\":%llu,\"pidversion\":%u}",b->pid,(unsigned)b->uid,
+        (unsigned long long)b->unique,(unsigned long long)b->parent_unique,(unsigned long long)b->start_sec,
+        (unsigned long long)b->start_usec,b->version);
+}
+static bool kvsOrdinary(void) { return getuid()>0&&getuid()==geteuid()&&getgid()==getegid(); }
+static bool kvsNonblock(int fd) { int flags=fcntl(fd,F_GETFL);return flags>=0&&fcntl(fd,F_SETFL,flags|O_NONBLOCK)==0; }
+static bool kvsPath(const char *value,const char *suffix) {
+    size_t n=value?strlen(value):0,m=suffix?strlen(suffix):0;
+    if(n<2||n>4096||*value!='/'||strstr(value,"/../")||strstr(value,"/./")||strchr(value,'\n')||strchr(value,'\r'))return false;
+    return !suffix||(n>=m&&!strcmp(value+n-m,suffix));
+}
+static int kvsStopCLI(int argc,char **argv,bool signalTarget) {
+    if(argc!=12||!kvsOrdinary()||!kvsNonce(argv[11]))return 64;
+    uint64_t fields[9],limits[9]={INT_MAX,INT_MAX,UINT_MAX,UINT64_MAX,UINT64_MAX,999999,UINT32_MAX,UINT64_MAX,UINT64_MAX};
+    for(unsigned i=0;i<9;i++)if(!kvsDecimal(argv[i+2],limits[i],&fields[i]))return 64;
+    pid_t parent=(pid_t)fields[0];uint64_t deadline=fields[8],now=kvsNow(),last=now;
+    struct KStorageBirth target={.pid=(pid_t)fields[1],.uid=(uid_t)fields[2],.unique=fields[3],
+        .start_sec=fields[4],.start_usec=fields[5],.version=(uint32_t)fields[6],.parent_unique=fields[7]};
+    if(parent<=1||getppid()!=parent||target.pid<=1||target.pid==getpid()||target.pid==parent||target.uid!=getuid()
+        ||!target.unique||!target.version||!now||deadline<=now||deadline-now>K_MAX_CLEANUP_MS*1000000ull)return 64;
+    bool killed=false,healthy=true;int state=-1;
+    for(;;){
+        now=kvsNow();if(!now||now<last){healthy=false;break;}last=now;
+        if(now>=deadline||getppid()!=parent||kvsSignal)break;
+        state=kvsObserve(&target);if(state==0)break;if(state<0)break;
+        if(signalTarget&&!killed){if(!kvsSignalExact(&target))break;killed=true;}
+        if(!signalTarget)break;
+        if(poll(NULL,0,10)<0&&errno!=EINTR)break;
+    }
+    /* Re-read the clock after native identity observation; stale observations
+     * outside the original allowance are never a completed utility result. */
+    now=kvsNow();if(!now||now<last||now>=deadline||getppid()!=parent||kvsSignal)healthy=false;
+    char birth[512],out[1400];kvsBirthJSON(birth,sizeof(birth),&target);
+    int n=snprintf(out,sizeof(out),"{\"protocol\":\"knowledge-darwin-storage-guardian.v1\",\"event\":\"observed\","
+        "\"nonce\":\"%s\",\"source_sha256\":\"%s\",\"status\":\"%s\",\"clock_healthy\":%s,\"child\":%s}\n",
+        argv[11],KNOWLEDGE_BROKER_SOURCE_SHA,healthy&&state==0?"exited":healthy&&state==1?"active":"unconfirmed",healthy?"true":"false",birth);
+    if(n<=0||(size_t)n>=sizeof(out)||!kvsNonblock(1))return 74;
+    ssize_t written=write(1,out,(size_t)n);return written==n&&healthy&&state==0?0:1;
+}
+static int kvsGuardianCLI(int argc,char **argv) {
+    if(argc!=9||!kvsOrdinary()||!kvsPath(argv[2],NULL)||!kvsPath(argv[3],"/tools/lib/verification-darwin-store.js")
+        ||!kvsNonce(argv[8])||(strcmp(argv[7],"work")&&strcmp(argv[7],"cleanup")))return 64;
+    uint64_t parentValue,deadline,cleanup;
+    if(!kvsDecimal(argv[4],INT_MAX,&parentValue)||parentValue<=1||getppid()!=(pid_t)parentValue
+        ||!kvsDecimal(argv[5],UINT64_MAX,&deadline)||!kvsDecimal(argv[6],K_MAX_CLEANUP_MS,&cleanup)||!cleanup)return 64;
+    uint64_t now=kvsNow(),last=now;bool cleanupPhase=!strcmp(argv[7],"cleanup");
+    if(!now||deadline<=now||deadline-now>(cleanupPhase?cleanup:K_MAX_WORK_MS)*1000000ull)return 64;
+#if defined(__APPLE__)
+    char parentImage[PROC_PIDPATHINFO_MAXSIZE];
+    if(proc_pidpath((pid_t)parentValue,parentImage,sizeof(parentImage))<=0||strcmp(parentImage,argv[2]))return 64;
+#endif
+    if(!kvsNonblock(3)||!kvsNonblock(5)||fcntl(4,F_GETFD)<0)return 64;
+    struct sigaction action;memset(&action,0,sizeof(action));sigemptyset(&action.sa_mask);
+    action.sa_handler=SIG_DFL;if(sigaction(SIGCHLD,&action,NULL))return 78;
+    action.sa_handler=kvsSignalStop;
+    if(sigaction(SIGTERM,&action,NULL)||sigaction(SIGINT,&action,NULL)||sigaction(SIGHUP,&action,NULL))return 78;
+    signal(SIGPIPE,SIG_IGN);
+    struct KStorageBirth guardian,childBirth={0};
+    if(!kvsReadBirth(getpid(),&guardian)||guardian.uid!=getuid()||getppid()!=(pid_t)parentValue)return 78;
+    int permit[2],liveness[2];if(pipe(permit))return 74;if(pipe(liveness)){close(permit[0]);close(permit[1]);return 74;}
+    for(unsigned i=0;i<2;i++){fcntl(permit[i],F_SETFD,FD_CLOEXEC);fcntl(liveness[i],F_SETFD,FD_CLOEXEC);}
+    now=kvsNow();if(!now||now<last||now>=deadline||getppid()!=(pid_t)parentValue||kvsSignal){
+        close(permit[0]);close(permit[1]);close(liveness[0]);close(liveness[1]);return 78;}last=now;
+    pid_t child=fork();
+    if(child<0){close(permit[0]);close(permit[1]);close(liveness[0]);close(liveness[1]);return 71;}
+    if(child==0){
+        close(permit[1]);close(liveness[1]);close(3);close(5);
+        if(dup2(liveness[0],3)<0||fcntl(3,F_SETFD,0)||fcntl(4,F_SETFD,0))_exit(126);
+        if(liveness[0]!=3)close(liveness[0]);
+        /* No inherited G writer can suppress EOF if G dies before permit. */
+        unsigned char go=0;ssize_t got;
+        do{got=read(permit[0],&go,1);}while(got<0&&errno==EINTR);
+        close(permit[0]);
+        uint64_t childNow=kvsNow();
+        if(got!=1||go!='G'||getppid()!=guardian.pid||!childNow||childNow<last||childNow>=deadline)_exit(126);
+        action.sa_handler=SIG_DFL;sigaction(SIGTERM,&action,NULL);sigaction(SIGINT,&action,NULL);sigaction(SIGHUP,&action,NULL);
+        char parentText[32];snprintf(parentText,sizeof(parentText),"%d",guardian.pid);
+        unsetenv("NODE_OPTIONS");unsetenv("NODE_PATH");
+        execl(argv[2],argv[2],argv[3],parentText,(char*)NULL);_exit(127);
+    }
+    close(permit[0]);close(liveness[0]);close(4);
+    bool childReaped=false,stopped=false,admitted=false,clockHealthy=true,ownerKnown=true,terminalQueued=false;
+    const char *reason="child_exit";int childStatus=0,controlFD=3,statusFD=5;
+    char control[256],output[8192],ownJSON[512],childJSON[512];size_t controlUsed=0,outUsed=0,outSent=0;
+    bool birthKnown=kvsReadBirth(child,&childBirth)&&childBirth.uid==getuid();
+#if defined(__APPLE__)
+    birthKnown=birthKnown&&childBirth.parent_unique==guardian.unique;
+#endif
+    if(birthKnown){
+        kvsBirthJSON(ownJSON,sizeof(ownJSON),&guardian);kvsBirthJSON(childJSON,sizeof(childJSON),&childBirth);
+        int n=snprintf(output,sizeof(output),"{\"protocol\":\"knowledge-darwin-storage-guardian.v1\",\"event\":\"ready\","
+            "\"nonce\":\"%s\",\"source_sha256\":\"%s\",\"guardian\":%s,\"child\":%s,"
+            "\"clock\":\"node_hrtime_continuous.v1\",\"observed_ns\":\"%llu\",\"deadline_ns\":\"%llu\"}\n",
+            argv[8],KNOWLEDGE_BROKER_SOURCE_SHA,ownJSON,childJSON,(unsigned long long)last,(unsigned long long)deadline);
+        if(n<=0||(size_t)n>=sizeof(output))birthKnown=false;else outUsed=(size_t)n;
+    }
+    if(!birthKnown){stopped=true;reason="birth_unconfirmed";}
+    for(;;){
+        now=kvsNow();if(!now||now<last){clockHealthy=false;stopped=true;reason="clock_failed";}else last=now;
+        if(kvsSignal){stopped=true;reason="signal";}
+        if(getppid()!=(pid_t)parentValue){stopped=true;reason="parent_exit";}
+        if(now>=deadline){stopped=true;reason="deadline";}
+        bool permitRequested=false;
+        if(!childReaped){
+            char incoming[128];ssize_t got=controlFD>=0?read(controlFD,incoming,sizeof(incoming)):-1;
+            if(controlFD<0)errno=EAGAIN;
+            if(got==0||(got<0&&errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)){stopped=true;reason="control_closed";if(controlFD>=0){close(controlFD);controlFD=-1;}}
+            if(got>0){
+                if(controlUsed+(size_t)got>sizeof(control)){stopped=true;reason="control_invalid";}
+                else{memcpy(control+controlUsed,incoming,(size_t)got);controlUsed+=(size_t)got;size_t at=0;
+                    for(size_t i=0;i<controlUsed;i++)if(control[i]=='\n'){
+                        control[i]=0;char *line=control+at;at=i+1;
+                        if(!strcmp(line,"S")){stopped=true;reason="requested";}
+                        else if(!strcmp(line,"P")&&!admitted&&!permitRequested)permitRequested=true;
+                        else if(!strncmp(line,"C ",2)&&!cleanupPhase){uint64_t end;
+                            if(!kvsDecimal(line+2,UINT64_MAX,&end)||end<=now||end-now>cleanup*1000000ull){stopped=true;reason="control_invalid";}
+                            else{deadline=end;cleanupPhase=true;}}
+                        else{stopped=true;reason="control_invalid";}
+                    }
+                    if(at){memmove(control,control+at,controlUsed-at);controlUsed-=at;}
+                }
+            }
+            now=kvsNow();if(!now||now<last){clockHealthy=false;stopped=true;reason="clock_failed";}else last=now;
+            if(getppid()!=(pid_t)parentValue||now>=deadline||kvsSignal)stopped=true;
+            if(permitRequested&&!stopped&&birthKnown&&outSent==outUsed){
+                unsigned char go='G';if(write(permit[1],&go,1)==1){admitted=true;close(permit[1]);permit[1]=-1;}
+                else{stopped=true;reason="permit_failed";}
+            }else if(permitRequested){stopped=true;reason="permit_rejected";}
+            if(stopped){
+                if(permit[1]>=0){close(permit[1]);permit[1]=-1;}
+                if(liveness[1]>=0){close(liveness[1]);liveness[1]=-1;}
+                /* Numeric signaling is safe only for this unreaped direct
+                 * child. No other reaper exists; ECHILD permanently revokes it. */
+                if(ownerKnown&&kill(child,SIGKILL)<0&&errno!=ESRCH)reason="signal_unconfirmed";
+            }
+            pid_t reaped=waitpid(child,&childStatus,WNOHANG);
+            if(reaped==child&&(WIFEXITED(childStatus)||WIFSIGNALED(childStatus)))childReaped=true;
+            else if(reaped<0&&errno!=EINTR){ownerKnown=false;stopped=true;reason="wait_unconfirmed";}
+        }
+        if(childReaped&&!terminalQueued){
+            now=kvsNow();if(!now||now<last){clockHealthy=false;stopped=true;reason="clock_failed";}else last=now;
+            if(now>=deadline){stopped=true;reason="deadline";}
+            char code[32],sig[32];if(WIFEXITED(childStatus))snprintf(code,sizeof(code),"%d",WEXITSTATUS(childStatus));else strcpy(code,"null");
+            if(WIFSIGNALED(childStatus))snprintf(sig,sizeof(sig),"%d",WTERMSIG(childStatus));else strcpy(sig,"null");
+            if(!birthKnown)strcpy(childJSON,"null");
+            int n=snprintf(output+outUsed,sizeof(output)-outUsed,"{\"protocol\":\"knowledge-darwin-storage-guardian.v1\",\"event\":\"closed\","
+                "\"nonce\":\"%s\",\"source_sha256\":\"%s\",\"child\":%s,\"child_reaped\":true,\"admitted\":%s,"
+                "\"clock_healthy\":%s,\"stopped\":%s,\"reason\":\"%s\",\"exit_code\":%s,\"signal\":%s}\n",
+                argv[8],KNOWLEDGE_BROKER_SOURCE_SHA,childJSON,admitted?"true":"false",clockHealthy?"true":"false",stopped?"true":"false",reason,code,sig);
+            if(n<=0||(size_t)n>=sizeof(output)-outUsed)return 74;outUsed+=(size_t)n;terminalQueued=true;
+        }
+        if(outSent<outUsed&&statusFD>=0){ssize_t sent=write(statusFD,output+outSent,outUsed-outSent);
+            if(sent>0)outSent+=(size_t)sent;
+            else if(sent<0&&errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR){
+                stopped=true;reason="status_closed";close(statusFD);statusFD=-1;if(childReaped)return 0;}
+        }
+        if(childReaped&&terminalQueued&&(outSent==outUsed||statusFD<0||now>=deadline||!clockHealthy)){
+            if(permit[1]>=0)close(permit[1]);if(liveness[1]>=0)close(liveness[1]);if(controlFD>=0)close(controlFD);if(statusFD>=0)close(statusFD);return 0;}
+        /* Expiry is never mistaken for waitpid finality. A blocked S retains
+         * its lease and this guardian continues waiting without new work. */
+        struct pollfd wait[2]={{.fd=childReaped?-1:controlFD,.events=POLLIN},{.fd=outSent<outUsed?statusFD:-1,.events=POLLOUT}};
+        if(poll(wait,2,20)<0&&errno!=EINTR){stopped=true;reason="poll_failed";}
+    }
+}
+static int kvsClockCLI(int argc,char **argv) {
+    if(argc!=3||!kvsOrdinary()||!kvsNonce(argv[2]))return 64;
+    uint64_t now=kvsNow();if(!now)return 78;
+    char out[512];int n=snprintf(out,sizeof(out),"{\"protocol\":\"knowledge-darwin-storage-guardian.v1\",\"event\":\"clock\",\"nonce\":\"%s\",\"source_sha256\":\"%s\",\"observed_ns\":\"%llu\"}\n",argv[2],KNOWLEDGE_BROKER_SOURCE_SHA,(unsigned long long)now);
+    if(n<=0||(size_t)n>=sizeof(out)||!kvsNonblock(1))return 74;
+    return write(1,out,(size_t)n)==n?0:74;
+}
+/* STORAGE_GUARDIAN_END */
+
+int main(int argc,char **argv) {
+    if(argc>1&&!strcmp(argv[1],"--storage-guardian"))return kvsGuardianCLI(argc,argv);
+    if(argc>1&&!strcmp(argv[1],"--stop-storage"))return kvsStopCLI(argc,argv,true);
+    if(argc>1&&!strcmp(argv[1],"--observe-storage"))return kvsStopCLI(argc,argv,false);
+    if(argc>1&&!strcmp(argv[1],"--storage-clock"))return kvsClockCLI(argc,argv);
+    @autoreleasepool {
     signal(SIGPIPE,SIG_IGN);char self[PROC_PIDPATHINFO_MAXSIZE];if(proc_pidpath(getpid(),self,sizeof(self))<=0)return 78;gExecutable=@(self);
     gStubPath=pathChild(pathParent(gExecutable),@"knowledge-native-stub");
     NSString *canonicalState=@"/Library/PrivilegedHelperTools/KnowledgeVerification-state";
