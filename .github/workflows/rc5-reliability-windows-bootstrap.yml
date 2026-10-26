@@ -1,9 +1,9 @@
-name: RC5 reliability Windows bootstrap and public KVE
+name: RC5 reliability Windows parent pipe and public KVE
 on:
   workflow_dispatch:
   push:
     branches: [codex/rc5-reliability-20261025]
-    paths: ['qa/reliability/windows-bootstrap-01/**', '.github/workflows/rc5-reliability-windows-bootstrap.yml']
+    paths: ['qa/reliability/windows-sync-02/**', '.github/workflows/rc5-reliability-windows-bootstrap.yml']
 permissions:
   contents: read
 concurrency:
@@ -37,9 +37,9 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
       - name: Rehydrate exact source bytes from pinned ancestor
-        run: python qa/reliability/windows-bootstrap-01/rehydrate_zip.py --base qa/reliability/runtime-qa/SOURCE.zip --descriptor qa/reliability/windows-bootstrap-01/TRANSPORT.json --out qa/reliability/windows-bootstrap-01/SOURCE.zip
+        run: python qa/reliability/windows-sync-02/rehydrate_zip.py --base qa/reliability/runtime-qa/SOURCE.zip --descriptor qa/reliability/windows-sync-02/TRANSPORT.json --out qa/reliability/windows-sync-02/SOURCE.zip
       - name: Build and run native bootstrap and public KVE scenarios
-        run: python qa/reliability/windows-bootstrap-01/native_qa.py --archive qa/reliability/windows-bootstrap-01/SOURCE.zip --manifest qa/reliability/windows-bootstrap-01/SOURCE_MANIFEST.json --out windows-bootstrap
+        run: python qa/reliability/windows-sync-02/native_qa.py --archive qa/reliability/windows-sync-02/SOURCE.zip --manifest qa/reliability/windows-sync-02/SOURCE_MANIFEST.json --out windows-bootstrap
       - name: Retain exact raw evidence and native build artifacts
         if: always()
         uses: actions/upload-artifact@v4

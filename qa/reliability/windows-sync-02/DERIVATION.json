@@ -1,0 +1,58 @@
+{
+  "base_archive_sha256": "5d9499fb1d974588b27c56a124d7c55a8933add44d702a70bd0cefb8b8005ef9",
+  "base_file_count": 636,
+  "file_count": 638,
+  "unchanged_files": 634,
+  "deltas": [
+    {
+      "path": "tests/helpers/reliability-sync-operation.cjs",
+      "before": null,
+      "after": {
+        "path": "tests/helpers/reliability-sync-operation.cjs",
+        "bytes": 2017,
+        "sha256": "8c056dbc9ccee10bddbdbdab407f0d5a96df5c0af65b0e8b006fec36134cfb5d",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-sync-parent-channel.test.js",
+      "before": null,
+      "after": {
+        "path": "tests/reliability-sync-parent-channel.test.js",
+        "bytes": 5696,
+        "sha256": "2815665d5f7353277ea7056089f0798f876df4b46474d0ee1405a0b8db08841b",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-runner.js",
+      "before": {
+        "path": "tools/lib/command-runner.js",
+        "bytes": 36283,
+        "sha256": "53343cebe9a01aa541ade3814b976e1b301dcfce35ee9d4246bc3f38e948a39f",
+        "mode": "0644"
+      },
+      "after": {
+        "path": "tools/lib/command-runner.js",
+        "bytes": 36814,
+        "sha256": "4bbbb17efd829ccdf10973bfe146734454b1227e506b8e13f7d30bf99e87b57c",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-sync-driver.js",
+      "before": {
+        "path": "tools/lib/command-sync-driver.js",
+        "bytes": 2060,
+        "sha256": "973418c52a5841277567181f3c8d99176dd628efb791b8dfa1b827c42ca87631",
+        "mode": "0644"
+      },
+      "after": {
+        "path": "tools/lib/command-sync-driver.js",
+        "bytes": 4688,
+        "sha256": "9b6953e5c0fa5ab49b03fcbc31b8abc76af6409d38a07859d093fdef838e4993",
+        "mode": "0644"
+      }
+    }
+  ]
+}
