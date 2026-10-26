@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Freeze only the pinned ancestor's owned paths plus explicitly named new tests."""
+"""Freeze the pinned ancestor's owned paths plus exact allowlisted additions."""
 import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from prepare import BASE_ZIP_SHA, BASE_MANIFEST_SHA, LIMIT, base, bounded, encoded, metadata, new_output, relative, sha, verify_zip, write_new, zip_bytes
+from prepare import BASE_ZIP_SHA, BASE_MANIFEST_SHA, EXTRA_SOURCE_PATHS, LIMIT, base, bounded, encoded, metadata, new_output, relative, sha, verify_zip, write_new, zip_bytes
 
 
 def main():
@@ -19,8 +19,8 @@ def main():
     names = set(original)
     for value in args.extra:
         name = str(relative(value))
-        if not name.startswith('tests/') or name in names:
-            raise ValueError('Extra must be one distinct new test path: ' + name)
+        if name not in EXTRA_SOURCE_PATHS or name in names:
+            raise ValueError('Extra must be one distinct explicitly approved source path: ' + name)
         names.add(name)
     source = Path(args.source).absolute()
     files = {}
@@ -35,14 +35,15 @@ def main():
         files[name] = (body, original[name][1] if name in original else '0644')
     archive = zip_bytes(files)
     manifest = {'schema_version': 'knowledge-native-qa-source.v1', 'status': 'PASS_FROZEN_SOURCE',
-        'scope': 'Continuation of the exact 650-file Linux reliability cohort, preserving original modes and including only explicitly listed new tests. Physical native qualification is pending; not a release approval.',
+        'scope': 'Continuation of the exact 650-file Linux reliability cohort, preserving original modes and including only exact allowlisted, explicitly requested source additions. Physical native qualification is pending; not a release approval.',
         'created_utc': datetime.now(timezone.utc).isoformat(), 'archive': 'SOURCE.zip', 'archive_sha256': sha(archive), 'archive_bytes': len(archive),
         'file_count': len(files), 'uncompressed_bytes': sum(len(value[0]) for value in files.values()),
         'files': [metadata(name, *value) for name, value in sorted(files.items())],
         'excluded_native_runtime_artifacts': ancestor.get('excluded_native_runtime_artifacts', []),
         'native_qualification': 'PENDING', 'release_gate_qualified': False,
         'base_archive_sha256': BASE_ZIP_SHA, 'base_manifest_sha256': BASE_MANIFEST_SHA,
-        'explicit_extra_tests': args.extra}
+        'explicit_extra_paths': args.extra,
+        'explicit_extra_tests': [name for name in args.extra if name.startswith('tests/')]}
     verify_zip(archive, manifest)
     # Reject a moving source snapshot before creating any deliverable.
     for name, (body, _) in files.items():

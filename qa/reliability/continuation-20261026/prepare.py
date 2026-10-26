@@ -14,6 +14,25 @@ BASE_ZIP_SHA = '750c3b561b594e97358adfa46969aa52f416e5c8cd3ce9a754dd533e5e02647c
 BASE_MANIFEST_SHA = 'bc4aa130f2d85addaf6b9d2d3f8062141e3c32fcfdf34b104a5e36e33fd64723'
 LIMIT = 64 * 1024 * 1024
 HASH = re.compile(r'^[a-f0-9]{64}$')
+# Every addition is approved individually. Native outputs, runtime state, and
+# arbitrary new product/test files can never enter through a broad prefix.
+EXTRA_SOURCE_PATHS = frozenset({
+    'tools/lib/macos-command-runner.js',
+    'tools/lib/macos-command-scope.js',
+    'tools/lib/macos-command-worker.js',
+    'tools/lib/macos-worker-envelope.js',
+    'tools/lib/macos-workspace-protocol.js',
+    'tools/lib/macos-workspace-session.js',
+    'tools/lib/watch-maintenance-worker.js',
+    'tests/reliability-darwin-boolean-wire.test.js',
+    'tests/reliability-darwin-scope-query.test.js',
+    'tests/reliability-macos-command-runner.test.js',
+    'tests/reliability-macos-native-authority.test.js',
+    'tests/reliability-macos-worker-envelope.test.js',
+    'tests/reliability-macos-workspace-protocol.test.js',
+    'tests/reliability-watcher-control.test.js',
+    'tests/reliability-watcher-native.test.js',
+})
 
 
 def sha(body):
@@ -174,6 +193,9 @@ def main():
         raise ValueError('Frozen manifest hash mismatch')
     target = json.loads(target_bytes)
     expected = rows(target)
+    extras = target.get('explicit_extra_paths', target.get('explicit_extra_tests', []))
+    if not isinstance(extras, list) or any(not isinstance(name, str) for name in extras) or len(set(extras)) != len(extras) or not set(extras) <= EXTRA_SOURCE_PATHS or set(extras) != set(expected) - set(files):
+        raise ValueError('Frozen additions do not match the exact explicit source allowlist')
     changed = set()
     for index, change in enumerate(overlay.get('changes', [])):
         name = str(relative(change['path']))
@@ -186,8 +208,8 @@ def main():
         result = change.get('result')
         if result != expected.get(name) or result['mode'] != (old['mode'] if old else '0644'):
             raise ValueError('Overlay result bytes/mode mismatch: ' + name)
-        if old is None and not name.startswith('tests/'):
-            raise ValueError('New overlay is not an explicitly scoped test')
+        if old is None and name not in EXTRA_SOURCE_PATHS:
+            raise ValueError('New overlay is not an explicitly approved source path')
         body = bounded(overlay_file.parent / change['overlay'])
         if metadata(name, body, result['mode']) != result or old == result:
             raise ValueError('Invalid or unnecessary overlay data: ' + name)

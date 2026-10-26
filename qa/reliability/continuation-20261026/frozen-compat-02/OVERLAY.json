@@ -1,0 +1,199 @@
+{
+  "schema_version": "knowledge-continuation-overlay.v1",
+  "base": {
+    "archive_sha256": "750c3b561b594e97358adfa46969aa52f416e5c8cd3ce9a754dd533e5e02647c",
+    "manifest_sha256": "bc4aa130f2d85addaf6b9d2d3f8062141e3c32fcfdf34b104a5e36e33fd64723",
+    "file_count": 650
+  },
+  "target_manifest_sha256": "af81000a4c94d59cb6239b53cba98bd4d3604f470e39067d913f4d7a1a272549",
+  "target_archive": {
+    "sha256": "25290a51696148cf7411d2feecf8f2d6557b8da13fc297d6631e4b3d3b8e7901",
+    "bytes": 7093527
+  },
+  "changes": [
+    {
+      "path": "tests/reliability-darwin-boolean-wire.test.js",
+      "overlay": "overlays/0000.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-darwin-boolean-wire.test.js",
+        "bytes": 4941,
+        "sha256": "251ca3b66068a37180c75a0458d108e0121cdc508cfb15ec85e29e215e0d8eac",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-darwin-scope-query.test.js",
+      "overlay": "overlays/0001.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-darwin-scope-query.test.js",
+        "bytes": 7108,
+        "sha256": "2b757896ebf176c607d8ec38a2cecbcdb941a39290f4602c7bfada5c2f297d41",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-flow-owned.test.js",
+      "overlay": "overlays/0002.bin",
+      "base": {
+        "path": "tests/reliability-flow-owned.test.js",
+        "bytes": 9190,
+        "sha256": "83df55c730ca8200526bfec7c80796f1aa345039a7f5c68db3e44e12f0e3a8bd",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-flow-owned.test.js",
+        "bytes": 11320,
+        "sha256": "17e5383b617627802b746098aaf4d13ce459f553a955b0939948313af68cd976",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-progress-graceful-close.test.js",
+      "overlay": "overlays/0003.bin",
+      "base": {
+        "path": "tests/reliability-progress-graceful-close.test.js",
+        "bytes": 4954,
+        "sha256": "f75d74c0513270766410f3f766edfc698b7c5835ef548ec5c111337952eaf1d5",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-progress-graceful-close.test.js",
+        "bytes": 7260,
+        "sha256": "a7310826d27c2ffc7811becb833e3953bed54fca09b0b8737489ae727d98bfb8",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-scope-query-budget.test.js",
+      "overlay": "overlays/0004.bin",
+      "base": {
+        "path": "tests/reliability-scope-query-budget.test.js",
+        "bytes": 9031,
+        "sha256": "6f0a322d521053ae1d1db13c2e2274e5479598d3704975b85c7fa81dd8a27c4c",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-scope-query-budget.test.js",
+        "bytes": 11770,
+        "sha256": "a022de654cb6d421078289c96d3297785965edaf4fe9fa44aa628ebd0a4ecaf9",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/report-generation.test.js",
+      "overlay": "overlays/0005.bin",
+      "base": {
+        "path": "tests/report-generation.test.js",
+        "bytes": 12023,
+        "sha256": "171ae354200c18d8c2d95fcc25384db3e1188e4362ce53f87763d0a42dab4441",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/report-generation.test.js",
+        "bytes": 14687,
+        "sha256": "60b4c90b5353a1e791e612b97154803f5a4746ad56c4fd82ab8b24bfbb0ca1b3",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/verification-darwin-client.test.js",
+      "overlay": "overlays/0006.bin",
+      "base": {
+        "path": "tests/verification-darwin-client.test.js",
+        "bytes": 15151,
+        "sha256": "01de261c72893301f9def06828435584944b5b41776cd1acd2d1a8cd7d6db65e",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/verification-darwin-client.test.js",
+        "bytes": 15802,
+        "sha256": "5088affb962c3b5d6b8432bef736a840a0a95f5a54e043fdca73a9db4d942d05",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-scope-proof.js",
+      "overlay": "overlays/0007.bin",
+      "base": {
+        "path": "tools/lib/command-scope-proof.js",
+        "bytes": 8539,
+        "sha256": "6cec2d118297850efc379bf48702d550796447a01136632e0f764576f8cd6064",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/command-scope-proof.js",
+        "bytes": 9841,
+        "sha256": "b23d75baa5f215f6d8679c7fb256db0aa42bdf374221da05a99d5f081f505ddb",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/report-generation.js",
+      "overlay": "overlays/0008.bin",
+      "base": {
+        "path": "tools/lib/report-generation.js",
+        "bytes": 10545,
+        "sha256": "e607b305a04b6cef6a6fcc177482e95eebefde49919dbdbff5e6a3597245b30e",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/report-generation.js",
+        "bytes": 10852,
+        "sha256": "ea5ee819a1b5e7bb9114e123116658f1a43fa75e18b5a893bc265efa20c420c3",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-broker.m",
+      "overlay": "overlays/0009.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-broker.m",
+        "bytes": 242570,
+        "sha256": "dceae58e8514011fcbf756db1c357ee33fb263095a8a4831442d65fcfa521f93",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-broker.m",
+        "bytes": 242594,
+        "sha256": "d724531960088f9606b6a0757327b945d179c42b1739d3f1beb3af9b408af37d",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-client.js",
+      "overlay": "overlays/0010.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-client.js",
+        "bytes": 14002,
+        "sha256": "a4c5e0c5a38d9b764ab9ba7254987ea56f35d2bf92a944efe69445053dd69302",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-client.js",
+        "bytes": 14023,
+        "sha256": "4b5c73e908a8a164d0ca979e19481c503c7ab416cc929ae66eda41c8c2e35da9",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-scope.js",
+      "overlay": "overlays/0011.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-scope.js",
+        "bytes": 21396,
+        "sha256": "33e14ec12c3e19c8b84857d0da78271ded3d750e1da1b4724c2181b8e0bd2f9b",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-scope.js",
+        "bytes": 22734,
+        "sha256": "a70b0e64181c6909613428537af845cd00b1b197cd32997a3aaff20bb47fa044",
+        "mode": "0644"
+      }
+    }
+  ],
+  "native_qualification": "PENDING",
+  "release_gate_qualified": false
+}

@@ -1,0 +1,70 @@
+'use strict';
+
+// NSNumber boxing is a wire contract. In Objective-C a comparison expression
+// has C int type unless explicitly converted to bool: @(count==0) serializes
+// as JSON 1/0, not true/false. The JavaScript proof reader must remain strict.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
+const file = process.env.KNOWLEDGE_DARWIN_BOOLEAN_SOURCE || path.join(__dirname, '../tools/lib/verification-darwin-broker.m');
+const source = fs.readFileSync(file, 'utf8');
+function section(name, next) {
+  const begin = source.indexOf(name), end = source.indexOf(next, begin + name.length);
+  assert(begin >= 0 && end > begin, 'Exact production function boundaries must exist');
+  return source.slice(begin, end);
+}
+function expression(body, marker) {
+  const offset = body.indexOf(marker);assert(offset >= 0, 'Expected production boxed field');
+  const start = offset + marker.length;let depth = 1;
+  for (let index = start; index < body.length; index++) {
+    if (body[index] === '(') depth++;
+    else if (body[index] === ')' && --depth === 0) return body.slice(start, index);
+  }
+  assert.fail('Unterminated production boxing expression');
+}
+const scopeBody = section('static NSDictionary *observeScope(', 'static NSDictionary *');
+const rebootBody = section('static void advanceRebootCleanup(', 'static bool sameFileObservation(');
+const scopeZero = expression(scopeBody, '@"kernel_membership_zero":@(');
+const rebootZero = expression(rebootBody, 'r[@"kernel_membership_zero"]=@(');
+const rebootLate = expression(rebootBody.slice(rebootBody.indexOf('if(durable&&closed&&')), 'r[@"cleanup_budget_exceeded"]=@(');
+test('native readonly closure boxes UID emptiness as JSON boolean rather than integer', () => {
+  assert.equal(scopeZero.replace(/\s+/g, ''), '(bool)(count==0)');
+});
+test('native reboot closure boxes UID emptiness and late-budget refusal as JSON booleans', () => {
+  assert.equal(rebootZero.replace(/\s+/g, ''), '(bool)(count==0)');
+  assert.equal(rebootLate.replace(/\s+/g, ''), '(bool)(nowMS()>=deadline)');
+});
+test('real Darwin Foundation serializes exact production closure expressions as strict booleans',
+  { skip: process.platform !== 'darwin', timeout: 60000 }, () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-darwin-boolean-'));
+    const input = path.join(root, 'boxing.m'), binary = path.join(root, 'boxing');
+    try {
+      // Only exact fixed expressions whose source grammar was validated above
+      // are compiled. No broker operation, UID allocation or privileged write.
+      const objc = '#import <Foundation/Foundation.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include <stdio.h>\n' +
+        'static uint64_t observed=4;static uint64_t nowMS(void){return observed;}\n' +
+        'int main(void){@autoreleasepool{int count=0;uint64_t deadline=5;\n' +
+        'NSNumber *negative=@(count==0),*scopeZero=@(' + scopeZero + '),*rebootZero=@(' + rebootZero + '),*early=@(' + rebootLate + ');\n' +
+        'count=1;observed=5;NSNumber *scopeOccupied=@(' + scopeZero + '),*rebootOccupied=@(' + rebootZero + '),*late=@(' + rebootLate + ');\n' +
+        'NSDictionary *result=@{@"negative_integer_control":negative,@"scope_zero":scopeZero,@"reboot_zero":rebootZero,' +
+        '@"scope_occupied":scopeOccupied,@"reboot_occupied":rebootOccupied,@"early":early,@"late":late};\n' +
+        'NSData *json=[NSJSONSerialization dataWithJSONObject:result options:0 error:NULL];' +
+        'if(!json)return 3;return fwrite(json.bytes,1,json.length,stdout)==json.length?0:4;}}\n';
+      fs.writeFileSync(input, objc, { flag: 'wx', mode: 0o600 });
+      const compiled = spawnSync('/usr/bin/cc', ['-x', 'objective-c', '-std=c11', '-Wall', '-Wextra', '-Werror',
+        '-framework', 'Foundation', input, '-o', binary], { encoding: 'utf8', timeout: 30000, maxBuffer: 65536 });
+      assert.equal(compiled.error, undefined);assert.equal(compiled.signal, null);assert.equal(compiled.status, 0, compiled.stderr);
+      const executed = spawnSync(binary, [], { encoding: 'utf8', timeout: 5000, maxBuffer: 65536 });
+      assert.equal(executed.error, undefined);assert.equal(executed.signal, null);assert.equal(executed.status, 0);
+      const facts = JSON.parse(executed.stdout);
+      assert.deepEqual(facts, { negative_integer_control: 1, scope_zero: true, reboot_zero: true,
+        scope_occupied: false, reboot_occupied: false, early: false, late: true });
+      for (const key of ['scope_zero', 'reboot_zero', 'scope_occupied', 'reboot_occupied', 'early', 'late']) {
+        assert.equal(typeof facts[key], 'boolean');
+      }
+      process.stdout.write('# ' + JSON.stringify({ physical_Foundation_boolean_wire: facts }) + '\n');
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
