@@ -14,16 +14,34 @@ def number(value):
     return value if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
 
 
+def enum(value, allowed):
+    return value if isinstance(value, str) and value in allowed else None
+
+
 def reduce_case(item, codes):
     item = item if isinstance(item, dict) else {}
     name = item.get('name') if item.get('name') in CASES else 'unknown'
     terminal = item.get('terminal') if isinstance(item.get('terminal'), dict) else {}
     observation = item.get('observations') if isinstance(item.get('observations'), dict) else {}
     error = terminal.get('error') if isinstance(terminal.get('error'), dict) else {}
+    recovery = observation.get('recovery_return') if isinstance(observation.get('recovery_return'), dict) else {}
+    recovery_error = recovery.get('error') if isinstance(recovery.get('error'), dict) else {}
+    recovery_result = recovery.get('result') if isinstance(recovery.get('result'), dict) else {}
+    teardown = error.get('teardown') if isinstance(error.get('teardown'), dict) else {}
+    inner_recovery = teardown.get('recovery') if isinstance(teardown.get('recovery'), dict) else {}
     row = {'name': name, 'status': 'FAIL_OR_INCOMPLETE',
            'elapsed_ms': number(item.get('elapsed_ms')),
            'caller_exit_code': item.get('controller_exit_code') if type(item.get('controller_exit_code')) is int else None,
            'error_code': error.get('code') if error.get('code') in codes else None,
+           'external_recovery_ok': boolean(recovery.get('ok')),
+           'external_recovery_error': enum(recovery_error.get('code'), codes),
+           'external_recovery_stage': enum(recovery.get('stage'), ('input', 'status', 'cancel', 'recover')),
+           'external_recovery_status': enum(recovery_result.get('status'),
+               ('failed', 'cancelled', 'already_terminal', 'requires_native_recovery', 'unconfirmed')),
+           'caller_teardown_status': enum(teardown.get('status'), ('completed', 'unconfirmed', 'not_required')),
+           'caller_recovery_status': enum(inner_recovery.get('status'),
+               ('failed', 'cancelled', 'already_terminal', 'requires_native_recovery', 'unconfirmed')),
+           'caller_recovery_error': enum(inner_recovery.get('code'), codes),
            'expected_terminal_outcome': 'cancelled' if name in ('cancel', 'paused_storage_cancel') else 'failed',
            'terminal_outcome': observation.get('terminal_outcome') if observation.get('terminal_outcome') in ('failed', 'cancelled') else None,
            'operator_assisted_storage_exit': boolean(observation.get('operator_assisted_storage_exit')),

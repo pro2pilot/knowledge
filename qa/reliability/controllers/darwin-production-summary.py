@@ -86,7 +86,8 @@ def error_codes(source):
         'verification-darwin-session.js', 'verification-darwin-session-protocol.js', 'verification-darwin-client.js',
         'verification-darwin-control.js', 'verification-darwin-finalization.js', 'verification-darwin-store.js',
         'verification-control.js', 'verification-finalization.js', 'verification-execution.js', 'lock-publication.js',
-        'verification-policy.js', 'inert-data.js', 'verification-darwin-authority.js', 'verification-darwin-storage-guardian.js'):
+        'verification-policy.js', 'inert-data.js', 'verification-darwin-authority.js', 'verification-darwin-storage-guardian.js',
+        'verification-recovery.js', 'verification-darwin-scope.js', 'contained-lock-manager.js'):
         p = source/'tools/lib'/name
         if p.is_file() and not p.is_symlink():
             codes.update(re.findall(r"['\"]((?:verification_|native_lock_|transaction_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
@@ -287,6 +288,8 @@ def build(private, source, controller_status, architecture, case_set='normal'):
         'protected_executable_contract': executable_contract,
         'compiler_diagnostics': compiler_diagnostics,
         'failure_code': raw.get('failure') if raw.get('failure') in FAILURES else ('private_failure' if raw.get('failure') else None),
+        'failure_codes': [part.removeprefix('cleanup:') for part in raw.get('failure', '').split(';')
+            if part.removeprefix('cleanup:') in FAILURES][:4] if isinstance(raw.get('failure'), str) else [],
         'workflow_commit': os.environ.get('GITHUB_SHA') if re.fullmatch('[a-f0-9]{40}', os.environ.get('GITHUB_SHA', '')) else None,
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID') if re.fullmatch('[0-9]+', os.environ.get('GITHUB_RUN_ID', '')) else None,
         'release_gate_qualified': False, 'scope': 'Fixed public production cohort; paused storage plus controller death includes explicitly operator-assisted storage exit. Kernel I/O stalls and release qualification remain separate.',

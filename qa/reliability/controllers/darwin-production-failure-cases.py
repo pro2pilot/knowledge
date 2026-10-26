@@ -81,6 +81,10 @@ def run_case(runner, base, info, directory, helpers, name):
                      'production_failure_helper_protocol')
         runner.check(result.returncode == (0 if value['ok'] else 1),
                      'production_failure_helper_exit_mismatch')
+        if op == 'recover':
+            # Kept in runner-private evidence. The public reducer extracts
+            # only fixed error/status enums; no descriptor or proof escapes.
+            observations['recovery_return'] = value
         return value
 
     def process_birth(pid, parent=None, image=None):

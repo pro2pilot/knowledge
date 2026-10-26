@@ -102,6 +102,21 @@ class Cases(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(output))
         self.assertEqual(output['status'], 'PASS_PHYSICAL_PRODUCTION_FAILURE')
 
+    def test_recovery_diagnostics_are_enum_only_and_do_not_change_acceptance(self):
+        for code in ('verification_cancelled', 'private-token-path-message', {'secret': 'private-token-path-message'}, None):
+            with self.subTest(code=code):
+                value = fixture('cancel');value['status'] = 'FAIL'
+                value['observations']['recovery_return'] = {'ok': False, 'stage': 'recover',
+                    'error': {'code': code, 'message': 'private-token-path-message', 'native_proof': {'token': 'private-token-path-message'}}}
+                value['terminal']['error']['teardown'] = {'status': 'unconfirmed', 'recovery': {'status': 'unconfirmed', 'code': code}}
+                output = module.reduce_case(value, CODES)
+                self.assertEqual(output['status'], 'FAIL_OR_INCOMPLETE')
+                self.assertEqual(output['external_recovery_stage'], 'recover')
+                self.assertEqual(output['caller_teardown_status'], 'unconfirmed')
+                self.assertEqual(output['external_recovery_error'], code if code == 'verification_cancelled' else None)
+                self.assertEqual(output['caller_recovery_error'], code if code == 'verification_cancelled' else None)
+                self.assertNotIn('private-token-path-message', json.dumps(output))
+
 
 if __name__ == '__main__':
     unittest.main()
