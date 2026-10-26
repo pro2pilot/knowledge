@@ -107,7 +107,7 @@ def main():
         raise Failure('Unknown case qualification policy.')
     result = {'schema_version': 'knowledge-native-runtime-qa.v1', 'status': 'RUNNING',
               'scope': 'Frozen Windows bootstrap/Flow/KVE source cohort. Actual Windows native builds precede 53 command/Flow/channel/evaluation cases, three public KVE cases, common locks and supported Node 18 ABI. Three exact Linux-only command cases remain unqualified. No whole-release qualification.',
-              'controller_sha256': file_sha(__file__), 'case_policy_sha256': file_sha(case_policy_path), 'host': platform.platform(),
+              'controller_sha256': file_sha(__file__), 'python_version': platform.python_version(), 'case_policy_sha256': file_sha(case_policy_path), 'host': platform.platform(),
               'commit': os.environ.get('GITHUB_SHA'), 'steps': [], 'downloads': []}
     (public / 'EXPECTED_CASES.json').write_text(json.dumps(case_policy, indent=2) + '\n')
     env = dict(os.environ)
@@ -214,13 +214,19 @@ def main():
             after = os.fstat(fd)
         finally:
             os.close(fd)
-        fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+        # CPython Windows path stat reports creation time as deprecated ctime,
+        # while fstat reports native metadata change time. Compare each ctime
+        # within its own provider; preserve every shared identity field and
+        # require the separately named creation time across providers.
+        fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_size', 'st_mtime_ns') + (
+            ('st_birthtime_ns',) if os.name == 'nt' else ('st_ctime_ns',))
         identity = lambda value: tuple(getattr(value, key) for key in fields)
         named_after = file.lstat()
-        if len(body) > maximum or len(body) != opened.st_size or any(identity(value) != identity(opened) for value in [before, after, named_after]):
+        changed_ctime = before.st_ctime_ns != named_after.st_ctime_ns or opened.st_ctime_ns != after.st_ctime_ns
+        if len(body) > maximum or len(body) != opened.st_size or changed_ctime or any(identity(value) != identity(opened) for value in [before, after, named_after]):
             snapshots = {'before': before, 'opened': opened, 'after': after, 'named_after': named_after}
             differences = {key: {name: getattr(value, key) for name, value in snapshots.items()}
-                           for key in fields if len({getattr(value, key) for value in snapshots.values()}) != 1}
+                           for key in (*fields, 'st_ctime_ns') if len({getattr(value, key) for value in snapshots.values()}) != 1}
             raise Failure('Input changed during bounded read: ' + str(file) + ' ' + json.dumps({
                 'differing_fields': differences, 'observed_bytes': len(body), 'opened_bytes': opened.st_size,
                 'observed_sha256': sha(body), 'maximum': maximum}, sort_keys=True))
