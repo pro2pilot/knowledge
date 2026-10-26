@@ -23,8 +23,8 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
-      "bytes": 29601,
-      "sha256": "218b273561fe2fdf2bdca4dc0a68feb618ed2282ea59638b31c37d40318e51a6"
+      "bytes": 29665,
+      "sha256": "77d94b5d945183f4f7cb29fb1da1f66493c17eed863dc0465403b11631c54125"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
@@ -58,8 +58,8 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-control.js",
-      "bytes": 2523,
-      "sha256": "41fc8a34ecf3ba79840407b608353d8952e17d0b1f6ee70efc5984da3447ea1f"
+      "bytes": 3656,
+      "sha256": "757ba9f4347d59978a7e4646a996b56119988ffb04cf1ad49cc9f2ddf3b90116"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-process-observer.c",
@@ -68,13 +68,13 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-failure-summary.py",
-      "bytes": 7462,
-      "sha256": "1ab65449d808728a137eac24f4b8e9cda76b4204ea5ddd624e0dd394a2128508"
+      "bytes": 7774,
+      "sha256": "c18fea076881894417734a5068a839d89ae551d339441cb775c55d31386cbc3a"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-failures.py",
-      "bytes": 7976,
-      "sha256": "97a8174405d015297981255c31c9cfd8900ad92134f2482bfdb884e2607b00bc"
+      "bytes": 8326,
+      "sha256": "7396d8109d86e5fa2a302d56c0ee3ec1458148c179e16d88c82b0bd23ce47395"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-protected-executable-probe.js",

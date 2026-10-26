@@ -107,6 +107,7 @@ class Cases(unittest.TestCase):
             with self.subTest(code=code):
                 value = fixture('cancel');value['status'] = 'FAIL'
                 value['observations']['recovery_return'] = {'ok': False, 'stage': 'recover',
+                    'owner_identity_probe': {'status': 'unconfirmed', 'code': code, 'observation': {'token': 'private-token-path-message'}},
                     'error': {'code': code, 'message': 'private-token-path-message', 'native_proof': {'token': 'private-token-path-message'}}}
                 value['terminal']['error']['teardown'] = {'status': 'unconfirmed', 'recovery': {'status': 'unconfirmed', 'code': code}}
                 output = module.reduce_case(value, CODES)
@@ -115,6 +116,8 @@ class Cases(unittest.TestCase):
                 self.assertEqual(output['caller_teardown_status'], 'unconfirmed')
                 self.assertEqual(output['external_recovery_error'], code if code == 'verification_cancelled' else None)
                 self.assertEqual(output['caller_recovery_error'], code if code == 'verification_cancelled' else None)
+                self.assertEqual(output['owner_identity_probe_status'], 'unconfirmed')
+                self.assertEqual(output['owner_identity_probe_code'], code if code == 'verification_cancelled' else None)
                 self.assertNotIn('private-token-path-message', json.dumps(output))
 
 

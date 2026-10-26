@@ -27,6 +27,7 @@ def reduce_case(item, codes):
     recovery = observation.get('recovery_return') if isinstance(observation.get('recovery_return'), dict) else {}
     recovery_error = recovery.get('error') if isinstance(recovery.get('error'), dict) else {}
     recovery_result = recovery.get('result') if isinstance(recovery.get('result'), dict) else {}
+    identity_probe = recovery.get('owner_identity_probe') if isinstance(recovery.get('owner_identity_probe'), dict) else {}
     teardown = error.get('teardown') if isinstance(error.get('teardown'), dict) else {}
     inner_recovery = teardown.get('recovery') if isinstance(teardown.get('recovery'), dict) else {}
     row = {'name': name, 'status': 'FAIL_OR_INCOMPLETE',
@@ -35,6 +36,8 @@ def reduce_case(item, codes):
            'error_code': error.get('code') if error.get('code') in codes else None,
            'external_recovery_ok': boolean(recovery.get('ok')),
            'external_recovery_error': enum(recovery_error.get('code'), codes),
+           'owner_identity_probe_status': enum(identity_probe.get('status'), ('observed', 'unconfirmed')),
+           'owner_identity_probe_code': enum(identity_probe.get('code'), codes),
            'external_recovery_stage': enum(recovery.get('stage'), ('input', 'status', 'cancel', 'recover')),
            'external_recovery_status': enum(recovery_result.get('status'),
                ('failed', 'cancelled', 'already_terminal', 'requires_native_recovery', 'unconfirmed')),

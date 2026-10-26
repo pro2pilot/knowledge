@@ -87,10 +87,10 @@ def error_codes(source):
         'verification-darwin-control.js', 'verification-darwin-finalization.js', 'verification-darwin-store.js',
         'verification-control.js', 'verification-finalization.js', 'verification-execution.js', 'lock-publication.js',
         'verification-policy.js', 'inert-data.js', 'verification-darwin-authority.js', 'verification-darwin-storage-guardian.js',
-        'verification-recovery.js', 'verification-darwin-scope.js', 'contained-lock-manager.js'):
+        'verification-recovery.js', 'verification-darwin-scope.js', 'contained-lock-manager.js', 'stable-file.js', 'json-store.js'):
         p = source/'tools/lib'/name
         if p.is_file() and not p.is_symlink():
-            codes.update(re.findall(r"['\"]((?:verification_|native_lock_|transaction_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
+            codes.update(re.findall(r"['\"]((?:verification_|native_lock_|transaction_|stable_file_|contained_path_)[A-Za-z0-9_]{1,100})['\"]", p.read_text()))
     native = source/'tools/lib/verification-darwin-broker.m'
     if native.is_file() and not native.is_symlink(): codes.update(re.findall(r'@"([A-Z][A-Z0-9_]{2,100})"', native.read_text()))
     protected = source/'tools/native/lock-publication.c'
