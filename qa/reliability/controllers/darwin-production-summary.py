@@ -9,6 +9,9 @@ TYPES = {'QAError', 'FileNotFoundError', 'PermissionError', 'TypeError', 'Attrib
     'OSError', 'TimeoutExpired', 'RuntimeError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'UnknownException'}
 PHASES = {'input', 'public-run', 'finalization-reader', 'complete'}
 PRODUCT_PHASES = {'setup', 'copy_chunk', 'test_setup', 'command', 'finalization', 'receipt_commit', 'between_tests', 'batch_finalization'}
+PROOF_DIAGNOSTICS = {'proof_top_current', 'proof_body_current', 'proof_reply_flags', 'proof_schema', 'proof_source_binding',
+    'proof_digest', 'proof_boundary_facts', 'proof_clock', 'proof_terminal', 'proof_command_drain', 'proof_structure',
+    'control_input_bound', 'control_descriptor', 'control_capability', 'control_role_identity', 'control_authority_exit'}
 PROTECTED_CASES = {'search_only_ancestor': True, 'readable_ancestor': True, 'leaf_write_acl': False,
     'parent_write_acl': False, 'leaf_read_acl': True, 'leaf_symlink': False, 'writable_ancestor': False, 'unsearchable_ancestor': False}
 BEFORE_PROTECTED_SOURCE_SHA = '48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b'
@@ -150,6 +153,7 @@ def build(private, source, controller_status, architecture):
             'success': boolean(terminal.get('success')), 'error_code': terminal.get('error_code') if terminal.get('error_code') in codes else None,
             'containment_reason': containment.get('reason') if containment.get('reason') in codes else None,
             'product_stage': err.get('stage') if err.get('stage') in PRODUCT_PHASES else None,
+            'proof_diagnostic': err.get('darwin_diagnostic') if isinstance(err.get('darwin_diagnostic'), str) and err.get('darwin_diagnostic') in PROOF_DIAGNOSTICS else None,
             'timed_out': boolean(err.get('timed_out')), 'recovery_required': boolean(err.get('recovery_required')),
             'teardown_status': err.get('teardown', {}).get('status') if isinstance(err.get('teardown'), dict) and
                 err['teardown'].get('status') in ('completed', 'not_required', 'unconfirmed') else None,

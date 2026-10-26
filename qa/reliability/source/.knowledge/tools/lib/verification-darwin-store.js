@@ -18,6 +18,9 @@ const MAX_BYTES = 32 * 1024 * 1024;
 const PROTOCOL = 'knowledge-darwin-storage.v1';
 const clock = () => process.hrtime.bigint();
 const fail = code => { throw Object.assign(new Error(code), { code }); };
+const parentArgument = process.argv[2];
+const expectedParent = typeof parentArgument === 'string' && /^[1-9]\d{0,9}$/.test(parentArgument) &&
+  Number(parentArgument) > 1 && Number(parentArgument) <= 2147483647 ? Number(parentArgument) : 0;
 let context, owner, lease, deadline, initialized = false, sealed = false, busy = false, sequence = 0;
 let copySequence = 0;
 const copyReplies = new Map();
@@ -31,7 +34,11 @@ function nativeCopyRequest(input) {
   });
 }
 function guard(allowExpired = false) {
-  if (sealed || !process.connected) fail('verification_darwin_storage_revoked');
+  // Fresh kernel parent relationship is a negative admission gate. An IPC
+  // disconnect callback may be queued while the real storage lease blocks.
+  if (sealed || !process.connected || process.ppid !== expectedParent) {
+    sealed = true; fail('verification_darwin_storage_revoked');
+  }
   if (!allowExpired && deadline && clock() >= deadline) fail('verification_darwin_storage_deadline');
 }
 function contextFor(request) {

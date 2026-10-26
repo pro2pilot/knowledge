@@ -77,13 +77,13 @@
   "native_sources": [
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-broker.m",
-      "bytes": 222316,
-      "sha256": "02b7dec225e3374cd9daac507c673debd539a3d8c98ce81555610c6a1365b4e4"
+      "bytes": 224008,
+      "sha256": "70b10168b5e940802033af2d555be3e7f4a24e35769f91b1fc633a05a5ab7ad6"
     },
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-stub.c",
-      "bytes": 39294,
-      "sha256": "15de2b87f2cc3ad33aeae91a1f5aa8f5646b2c03e5a94ca4a8caf6b847522818"
+      "bytes": 40130,
+      "sha256": "02de14cec5d1c71e4a36282a52183c2821a6ec11cbb47e07708df3d85be7fc23"
     },
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-transport.h",

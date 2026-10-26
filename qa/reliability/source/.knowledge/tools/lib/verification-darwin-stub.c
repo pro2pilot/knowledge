@@ -70,9 +70,13 @@ struct Config {
     struct KOwnerBirth controller,authority;
     uint32_t argc,envc; char **argv,**env;
 };
-static uint64_t now_ms(void) { struct timespec t;
-    if(clock_gettime(CLOCK_MONOTONIC,&t))_exit(119);
-    return (uint64_t)t.tv_sec*1000+(uint64_t)t.tv_nsec/1000000;
+static uint64_t now_ms(void) {
+    static uint64_t last;struct timespec t={0};
+    if(clock_gettime(CLOCK_MONOTONIC,&t)||t.tv_sec<0||t.tv_nsec<0||t.tv_nsec>=1000000000
+        ||(uint64_t)t.tv_sec>(UINT64_MAX-K_BOOTSTRAP_MS-999)/1000)_exit(119);
+    uint64_t now=(uint64_t)t.tv_sec*1000+(uint64_t)t.tv_nsec/1000000;
+    if(now<last)_exit(119);
+    last=now;return now;
 }
 static bool hex64(const char *s) { if(!s||strlen(s)!=64)return false;
     for(unsigned i=0;i<64;i++)if(!((s[i]>='0'&&s[i]<='9')||(s[i]>='a'&&s[i]<='f')))return false;
@@ -436,6 +440,14 @@ static void kvg_step(struct KGuardState *s,const struct KGuardOps *ops,void *ctx
     /* The last full scan is after direct-child reap. Its zero is a current
      * observation, never a guess based on a timeout, ECHILD or stale scan. */
     int count=ops->drain_uid(ctx);
+    /* Reap, UID enumeration and scheduling consume the existing allowance.
+     * Keep actual closure separate from timely success: a late or clockless
+     * zero can finish enforcement only after reap, but cannot return PASS. */
+    uint64_t finished=0;bool finalClockOK=ops->clock(ctx,&finished);
+    if(!finalClockOK||finished<s->last_now){s->clock_failed=true;s->reasons|=KVG_CLOCK;}
+    else s->last_now=finished;
+    if(finalClockOK&&finished>=s->deadline)s->reasons|=KVG_DEADLINE;
+    if(s->clock_failed||(finalClockOK&&finished>=s->cleanup_deadline))s->cleanup_expired=true;
     if(s->child_reaped&&count==0)s->complete=true;
 }
 /* END EXACT PORTABLE GUARDIAN STATE MACHINE */
@@ -580,6 +592,7 @@ static int guard_command(struct Config *c,uint64_t bootstrap) {
         if(!state.stopped&&!exec_permitted){unsigned char go;ssize_t n=read(12,&go,1);
             if(n==1){uint64_t live_now=0;bool live=!guardian_stop&&guardian_parent(&g)==1
                     &&guardian_clock(&g,&live_now)&&live_now>=state.last_now&&live_now<c->deadline;
+                if(live)state.last_now=live_now;
                 char child_token=0;
                 if(live&&go=='B'&&birth_sent&&!setup_permitted){child_token='S';setup_permitted=true;}
                 else if(live&&go=='G'&&setup_permitted&&registered){child_token='G';exec_permitted=true;}

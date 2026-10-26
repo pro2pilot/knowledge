@@ -6,7 +6,11 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const { copyInertData } = require('./inert-data');
 const hex = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-const fail = code => { throw Object.assign(new Error(code), { code }); };
+const PROOF_DIAGNOSTICS = Object.freeze(['proof_top_current', 'proof_body_current', 'proof_reply_flags',
+  'proof_schema', 'proof_source_binding', 'proof_digest', 'proof_boundary_facts', 'proof_clock', 'proof_terminal',
+  'proof_command_drain', 'proof_structure']);
+const fail = (code, diagnostic) => { throw Object.assign(new Error(code), { code,
+  ...(PROOF_DIAGNOSTICS.includes(diagnostic) ? { darwin_diagnostic: diagnostic } : {}) }); };
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -94,9 +98,39 @@ function validateProof(value, binding, capability, terminal) {
         : value.state !== 'commands_drained' || value.stop_reason !== 'commands_complete' ||
           p.native_command_drain_facts_confirmed !== true || p.command_drain_confirmed !== true ||
           p.registered_authority_alive !== true || p.spawn_exclusion_held_until_terminal !== true)) {
-    fail('verification_darwin_current_proof_invalid');
+    fail('verification_darwin_current_proof_invalid', proofDiagnostic(value, binding, capability, terminal));
   }
   return p;
+}
+// Diagnostics are fixed labels, computed only after the unchanged acceptance
+// predicate rejected a receipt. No receipt field or identifier is returned.
+function proofDiagnostic(value, binding, capability, terminal) {
+  try {
+    const p = terminal ? value?.proof : value?.command_drain_proof, d = binding.descriptor;
+    if (!current(value, binding, capability)) return 'proof_top_current';
+    if (!current(p, binding, capability)) return 'proof_body_current';
+    if (value.ok !== true || p.writer_generation !== value.writer_generation || value.cleanup_only !== false ||
+        value.allocation_tuple_verified_current !== true || value.registry_healthy !== true || value.observation_cached === true ||
+        value.cleanup_budget_exceeded !== false || value.abort_latched !== false || p.abort_latched !== false) return 'proof_reply_flags';
+    if (p.schema !== (terminal ? 'knowledge-darwin-private-ruid-proof.v1' : 'knowledge-darwin-command-drain-proof.v1')) return 'proof_schema';
+    if (!['source_sha256', 'transport_header_sha256', 'installation_id', 'allocation_seq', 'allocation_sha256',
+      'host_id', 'boot_id', 'account_policy_id', 'account_policy_sha256', 'task_ruid'].every(key => p[key] === d[key])) return 'proof_source_binding';
+    if (value[terminal ? 'proof_sha256' : 'command_drain_sha256'] !== digest(p)) return 'proof_digest';
+    if (p.uid_history_tuple_verified !== true || p.terminal_cleanup !== terminal || p.kernel_membership_zero !== true ||
+        p.admission_closed !== true || p.spawn_exclusion_acquired !== true || p.spawn_intents_resolved !== true ||
+        p.guardian_exit_confirmed !== true || p.root_child_exit_confirmed !== true) return 'proof_boundary_facts';
+    if (!integer(p.observed_monotonic_ms) || !integer(p.cleanup_started_monotonic_ms) || !integer(p.cleanup_deadline_monotonic_ms) ||
+        p.cleanup_deadline_monotonic_ms <= p.cleanup_started_monotonic_ms ||
+        p.cleanup_deadline_monotonic_ms - p.cleanup_started_monotonic_ms > d.cleanup_budget_ms ||
+        p.observed_monotonic_ms < p.cleanup_started_monotonic_ms || p.observed_monotonic_ms >= p.cleanup_deadline_monotonic_ms) return 'proof_clock';
+    if (terminal && (value.state !== 'closed' || value.planned_terminal !== true || p.planned_terminal !== true ||
+        p.native_cleanup_facts_confirmed !== true || p.cleanup_confirmed !== true || p.registered_authority_exited !== true ||
+        p.cleanup_budget_exceeded !== false || value.stop_reason !== 'close_requested')) return 'proof_terminal';
+    if (!terminal && (value.state !== 'commands_drained' || value.stop_reason !== 'commands_complete' ||
+        p.native_command_drain_facts_confirmed !== true || p.command_drain_confirmed !== true ||
+        p.registered_authority_alive !== true || p.spawn_exclusion_held_until_terminal !== true)) return 'proof_command_drain';
+  } catch {}
+  return 'proof_structure';
 }
 function validateReadback(value, binding, plan, phase) {
   value = inert(value);const { ok, readback_sha256, ...body } = value || {};
@@ -113,4 +147,4 @@ function validateReadback(value, binding, plan, phase) {
   }
   return value;
 }
-module.exports = { hex, sha, canonical, digest, validateDescriptor, validateCommand, validateProof, validateReadback };
+module.exports = { hex, sha, canonical, digest, validateDescriptor, validateCommand, validateProof, validateReadback, PROOF_DIAGNOSTICS };

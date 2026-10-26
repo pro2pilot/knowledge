@@ -72,6 +72,20 @@ class ProductionEvidence(unittest.TestCase):
                 (private/'INPUTS.json').write_text(json.dumps(bad))
                 actual, _ = summary.build(private, source, 0, 'arm64');self.assertEqual(actual['status'], 'FAIL_OR_INCOMPLETE')
 
+    def test_diagnostic_enum_is_closed(self):
+        labels = ['proof_top_current', 'proof_body_current', 'proof_reply_flags', 'proof_schema', 'proof_source_binding',
+            'proof_digest', 'proof_boundary_facts', 'proof_clock', 'proof_terminal', 'proof_command_drain', 'proof_structure',
+            'control_input_bound', 'control_descriptor', 'control_capability', 'control_role_identity', 'control_authority_exit']
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); private = root/'private'; private.mkdir(); source = root/'source'; source.mkdir()
+            for diagnostic in labels + ['NEVER_PUBLIC_private_data', {'proof_clock': 'secret'}, None, 5]:
+                value = self.good(); value['cases'][0]['terminal']['error'] = {'darwin_diagnostic': diagnostic}
+                (private/'SUMMARY.json').write_text(json.dumps(value))
+                result, _ = summary.build(private, source, 1, 'arm64')
+                expected = diagnostic if isinstance(diagnostic, str) and diagnostic in labels else None
+                self.assertEqual(result['cases'][0].get('proof_diagnostic'), expected)
+                self.assertNotIn('NEVER_PUBLIC', json.dumps(result))
+
     def test_raw_native_and_payload_fields_cannot_escape(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder);private = root/'private';private.mkdir();source = root/'source';source.mkdir()

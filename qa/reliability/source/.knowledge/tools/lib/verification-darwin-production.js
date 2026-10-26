@@ -21,6 +21,7 @@ const PROTOCOL = 'knowledge-darwin-production.v1';
 const STORE_PROTOCOL = 'knowledge-darwin-storage.v1';
 const AUTHORITY_PROTOCOL = 'knowledge-darwin-authority.v1';
 const MAX_BYTES = 32 * 1024 * 1024;
+const diagnostic = value => [...wire.PROOF_DIAGNOSTICS, ...adapter.CONTROL_DIAGNOSTICS].includes(value) ? value : null;
 const clock = () => process.hrtime.bigint();
 const elapsed = started => Number(clock() - started) / 1e6;
 const left = deadline => Math.max(0, Number(deadline - clock()) / 1e6);
@@ -35,7 +36,8 @@ function guardInput(request, timeoutMs, started) {
   return config;
 }
 function childChannel(file, protocol, { onEvent, onUnexpectedExit, autoExit = false } = {}) {
-  const child = spawn(process.execPath, [path.join(__dirname, file)], {
+  const args = file === 'verification-darwin-store.js' ? [path.join(__dirname, file), String(process.pid)] : [path.join(__dirname, file)];
+  const child = spawn(process.execPath, args, {
     env: native.nativeEnv(), stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true
   });
   let sequence = 0, pending, allowedExit = autoExit, exited = false, disconnected = false, closed = false;
@@ -380,7 +382,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
       ...(preflight ? { execution: { status: 'not_started' } } : {}),
       ...(unavailable ? { containment: { platform: process.platform, backend: 'darwin_private_ruid',
         status: 'unavailable', reason: primary?.code || 'broker_preflight_failed' } } : {}),
-      timed_out: primary?.timed_out === true, attempt_id: owner?.attempt_id || null,
+      timed_out: primary?.timed_out === true, darwin_diagnostic: diagnostic(primary?.darwin_diagnostic), attempt_id: owner?.attempt_id || null,
       recovery_required: !!store && !recovered, stage: phaseName,
       result_visibility: 'ack_not_delivered',
       terminal_commit: recovery?.terminal_outcome || terminalCommitObserved ||

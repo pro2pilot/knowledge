@@ -18,13 +18,13 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
-      "bytes": 21077,
-      "sha256": "ce7ab7c9279d9c1e4dde3e82f082e77e943e1e7a91fab42d86ecb429da24e22c"
+      "bytes": 21618,
+      "sha256": "cac40c57266c8bb93d12768a005e54912e659be7d479d19292940ff06fbfa444"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
-      "bytes": 9745,
-      "sha256": "adbf09a634e52b85b5a0d1d50b0a054783e44f18a004c17fb28cf5eba848f6f5"
+      "bytes": 10960,
+      "sha256": "d97c774581d9672c2fe25f7df6662fe86cecac366f90fbe478fd9e0195e32201"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-request.js",
@@ -80,13 +80,13 @@
   "native_sources": [
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-broker.m",
-      "bytes": 222775,
-      "sha256": "b276d3ada2eecc0d1a9f19f25a9fc5bf098b1aa4bdb077a6299da366afc0e42f"
+      "bytes": 224008,
+      "sha256": "70b10168b5e940802033af2d555be3e7f4a24e35769f91b1fc633a05a5ab7ad6"
     },
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-stub.c",
-      "bytes": 39294,
-      "sha256": "15de2b87f2cc3ad33aeae91a1f5aa8f5646b2c03e5a94ca4a8caf6b847522818"
+      "bytes": 40130,
+      "sha256": "02de14cec5d1c71e4a36282a52183c2821a6ec11cbb47e07708df3d85be7fc23"
     },
     {
       "repository_path": "qa/reliability/source/.knowledge/tools/lib/verification-darwin-transport.h",
@@ -106,7 +106,7 @@
   ],
   "production_qualified": false,
   "runtime_source_required": "qa/reliability/source/.knowledge",
-  "scope": "Exact Mac04 + planned commands_drained terminal reason. Same normal public gate; no other native/clock deltas.",
+  "scope": "Mac05 source603 plus reviewed broker/stub clock guards, session stop fencing, storage parent binding, fixed proof diagnostics. Actual native qualification pending. Actual UTF8 envelope cap preserved separately from bounded inert admission.",
   "uploaded_artifacts": [
     "summary.json",
     "stages.json"

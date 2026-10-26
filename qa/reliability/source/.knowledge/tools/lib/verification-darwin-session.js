@@ -201,10 +201,16 @@ async function probeSession(configValue, { signal, setupBudgetMs = 120000 } = {}
 
 function makeSession({ config, binding, token, capability, cleanupBudgetMs, signal, started, budgetMs }) {
   let stopped = false, closing = false, stopPromise = null, ordinal = 0;
+  const workAbort = new AbortController(), workSignal = workAbort.signal;
   const remaining = () => Math.max(0, Math.floor(budgetMs - elapsed(started)));
   const auth = { attempt_id: binding.attempt_id, token };
   function stop(reason = 'cancelled') {
     stopped = true;
+    // Revoke existing work transports before attempting the separate native
+    // stop RPC. That RPC may be unavailable when its transport is saturated;
+    // closing a run transport still reaches the broker's independent latch.
+    // The stop RPC deliberately does not inherit this aborted work signal.
+    workAbort.abort();
     stopPromise ||= rpc(config, { op: 'stop', ...auth, descriptor_sha256: binding.descriptor_sha256,
       cleanup_budget_ms: cleanupBudgetMs }, { limitMs: cleanupBudgetMs + 30000 })
       .then(value => ({ ...value, reason }), error => { throw Object.assign(error, { binding, stopped: true }); });
@@ -223,7 +229,7 @@ function makeSession({ config, binding, token, capability, cleanupBudgetMs, sign
   signal?.addEventListener('abort', onAbort, { once: true });
   async function request(input, options = {}) {
     guard();if (closing) throw failure('verification_darwin_admission_closed');
-    const response = await rpc(config, { ...input, ...auth }, { ...options, signal,
+    const response = await rpc(config, { ...input, ...auth }, { ...options, signal: workSignal,
       limitMs: options.limitMs ?? Math.min(120000, remaining() + cleanupBudgetMs + 30000) });
     guard();return response.reply;
   }
@@ -250,7 +256,7 @@ function makeSession({ config, binding, token, capability, cleanupBudgetMs, sign
       command.timeout_ms = Math.min(command.timeout_ms, remaining());
       const expectedOrdinal = ++ordinal;
       try {
-        const response = await rpc(config, { op: 'run', ...auth, ...command }, { run: true, signal,
+        const response = await rpc(config, { op: 'run', ...auth, ...command }, { run: true, signal: workSignal,
           limitMs: command.timeout_ms + cleanupBudgetMs + 30000, onStdout: options.onStdout, onStderr: options.onStderr });
         guard();const result = wire.validateCommand(response.reply, binding, capability, command, expectedOrdinal);
         return { result, command: Object.freeze({ ...command, argv: Object.freeze([...command.argv]), env: Object.freeze({ ...command.env }) }),
@@ -264,21 +270,22 @@ function makeSession({ config, binding, token, capability, cleanupBudgetMs, sign
       let value;
       if (phase === 'commands_drained' || phase === 'closed') {
         cancellationGuard();value = (await rpc(config, { op: 'readback_copy', ...auth },
-          { signal, limitMs: cleanupBudgetMs + 30000 })).reply;cancellationGuard();
+          { signal: workSignal, limitMs: cleanupBudgetMs + 30000 })).reply;cancellationGuard();
       } else value = await request({ op: 'readback_copy' });
       return wire.validateReadback(value, binding, plan, phase);
     },
     async drain() {
       guard();
       const value = (await rpc(config, { op: 'drain_commands', ...auth, cleanup_budget_ms: cleanupBudgetMs },
-        { signal, limitMs: cleanupBudgetMs + 30000 })).reply;
+        { signal: workSignal, limitMs: cleanupBudgetMs + 30000 })).reply;
       cancellationGuard();
       return { reply: value, proof: wire.validateProof(value, binding, capability, false) };
     },
     async close() {
       cancellationGuard();closing = true;
       const response = await rpc(config, { op: 'close', attempt_id: binding.attempt_id,
-        descriptor_sha256: binding.descriptor_sha256, cleanup_budget_ms: cleanupBudgetMs }, { limitMs: cleanupBudgetMs + 30000 });
+        descriptor_sha256: binding.descriptor_sha256, cleanup_budget_ms: cleanupBudgetMs },
+      { signal: workSignal, limitMs: cleanupBudgetMs + 30000 });
       cancellationGuard();const proof = wire.validateProof(response.reply, binding, capability, true);
       signal?.removeEventListener('abort', onAbort);return { ...response, proof };
     },

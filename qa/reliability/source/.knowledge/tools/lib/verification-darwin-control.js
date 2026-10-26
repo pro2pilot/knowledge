@@ -14,11 +14,21 @@ const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)
 const exact = (value, keys) => value && !Array.isArray(value) && typeof value === 'object' &&
   Object.keys(value).sort().join(',') === [...keys].sort().join(',');
 const same = (a,b) => wire.canonical(a) === wire.canonical(b);
-const fail = code => { throw Object.assign(new Error(code), { code }); };
-const requireThat = (condition,code='verification_darwin_control_proof_invalid') => { if(!condition)fail(code); };
+const CONTROL_DIAGNOSTICS = Object.freeze(['control_input_bound', 'control_descriptor', 'control_capability', 'control_role_identity', 'control_authority_exit']);
+const fail = (code,diagnostic) => { throw Object.assign(new Error(code), { code,
+  ...(CONTROL_DIAGNOSTICS.includes(diagnostic) ? {darwin_diagnostic:diagnostic} : {}) }); };
+const requireThat = (condition,code='verification_darwin_control_proof_invalid',diagnostic) => { if(!condition)fail(code,diagnostic); };
 function inert(value, maximum=65536) {
-  try { return copyInertData(value,null,maximum); }
-  catch { fail('verification_darwin_control_proof_invalid'); }
+  try {
+    // Inert admission charges up to 6 bytes/UTF16 unit plus 32/node. Keep
+    // that bounded-work guard separate from the actual UTF8 wire limit:
+    // a native reply repeats its descriptor/status and otherwise valid
+    // components must not fail solely from conservative accounting.
+    const copied=copyInertData(value,null,maximum*32);
+    if(Buffer.byteLength(JSON.stringify(copied))>maximum)throw new Error('envelope bound');
+    return copied;
+  }
+  catch { fail('verification_darwin_control_proof_invalid','control_input_bound'); }
 }
 function freeze(value) {
   if(value && typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}
@@ -64,17 +74,17 @@ function validateAttemptBinding(attempt, containment=attempt?.containment) {
 }
 function normalProof(input) {
   const {descriptor:d,terminalReply,capability,authorityExit}=inert(input);
-  requireThat(validateDescriptor(d) && d.authority_identity!==null);
+  requireThat(validateDescriptor(d) && d.authority_identity!==null,undefined,'control_descriptor');
   const native=d.scope.binding.descriptor;
   requireThat(capability && ['source_sha256','stub_source_sha256','stub_binary_sha256','transport_header_sha256',
     'uid_history_header_sha256','uid_history_source_sha256','installation_id','account_policy_id','account_policy_sha256',
     'host_id','boot_id','daemon_epoch'].every(key=>capability[key]===native[key]) &&
-    capability.binary_sha256===native.broker_binary_sha256);
+    capability.binary_sha256===native.broker_binary_sha256,undefined,'control_capability');
   const proof=wire.validateProof(terminalReply,d.scope.binding,capability,true);
-  requireThat(same(proof.authority_identity,d.authority_identity.birth) && same(proof.controller_identity,d.controller_identity.birth));
+  requireThat(same(proof.authority_identity,d.authority_identity.birth) && same(proof.controller_identity,d.controller_identity.birth),undefined,'control_role_identity');
   requireThat(exact(authorityExit,['pid','process_nonce','method','exit_observed']) &&
     authorityExit.pid===d.authority_identity.birth.pid && /^[a-f0-9]{32}$/.test(authorityExit.process_nonce) &&
-    authorityExit.method==='process_handle_signaled' && authorityExit.exit_observed===true);
+    authorityExit.method==='process_handle_signaled' && authorityExit.exit_observed===true,undefined,'control_authority_exit');
   return {status:'completed',method:METHOD,descriptor_sha256:digest(d),
     native_descriptor_sha256:d.scope.binding.descriptor_sha256,native_terminal_sha256:terminalReply.proof_sha256,
     storage_protocol:STORAGE_PROTOCOL,controller_excluded_from_boundary:true,
@@ -137,5 +147,5 @@ function recoverContainer(d,{cleanup_timeout_ms=30000}={}) {
   if(checked.status!=='completed')return {status:'unconfirmed',method:METHOD,code:checked.code||'verification_darwin_scope_unconfirmed'};
   return recoveryProof(d,checked.observation);
 }
-module.exports={SCHEMA,METHOD,STORAGE_PROTOCOL,descriptor,validateDescriptor,validateAttemptBinding,
+module.exports={SCHEMA,METHOD,STORAGE_PROTOCOL,CONTROL_DIAGNOSTICS,descriptor,validateDescriptor,validateAttemptBinding,
   normalProof,validateProof,currentProcessIdentity,verifyProcessExit,recoverContainer};

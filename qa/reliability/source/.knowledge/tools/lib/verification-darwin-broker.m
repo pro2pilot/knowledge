@@ -965,8 +965,18 @@ static bool currentPeerAlive(void) {
 }
 static bool workStopped(NSMutableDictionary *e) {
     bool cancelled=gCurrentWork&&atomic_load_explicit(&gCurrentWork->cancelled,memory_order_acquire);
-    bool stop=gStopping||cancelled||!currentPeerAlive()||(e&&(!currentEntry(e)||stoppedAttempt(e)
-        ||nowMS()>=[e[@"work_deadline_ms"] unsignedLongLongValue]));
+    bool alreadyStopped=gStopping||cancelled||atomic_load_explicit(&gClockFailed,memory_order_acquire);
+    bool observationsCurrent=true;uint64_t observed=0;
+    if(!alreadyStopped){
+        observationsCurrent=currentPeerAlive()&&(!e||(currentEntry(e)&&!stoppedAttempt(e)));
+        /* Native owner observations can take time or expose cancellation.
+         * Sample after them, then read every flag the sample may latch. */
+        observed=nowMS();
+    }
+    cancelled=gCurrentWork&&atomic_load_explicit(&gCurrentWork->cancelled,memory_order_acquire);
+    bool stop=alreadyStopped||!observationsCurrent||gStopping||cancelled
+        ||atomic_load_explicit(&gClockFailed,memory_order_acquire)
+        ||(e&&observed>=[e[@"work_deadline_ms"] unsignedLongLongValue]);
     if(stop&&e){struct KObservation v=observationCopy();
         if(v.valid&&[e[@"descriptor"][@"attempt_id"] isEqual:@(v.attempt)])
             latchGeneration(v.generation,[e[@"cleanup_budget_ms"] unsignedLongLongValue]);}
@@ -1503,9 +1513,19 @@ static NSDictionary *readbackCopy(NSMutableDictionary *e,struct KPeer *peer) {
     if(ok)ok=validUIDAllocation(e)&&!gPoisoned&&!abortedAttempt(e)&&currentPeerAlive()
         &&(!gCurrentWork||!atomic_load_explicit(&gCurrentWork->cancelled,memory_order_acquire));
     if(ok&&sealed)ok=!workStopped(e)&&![e[@"admission_closed"] boolValue];
-    if(ok&&drained){struct KIdentity identity;ok=!gStopping&&!stoppedAttempt(e)&&nowMS()<[e[@"cleanup_deadline_ms"] unsignedLongLongValue]
-        &&observeExact(e[@"controller"],&identity)==1&&observeExact(e[@"authority"],&identity)==1;}
+    if(ok&&drained){struct KIdentity identity;
+        ok=observeExact(e[@"controller"],&identity)==1&&observeExact(e[@"authority"],&identity)==1;}
     if(ok&&closed)ok=[e[@"proof"][@"native_cleanup_facts_confirmed"] boolValue]&&[e[@"admission_closed"] boolValue];
+    uint64_t readbackObserved=0;
+    if(ok){
+        bool phaseCurrent=closed||!stoppedAttempt(e);
+        bool abortClear=!abortedAttempt(e);
+        readbackObserved=nowMS();
+        ok=phaseCurrent&&abortClear&&!gStopping&&!atomic_load_explicit(&gClockFailed,memory_order_acquire)
+            &&(!gCurrentWork||!atomic_load_explicit(&gCurrentWork->cancelled,memory_order_acquire))
+            &&(sealed?(readbackObserved<[e[@"work_deadline_ms"] unsignedLongLongValue]):
+                readbackObserved<[e[@"cleanup_deadline_ms"] unsignedLongLongValue]);
+    }
     NSDictionary *reply=failure(@"COPY_READBACK_UNCONFIRMED");
     if(ok){NSDictionary *body=@{@"schema":@"knowledge-darwin-copy-readback.v1",@"attempt_id":e[@"descriptor"][@"attempt_id"],
         @"descriptor_sha256":e[@"descriptor_sha256"],@"phase":phase,@"manifest_sha256":e[@"manifest_sha256"],
@@ -1514,7 +1534,7 @@ static NSDictionary *readbackCopy(NSMutableDictionary *e,struct KPeer *peer) {
             @"inode":[NSString stringWithFormat:@"%llu",[e[@"workspace_inode"][@"inode"] unsignedLongLongValue]]},
         @"files":@(files.count),@"directories":@(directories.count),@"bytes":@(bytes),
         @"verified_current":@YES,@"allocation_tuple_verified_current":@YES,
-        @"observed_monotonic_ms":@(nowMS()),@"capability_qualified":@(gCapabilityQualified)};
+        @"observed_monotonic_ms":@(readbackObserved),@"capability_qualified":@(gCapabilityQualified)};
         NSMutableDictionary *result=[body mutableCopy];result[@"ok"]=@YES;result[@"readback_sha256"]=sha(jsonData(body));reply=result;}
     close(barrier);return reply;
 }
@@ -2392,7 +2412,8 @@ static void advanceCleanup(void) {
     if(gDrainOnly){struct KIdentity controller;int controllerObserved=observeExact(e[@"controller"],&controller);
         bool ownerAlive=controllerObserved==1&&authorityObserved==1;
         bool drainFacts=uidExclusive&&excluded&&zero&&observed&&intents&&!gRun.pid&&guardianGone&&rootChildGone&&ownerAlive&&!gPoisoned&&!atomic_load(&gClockFailed);
-        if(!ownerAlive||gStopping||stoppedAttempt(e)||gPoisoned||!uidExclusive||nowMS()>=gCloseDeadline){
+        uint64_t drainNow=nowMS();
+        if(!ownerAlive||gStopping||atomic_load(&gClockFailed)||stoppedAttempt(e)||gPoisoned||!uidExclusive||drainNow>=gCloseDeadline){
             NSString *reason=(gStopping||stoppedAttempt(e))?(plannedAttempt(e)?@"close_requested":@"daemon_stopping"):gPoisoned?@"registry_durability_unconfirmed":
                 !uidExclusive?@"uid_history_or_allocation_unconfirmed":!ownerAlive?@"drain_owner_exit_or_observation_unconfirmed":@"cleanup_budget_exceeded";
             if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
@@ -2435,8 +2456,9 @@ static void advanceCleanup(void) {
             &&observeExact(e[@"authority"],&currentOwner)==1;
         /* Status performs another disk readback. Check time AFTER it and
          * after the exact-owner observations, not before another slow call. */
-        if(gStopping||stoppedAttempt(e)||!historyStillConfirmed||!ownersStillAlive||![drainReply[@"allocation_tuple_verified_current"] boolValue]
-            ||![drainReply[@"registry_healthy"] boolValue]||nowMS()>=gCloseDeadline){
+        uint64_t drainCompletionNow=nowMS();
+        if(gStopping||atomic_load(&gClockFailed)||stoppedAttempt(e)||!historyStillConfirmed||!ownersStillAlive||![drainReply[@"allocation_tuple_verified_current"] boolValue]
+            ||![drainReply[@"registry_healthy"] boolValue]||drainCompletionNow>=gCloseDeadline){
             if(nowMS()>=gCloseDeadline)e[@"cleanup_budget_exceeded"]=@YES;
             closeAdmission(e,@"drain_completion_expired_or_owner_unconfirmed",[e[@"cleanup_budget_ms"] unsignedLongLongValue]);
             if(lock>=0)close(lock);return;
