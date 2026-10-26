@@ -1276,6 +1276,13 @@ static bool closeAdmission(NSMutableDictionary *e,NSString *reason,uint64_t budg
     if(!e[@"cleanup_started_monotonic_ms"]){e[@"cleanup_started_monotonic_ms"]=@(started);e[@"cleanup_budget_exceeded"]=@NO;}
     e[@"cleanup_deadline_ms"]=@(deadline);
     if(![e[@"admission_closed"] boolValue]){e[@"stop_reason"]=reason;e[@"closed_monotonic_ms"]=@(started);}
+    else if([reason isEqual:@"close_requested"]&&[e[@"stop_reason"] isEqual:@"commands_complete"]
+        &&[e[@"state"] isEqual:@"commands_drained"]&&plannedAttempt(e)&&!abortedAttempt(e)){
+        /* Normal command drain and terminal close are distinct phases. Keep
+         * the original closed time/cleanup epoch, but expose the planned
+         * terminal cause required by the production acceptance contract. */
+        e[@"stop_reason"]=reason;
+    }
     else if(![reason isEqual:@"close_requested"]&&![reason isEqual:@"recovery_requested"])e[@"stop_reason"]=reason;
     e[@"admission_closed"]=@YES;e[@"state"]=@"closing";
     gCloseDeadline=deadline;gClosing=e;publishState();

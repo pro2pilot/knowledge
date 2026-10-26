@@ -1,7 +1,7 @@
 {
   "schema": "knowledge-reliability-native-source-pins.v1",
   "base_audit2_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
-  "scope": "Exact prior production603 cohort with only Darwin protected-directory O_SEARCH change; public KVE and native before/after qualification pending",
+  "scope": "Exact Mac04/source603 + only planned commands_drained close reason transition; no clock delta. Public native qualification pending.",
   "files": {
     ".gitattributes": "fd39cfa01f1688563d76c600e65c86c91820b9b2a77ee1abb7707151ccc8cea1",
     ".gitignore": "35eccdde5015c84da14233506c23a183644ff8b582ec20800ed089981777bd59",
@@ -478,7 +478,7 @@
     "tools/lib/token-estimate.js": "e3915f6f5e791d88de86ee2556d64c1e0311ec34251edb6496abf05f2f252033",
     "tools/lib/verification-control.js": "bd742d9d3197ae9c94d73a6275c44c4b2ff04577630bc0b000dd76a542e79b93",
     "tools/lib/verification-darwin-authority.js": "c2c8239a6deb34916a3cad78bfafd0c6ca01776daffd434431e64e924b384946",
-    "tools/lib/verification-darwin-broker.m": "02b7dec225e3374cd9daac507c673debd539a3d8c98ce81555610c6a1365b4e4",
+    "tools/lib/verification-darwin-broker.m": "b276d3ada2eecc0d1a9f19f25a9fc5bf098b1aa4bdb077a6299da366afc0e42f",
     "tools/lib/verification-darwin-client.js": "a4c5e0c5a38d9b764ab9ba7254987ea56f35d2bf92a944efe69445053dd69302",
     "tools/lib/verification-darwin-control.js": "65e5fdf79e836754f0f69792910a66dbea0654078615015bda16035c0e176efc",
     "tools/lib/verification-darwin-finalization.js": "63814894660ee904d976c301d309b5bfd4be5cef0d154dc76fc4cf08c3710b60",
