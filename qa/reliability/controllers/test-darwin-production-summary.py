@@ -11,12 +11,26 @@ summary = importlib.util.module_from_spec(spec);spec.loader.exec_module(summary)
 
 class ProductionEvidence(unittest.TestCase):
     def good(self):
-        return {'status': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'architecture': 'arm64', 'source_unchanged': True,
+        value = {'status': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'architecture': 'arm64', 'source_unchanged': True,
             'cleanup_confirmed': True, 'cases': [{'name': 'normal', 'status': 'PASS_PHYSICAL_PRODUCTION',
-                'KVE_KVF_ACK_verified': True, 'terminal': {'success': True, 'stage': 'complete'}}],
+                'controller_exit_code': 0, 'KVE_KVF_ACK_verified': True, 'terminal': {'success': True, 'stage': 'complete'}}],
             'binary_history': [{'kind': 'shipping', 'qa_io_enabled': False, **{key: 'a'*64 for key in
                 ('broker_sha256', 'stub_sha256', 'source_sha256', 'stub_source_sha256')}}],
             'native_addon': {'source_sha256': 'a'*64, 'binary_sha256': 'b'*64, 'platform': 'darwin', 'architecture': 'arm64'}}
+        cases = []
+        for name, required in summary.PROTECTED_CASES.items():
+            row = {'name': name, 'required_acceptance': required, 'status': 'PASS_PHYSICAL_PAIRED'}
+            for version in ('before', 'after'):
+                accepted = False if version == 'before' and name == 'search_only_ancestor' else required
+                row[version] = {'accepted': accepted, 'exit_code': 0,
+                    'source_sha256': summary.BEFORE_PROTECTED_SOURCE_SHA if version == 'before' else 'a'*64,
+                    **({'sha256': hashlib.sha256(b'#!/bin/sh\nexit 0\n').hexdigest()} if accepted else
+                        {'code': 'darwin_protected_path_unsafe', 'native_error': 13})}
+            cases.append(row)
+        value['protected_executable_contract'] = {'status': 'PASS_PHYSICAL_PAIRED', 'cases': cases,
+            'write_acl_effects_verified': True, 'before_source_sha256': summary.BEFORE_PROTECTED_SOURCE_SHA,
+            'after_source_sha256': 'a'*64, 'before_binary_sha256': 'c'*64, 'after_binary_sha256': 'b'*64}
+        return value
 
     def test_cli_rejects_incomplete_evidence_even_after_zero_controller_exit(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -29,13 +43,22 @@ class ProductionEvidence(unittest.TestCase):
             for name, mutate in (
                 ('missing-case', lambda v: v.update(cases=[])),
                 ('duplicate-case', lambda v: v['cases'].append(v['cases'][0])),
+                ('unexpected-case', lambda v: v['cases'].append({'name': 'unreviewed-extra-case', 'status': 'FAIL'})),
+                ('nonobject-case', lambda v: v['cases'].append(None)),
+                ('failed-case-caller', lambda v: v['cases'][0].update(controller_exit_code=1)),
                 ('no-cleanup', lambda v: v.update(cleanup_confirmed=False)),
                 ('source-drift', lambda v: v.update(source_unchanged=False)),
                 ('wrong-arch', lambda v: v.update(architecture='x86_64')),
                 ('qa-build', lambda v: v['binary_history'][0].update(qa_io_enabled=True)),
                 ('missing-addon', lambda v: v.update(native_addon={})),
                 ('missing-ack', lambda v: v['cases'][0].update(KVE_KVF_ACK_verified=False)),
-                ('unaccepted', lambda v: v['cases'][0]['terminal'].update(success=False))):
+                ('unaccepted', lambda v: v['cases'][0]['terminal'].update(success=False)),
+                ('missing-protected-pair', lambda v: v['protected_executable_contract']['cases'].pop()),
+                ('duplicate-protected-pair', lambda v: v['protected_executable_contract']['cases'].append(v['protected_executable_contract']['cases'][0])),
+                ('unproved-acl', lambda v: v['protected_executable_contract'].update(write_acl_effects_verified=False)),
+                ('wrong-protected-binary', lambda v: v['protected_executable_contract'].update(after_binary_sha256='f'*64)),
+                ('new-search-refused', lambda v: v['protected_executable_contract']['cases'][0]['after'].update(accepted=False)),
+                ('old-search-unreproduced', lambda v: v['protected_executable_contract']['cases'][0]['before'].update(accepted=True))):
                 value = self.good();mutate(value);values.append((name, value, 1))
             for name, value, expected in values:
                 with self.subTest(name=name):
@@ -59,6 +82,8 @@ class ProductionEvidence(unittest.TestCase):
             value['cases'][0]['terminal'].update(token=secret, result=secret, acceptances=secret,
                 error_code=secret, error={'message': secret, 'stage': secret, 'containment': {'reason': secret},
                     'teardown': {'status': secret}, 'recovery_required': secret, 'timed_out': secret})
+            value['protected_executable_contract'].update(path=secret, raw=secret)
+            value['protected_executable_contract']['cases'][0]['after'].update(path=secret, stdout=secret, native_error=secret)
             value['records'] = [{'name': '001-'+secret, 'exit_code': 1, 'stdout': secret}]
             value['diagnostics'] = [{'type': 'ValueError', 'stage': 'execute', 'args': secret,
                 'frames': [{'file': 'darwin-production-lifecycle.py', 'line': 200, 'locals': secret}, {'file': secret, 'line': 1}]}]

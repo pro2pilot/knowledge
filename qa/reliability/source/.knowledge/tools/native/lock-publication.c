@@ -655,7 +655,11 @@ static napi_value verify_protected_executable(napi_env env,napi_callback_info ca
   double start=monotonic_ms();size_t length=strlen(path);
   if(path[0]!='/'||length<2||path[length-1]=='/'||strstr(path,"//")||strchr(path,'\\'))goto done;
   for(size_t i=0;i<length;i++)if((unsigned char)path[i]<32 || (unsigned char)path[i]==127)goto done;
-  fds[0]=open("/",O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK);used=1;
+  /* Directory anchors need search and metadata access, not directory listing.
+   * O_RDONLY would reject a safe root-owned 0711 ancestor for ordinary callers.
+   * Darwin O_SEARCH retains an anchored directory FD without granting reads;
+   * the executable leaf still requires O_RDONLY for its exact byte hash. */
+  fds[0]=open("/",O_SEARCH|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK);used=1;
   if(fds[0]<0 || !protected_metadata(fds[0],&states[0],0,0))goto done;
   cursor=path+1;
   while(*cursor) {
@@ -666,7 +670,7 @@ static napi_value verify_protected_executable(napi_env env,napi_callback_info ca
     if(!*cursor||!strcmp(cursor,".")||!strcmp(cursor,".."))goto done;
     names[used]=cursor;struct stat named;
     if(fstatat(fds[used-1],cursor,&named,AT_SYMLINK_NOFOLLOW)||S_ISLNK(named.st_mode))goto done;
-    fds[used]=openat(fds[used-1],cursor,O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK|(leaf?0:O_DIRECTORY));
+    fds[used]=openat(fds[used-1],cursor,(leaf?O_RDONLY:O_SEARCH)|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK);
     int index=used++;
     int sticky_tmp=index==2&&!strcmp(names[1],"private")&&!strcmp(cursor,"tmp")&&!leaf;
     if(fds[index]<0 || !protected_metadata(fds[index],&states[index],leaf,sticky_tmp) ||

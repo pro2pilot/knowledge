@@ -9,6 +9,9 @@ TYPES = {'QAError', 'FileNotFoundError', 'PermissionError', 'TypeError', 'Attrib
     'OSError', 'TimeoutExpired', 'RuntimeError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'UnknownException'}
 PHASES = {'input', 'public-run', 'finalization-reader', 'complete'}
 PRODUCT_PHASES = {'setup', 'copy_chunk', 'test_setup', 'command', 'finalization', 'receipt_commit', 'between_tests', 'batch_finalization'}
+PROTECTED_CASES = {'search_only_ancestor': True, 'readable_ancestor': True, 'leaf_write_acl': False,
+    'parent_write_acl': False, 'leaf_read_acl': True, 'leaf_symlink': False, 'writable_ancestor': False, 'unsearchable_ancestor': False}
+BEFORE_PROTECTED_SOURCE_SHA = '48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b'
 FAILURES = set('runner_architecture_mismatch runtime_copy_pin_mismatch node_version_failed node_version_invalid '
     'node_checksums_oversized node_headers_checksum_missing node_headers_checksum_mismatch node_headers_archive_unsafe '
     'node_headers_archive_truncated native_addon_build_failed native_addon_pin_mismatch ordinary_owner_required '
@@ -17,13 +20,18 @@ FAILURES = set('runner_architecture_mismatch runtime_copy_pin_mismatch node_vers
     'public_production_normal_failed project_source_mutated normal_service_exit_unconfirmed normal_daemon_exit_unconfirmed '
     'normal_UID_cleanup_unconfirmed source_changed compile_shipping_broker_failed compile_shipping_stub_failed '
     'stub_pair_mismatch_shipping uid_scan_compile_failed birth_observer_compile_failed protected_install_parent_unavailable '
-    'install_parent_creation_unconfirmed public_writer_cleanup_unconfirmed_preserve_fixture'.split())
+    'install_parent_creation_unconfirmed public_writer_cleanup_unconfirmed_preserve_fixture protected_baseline_source_pin_mismatch '
+    'protected_baseline_compile_failed protected_executable_contract_failed protected_executable_hash_mismatch '
+    'protected_search_denial_not_observed protected_write_acl_fixture_inactive'.split())
 STAGES = set('node-version node-exec-path node-system-dylibs compile-lock-addon compile-uid-scan compile-birth-observer '
     'canonical-roots-must-be-absent init-production bootstrap-production capture-production-daemon probe-production '
     'read-production-registry public-production-normal bootout-production post-stop-production-uid '
     'verify-owned-canonical-inodes remove-owned-canonical-inodes verify-owned-fixture remove-owned-fixture '
     'protect-fixture mode-fixture launchctl-print-own-label launchctl-verify-own-label-absent compare-native-process-birth '
-    'ensure-protected-install-parent remove-created-install-parent'.split())
+    'ensure-protected-install-parent remove-created-install-parent compile-protected-before-addon create-protected-fixture '
+    'mode-protected-readable acl-protected-leaf-write prove-protected-leaf-write acl-protected-leaf-reset restore-protected-fixture '
+    'acl-protected-parent-write prove-protected-parent-write acl-protected-parent-reset acl-protected-leaf-read '
+    'symlink-protected-fixture mode-protected-writable mode-protected-no-search'.split())
 
 
 def digest(value): return value if isinstance(value, str) and HEX.fullmatch(value) else None
@@ -49,7 +57,7 @@ def load(path, maximum=16*1024*1024):
 def error_codes(source):
     # Only enum-shaped literals in the exact publicly supplied first-party
     # source are eligible, never arbitrary error messages or payload output.
-    codes = set('ERR_ASSERTION controller_assertion_failed ERR_INVALID_ARG_TYPE ERR_INVALID_ARG_VALUE ERR_OUT_OF_RANGE '
+    codes = set('ERR_ASSERTION controller_assertion_failed darwin_protected_path_unsafe ERR_INVALID_ARG_TYPE ERR_INVALID_ARG_VALUE ERR_OUT_OF_RANGE '
         'ERR_MODULE_NOT_FOUND MODULE_NOT_FOUND ERR_DLOPEN_FAILED ERR_CHILD_PROCESS_IPC_REQUIRED ERR_IPC_CHANNEL_CLOSED '
         'ERR_IPC_DISCONNECTED EACCES EPERM ENOENT ENOTDIR EISDIR ELOOP EEXIST ENOSPC EMFILE ENFILE ENOMEM EIO EPIPE '
         'ETIMEDOUT EBADF EINTR ENOTSUP ENOSYS'.split())
@@ -91,9 +99,45 @@ def input_inventory_valid(source, rows):
     return actual == expected
 
 
+def protected_contract(raw, codes, addon):
+    raw = raw if isinstance(raw, dict) else {};rows = [];seen = set();valid = True
+    for item in raw.get('cases', []) if isinstance(raw.get('cases'), list) else []:
+        if not isinstance(item, dict) or item.get('name') not in PROTECTED_CASES:
+            valid = False;continue
+        name = item['name'];required = PROTECTED_CASES[name]
+        if name in seen: valid = False
+        seen.add(name);row = {'name': name, 'required_acceptance': required,
+            'status': item.get('status') if item.get('status') == 'PASS_PHYSICAL_PAIRED' else 'FAIL'}
+        valid = valid and item.get('required_acceptance') is required and row['status'] == 'PASS_PHYSICAL_PAIRED'
+        for version in ('before', 'after'):
+            value = item.get(version) if isinstance(item.get(version), dict) else {}
+            record = {'accepted': boolean(value.get('accepted')), 'code': value.get('code') if value.get('code') in codes else None,
+                'native_error': value.get('native_error') if type(value.get('native_error')) is int and 0 <= value['native_error'] < 4096 else None,
+                'sha256': digest(value.get('sha256')), 'source_sha256': digest(value.get('source_sha256')), 'exit_code': exit_code(value.get('exit_code'))}
+            row[version] = record;expected = False if version == 'before' and name == 'search_only_ancestor' else required
+            valid = valid and record['exit_code'] == 0 and record['accepted'] is expected and record['source_sha256'] == \
+                (BEFORE_PROTECTED_SOURCE_SHA if version == 'before' else addon.get('source_sha256'))
+            if expected: valid = valid and record['sha256'] == sha(b'#!/bin/sh\nexit 0\n')
+            else: valid = valid and record['code'] is not None
+        if name == 'search_only_ancestor': valid = valid and row['before']['native_error'] == 13
+        rows.append(row)
+    valid = valid and seen == set(PROTECTED_CASES) and raw.get('status') == 'PASS_PHYSICAL_PAIRED' and \
+        raw.get('write_acl_effects_verified') is True and raw.get('before_source_sha256') == BEFORE_PROTECTED_SOURCE_SHA and \
+        raw.get('after_source_sha256') == addon.get('source_sha256') and raw.get('after_binary_sha256') == addon.get('binary_sha256') and \
+        bool(digest(raw.get('before_binary_sha256')))
+    return {'status': 'PASS_PHYSICAL_PAIRED' if valid else 'FAIL_OR_INCOMPLETE', 'cases': rows,
+        'write_acl_effects_verified': boolean(raw.get('write_acl_effects_verified')),
+        **{key: digest(raw.get(key)) for key in ('before_source_sha256', 'after_source_sha256', 'before_binary_sha256', 'after_binary_sha256')}}
+
+
 def build(private, source, controller_status, architecture):
     raw = load(private/'SUMMARY.json');inputs = load(private/'INPUTS.json', 4*1024*1024)
     fallback = load(private/'DIAGNOSTIC.json', 65536);codes = error_codes(source)
+    # The frozen controller has one reviewed case. Do not silently discard
+    # an extra, malformed or unreviewed case and still certify this cohort.
+    raw_cases = raw.get('cases')
+    case_inventory_valid = isinstance(raw_cases, list) and len(raw_cases) == 1 and \
+        isinstance(raw_cases[0], dict) and raw_cases[0].get('name') == 'normal'
     cases = []
     for item in raw.get('cases', []) if isinstance(raw.get('cases'), list) else []:
         if not isinstance(item, dict) or item.get('name') != 'normal': continue
@@ -129,11 +173,12 @@ def build(private, source, controller_status, architecture):
         known = suffix in STAGES or re.fullmatch(r'(?:create|identify)-canonical-(?:registry|allocator|anchors|workspaces|control)', suffix) or \
             re.fullmatch(r'(?:mkdir|chown|chmod)-(?:bin|runtime|logs|launchd)', suffix) or \
             re.fullmatch(r'install-production-(?:broker|stub|node|plist)', suffix) or \
-            re.fullmatch(r'(?:compile|describe)-shipping-\d{2}-(?:broker|stub)', suffix)
+            re.fullmatch(r'(?:compile|describe)-shipping-\d{2}-(?:broker|stub)', suffix) or \
+            re.fullmatch(r'protected-(?:before|after)-(?:'+ '|'.join(PROTECTED_CASES) +')', suffix)
         stages.append({'stage': name if known else match[1]+'-unclassified-stage', 'stage_name_sha256': sha(name.encode()),
             'exit_code': exit_code(item.get('exit_code')), 'timed_out': boolean(item.get('timed_out')),
             'elapsed_ms': number(item.get('elapsed_ms')), 'stdout_sha256': digest(item.get('stdout_sha256')), 'stderr_sha256': digest(item.get('stderr_sha256'))})
-        if known and re.fullmatch(r'compile-(?:lock-addon|uid-scan|birth-observer|shipping-\d{2}-(?:broker|stub))', suffix):
+        if known and re.fullmatch(r'compile-(?:lock-addon|protected-before-addon|uid-scan|birth-observer|shipping-\d{2}-(?:broker|stub))', suffix):
             stderr = private/(name+'.stderr.raw')
             if stderr.is_file() and not stderr.is_symlink() and stderr.stat().st_size <= 4*1024*1024:
                 compiler_diagnostics.append({'stage': name, 'stderr_excerpt': compile_excerpt(stderr.read_bytes(), private, source)})
@@ -143,26 +188,30 @@ def build(private, source, controller_status, architecture):
         binaries.append({**{key: digest(item.get(key)) for key in ('broker_sha256', 'stub_sha256', 'source_sha256', 'stub_source_sha256')},
             'kind': 'shipping' if item.get('kind') == 'shipping' else 'unknown', 'qa_io_enabled': boolean(item.get('qa_io_enabled'))})
     addon = raw.get('native_addon') if isinstance(raw.get('native_addon'), dict) else {}
+    executable_contract = protected_contract(raw.get('protected_executable_contract'), codes, addon)
     source_rows = inputs.get('files') if isinstance(inputs.get('files'), list) else []
     valid_inputs = input_inventory_valid(source, source_rows) and all(digest(inputs.get(key)) for key in
         ('controller_sha256', 'lifecycle_sha256', 'reference_runner_sha256'))
     actual_arch = 'x64' if architecture == 'x86_64' else 'arm64'
     passed = controller_status == 0 and raw.get('status') == 'PASS_PHYSICAL_PRODUCTION_NORMAL' and raw.get('source_unchanged') is True and \
-        raw.get('cleanup_confirmed') is True and raw.get('architecture') == architecture and len(cases) == 1 and \
+        raw.get('cleanup_confirmed') is True and raw.get('architecture') == architecture and case_inventory_valid and len(cases) == 1 and \
         cases[0]['status'] == 'PASS_PHYSICAL_PRODUCTION' and cases[0]['success'] is True and cases[0]['KVE_KVF_ACK_verified'] is True and \
+        cases[0]['controller_exit_code'] == 0 and \
         len(binaries) == 1 and binaries[0]['kind'] == 'shipping' and binaries[0]['qa_io_enabled'] is False and \
         all(binaries[0][key] for key in ('broker_sha256', 'stub_sha256', 'source_sha256', 'stub_source_sha256')) and \
         digest(addon.get('source_sha256')) and digest(addon.get('binary_sha256')) and \
-        addon.get('platform') == 'darwin' and addon.get('architecture') == actual_arch and valid_inputs
+        addon.get('platform') == 'darwin' and addon.get('architecture') == actual_arch and valid_inputs and \
+        executable_contract['status'] == 'PASS_PHYSICAL_PAIRED'
     manifest_sha = sha(json.dumps(source_rows, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()) if source_rows else None
     summary = {'schema': 'knowledge-darwin-production-public.v1', 'status': 'PASS_PRODUCTION_NORMAL_GATE' if passed else 'FAIL_OR_INCOMPLETE',
         'controller_exit_code': controller_status, 'architecture': raw.get('architecture') if raw.get('architecture') in ('x86_64', 'arm64') else None,
         'expected_architecture': architecture, 'source_unchanged': boolean(raw.get('source_unchanged')), 'cleanup_confirmed': boolean(raw.get('cleanup_confirmed')),
-        'exact_source_inventory_verified': bool(valid_inputs),
+        'exact_source_inventory_verified': bool(valid_inputs), 'exact_case_inventory_verified': bool(case_inventory_valid),
         'source_manifest_sha256': manifest_sha, 'source_manifest_file_count': len(source_rows),
         'controller_sha256': digest(inputs.get('controller_sha256')), 'lifecycle_sha256': digest(inputs.get('lifecycle_sha256')),
         'reference_runner_sha256': digest(inputs.get('reference_runner_sha256')), 'cases': cases, 'compiled_pairs': binaries,
         'native_addon': {key: digest(addon.get(key)) for key in ('source_sha256', 'binary_sha256')}, 'diagnostics': diagnostics,
+        'protected_executable_contract': executable_contract,
         'compiler_diagnostics': compiler_diagnostics,
         'failure_code': raw.get('failure') if raw.get('failure') in FAILURES else ('private_failure' if raw.get('failure') else None),
         'workflow_commit': os.environ.get('GITHUB_SHA') if re.fullmatch('[a-f0-9]{40}', os.environ.get('GITHUB_SHA', '')) else None,

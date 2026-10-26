@@ -9,6 +9,8 @@ on:
       - qa/reliability/DARWIN_PRODUCTION_ASSET_PINS.json
       - qa/reliability/controllers/darwin-production-*
       - qa/reliability/controllers/test-darwin-production-*
+      - qa/reliability/controllers/darwin-protected-*
+      - qa/reliability/controllers/lock-publication-before-search.c
       - qa/reliability/controllers/test-darwin-install-parent.py
       - qa/reliability/controllers/verify-darwin-ci-assets.py
       - qa/reliability/reference/**

@@ -3,13 +3,13 @@
   "files": [
     {
       "repository_path": ".github/workflows/rc5-reliability-darwin-production.yml",
-      "bytes": 3388,
-      "sha256": "f94ed2a056c7f3c50b72a1e9349d48aa4177f6204a27bc3dfc322f80dbbcfef7"
+      "bytes": 3510,
+      "sha256": "6af26bff63aea9c55bdfb80640122b5d9b3173d78e504fc6658853db0a0cde73"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-lifecycle.py",
-      "bytes": 29635,
-      "sha256": "a1b78891db0717772536e671feb54bcdef28363f8a87cf07558173344c788683"
+      "bytes": 36309,
+      "sha256": "13cd30dad77cdd0f9b37cf541cb128447e409d0027305c391f6fd90466c2a11b"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-controller.js",
@@ -18,18 +18,28 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
-      "bytes": 16581,
-      "sha256": "c454e2044592ddc1fba62a7256cba53ff7834d370daecf2ee3183c7005728c74"
+      "bytes": 21077,
+      "sha256": "ce7ab7c9279d9c1e4dde3e82f082e77e943e1e7a91fab42d86ecb429da24e22c"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
-      "bytes": 7378,
-      "sha256": "5cb46c8689321a08d84182b66782b3d3df35ee1ad8991022dbd8a3112ef1ba8e"
+      "bytes": 9745,
+      "sha256": "adbf09a634e52b85b5a0d1d50b0a054783e44f18a004c17fb28cf5eba848f6f5"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-request.js",
       "bytes": 2348,
       "sha256": "fdc0ea65b05bcdead1804a10500ba0195c951764e568adbd04b583dc42d92e32"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/darwin-protected-executable-probe.js",
+      "bytes": 1228,
+      "sha256": "da40240387b2542cd6053604f0d6420d5cae9c1d8549c2f2c2e96f0678c2cdaf"
+    },
+    {
+      "repository_path": "qa/reliability/controllers/lock-publication-before-search.c",
+      "bytes": 45007,
+      "sha256": "48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-install-parent.py",

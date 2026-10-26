@@ -5,7 +5,7 @@ The hosted disposable runner must have no existing canonical installation.
 Never replaces an existing installation. Raw evidence remains private.
 This early gate is deliberately separate from the diagnostic stop matrix.
 """
-import argparse, hashlib, importlib.util, json, os, platform, plistlib, re, shutil, signal, stat, subprocess, sys, tarfile, time, traceback, urllib.request
+import argparse, hashlib, importlib.util, json, os, platform, plistlib, pwd, re, shutil, signal, stat, subprocess, sys, tarfile, time, traceback, urllib.request
 from pathlib import Path
 
 CANONICAL = {
@@ -18,6 +18,7 @@ CANONICAL = {
 NATIVE = {'broker': 'verification-darwin-broker.m', 'stub': 'verification-darwin-stub.c',
     'history_header': 'verification-darwin-uid-history.h', 'history_source': 'verification-darwin-uid-history.m',
     'transport_header': 'verification-darwin-transport.h'}
+BEFORE_PROTECTED_SOURCE_SHA = '48f8a3c6c945b79c27ee6c46311dc6706809b1062f1db6618f67878e1601691b'
 
 # Fixed QA installer preflight. Existing parents are only observed; the
 # controller never chmods, deletes or replaces an existing installation root.
@@ -101,6 +102,8 @@ def main():
             self.fixture_identity = None
             self.public_started = False;self.public_completed = False
             self.install_parent_observation = None;self.install_parent_identity = None
+            self.protected_contract = {'cases': [], 'status': 'NOT_RUN'}
+            self.addon_path = None;self.before_addon_path = None
 
         def run(self, name, argv, timeout=120, data=None, root=False):
             result = super().run(name, argv, timeout=timeout, data=data, root=root)
@@ -151,6 +154,18 @@ def main():
                 manifest.get('source_sha256') == base.sha_file(source/'tools/native/lock-publication.c') and
                 manifest.get('binary_sha256') == base.sha_file(manifest_path.parent/'lock-publication.node'), 'native_addon_pin_mismatch')
             self.native_manifest = manifest
+            self.addon_path = manifest_path.parent/'lock-publication.node'
+            before_source = Path(__file__).with_name('lock-publication-before-search.c')
+            self.check(base.sha_file(before_source) == BEFORE_PROTECTED_SOURCE_SHA, 'protected_baseline_source_pin_mismatch')
+            self.before_addon_path = evidence/'lock-publication-before-search.node'
+            built = self.run('compile-protected-before-addon', ['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-O2', '-fPIC',
+                '-DNAPI_VERSION=8', '-DKNOWLEDGE_LOCK_SOURCE_SHA256="'+BEFORE_PROTECTED_SOURCE_SHA+'"', '-I',
+                str(headers_root/('node-v'+version)/'include/node'), '-bundle', '-undefined', 'dynamic_lookup',
+                str(before_source), '-o', str(self.before_addon_path)], timeout=180)
+            self.check(built.returncode == 0, 'protected_baseline_compile_failed')
+            self.protected_contract.update(before_source_sha256=BEFORE_PROTECTED_SOURCE_SHA,
+                after_source_sha256=manifest['source_sha256'], before_binary_sha256=base.sha_file(self.before_addon_path),
+                after_binary_sha256=manifest['binary_sha256'])
 
         def setup_normal(self):
             # Canonical installation has no path override relaxation. The job
@@ -214,6 +229,66 @@ def main():
                 probe.get('qa_persistence_gate') is False and probe.get('source_sha256') == self.binaries['shipping']['source_sha256'], 'normal_mode_not_admissible')
             base.private_file(evidence/'normal-probe.private.json', base.canonical(probe))
             return info
+
+        def case_protected_executable(self, info):
+            # Test one exact 0711 directory boundary with the actual old/new
+            # compiled addon, before any production request can be admitted.
+            # Other directories here are 0755; the real broker fixture stays
+            # 0711 throughout, so normal public success also covers that path.
+            folder = self.roots['anchors']/'qa-protected-executable';leaf = folder/'program'
+            body = b'#!/bin/sh\nexit 0\n';expected_sha = base.sha_bytes(body)
+            self.root('create-protected-fixture', sys.executable, '-c',
+                'import os,sys;os.mkdir(sys.argv[1],0o711);os.chmod(sys.argv[1],0o711);f=os.open(sys.argv[2],os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o555);os.write(f,bytes.fromhex(sys.argv[3]));os.fchmod(f,0o555);os.fsync(f);os.close(f)',
+                str(folder), str(leaf), body.hex())
+            probe = Path(__file__).with_name('darwin-protected-executable-probe.js')
+
+            def pair(name, expected, target=leaf):
+                values = {}
+                for version, addon, source_sha in (('before', self.before_addon_path, BEFORE_PROTECTED_SOURCE_SHA),
+                    ('after', self.addon_path, self.native_manifest['source_sha256'])):
+                    result = self.run('protected-'+version+'-'+name, [str(info['node']), str(probe)],
+                        data=base.canonical({'addon': str(addon), 'path': str(target)}), timeout=20)
+                    try: value = json.loads(result.stdout)
+                    except Exception: value = {}
+                    values[version] = {'exit_code': result.returncode, **value}
+                row = {'name': name, 'required_acceptance': expected, **values, 'status': 'FAIL'}
+                self.protected_contract['cases'].append(row)
+                for version in ('before', 'after'):
+                    value = values[version];required = False if version == 'before' and name == 'search_only_ancestor' else expected
+                    self.check(value.get('exit_code') == 0 and value.get('accepted') is required and
+                        value.get('source_sha256') == (BEFORE_PROTECTED_SOURCE_SHA if version == 'before' else self.native_manifest['source_sha256']),
+                        'protected_executable_contract_failed')
+                    if required: self.check(value.get('sha256') == expected_sha, 'protected_executable_hash_mismatch')
+                if name == 'search_only_ancestor':
+                    self.check(values['before'].get('native_error') == 13, 'protected_search_denial_not_observed')
+                row['status'] = 'PASS_PHYSICAL_PAIRED'
+
+            pair('search_only_ancestor', True)
+            self.root('mode-protected-readable', '/bin/chmod', '0755', str(folder));pair('readable_ancestor', True)
+            username = pwd.getpwuid(os.getuid()).pw_name
+            self.root('acl-protected-leaf-write', '/bin/chmod', '+a', 'user:'+username+' allow write', str(leaf))
+            pair('leaf_write_acl', False)
+            actual_write = self.run('prove-protected-leaf-write', [sys.executable, '-c',
+                'import os,sys;f=os.open(sys.argv[1],os.O_WRONLY);os.write(f,b"X");os.close(f)', str(leaf)], timeout=10)
+            self.check(actual_write.returncode == 0, 'protected_write_acl_fixture_inactive')
+            self.root('acl-protected-leaf-reset', '/bin/chmod', '-N', str(leaf))
+            self.root('restore-protected-fixture', sys.executable, '-c',
+                'import os,sys;f=os.open(sys.argv[1],os.O_WRONLY|os.O_TRUNC|os.O_NOFOLLOW);os.write(f,bytes.fromhex(sys.argv[2]));os.fsync(f);os.close(f)', str(leaf), body.hex())
+            self.root('acl-protected-parent-write', '/bin/chmod', '+a', 'user:'+username+' allow add_file,delete_child', str(folder))
+            pair('parent_write_acl', False)
+            marker = folder/'marker'
+            actual_create = self.run('prove-protected-parent-write', [sys.executable, '-c',
+                'import os,sys;f=os.open(sys.argv[1],os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.close(f);os.unlink(sys.argv[1])', str(marker)], timeout=10)
+            self.check(actual_create.returncode == 0, 'protected_write_acl_fixture_inactive')
+            self.root('acl-protected-parent-reset', '/bin/chmod', '-N', str(folder))
+            self.root('acl-protected-leaf-read', '/bin/chmod', '+a', 'user:'+username+' allow read,readattr,readextattr,readsecurity', str(leaf))
+            pair('leaf_read_acl', True)
+            self.root('acl-protected-leaf-reset', '/bin/chmod', '-N', str(leaf))
+            alias = folder/'alias';self.root('symlink-protected-fixture', '/bin/ln', '-s', 'program', str(alias));pair('leaf_symlink', False, alias)
+            self.root('mode-protected-writable', '/bin/chmod', '0757', str(folder));pair('writable_ancestor', False)
+            self.root('mode-protected-no-search', '/bin/chmod', '0700', str(folder));pair('unsearchable_ancestor', False)
+            self.root('mode-protected-readable', '/bin/chmod', '0755', str(folder))
+            self.protected_contract.update(status='PASS_PHYSICAL_PAIRED', write_acl_effects_verified=True)
 
         def fixture_registry_snapshot(self):
             if 'registry' not in self.roots: return None
@@ -351,7 +426,7 @@ for fd in held: os.close(fd)
             self.prepare_runtime();self.compile_uid_scan();self.compile_birth_observer();self.compile_pair(False)
             self.fixture_path();st = self.fixture.lstat();self.fixture_identity = {'dev': st.st_dev, 'ino': st.st_ino}
             base.private_file(evidence/'created-fixture.json', base.canonical(self.fixture_identity))
-            info = self.setup_normal();self.case_normal(info);self.cleanup()
+            info = self.setup_normal();self.case_protected_executable(info);self.case_normal(info);self.cleanup()
             self.status = 'PASS_PHYSICAL_PRODUCTION_NORMAL'
 
     runner = Runner();failure = None;diagnostics = [];raw_traceback = None
@@ -370,6 +445,7 @@ for fd in held: os.close(fd)
                 'architecture': platform.machine(), 'source_unchanged': unchanged, 'cases': runner.case_results,
                 'cleanup_confirmed': runner.cleanup_confirmed, 'binary_history': runner.binary_history,
                 'native_addon': runner.native_manifest, 'installed_bindings': runner.installed_bindings,
+                'protected_executable_contract': runner.protected_contract,
                 'installation_parent': runner.install_parent_observation,
                 'records': runner.records, 'diagnostics': diagnostics, 'raw_traceback': raw_traceback,
                 'release_gate_qualified': False, 'scope': 'Normal public production request on disposable hosted macOS; other production failures have separate gates.'}
