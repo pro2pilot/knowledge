@@ -96,6 +96,8 @@ class ProductionEvidence(unittest.TestCase):
             value['cases'][0]['terminal'].update(token=secret, result=secret, acceptances=secret,
                 error_code=secret, error={'message': secret, 'stage': secret, 'containment': {'reason': secret},
                     'teardown': {'status': secret}, 'recovery_required': secret, 'timed_out': secret})
+            value['cases'][0]['terminal']['failed_command_observation'] = {key: secret for key in
+                ('code', 'teardown_status', 'recovery_required', 'timed_out', 'failure_status', 'failure_exit_code')}
             value['protected_executable_contract'].update(path=secret, raw=secret)
             value['protected_executable_contract']['cases'][0]['after'].update(path=secret, stdout=secret, native_error=secret)
             value['records'] = [{'name': '001-'+secret, 'exit_code': 1, 'stdout': secret}]

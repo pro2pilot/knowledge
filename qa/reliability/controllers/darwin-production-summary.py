@@ -7,7 +7,8 @@ HEX = re.compile(r'^[a-f0-9]{64}$')
 FILES = {'darwin-production-lifecycle.py', 'run_pipeline4.py', 'external-frame'}
 TYPES = {'QAError', 'FileNotFoundError', 'PermissionError', 'TypeError', 'AttributeError', 'KeyError', 'ValueError',
     'OSError', 'TimeoutExpired', 'RuntimeError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'UnknownException'}
-PHASES = {'input', 'public-run', 'finalization-reader', 'retry', 'complete'}
+PHASES = {'input', 'public-run', 'finalization-reader', 'failed-command-contract', 'failed-cleanup-contract',
+    'failed-KVE-reader', 'failed-control-release', 'retry', 'complete'}
 PRODUCT_PHASES = {'setup', 'copy_chunk', 'test_setup', 'command', 'finalization', 'receipt_commit', 'between_tests', 'batch_finalization'}
 PROOF_DIAGNOSTICS = {'proof_top_current', 'proof_body_current', 'proof_reply_flags', 'proof_schema', 'proof_source_binding',
     'proof_digest', 'proof_boundary_facts', 'proof_clock', 'proof_terminal', 'proof_command_drain', 'proof_structure',
@@ -182,10 +183,18 @@ def build(private, source, controller_status, architecture, case_set='normal'):
         if isinstance(terminal.get('result'), list) and len(terminal['result']) == 1 and isinstance(terminal['result'][0], dict):
             record = terminal['result'][0].get('record')
         record = record if isinstance(record, dict) else {}
+        failed_command = terminal.get('failed_command_observation') if isinstance(terminal.get('failed_command_observation'), dict) else {}
         cases.append({'name': item['name'], 'status': item.get('status') if item.get('status') in ('PASS_PHYSICAL_PRODUCTION', 'FAIL') else 'UNCONFIRMED',
             'elapsed_ms': number(item.get('elapsed_ms')), 'controller_exit_code': exit_code(item.get('controller_exit_code')),
             'KVE_KVF_ACK_verified': boolean(item.get('KVE_KVF_ACK_verified')), 'phase': terminal.get('stage') if terminal.get('stage') in PHASES else 'unknown',
             'failed_observation_verified': boolean(item.get('failed_observation_verified')),
+            'failed_command_error_code': failed_command.get('code') if failed_command.get('code') in codes else None,
+            'failed_command_teardown_status': failed_command.get('teardown_status') if failed_command.get('teardown_status') in
+                ('completed', 'unconfirmed', 'not_required') else None,
+            'failed_command_recovery_required': boolean(failed_command.get('recovery_required')),
+            'failed_command_timed_out': boolean(failed_command.get('timed_out')),
+            'failed_command_status': failed_command.get('failure_status') if failed_command.get('failure_status') in ('pass', 'fail') else None,
+            'failed_command_exit_code': exit_code(failed_command.get('failure_exit_code')),
             'success': boolean(terminal.get('success')), 'error_code': terminal.get('error_code') if terminal.get('error_code') in codes else None,
             'containment_reason': containment.get('reason') if containment.get('reason') in codes else None,
             'product_stage': err.get('stage') if err.get('stage') in PRODUCT_PHASES else None,

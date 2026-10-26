@@ -28,6 +28,7 @@ def reduce_case(item, codes):
     recovery_error = recovery.get('error') if isinstance(recovery.get('error'), dict) else {}
     recovery_result = recovery.get('result') if isinstance(recovery.get('result'), dict) else {}
     identity_probe = recovery.get('owner_identity_probe') if isinstance(recovery.get('owner_identity_probe'), dict) else {}
+    query_diagnostic = identity_probe.get('query_diagnostic') if isinstance(identity_probe.get('query_diagnostic'), dict) else {}
     teardown = error.get('teardown') if isinstance(error.get('teardown'), dict) else {}
     inner_recovery = teardown.get('recovery') if isinstance(teardown.get('recovery'), dict) else {}
     row = {'name': name, 'status': 'FAIL_OR_INCOMPLETE',
@@ -38,6 +39,12 @@ def reduce_case(item, codes):
            'external_recovery_error': enum(recovery_error.get('code'), codes),
            'owner_identity_probe_status': enum(identity_probe.get('status'), ('observed', 'unconfirmed')),
            'owner_identity_probe_code': enum(identity_probe.get('code'), codes),
+           'owner_identity_query_phase': enum(query_diagnostic.get('phase'), ('source_read', 'protected_broker',
+               'probe_transport', 'probe_decode', 'probe_validation', 'operation_transport', 'operation_decode', 'operation_validation')),
+           'owner_identity_query_exception': enum(query_diagnostic.get('exception'), ('Error', 'TypeError', 'RangeError', 'SyntaxError')),
+           'owner_identity_query_system_code': enum(query_diagnostic.get('system_code'), ('EACCES', 'EPERM', 'ENOENT',
+               'ENOTDIR', 'EISDIR', 'ELOOP', 'EBADF', 'EIO', 'EMFILE', 'ENFILE', 'ENOMEM', 'EAGAIN', 'ETIMEDOUT', 'EPIPE',
+               'ENOTSUP', 'ENOSYS', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_OUT_OF_RANGE', 'ERR_UNKNOWN_ENCODING', 'ERR_DLOPEN_FAILED')),
            'external_recovery_stage': enum(recovery.get('stage'), ('input', 'status', 'cancel', 'recover')),
            'external_recovery_status': enum(recovery_result.get('status'),
                ('failed', 'cancelled', 'already_terminal', 'requires_native_recovery', 'unconfirmed')),

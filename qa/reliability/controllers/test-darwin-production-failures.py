@@ -120,6 +120,17 @@ class Cases(unittest.TestCase):
                 self.assertEqual(output['owner_identity_probe_code'], code if code == 'verification_cancelled' else None)
                 self.assertNotIn('private-token-path-message', json.dumps(output))
 
+    def test_query_stage_diagnostics_are_closed_enums_only(self):
+        good = {'phase': 'operation_decode', 'exception': 'SyntaxError', 'system_code': 'EACCES'}
+        for diagnostic in (good, {key: 'NEVER_PUBLIC_secret' for key in good}, None, 'NEVER_PUBLIC_secret'):
+            value = fixture('cancel');value['status'] = 'FAIL'
+            value['observations']['recovery_return'] = {'owner_identity_probe': {'query_diagnostic': diagnostic}}
+            output = module.reduce_case(value, CODES)
+            self.assertEqual(output['status'], 'FAIL_OR_INCOMPLETE')
+            for key, expected in (('phase', 'operation_decode'), ('exception', 'SyntaxError'), ('system_code', 'EACCES')):
+                self.assertEqual(output['owner_identity_query_'+key], expected if diagnostic == good else None)
+            self.assertNotIn('NEVER_PUBLIC', json.dumps(output))
+
 
 if __name__ == '__main__':
     unittest.main()

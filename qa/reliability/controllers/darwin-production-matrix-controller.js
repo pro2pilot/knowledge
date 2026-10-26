@@ -16,6 +16,7 @@ process.stdin.on('data', chunk => {
 });
 process.stdin.once('end', () => {
   let stage = 'input';
+  let commandError;
   try {
     assert.equal(process.platform, 'darwin');
     const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -44,20 +45,23 @@ process.stdin.once('end', () => {
     process.stdout.write(JSON.stringify({ type: 'started', case_name: input.case_name, pid: process.pid }) + '\n');
     stage = 'public-run';
     const started = process.hrtime.bigint();
-    let result, commandError;
+    let result;
     try { result = supervisor.runSupervised(request, 240000); }
     catch (error) { if (input.case_name !== 'exit7') throw error;commandError = error; }
     const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
     stage = 'finalization-reader';
     if (input.case_name === 'exit7') {
+      stage = 'failed-command-contract';
       assert.equal(result, undefined);
       assert.equal(commandError?.code, 'verification_command_failed');
       assert.equal(commandError.command_failure?.status, 'fail');
       assert.equal(commandError.command_failure?.exit_code, 7);
       assert.equal(commandError.command_failure?.signal, null);
+      stage = 'failed-cleanup-contract';
       assert.equal(commandError.teardown?.status, 'completed');
       assert.equal(commandError.recovery_required, false);
       assert.equal(commandError.timed_out, false);
+      stage = 'failed-KVE-reader';
       const id = commandError.command_failure.execution_id;
       const loaded = execution.loadExecutionRecord(stateRoot, id);
       assert.ok(loaded, 'the failed KVE must exist physically and validate');
@@ -69,6 +73,7 @@ process.stdin.once('end', () => {
       assert.equal(loaded.record.signal, null);assert.equal(loaded.record.timed_out, false);
       assert.throws(() => finalization.requireFinalizedExecutions(stateRoot, [id], []),
         { code: 'verification_finalization_required' });
+      stage = 'failed-control-release';
       const failedStatus = control.readStatus({ stateRoot, repoRoot: input.project });
       assert.equal(failedStatus.attempt.claimed, false);
       assert.equal(failedStatus.attempt.cleanup.status, 'confirmed');
@@ -129,6 +134,10 @@ process.stdin.once('end', () => {
   } catch (error) {
     process.stdout.write(JSON.stringify({ type: 'result', success: false, stage,
       error_code: typeof error.code === 'string' ? error.code : 'controller_assertion_failed',
+      failed_command_observation: commandError ? { code: commandError.code,
+        teardown_status: commandError.teardown?.status, recovery_required: commandError.recovery_required,
+        timed_out: commandError.timed_out, failure_status: commandError.command_failure?.status,
+        failure_exit_code: commandError.command_failure?.exit_code } : null,
       error: { message: error.message, stack: error.stack, ...error } }) + '\n');
     process.exitCode = 1;
   }
