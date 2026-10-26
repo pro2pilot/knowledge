@@ -131,6 +131,26 @@ function completeResult(message, request, batchId, requestDigest, publicKey) {
       item.record.status === 'pass' && item.record.exit_code === 0 && item.record.signal === null &&
       item.record.timed_out === false && wire.canonical(item.record.command_argv) === wire.canonical(request.tests[index].argv));
 }
+function firstCommandFailure(message, request, batchId, requestDigest, publicKey) {
+  // This is a diagnostic for a completed nonzero command, never an acceptance
+  // predicate. Timeout, missing records and unbound results retain their own
+  // incomplete/failure path, and every failed batch still receives no ACK.
+  if (!Array.isArray(message?.result) || message.result.length !== request.tests.length || !message.result.length) return null;
+  let failed = null;
+  for (const [index, item] of message.result.entries()) {
+    const record = item?.record;
+    if (!record || record.batch_id !== batchId || record.batch_ordinal !== index ||
+        record.batch_request_sha256 !== requestDigest || record.batch_public_key !== publicKey ||
+        !/^KVE-[a-f0-9]{64}$/.test(record.execution_id || '') ||
+        !['pass', 'fail'].includes(record.status) || !Number.isSafeInteger(record.exit_code) ||
+        record.exit_code < 0 || record.exit_code > 255 || record.signal !== null || record.timed_out !== false ||
+        (record.status === 'pass') !== (record.exit_code === 0) ||
+        wire.canonical(record.command_argv) !== wire.canonical(request.tests[index].argv)) return null;
+    if (record.status === 'fail' && !failed) failed = { execution_id: record.execution_id,
+      status: 'fail', exit_code: record.exit_code, signal: null };
+  }
+  return failed;
+}
 async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   request = inert(request);const config = guardInput(request, timeoutMs, started);
   const policy = policyAPI.resolvePolicy(request.verificationPolicy, timeoutMs);
@@ -279,7 +299,11 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
         }
         if (event.type === 'committed') { meaningful();return; }
         if (event.type === 'work_complete') {
-          if (!completeResult(event, request, batchId, requestDigest, publicKey)) throw failure('verification_batch_incomplete');
+          if (!completeResult(event, request, batchId, requestDigest, publicKey)) {
+            const commandFailure = firstCommandFailure(event, request, batchId, requestDigest, publicKey);
+            if (commandFailure) throw failure('verification_command_failed', { command_failure: commandFailure });
+            throw failure('verification_batch_incomplete');
+          }
           startCleanup();await store.request('cleanup_epoch', { deadline_ns: String(cleanupDeadline) });return;
         }
         if (event.type === 'complete') { completedResolve(event);return; }
@@ -391,6 +415,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
       ...(unavailable ? { containment: { platform: process.platform, backend: 'darwin_private_ruid',
         status: 'unavailable', reason: primary?.code || 'broker_preflight_failed' } } : {}),
       timed_out: primary?.timed_out === true, darwin_diagnostic: diagnostic(primary?.darwin_diagnostic), attempt_id: owner?.attempt_id || null,
+      ...(primary?.code === 'verification_command_failed' && primary.command_failure ? { command_failure: primary.command_failure } : {}),
       recovery_required: !!store && !recovered, stage: phaseName,
       result_visibility: 'ack_not_delivered',
       terminal_commit: recovery?.terminal_outcome || terminalCommitObserved ||
@@ -438,4 +463,4 @@ if (require.main === module && process.argv[2] === '--controller') {
       teardown: { status: 'unconfirmed' } }), () => process.exit(0)); }
   });
 }
-module.exports = { PROTOCOL, runSync, runAsync, completeResult };
+module.exports = { PROTOCOL, runSync, runAsync, completeResult, firstCommandFailure };

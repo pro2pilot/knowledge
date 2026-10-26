@@ -111,9 +111,10 @@ class ProductionEvidence(unittest.TestCase):
 
     def test_basic_matrix_requires_exact_cases_real_silence_and_failed_exit7(self):
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder);private = root/'private';private.mkdir();source = root/'source';source.mkdir()
-            (source/'seed.js').write_bytes(b'fixture');(source/'seed.js').chmod(0o600)
-            inputs = {'files': [{'path': 'source/seed.js', 'bytes': 7, 'sha256': hashlib.sha256(b'fixture').hexdigest(), 'executable': False}],
+            root = Path(folder);private = root/'private';private.mkdir();source = root/'source';(source/'tools/lib').mkdir(parents=True)
+            code = b"const code = 'verification_command_failed';\n"
+            file = source/'tools/lib/verification-darwin-production.js';file.write_bytes(code);file.chmod(0o600)
+            inputs = {'files': [{'path': 'source/tools/lib/verification-darwin-production.js', 'bytes': len(code), 'sha256': hashlib.sha256(code).hexdigest(), 'executable': False}],
                 **{key: 'c'*64 for key in ('controller_sha256', 'lifecycle_sha256', 'reference_runner_sha256',
                     'matrix_controller_sha256', 'workloads_sha256')}}
             (private/'INPUTS.json').write_text(json.dumps(inputs))
@@ -127,6 +128,13 @@ class ProductionEvidence(unittest.TestCase):
                         finalized={'status': 'accepted'}, acceptances=[{'private_receipt': 'NEVER_PUBLIC_acceptance'}],
                         budget={'no_progress_ms': 500 if name == 'silent_long' else 0,
                             'progress_monitored_operations': ['native_copy_chunk']})
+                    if name == 'exit7':
+                        row.update(KVE_KVF_ACK_verified=False, failed_observation_verified=True)
+                        row['terminal'].update(finalized={'status': 'not_accepted'}, acceptances=[],
+                            error_code='verification_command_failed', error={'teardown': {'status': 'completed'},
+                                'recovery_required': False, 'timed_out': False}, failed_KVE_verified=True,
+                            failed_attempt_no_ACK=True, failed_cleanup_confirmed=True,
+                            retry_accepted=True, retry_distinct_attempt=True)
                     value['cases'].append(row)
                 return value
             variants = [('valid', good(), 0)]
@@ -136,6 +144,15 @@ class ProductionEvidence(unittest.TestCase):
                 ('extra', lambda v: v['cases'].append({'name': 'unknown'})),
                 ('exit7-mislabeled-pass', lambda v: v['cases'][3]['terminal']['result'][0]['record'].update(status='pass')),
                 ('exit7-wrong-code', lambda v: v['cases'][3]['terminal']['result'][0]['record'].update(exit_code=0)),
+                ('exit7-false-ACK', lambda v: v['cases'][3].update(KVE_KVF_ACK_verified=True)),
+                ('exit7-unverified-observation', lambda v: v['cases'][3].update(failed_observation_verified=False)),
+                ('exit7-no-durable-KVE', lambda v: v['cases'][3]['terminal'].update(failed_KVE_verified=False)),
+                ('exit7-has-ACK', lambda v: v['cases'][3]['terminal'].update(acceptances=[{'signature': 'NEVER_PUBLIC'}])),
+                ('exit7-unconfirmed-cleanup', lambda v: v['cases'][3]['terminal'].update(failed_cleanup_confirmed=False)),
+                ('exit7-recovery-required', lambda v: v['cases'][3]['terminal']['error'].update(recovery_required=True)),
+                ('exit7-wrong-error', lambda v: v['cases'][3]['terminal'].update(error_code='verification_containment_unavailable')),
+                ('exit7-retry-failed', lambda v: v['cases'][3]['terminal'].update(retry_accepted=False)),
+                ('exit7-retry-reused', lambda v: v['cases'][3]['terminal'].update(retry_distinct_attempt=False)),
                 ('short-silence', lambda v: v['cases'][2]['terminal'].update(observed_elapsed_ms=124999)),
                 ('disabled-progress-policy', lambda v: v['cases'][2]['terminal']['budget'].update(no_progress_ms=0)),
                 ('opaque-progress-policy', lambda v: v['cases'][2]['terminal']['budget'].update(progress_monitored_operations=['command'])),

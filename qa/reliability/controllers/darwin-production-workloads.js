@@ -51,8 +51,8 @@ process.stdout.write('scratch-write-and-source-readonly-confirmed\n');
   }),
   exit7: Object.freeze({
     expected_exit: 7, no_progress_ms: 0, test_timeout_ms: 180000,
-    // A finalized failed execution is a valid observation. Its acceptance
-    // authenticates the recorded failure; it must never become a passing KVE.
+    // Darwin preserves a failed execution as a durable KVE and returns a typed
+    // command error after cleanup. This batch receives no finalization ACK.
     source: "'use strict';\nprocess.stderr.write('intentional-exit-seven\\n');\nprocess.exitCode = 7;\n",
   }),
 });

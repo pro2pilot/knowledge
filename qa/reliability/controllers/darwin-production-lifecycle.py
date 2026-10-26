@@ -343,7 +343,7 @@ def main():
                 'config': {key: str(info[key]) for key in ('binary', 'socket')}}
             begin = time.monotonic();self.public_started = True;self.public_completed = False
             result = self.run('public-production-'+name, [str(info['node']), str(matrix_controller)],
-                data=base.canonical(request), timeout=330)
+                data=base.canonical(request), timeout=660 if name == 'exit7' else 330)
             terminal = None
             for line in result.stdout.splitlines():
                 try: event = json.loads(line)
@@ -357,7 +357,12 @@ def main():
             self.check(result.returncode == 0 and terminal and terminal.get('success') is True and
                 terminal.get('case_name') == name and terminal.get('source_unchanged') is True,
                 'public_production_basic_failed')
-            row['status'] = 'PASS_PHYSICAL_PRODUCTION';row['KVE_KVF_ACK_verified'] = True
+            row['status'] = 'PASS_PHYSICAL_PRODUCTION';row['KVE_KVF_ACK_verified'] = name != 'exit7'
+            if name == 'exit7':
+                self.check(terminal.get('failed_KVE_verified') is True and terminal.get('failed_attempt_no_ACK') is True
+                    and terminal.get('failed_cleanup_confirmed') is True and terminal.get('retry_accepted') is True
+                    and terminal.get('retry_distinct_attempt') is True, 'public_production_basic_failed')
+                row['failed_observation_verified'] = True
             self.public_completed = True
 
         def cleanup(self):

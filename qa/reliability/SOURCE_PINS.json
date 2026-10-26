@@ -1,7 +1,7 @@
 {
   "schema": "knowledge-reliability-native-source-pins.v1",
   "base_audit2_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
-  "scope": "Mac07 exact603 plus fixed ordinary-UID storage guardian (existing broker local CLI), exact S waitpid/atomic birth fallback, M integration. Actual native G qualification pending.",
+  "scope": "Mac08 exact604 plus typed observed command-failure return; no-ACK failure semantics, complete physical cleanup and independent retry tested by basic cohort.",
   "files": {
     ".gitattributes": "fd39cfa01f1688563d76c600e65c86c91820b9b2a77ee1abb7707151ccc8cea1",
     ".gitignore": "35eccdde5015c84da14233506c23a183644ff8b582ec20800ed089981777bd59",
@@ -484,7 +484,7 @@
     "tools/lib/verification-darwin-finalization.js": "a2f39a6555cbd53c20f7592e7e0958965d654ce4c7aa50f1bb66fb9d0d364c47",
     "tools/lib/verification-darwin-preparation.js": "d7af4acb1e466613a2033ad2ce6df141b29976064a00b2ddb4244851a0262c71",
     "tools/lib/verification-darwin-preparer.js": "9b197593098246139df59722f5f78e24b28891dfe5aee51d67c8d15bb2f19dfb",
-    "tools/lib/verification-darwin-production.js": "79ced7502f2870046f85c4f589f9afe32987583d88e8cd6ff8e0bd48f515ea4d",
+    "tools/lib/verification-darwin-production.js": "d23a579ccfcfc1514036772d015f8ed06d37d172a4b75e0226540d6666270850",
     "tools/lib/verification-darwin-scope.js": "33e14ec12c3e19c8b84857d0da78271ded3d750e1da1b4724c2181b8e0bd2f9b",
     "tools/lib/verification-darwin-session-protocol.js": "e0eff2c5d8999c17ad17a5e1a92ef956778bc91c9713df7de3f373cf30f91b80",
     "tools/lib/verification-darwin-session.js": "72f0f5edd1716381c5f4f90d974c52312a2fc0f46803c0f80b89b1aafc5b3812",

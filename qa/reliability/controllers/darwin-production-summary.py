@@ -7,7 +7,7 @@ HEX = re.compile(r'^[a-f0-9]{64}$')
 FILES = {'darwin-production-lifecycle.py', 'run_pipeline4.py', 'external-frame'}
 TYPES = {'QAError', 'FileNotFoundError', 'PermissionError', 'TypeError', 'AttributeError', 'KeyError', 'ValueError',
     'OSError', 'TimeoutExpired', 'RuntimeError', 'ImportError', 'ModuleNotFoundError', 'SyntaxError', 'UnknownException'}
-PHASES = {'input', 'public-run', 'finalization-reader', 'complete'}
+PHASES = {'input', 'public-run', 'finalization-reader', 'retry', 'complete'}
 PRODUCT_PHASES = {'setup', 'copy_chunk', 'test_setup', 'command', 'finalization', 'receipt_commit', 'between_tests', 'batch_finalization'}
 PROOF_DIAGNOSTICS = {'proof_top_current', 'proof_body_current', 'proof_reply_flags', 'proof_schema', 'proof_source_binding',
     'proof_digest', 'proof_boundary_facts', 'proof_clock', 'proof_terminal', 'proof_command_drain', 'proof_structure',
@@ -185,6 +185,7 @@ def build(private, source, controller_status, architecture, case_set='normal'):
         cases.append({'name': item['name'], 'status': item.get('status') if item.get('status') in ('PASS_PHYSICAL_PRODUCTION', 'FAIL') else 'UNCONFIRMED',
             'elapsed_ms': number(item.get('elapsed_ms')), 'controller_exit_code': exit_code(item.get('controller_exit_code')),
             'KVE_KVF_ACK_verified': boolean(item.get('KVE_KVF_ACK_verified')), 'phase': terminal.get('stage') if terminal.get('stage') in PHASES else 'unknown',
+            'failed_observation_verified': boolean(item.get('failed_observation_verified')),
             'success': boolean(terminal.get('success')), 'error_code': terminal.get('error_code') if terminal.get('error_code') in codes else None,
             'containment_reason': containment.get('reason') if containment.get('reason') in codes else None,
             'product_stage': err.get('stage') if err.get('stage') in PRODUCT_PHASES else None,
@@ -199,6 +200,11 @@ def build(private, source, controller_status, architecture, case_set='normal'):
             'finalized_accepted': terminal.get('finalized', {}).get('status') == 'accepted' if isinstance(terminal.get('finalized'), dict) else False,
             'acceptance_count': len(terminal['acceptances']) if isinstance(terminal.get('acceptances'), list) else None,
             'source_unchanged': boolean(terminal.get('source_unchanged')),
+            'failed_KVE_verified': boolean(terminal.get('failed_KVE_verified')),
+            'failed_attempt_no_ACK': boolean(terminal.get('failed_attempt_no_ACK')),
+            'failed_cleanup_confirmed': boolean(terminal.get('failed_cleanup_confirmed')),
+            'retry_accepted': boolean(terminal.get('retry_accepted')),
+            'retry_distinct_attempt': boolean(terminal.get('retry_distinct_attempt')),
             'no_progress_ms': number(terminal.get('budget', {}).get('no_progress_ms')) if isinstance(terminal.get('budget'), dict) else None,
             'copy_only_progress_monitor': terminal.get('budget', {}).get('progress_monitored_operations') == ['native_copy_chunk'] if isinstance(terminal.get('budget'), dict) else False})
     diagnostics = []
@@ -252,8 +258,9 @@ def build(private, source, controller_status, architecture, case_set='normal'):
     expected_status = {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
         'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL'}.get(case_set)
     accepted_cases = all(case['status'] == 'PASS_PHYSICAL_PRODUCTION_FAILURE' if case['name'] in FAILURE_CASES and case_set == 'failures' else \
-        case['status'] == 'PASS_PHYSICAL_PRODUCTION' and case['success'] is True and case['KVE_KVF_ACK_verified'] is True and \
-        case['controller_exit_code'] == 0 for case in cases)
+        case['status'] == 'PASS_PHYSICAL_PRODUCTION' and case['success'] is True and case['controller_exit_code'] == 0 and \
+        (case['KVE_KVF_ACK_verified'] is False and case['failed_observation_verified'] is True if case_set == 'basic' and case['name'] == 'exit7' \
+            else case['KVE_KVF_ACK_verified'] is True) for case in cases)
     passed = controller_status == 0 and raw.get('status') == expected_status and raw.get('source_unchanged') is True and \
         raw.get('cleanup_confirmed') is True and raw.get('architecture') == architecture and case_inventory_valid and len(cases) == len(expected_cases) and \
         accepted_cases and \
@@ -266,7 +273,12 @@ def build(private, source, controller_status, architecture, case_set='normal'):
         passed = passed and raw.get('case_set') == 'basic' and all(case['name'] == 'normal' or \
             case['execution_exit_code'] == case['expected_exit_code'] and \
             case['execution_status'] == ('pass' if case['expected_exit_code'] == 0 else 'fail') and \
-            case['finalized_accepted'] and case['acceptance_count'] == 1 and case['source_unchanged'] is True and \
+            (case['finalized_accepted'] is False and case['acceptance_count'] == 0 and \
+                case['error_code'] == 'verification_command_failed' and case['teardown_status'] == 'completed' and \
+                case['recovery_required'] is False and case['timed_out'] is False and \
+                all(case[key] is True for key in ('failed_KVE_verified', 'failed_attempt_no_ACK', 'failed_cleanup_confirmed',
+                    'retry_accepted', 'retry_distinct_attempt')) if case['name'] == 'exit7' else \
+                case['finalized_accepted'] is True and case['acceptance_count'] == 1) and case['source_unchanged'] is True and \
             (case['name'] != 'silent_long' or case['observed_elapsed_ms'] is not None and case['observed_elapsed_ms'] >= 125000 and \
                 case['no_progress_ms'] == 500 and case['copy_only_progress_monitor']) for case in cases)
     if case_set == 'failures': passed = passed and raw.get('case_set') == 'failures'
@@ -292,7 +304,7 @@ def build(private, source, controller_status, architecture, case_set='normal'):
             if part.removeprefix('cleanup:') in FAILURES][:4] if isinstance(raw.get('failure'), str) else [],
         'workflow_commit': os.environ.get('GITHUB_SHA') if re.fullmatch('[a-f0-9]{40}', os.environ.get('GITHUB_SHA', '')) else None,
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID') if re.fullmatch('[0-9]+', os.environ.get('GITHUB_RUN_ID', '')) else None,
-        'release_gate_qualified': False, 'scope': 'Fixed public production cohort; paused storage plus controller death includes explicitly operator-assisted storage exit. Kernel I/O stalls and release qualification remain separate.',
+        'release_gate_qualified': False, 'scope': 'Fixed public production cohort. Double storage-guardian and controller death preserves a live writer claim until explicitly operator-assisted exit. Kernel I/O stalls and release qualification remain separate.',
         'raw_evidence_scope': 'runner-private; tokens, raw native replies, account/host identifiers, paths and payload output excluded'}
     parent = raw.get('installation_parent') if isinstance(raw.get('installation_parent'), dict) else {}
     summary['installation_parent'] = {key: boolean(parent.get(key)) for key in

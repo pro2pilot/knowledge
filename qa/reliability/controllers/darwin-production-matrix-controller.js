@@ -26,6 +26,7 @@ process.stdin.once('end', () => {
     const supervisor = require(path.join(lib, 'verification-supervisor'));
     const finalization = require(path.join(lib, 'verification-finalization'));
     const control = require(path.join(lib, 'verification-control'));
+    const execution = require(path.join(lib, 'verification-execution'));
     const stateRoot = path.join(input.project, '.knowledge');
     fs.mkdirSync(stateRoot, { mode: 0o700 });
     const script = path.join(input.project, 'run.js');
@@ -43,9 +44,67 @@ process.stdin.once('end', () => {
     process.stdout.write(JSON.stringify({ type: 'started', case_name: input.case_name, pid: process.pid }) + '\n');
     stage = 'public-run';
     const started = process.hrtime.bigint();
-    const result = supervisor.runSupervised(request, 240000);
+    let result, commandError;
+    try { result = supervisor.runSupervised(request, 240000); }
+    catch (error) { if (input.case_name !== 'exit7') throw error;commandError = error; }
     const elapsed = Number(process.hrtime.bigint() - started) / 1e6;
     stage = 'finalization-reader';
+    if (input.case_name === 'exit7') {
+      assert.equal(result, undefined);
+      assert.equal(commandError?.code, 'verification_command_failed');
+      assert.equal(commandError.command_failure?.status, 'fail');
+      assert.equal(commandError.command_failure?.exit_code, 7);
+      assert.equal(commandError.command_failure?.signal, null);
+      assert.equal(commandError.teardown?.status, 'completed');
+      assert.equal(commandError.recovery_required, false);
+      assert.equal(commandError.timed_out, false);
+      const id = commandError.command_failure.execution_id;
+      const loaded = execution.loadExecutionRecord(stateRoot, id);
+      assert.ok(loaded, 'the failed KVE must exist physically and validate');
+      assert.equal(loaded.record.execution_id, id);
+      assert.equal(loaded.record.task_id, request.taskId);
+      assert.equal(loaded.record.session_id, request.sessionId);
+      assert.deepEqual(loaded.record.command_argv, ['node', 'run.js']);
+      assert.equal(loaded.record.status, 'fail');assert.equal(loaded.record.exit_code, 7);
+      assert.equal(loaded.record.signal, null);assert.equal(loaded.record.timed_out, false);
+      assert.throws(() => finalization.requireFinalizedExecutions(stateRoot, [id], []),
+        { code: 'verification_finalization_required' });
+      const failedStatus = control.readStatus({ stateRoot, repoRoot: input.project });
+      assert.equal(failedStatus.attempt.claimed, false);
+      assert.equal(failedStatus.attempt.cleanup.status, 'confirmed');
+      assert.equal(failedStatus.attempt.terminal.outcome, 'failed');
+      assert.equal(failedStatus.attempt.terminal.ack_sha256, null);
+      assert.equal(digest(fs.readFileSync(script)), digest(before));
+      // The independent next request must work after the failed batch is
+      // physically closed. It gets its own attempt, KVE, KVF and ACK.
+      stage = 'retry';
+      fs.writeFileSync(path.join(input.project, 'retry.js'), "'use strict';\nconsole.log('after-failed-execution');\n",
+        { flag: 'wx', mode: 0o600 });
+      const retryRequest = { ...request, taskId: 'native-qa-after-exit7', sourceFiles: ['retry.js'],
+        tests: [{ argv: ['node', 'retry.js'], cwd: '.', timeout_ms: 180000 }] };
+      const retry = supervisor.runSupervised(retryRequest, 240000);
+      assert.equal(retry.length, 1);assert.equal(retry[0].record.status, 'pass');
+      assert.equal(retry[0].record.exit_code, 0);assert.notEqual(retry[0].record.execution_id, id);
+      assert.equal(retry.verification_acceptances.length, 1);
+      const retryFinalized = finalization.requireFinalizedExecutions(stateRoot,
+        [retry[0].record.execution_id], retry.verification_acceptances);
+      assert.equal(retryFinalized.status, 'accepted');
+      const retryStatus = control.readStatus({ stateRoot, repoRoot: input.project });
+      assert.equal(retryStatus.attempt.claimed, false);
+      assert.equal(retryStatus.attempt.cleanup.status, 'confirmed');
+      assert.equal(retryStatus.attempt.terminal.outcome, 'passed');
+      assert.notEqual(retryStatus.attempt.attempt_id, failedStatus.attempt.attempt_id);
+      assert.equal(digest(fs.readFileSync(script)), digest(before));
+      stage = 'complete';
+      process.stdout.write(JSON.stringify({ type: 'result', success: true, stage,
+        case_name: input.case_name, expected_exit: 7, observed_elapsed_ms: elapsed,
+        result: [{ record: loaded.record }], acceptances: [], finalized: { status: 'not_accepted' },
+        error_code: commandError.code, error: { ...commandError },
+        failed_KVE_verified: true, failed_attempt_no_ACK: true, failed_cleanup_confirmed: true,
+        retry_accepted: true, retry_distinct_attempt: true, source_unchanged: true,
+        failed_status: failedStatus, retry_status: retryStatus }) + '\n');
+      return;
+    }
     assert.equal(result.length, 1);
     assert.equal(result[0].record.status, workload.expected_exit === 0 ? 'pass' : 'fail');
     assert.equal(result[0].record.exit_code, workload.expected_exit);

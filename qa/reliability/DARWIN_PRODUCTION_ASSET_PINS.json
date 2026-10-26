@@ -3,13 +3,13 @@
   "files": [
     {
       "repository_path": ".github/workflows/rc5-reliability-darwin-production.yml",
-      "bytes": 3673,
-      "sha256": "b07aa5e8150b4812c7633a9cc3814a48d9f515918d861dd10306ff787f0c0406"
+      "bytes": 3661,
+      "sha256": "ad1f732a9db99926ff6f4442ed84417421b87a0726fb61aa99ddf1cbee57b458"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-lifecycle.py",
-      "bytes": 40281,
-      "sha256": "1efea2e51fe27ff0386e08d7f9c8ceed772430982b9585a36ceb98570163b992"
+      "bytes": 40753,
+      "sha256": "1f118c96489c3cb49c04bb0b825563b16ca3d67761ca5c30f7b4f447eea0a040"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-controller.js",
@@ -23,13 +23,13 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-summary.py",
-      "bytes": 29665,
-      "sha256": "77d94b5d945183f4f7cb29fb1da1f66493c17eed863dc0465403b11631c54125"
+      "bytes": 30899,
+      "sha256": "143f21b93fb30daad19383431b01e4c241c6508e64dbc49cffbbad6f96954fb7"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-summary.py",
-      "bytes": 19487,
-      "sha256": "1b5383cc69f948f030fb6fcf21a7c4ed1cc891e5728dde24f9644e07ed8906de"
+      "bytes": 21318,
+      "sha256": "38ab65dab42ed379e75854b4f2195b42fdf365bbaff92160546995a42fe55cd5"
     },
     {
       "repository_path": "qa/reliability/controllers/test-darwin-production-request.js",
@@ -38,13 +38,13 @@
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-matrix-controller.js",
-      "bytes": 4226,
-      "sha256": "f802fdca229727d9b483ded00701d52095708d031f81a4e957d37332e40f5b57"
+      "bytes": 8238,
+      "sha256": "77a5f3399cdde98c841489a75969e2eb37e3eebd48139ac3daae858189ea913c"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-workloads.js",
-      "bytes": 3018,
-      "sha256": "58b2bf20ab2fef662dc4da9bf3fd60e5deb3f79550627d856a091f67c1638860"
+      "bytes": 3021,
+      "sha256": "a3d631de078e034735ce928e8a508667d10387610ce739089e56478de3ac1433"
     },
     {
       "repository_path": "qa/reliability/controllers/darwin-production-failure-cases.py",
@@ -151,8 +151,8 @@
   ],
   "production_qualified": false,
   "runtime_source_required": "qa/reliability/source/.knowledge",
-  "case_set": "failures",
-  "scope": "Actual public normal plus seven production failure scenarios; double M+G loss is explicitly fail-closed and operator-assisted fixture cleanup, never autonomous recovery.",
+  "case_set": "basic",
+  "scope": "Actual basic public contract: normal, scratch writes and source write denial, silent125s with progress500ms, durable exit7 KVE without ACK and a fresh successful retry. Release qualification remains separate.",
   "uploaded_artifacts": [
     "summary.json",
     "stages.json"

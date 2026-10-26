@@ -1,4 +1,4 @@
-name: RC5 reliability Darwin production failures matrix
+name: RC5 reliability Darwin production basic matrix
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   normal:
     name: public KVE KVF ACK (${{ matrix.arch }})
-    timeout-minutes: 90
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +50,7 @@ jobs:
           python3 qa/reliability/controllers/test-darwin-production-summary.py
           python3 qa/reliability/controllers/test-darwin-production-failures.py
           node qa/reliability/controllers/test-darwin-production-request.js --source qa/reliability/source/.knowledge --controller qa/reliability/controllers/darwin-production-controller.js
-      - name: Execute normal and failures public production cases
+      - name: Execute normal and basic public production cases
         shell: bash
         run: |
           umask 077
@@ -61,7 +61,7 @@ jobs:
             --source qa/reliability/source/.knowledge \
             --reference qa/reliability/reference \
             --evidence "$RUNNER_TEMP/knowledge-production-private/normal" \
-            --case-set failures \
+            --case-set basic \
             --expected-arch '${{ matrix.arch }}' \
             >"$RUNNER_TEMP/knowledge-production-private/controller.stdout" \
             2>"$RUNNER_TEMP/knowledge-production-private/controller.stderr"
@@ -71,7 +71,7 @@ jobs:
             --public "$RUNNER_TEMP/knowledge-production-public" \
             --source qa/reliability/source/.knowledge \
             --controller-status "$native_status" \
-            --case-set failures \
+            --case-set basic \
             --expected-arch '${{ matrix.arch }}'
           summary_status=$?
           if [ "$summary_status" -ne 0 ]; then exit "$summary_status"; fi
