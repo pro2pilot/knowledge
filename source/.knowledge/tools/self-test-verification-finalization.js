@@ -214,8 +214,18 @@ try {
     // Physical signing/readback/receipt-I/O stalls are exercised through the
     // current authority process in tests/native-watchdog-deadline.test.js.
     check('later command failure leaves partial KVE without usable acceptance', () => {
+      const receiptDirectory = path.join(state, 'maintenance/verification_finalizations');
+      const beforeReceipts = fs.existsSync(receiptDirectory) ? fs.readdirSync(receiptDirectory).sort() : [];
       let error; try { native.runVerificationTests(request(['pass.js', 'fail.js'])); } catch (caught) { error = caught; }
-      assert(error); assert.equal(error.completed_executions.length, 1);
+      assert(error); assert.equal(error.code, 'verification_command_failed');
+      assert.equal(error.completed_executions.length, 1);
+      assert.equal(error.completed_executions[0].status, 'pass');
+      assert.equal(error.command_failure.status, 'fail'); assert.equal(error.command_failure.exit_code, 3);
+      const observed = core.readExecutionRecord(state, error.command_failure.execution_id);
+      assert(observed && core.validateExecutionObservation(observed.record).ok);
+      assert.equal(core.loadExecutionRecord(state, error.command_failure.execution_id), null);
+      assert.equal(error.verification_acceptances, undefined);
+      assert.deepEqual(fs.existsSync(receiptDirectory) ? fs.readdirSync(receiptDirectory).sort() : [], beforeReceipts);
       const partial = error.completed_executions[0].execution_id;
       assert(core.loadExecutionRecord(state, partial));
       deny(() => final.requireFinalizedExecutions(state, [partial], acks));

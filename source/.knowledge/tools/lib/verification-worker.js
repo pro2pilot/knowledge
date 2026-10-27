@@ -20,11 +20,25 @@ process.on('message', async message => {
   try {
     const core = require('./repair-on-touch').__runVerificationTestsCore;
     const result = await core(message.request, { deadline: BigInt(message.deadline_ns), batchId: message.batch_id, publicKey: message.public_key, requestSha256: message.request_sha256, phase,
-      committed: item => send({ type: 'committed', value: { execution_id: item.record.execution_id, execution_sha256: item.record.content_sha256, execution_path: item.relative_path, status: item.record.status } }) });
+      committed: item => {
+        // A nonzero command is persisted as a diagnostic observation by the
+        // core. It must not enter the successful commit sequence or permit a
+        // terminal batch ACK. Keep earlier successful KVE records available.
+        if (item.record.status !== 'pass' || item.record.exit_code !== 0 ||
+            item.record.signal !== null || item.record.timed_out !== false ||
+            item.record.schema_version !== 'knowledge-verification-execution.v2') {
+          throw Object.assign(new Error('Verification command did not pass'), {
+            code: 'verification_command_failed',
+            command_failure: { execution_id: item.record.execution_id, status: item.record.status,
+              exit_code: item.record.exit_code, signal: item.record.signal }
+          });
+        }
+        return send({ type: 'committed', value: { execution_id: item.record.execution_id, execution_sha256: item.record.content_sha256, execution_path: item.relative_path, status: item.record.status } });
+      } });
     await send({ type: 'result', result });
   } catch (error) {
     const serialized = { code: error.code || 'verification_worker_failed', message: error.message };
-    for (const key of ['validation', 'lock_release_error', 'lock_cleanup_error', 'containment', 'execution', 'teardown']) if (error[key] !== undefined) serialized[key] = error[key];
+    for (const key of ['validation', 'lock_release_error', 'lock_cleanup_error', 'containment', 'execution', 'teardown', 'command_failure']) if (error[key] !== undefined) serialized[key] = error[key];
     await send({ type: 'error', error: serialized });
   }
   // Stay alive for the supervisor's owned-tree sweep, including on success.

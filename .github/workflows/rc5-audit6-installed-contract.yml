@@ -1,4 +1,4 @@
-name: RC5 audit6 installed public contract
+name: RC5 audit6 installed public contract with isolated fixtures
 
 on:
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
     timeout-minutes: 13
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 6
       matrix:
         include:
           - os: ubuntu-22.04
@@ -93,5 +93,6 @@ jobs:
             installed-contract/RESULT.json
             installed-contract/*.stdout.json
             installed-contract/*.stderr.txt
+            installed-contract/team-failure-evidence/**
           if-no-files-found: error
           retention-days: 3

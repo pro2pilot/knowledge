@@ -1,0 +1,46 @@
+name: RC5 audit6 exact installed ARM64 nested diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit6-linux-nested-diagnostic.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit6-linux-nested-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit6-exact-installed-zip
+          run-id: 40591368869
+          github-token: ${{ github.token }}
+          path: downloaded-package
+      - name: Observe exact clone errno and owned-PID AppArmor denials without policy changes
+        run: python3 -B qa/reliability/audit6/diagnose_linux_nested.py --package downloaded-package/public --out linux-nested-diagnostic
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit6-linux-nested-diagnostic-arm64
+          path: |
+            linux-nested-diagnostic/RESULT.json
+            linux-nested-diagnostic/nested.stdout.json
+            linux-nested-diagnostic/nested.stderr.txt
+          if-no-files-found: error
+          retention-days: 3

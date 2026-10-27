@@ -59,7 +59,7 @@ process.stdin.on('end', async () => {
   } catch (error) {
     const detail = { code: error.code || 'command_failed', message: error.message };
     for (const key of ['cleanup', 'run_id', 'retry_of', 'team_release', 'lock_release_error', 'lock_event_error', 'finalization_error', 'record_write_status', 'record_kind', 'timed_out', 'stage', 'verification_budget', 'completed_executions', 'teardown', 'authority_teardown',
-      'attempt_id', 'attempt_nonce', 'scope', 'recovery_required', 'result_visibility', 'terminal_commit', 'containment', 'execution', 'primary_error', 'invocation', 'cleanup_deadline_ns', 'invocation_recovery', 'recovery_teardown']) {
+      'attempt_id', 'attempt_nonce', 'scope', 'recovery_required', 'result_visibility', 'terminal_commit', 'containment', 'execution', 'primary_error', 'invocation', 'cleanup_deadline_ns', 'invocation_recovery', 'recovery_teardown', 'command_failure']) {
       if (error[key] !== undefined) detail[key] = error[key];
     }
     process.stdout.write(JSON.stringify({ error: detail }), () => { closeParent(); process.exit(1); });

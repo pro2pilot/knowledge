@@ -12,7 +12,7 @@ const remaining = deadline => Math.max(0, Number(deadline - clock()) / 1e6);
 
 function errorData(error) {
   const value = { message: String(error.message || 'Native verification failed') };
-  for (const key of ['code', 'timed_out', 'stage', 'verification_budget', 'completed_executions', 'teardown', 'teardown_status', 'containment', 'execution']) {
+  for (const key of ['code', 'timed_out', 'stage', 'verification_budget', 'completed_executions', 'teardown', 'teardown_status', 'containment', 'execution', 'command_failure']) {
     if (error[key] !== undefined) value[key] = error[key];
   }
   return value;

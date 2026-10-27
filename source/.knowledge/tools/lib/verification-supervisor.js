@@ -460,6 +460,9 @@ async function supervise(payload, workerFile = path.join(__dirname, 'verificatio
             item.record?.batch_id !== batchId || item.record?.batch_ordinal !== index ||
             item.record?.execution_id !== committed[index].execution_id ||
             item.record?.content_sha256 !== committed[index].execution_sha256 ||
+            item.record?.status !== 'pass' || item.record?.exit_code !== 0 ||
+            item.record?.signal !== null || item.record?.timed_out !== false ||
+            item.record?.schema_version !== 'knowledge-verification-execution.v2' ||
             JSON.stringify(item.record?.command_argv) !== JSON.stringify(payload.request.tests[index].argv.map(String))))) {
         error = { code: 'verification_batch_incomplete', message: 'Incomplete command batch' };
       }

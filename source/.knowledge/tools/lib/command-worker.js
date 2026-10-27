@@ -7,7 +7,7 @@ const send = value => { if (process.connected) process.send(value, error => { if
 const serialize = (error, fallback = 'command_worker_error') => {
   const result = { code: error.code || fallback, message: error.message };
   for (const key of ['cleanup', 'run_id', 'retry_of', 'team_release', 'lock_release_error', 'lock_event_error', 'finalization_error', 'record_write_status', 'record_kind', 'timed_out', 'stage', 'verification_budget', 'completed_executions',
-    'teardown', 'authority_teardown', 'attempt_id', 'recovery_required', 'result_visibility', 'terminal_commit', 'containment', 'execution', 'invocation', 'cleanup_deadline_ns', 'invocation_recovery', 'recovery_teardown']) {
+    'teardown', 'authority_teardown', 'attempt_id', 'recovery_required', 'result_visibility', 'terminal_commit', 'containment', 'execution', 'invocation', 'cleanup_deadline_ns', 'invocation_recovery', 'recovery_teardown', 'command_failure']) {
     if (error[key] !== undefined) result[key] = error[key];
   }
   return result;

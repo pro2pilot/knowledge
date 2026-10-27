@@ -5,8 +5,8 @@ This is installed-contract evidence, not an invented replacement for the
 missing maintainer release gate or the separate production platform matrix.
 """
 from __future__ import annotations
-import argparse, hashlib, importlib.util, json, os, pathlib, platform, re
-import shutil, signal, stat, subprocess, sys, time, zipfile
+import argparse, hashlib, importlib.util, json, math, os, pathlib, platform, re
+import shutil, signal, stat, subprocess, sys, tempfile, time, zipfile
 
 P = pathlib.Path
 ROOT = P(__file__).resolve().parents[3]
@@ -16,7 +16,7 @@ sha, save, need = base.sha, base.save, base.need
 MAX_OUTPUT = 8 * 1024 * 1024
 REGRESSIONS = ['reliability-recovery-adapter-ledger', 'reliability-recovery-adapter-budget',
                'reliability-recovery-outer-budget', 'reliability-recovery-deadline',
-               'verification-cleanup-transcript', 'verification-finalization-v2', 'verification-isolated-copy']
+               'verification-cleanup-transcript', 'verification-finalization-v2', 'verification-isolated-copy', 'reliability-macos-failed-observation']
 
 def strict_json(body):
     def unique(pairs):
@@ -26,28 +26,70 @@ def strict_json(body):
             value[key] = item
         return value
     def finite(value): raise ValueError('nonfinite JSON value: '+value)
-    return json.loads(body, object_pairs_hook=unique, parse_constant=finite)
+    def number(value):
+        result=float(value)
+        if not math.isfinite(result):raise ValueError('overflowed JSON number: '+value)
+        return result
+    return json.loads(body, object_pairs_hook=unique, parse_constant=finite, parse_float=number)
 
-def execute(name, argv, cwd, out, deadline, timeout=90):
-    before = time.monotonic()
-    row = {'name':name, 'argv':argv, 'status':'FAIL', 'timed_out':False}
-    stdout, stderr = out/(name+'.stdout.json'), out/(name+'.stderr.txt')
-    tmp = out/'tmp'; tmp.mkdir(exist_ok=True); tmp = tmp.resolve(strict=True)
-    env = {k:v for k,v in os.environ.items() if not k.startswith('KNOWLEDGE_')}
+def fixture_environment(tmp, out):
+    env = {k:v for k,v in os.environ.items() if not k.upper().startswith(('KNOWLEDGE_', 'GIT_'))}
     inherited = os.environ.get('TEMP', os.environ.get('TMP', os.environ.get('TMPDIR','')))
     env.update(CI='1', KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH='1', TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp),
                KNOWLEDGE_AUDIT5_INHERITED_TEMP=inherited,
+               KNOWLEDGE_TEAM_MODE_FAILURE_DIR=str(out/'team-failure-evidence'),
                GIT_AUTHOR_NAME='Knowledge fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
                GIT_COMMITTER_NAME='Knowledge fixture', GIT_COMMITTER_EMAIL='fixture@example.invalid')
+    return env
+
+def prepare_fixture_temp(out, report, deadline):
+    requested = os.environ.get('RUNNER_TEMP')
+    need(bool(requested), 'RUNNER_TEMP_required_for_isolated_fixtures')
+    parent = P(requested).resolve(strict=True)
+    need(parent.is_dir(), 'fixture_temp_parent_not_directory')
+    tmp = P(tempfile.mkdtemp(prefix='knowledge-installed-contract-', dir=parent)).resolve(strict=True)
+    checkout = ROOT.resolve(strict=True)
+    report['fixture_parent'] = {'requested_runner_temp':requested, 'canonical_runner_temp':str(parent),
+        'path':str(tmp), 'checkout':str(checkout), 'outside_checkout':checkout != tmp and checkout not in tmp.parents,
+        'inherited_temp':os.environ.get('TEMP', os.environ.get('TMP', os.environ.get('TMPDIR',''))),
+        'retained_for_diagnostics':True}
+    need(report['fixture_parent']['outside_checkout'], 'fixture_temp_is_inside_checkout')
+    allowance = min(10, deadline-time.monotonic());need(allowance>0,'fixture_probe_budget_exhausted')
+    environment = fixture_environment(tmp,out);environment.update(LANG='C',LC_ALL='C')
+    probe = subprocess.run(['git','rev-parse','--show-toplevel'],cwd=tmp,env=environment,
+        stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=allowance)
+    (out/'fixture-git-probe.stdout.txt').write_bytes(probe.stdout)
+    (out/'fixture-git-probe.stderr.txt').write_bytes(probe.stderr)
+    report['fixture_parent'].update(git_probe_exit=probe.returncode,
+        git_probe_stdout_sha256=hashlib.sha256(probe.stdout).hexdigest(),
+        git_probe_stderr_sha256=hashlib.sha256(probe.stderr).hexdigest())
+    need(probe.returncode != 0 and b'not a git repository' in probe.stderr.lower(),
+         'fixture_temp_inherits_git_repository_or_git_probe_failed')
+    return tmp
+
+def execute(name, argv, cwd, out, deadline, timeout=90, fixture_tmp=None):
+    before = time.monotonic()
+    row = {'name':name, 'argv':argv, 'status':'FAIL', 'timed_out':False}
+    stdout, stderr = out/(name+'.stdout.json'), out/(name+'.stderr.txt')
+    tmp = P(fixture_tmp if fixture_tmp is not None else tempfile.gettempdir()).resolve(strict=True)
+    env = fixture_environment(tmp,out)
     allowance = min(timeout, deadline-before)
     if allowance <= 0:
         row.update(status='NOT_RUN_BUDGET_EXHAUSTED', cleanup_confirmed=False)
         return row, None
+    print(json.dumps({'event':'step_start','name':name,'cap_s':round(allowance,3),
+                      'cohort_remaining_s':round(deadline-before,3)}),flush=True)
     with stdout.open('wb') as a, stderr.open('wb') as b:
         child = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                  stdout=a, stderr=b, start_new_session=(os.name != 'nt'))
         expires = before + allowance
+        next_progress = before + 15
         while child.poll() is None:
+            observed = time.monotonic()
+            if observed >= next_progress:
+                print(json.dumps({'event':'step_running','name':name,'elapsed_s':round(observed-before,3),
+                    'step_remaining_s':round(max(0,expires-observed),3)}),flush=True)
+                next_progress = observed + 15
             if max(stdout.stat().st_size, stderr.stat().st_size) > MAX_OUTPUT:
                 row['output_limit_exceeded'] = True
                 break
@@ -72,6 +114,8 @@ def execute(name, argv, cwd, out, deadline, timeout=90):
     row.update(exit_code=code, elapsed_s=round(time.monotonic()-before,3),
         stdout_sha256=sha(stdout), stderr_sha256=sha(stderr),
         stdout_bytes=stdout.stat().st_size, stderr_bytes=stderr.stat().st_size)
+    print(json.dumps({'event':'step_exit','name':name,'exit_code':code,'elapsed_s':row['elapsed_s'],
+                      'timed_out':row['timed_out'],'output_limit_exceeded':row.get('output_limit_exceeded',False)}),flush=True)
     if row['timed_out'] or row.get('output_limit_exceeded'):
         row.update(status='TIMEOUT_CLEANUP_UNCONFIRMED' if row['timed_out'] else 'OUTPUT_LIMIT_CLEANUP_UNCONFIRMED', cleanup_confirmed=False)
         return row, None
@@ -145,7 +189,8 @@ def installed(args,out,report):
     for expected in contract['native_runtime_artifacts']:
         base.native_pair(system,expected,system/expected['binary'],system/expected['manifest'])
     node=shutil.which('node');need(bool(node),'node_unavailable')
-    row,runtime=execute('installed-native-load',[node,'-e',base.NATIVE_JS],system,out,deadline)
+    fixture_tmp = prepare_fixture_temp(out,report,deadline)
+    row,runtime=execute('installed-native-load',[node,'-e',base.NATIVE_JS],system,out,deadline,fixture_tmp=fixture_tmp)
     report['steps'].append(row)
     need(row['status']=='PASS_PROCESS' and runtime and runtime.get('status')=='pass' and
          runtime.get('arch')==args.arch,'native_runtime_not_qualified')
@@ -154,36 +199,12 @@ def installed(args,out,report):
     # self-tests create their own fixtures using these installed modules.
     for name,argv in [('git-init',['git','init','--initial-branch=main']),
                       ('install-check',[node,str(system/'tools/install-check.js'),'--json'])]:
-        row,value=execute(name,argv,extracted,out,deadline)
+        row,value=execute(name,argv,extracted,out,deadline,fixture_tmp=fixture_tmp)
         report['steps'].append(row)
         if name=='install-check':
             row['report']=value
             row['status']='PASS_INSTALL_CHECK' if row['status']=='PASS_PROCESS' and isinstance(value,dict) and value.get('status') in ('ok','warning','warnings','pass') else 'FAIL_INSTALL_CHECK'
         need(row['status'].startswith('PASS'),name+'_failed')
-    # Run cheap contract checks first. The heavier physical lifecycle scripts
-    # retain independent per-script deadlines and cannot outlive this cohort.
-    heavy=['tools/self-test-team-mode.js','tools/self-test-team-registry-concurrency.js',
-           'tools/self-test-dedicated-verification.js','tools/self-test-linux-namespace.js']
-    ordered=[s for s in scripts if s not in heavy]+[s for s in heavy if s in scripts]
-    report['public_selftests']=scripts;report['selftests']=[]
-    for script in ordered:
-        name=P(script).stem
-        if script=='tools/self-test-linux-namespace.js' and sys.platform!='linux':
-            report['selftests'].append({'name':name,'script':script,'status':'NOT_APPLICABLE',
-                'reason':'physical_linux_namespace_requires_linux'});continue
-        args_extra=['--keep-temp'] if script=='tools/self-test-team-mode.js' else []
-        if script=='tools/self-test-recording-blockers.js' and sys.platform in ('linux','win32'):
-            args_extra=['--workflow-fixture']
-        row,value=execute(name,[node,str(system/script)]+args_extra,system,out,deadline,
-                          timeout=150 if script in heavy else 90)
-        row['script']=script;admit_report(script,row,value);report['selftests'].append(row)
-        if row['status'] in ('TIMEOUT_CLEANUP_UNCONFIRMED','OUTPUT_LIMIT_CLEANUP_UNCONFIRMED','NOT_RUN_BUDGET_EXHAUSTED'):
-            report['cohort_halted']=True
-            report['remaining_not_run']=[s for s in ordered[ordered.index(script)+1:]];break
-        if script=='tools/self-test-linux-namespace.js' and isinstance(value,dict):
-            closure=[x for x in value.get('results',[]) if x.get('name')=='physical_fixture_cleanup_requires_all_original_native_births_exited']
-            if not closure or closure[0].get('status')!='PASS':
-                report['fixture_cleanup_unconfirmed']=True;report['cohort_halted']=True;break
     # New source tests are deliberately absent from the public archive. Stage
     # just their pinned test bodies beside a copy of the actual installed code.
     report['source_regressions']=[]
@@ -195,7 +216,7 @@ def installed(args,out,report):
             need(rel in pins['files'] and sha(original)==pins['files'][rel],'regression_source_pin_mismatch:'+rel)
             target=testroot/rel;target.parent.mkdir(exist_ok=True);shutil.copyfile(original,target)
         for name in REGRESSIONS:
-            row,_=execute('source-'+name,[node,'--test','--test-reporter=tap',str(testroot/'tests'/(name+'.test.js'))],testroot,out,deadline,35)
+            row,_=execute('source-'+name,[node,'--test','--test-reporter=tap',str(testroot/'tests'/(name+'.test.js'))],testroot,out,deadline,35,fixture_tmp=fixture_tmp)
             body=(out/('source-'+name+'.stdout.json')).read_text() if 'stdout_sha256' in row else ''
             inventory=re.findall(r'^# (tests|pass|fail|skipped|cancelled|todo) (\d+)\s*$',body,re.M)
             counts={k:int(v) for k,v in inventory}
@@ -208,6 +229,34 @@ def installed(args,out,report):
             report['source_regressions'].append(row)
             if row.get('timed_out') or row.get('output_limit_exceeded') or row['status']=='NOT_RUN_BUDGET_EXHAUSTED':
                 report['cohort_halted']=True;break
+    # Run cheap contract checks first. The heavier physical lifecycle scripts
+    # retain independent per-script deadlines and cannot outlive this cohort.
+    heavy=['tools/self-test-team-registry-concurrency.js','tools/self-test-recording-blockers.js',
+           'tools/self-test-team-mode.js','tools/self-test-dedicated-verification.js',
+           'tools/self-test-linux-namespace.js','tools/self-test-agent-task-workflow.js']
+    ordered=[s for s in scripts if s not in heavy]+[s for s in heavy if s in scripts]
+    report['public_selftests']=scripts;report['selftests']=[]
+    report['planned_public_order']=ordered
+    report['script_time_caps_s']={'default':90,'heavy':150,'tools/self-test-agent-task-workflow.js':240}
+    if report.get('cohort_halted'):report['remaining_not_run']=ordered
+    for script in ([] if report.get('cohort_halted') else ordered):
+        name=P(script).stem
+        if script=='tools/self-test-linux-namespace.js' and sys.platform!='linux':
+            report['selftests'].append({'name':name,'script':script,'status':'NOT_APPLICABLE',
+                'reason':'physical_linux_namespace_requires_linux'});continue
+        args_extra=['--keep-temp'] if script=='tools/self-test-team-mode.js' else []
+        if script=='tools/self-test-recording-blockers.js' and sys.platform in ('linux','win32'):
+            args_extra=['--workflow-fixture']
+        row,value=execute(name,[node,str(system/script)]+args_extra,system,out,deadline,
+                          timeout=240 if script=='tools/self-test-agent-task-workflow.js' else 150 if script in heavy else 90,fixture_tmp=fixture_tmp)
+        row['script']=script;admit_report(script,row,value);report['selftests'].append(row)
+        if row['status'] in ('TIMEOUT_CLEANUP_UNCONFIRMED','OUTPUT_LIMIT_CLEANUP_UNCONFIRMED','NOT_RUN_BUDGET_EXHAUSTED'):
+            report['cohort_halted']=True
+            report['remaining_not_run']=[s for s in ordered[ordered.index(script)+1:]];break
+        if script=='tools/self-test-linux-namespace.js' and isinstance(value,dict):
+            closure=[x for x in value.get('results',[]) if x.get('name')=='physical_fixture_cleanup_requires_all_original_native_births_exited']
+            if not closure or closure[0].get('status')!='PASS':
+                report['fixture_cleanup_unconfirmed']=True;report['cohort_halted']=True;break
     changes=[name for name,entry in contents.items() if not (extracted/name).is_file() or sha(extracted/name)!=entry['sha256']]
     report['installed_byte_changes']=changes;report['installed_bytes_unchanged']=not changes
     rows=report['selftests'];report['selftest_counts']={s:sum(x['status']==s for x in rows) for s in sorted({x['status'] for x in rows})}
