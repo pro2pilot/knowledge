@@ -49,7 +49,7 @@ struct request { uint32_t magic, version, op, ordinal; unsigned char nonce[16]; 
 struct event { int kind, role, pid, uid, fd, ok; uint64_t address,completed_ms; };
 struct attempt {
   unsigned char nonce[16]; int sequence, keeper, keeperfd, channel, init, authority, worker;
-  int authority_uid, worker_uid, authority_fd, done, closed, exit_status, stop_reason;
+  int authority_uid, worker_uid, authority_fd, done, closed, exit_status, stop_reason,keeper_wait_status,init_wait_status;
   uint64_t authority_address,output_bytes; int worker_memory_denied,output_fd,output_eof,expired; long long started,cleanup_end;
 };
 struct init_args { int report, keeperfd, gate,output; uid_t authority, worker; };
@@ -103,6 +103,7 @@ static int event_recv(int fd,struct event *event,struct ucred *cred) {
     else if(c->cmsg_level==SOL_SOCKET&&c->cmsg_type==SCM_RIGHTS){unexpected=1;size_t count=(c->cmsg_len-CMSG_LEN(0))/sizeof(int);int *fds=(int *)CMSG_DATA(c);for(size_t i=0;i<count;i++)close(fds[i]);}
     else unexpected=1;
   }
+  if(n==0&&!credentials&&!unexpected&&!(msg.msg_flags&(MSG_TRUNC|MSG_CTRUNC)))return 2;
   return n==sizeof(*event)&&!(msg.msg_flags&(MSG_TRUNC|MSG_CTRUNC))&&credentials==1&&!unexpected?1:-1;
 }
 static int namespace_init(void *pointer) {
@@ -173,7 +174,7 @@ static void keeper(int channel,int sequence,uid_t authority,uid_t worker,int sta
   }
   struct event born={.kind=1,.pid=init,.ok=1};
   if(event_send(channel,&born)||write_all(birth[1],"G",1)){pidfd_kill(initfd);_exit(130);}close(birth[1]);
-  long long start=monotonic_ms(),end=start+WORK_MS;int reason=0,actor_count=0,actor_ok=1;
+  long long start=monotonic_ms(),end=start+WORK_MS;int reason=0,actor_count=0,actor_mask=0,actor_ok=1;
   while(!reason){
     struct pollfd p[4]={{daemonfd,POLLIN,0},{channel,POLLIN,0},{actors[0],POLLIN,0},{callerfd,POLLIN,0}};
     if(poll(p,4,50)<0&&errno!=EINTR){reason=5;break;}
@@ -183,8 +184,10 @@ static void keeper(int channel,int sequence,uid_t authority,uid_t worker,int sta
     if(p[1].revents&POLLIN){char command[2];ssize_t n=recv(channel,command,sizeof(command),MSG_DONTWAIT);if(n!=1||command[0]!='S')reason=5;else reason=1;}
     if(p[2].revents&POLLIN){
       struct event event;struct ucred cred;int rc=event_recv(actors[0],&event,&cred);
-      if(rc!=1||event.kind!=2||!((event.role==1&&cred.uid==authority)||(event.role==2&&cred.uid==worker))||++actor_count>2){actor_ok=0;reason=5;}
-      else{event.pid=cred.pid;if(!event.ok)actor_ok=0;if(event_send(channel,&event)){reason=5;actor_ok=0;}}
+      if(rc==0){/* Spurious readiness: preserve pending state and check budgets below. */}
+      else if(rc==2&&(p[2].revents&POLLHUP)&&actor_count==2&&actor_mask==3){close(actors[0]);actors[0]=-1;}
+      else if(rc!=1||event.kind!=2||!((event.role==1&&cred.uid==authority&&!(actor_mask&1))||(event.role==2&&cred.uid==worker&&!(actor_mask&2)))||++actor_count>2){actor_ok=0;reason=5;}
+      else{actor_mask|=event.role;event.pid=cred.pid;if(!event.ok)actor_ok=0;if(event_send(channel,&event)){reason=5;actor_ok=0;}}
     }
     if(ready(initfd))reason=4;
     if(monotonic_ms()>=end)reason=3;
@@ -194,7 +197,7 @@ static void keeper(int channel,int sequence,uid_t authority,uid_t worker,int sta
   while(!ready(initfd)&&monotonic_ms()<cleanup_end){struct pollfd p={initfd,POLLIN,0};poll(&p,1,50);}
   int status=0;pid_t reaped=waitpid(init,&status,WNOHANG);
   long long completed=monotonic_ms();
-  struct event terminal={.kind=3,.role=reason,.pid=init,.ok=ready(initfd)&&reaped==init&&WIFSIGNALED(status)&&WTERMSIG(status)==SIGKILL&&actor_ok&&actor_count==2&&completed<=cleanup_end,
+  struct event terminal={.kind=3,.role=reason,.pid=init,.fd=status,.ok=ready(initfd)&&reaped==init&&WIFSIGNALED(status)&&WTERMSIG(status)==SIGKILL&&actor_ok&&actor_count==2&&completed<=cleanup_end,
     .address=(uint64_t)cleanup_end,.completed_ms=(uint64_t)completed};
   event_send(channel,&terminal);close(initfd);close(actors[0]);close(channel);free(stack);_exit(terminal.ok?0:132);
 }
@@ -228,10 +231,10 @@ static void observe(void) {
       if(e.kind==1&&a->init==0)a->init=e.pid;
       else if(e.kind==2&&e.role==1&&a->authority==0&&e.uid==a->authority_uid){a->authority=e.pid;a->authority_fd=e.fd;a->authority_address=e.address;}
       else if(e.kind==2&&e.role==2&&a->worker==0&&e.uid==a->worker_uid){a->worker=e.pid;a->worker_memory_denied=e.ok;}
-      else if(e.kind==3&&!a->done&&e.pid==a->init&&e.address<=LLONG_MAX&&e.completed_ms<=LLONG_MAX){a->done=e.ok&&e.completed_ms<=e.address?1:-1;a->stop_reason=e.role;a->cleanup_end=(long long)e.address;}
+      else if(e.kind==3&&!a->done&&e.pid==a->init&&e.address<=LLONG_MAX&&e.completed_ms<=LLONG_MAX){a->done=e.ok&&e.completed_ms<=e.address?1:-1;a->stop_reason=e.role;a->cleanup_end=(long long)e.address;a->init_wait_status=e.fd;}
       else quarantine=1;
     }
-    if(ready(a->keeperfd)&&!a->exit_status){int status;pid_t r=waitpid(a->keeper,&status,WNOHANG);if(r==a->keeper)a->exit_status=WIFEXITED(status)&&WEXITSTATUS(status)==0?1:-1;}
+    if(ready(a->keeperfd)&&!a->exit_status){int status;pid_t r=waitpid(a->keeper,&status,WNOHANG);if(r==a->keeper){a->exit_status=WIFEXITED(status)&&WEXITSTATUS(status)==0?1:-1;a->keeper_wait_status=status;}}
     if(a->cleanup_end&&monotonic_ms()>a->cleanup_end){a->expired=1;quarantine=1;}
     if(!a->expired&&a->done==1&&a->exit_status==1&&a->output_eof&&cgroup_empty(a->sequence)&&monotonic_ms()<=a->cleanup_end){a->closed=1;close(a->channel);close(a->keeperfd);}
     if(a->exit_status==-1)quarantine=1;
@@ -283,7 +286,7 @@ static void reply(int fd,const struct request *r,int callerfd) {
   if(r->op==3&&index>=0&&!attempts[index].closed)send(attempts[index].channel,"S",1,MSG_NOSIGNAL|MSG_DONTWAIT);
   char text[2048];int n;
   if(index<0)n=snprintf(text,sizeof(text),"{\"protocol\":\"knowledge-linux-service-qa.v1\",\"status\":\"%s\",\"attempts\":%d,\"quarantine\":%s,\"broker_pid\":%d,\"broker_parent\":%d,\"qa_anchor_pid\":%d}",r->op==1?"ready":"unavailable",attempt_count,quarantine?"true":"false",getpid(),getppid(),qa_anchor_pid);
-  else{struct attempt *a=&attempts[index];n=snprintf(text,sizeof(text),"{\"protocol\":\"knowledge-linux-service-qa.v1\",\"status\":\"%s\",\"sequence\":%d,\"keeper_pid\":%d,\"init_pid\":%d,\"authority_pid\":%d,\"worker_pid\":%d,\"authority_uid\":%d,\"worker_uid\":%d,\"authority_address\":%llu,\"authority_fd\":%d,\"worker_memory_denied\":%s,\"init_exit_confirmed\":%s,\"keeper_exit_confirmed\":%s,\"cgroup_empty\":%s,\"output_eof\":%s,\"output_bytes\":%llu,\"stop_reason\":%d,\"quarantine\":%s}",a->closed?"closed":a->expired||a->exit_status<0||a->done<0?"cleanup_unconfirmed":a->authority&&a->worker?"running":"starting",a->sequence,a->keeper,a->init,a->authority,a->worker,a->authority_uid,a->worker_uid,(unsigned long long)a->authority_address,a->authority_fd,a->worker_memory_denied?"true":"false",a->done==1?"true":"false",a->exit_status==1?"true":"false",a->closed?"true":"false",a->output_eof?"true":"false",(unsigned long long)a->output_bytes,a->stop_reason,quarantine?"true":"false");}
+  else{struct attempt *a=&attempts[index];n=snprintf(text,sizeof(text),"{\"protocol\":\"knowledge-linux-service-qa.v1\",\"status\":\"%s\",\"sequence\":%d,\"keeper_pid\":%d,\"init_pid\":%d,\"authority_pid\":%d,\"worker_pid\":%d,\"authority_uid\":%d,\"worker_uid\":%d,\"authority_address\":%llu,\"authority_fd\":%d,\"worker_memory_denied\":%s,\"init_exit_confirmed\":%s,\"keeper_exit_confirmed\":%s,\"cgroup_empty\":%s,\"output_eof\":%s,\"output_bytes\":%llu,\"stop_reason\":%d,\"keeper_wait_known\":%s,\"keeper_wait_status\":%d,\"init_wait_known\":%s,\"init_wait_status\":%d,\"quarantine\":%s}",a->closed?"closed":a->expired||a->exit_status<0||a->done<0?"cleanup_unconfirmed":a->authority&&a->worker?"running":"starting",a->sequence,a->keeper,a->init,a->authority,a->worker,a->authority_uid,a->worker_uid,(unsigned long long)a->authority_address,a->authority_fd,a->worker_memory_denied?"true":"false",a->done==1?"true":"false",a->exit_status==1?"true":"false",a->closed?"true":"false",a->output_eof?"true":"false",(unsigned long long)a->output_bytes,a->stop_reason,a->exit_status?"true":"false",a->keeper_wait_status,a->done?"true":"false",a->init_wait_status,quarantine?"true":"false");}
   if(n>0&&(size_t)n<sizeof(text))send(fd,text,(size_t)n,MSG_NOSIGNAL|MSG_DONTWAIT);
 }
 int main(int argc,char **argv) {

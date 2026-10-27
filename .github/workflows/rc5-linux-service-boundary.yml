@@ -1,4 +1,5 @@
 name: Linux admin service boundary QA
+# Revision 2: actor-report EOF handling and bounded failure observations.
 
 on:
   workflow_dispatch:
@@ -31,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           scratch="$(cat "$RUNNER_TEMP/linux-admin-service-scratch-path")"
-          sudo -n python3 qa/reliability/linux-admin-service-27/native_boundary_qa.py run \
+          sudo -n --preserve-env=GITHUB_SHA python3 qa/reliability/linux-admin-service-27/native_boundary_qa.py run \
             --scratch "$scratch" --public "$scratch/public"
       - name: Upload sanitized result summary only
         if: always()

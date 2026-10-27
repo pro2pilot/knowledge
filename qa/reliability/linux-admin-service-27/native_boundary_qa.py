@@ -526,7 +526,13 @@ def poll_response(sock_path: str, nonce: bytes, predicate, timeout: float, label
         if time.monotonic() <= deadline and predicate(last):
             return last, actor["value"]
         time.sleep(0.1)
-    raise QAFailure(f"timed out waiting for {label}; last service state={last.get('status')}")
+    failure = QAFailure(f"timed out waiting for {label}; last service state={last.get('status')}")
+    # Synthetic fixed QA actors only. Omit the canary address and private FDs.
+    keys = {"status", "sequence", "worker_memory_denied", "init_exit_confirmed",
+            "keeper_exit_confirmed", "cgroup_empty", "output_eof", "output_bytes",
+            "stop_reason", "keeper_wait_status", "init_wait_status", "keeper_wait_known", "init_wait_known", "quarantine"}
+    failure.native_observation = {key: value for key, value in last.items() if key in keys}
+    raise failure
 
 
 def validate_request_denied(sock_path: str, payload: bytes, *, send_right: bool = False) -> dict:
@@ -857,6 +863,25 @@ def prepare(scratch_arg: Path) -> int:
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr.decode("utf-8", "replace")[-8192:])
         raise QAFailure("fixed static service compile failed; compiler logs remain in runner scratch")
+    # Exercise the exact parser with real ordinary-user Unix sockets before
+    # any root installation. This regression fails on the previous EOF code.
+    parser_binary = scratch / "event-parser.static"
+    parser_source = HERE / "native_event_qa.c"
+    _, parser_source_bytes = physical_file(parser_source, uid=RUNNER_UID, maximum=64 * 1024)
+    parser_argv = [*argv[:-3], str(parser_source), "-o", str(parser_binary)]
+    parser_build = subprocess.run(parser_argv, cwd=HERE, stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=150, check=False,
+        env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "TMPDIR": str(scratch)})
+    if parser_build.returncode != 0:
+        sys.stderr.write(parser_build.stderr.decode("utf-8", "replace")[-8192:])
+        raise QAFailure("ordinary-user socket parser regression did not compile")
+    parser_check = subprocess.run([str(parser_binary)], stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10, check=False,
+        env={"PATH": "/usr/bin:/bin", "LANG": "C"})
+    if parser_check.returncode != 0 or json.loads(parser_check.stdout) != {
+            "status": "PASS_SOCKET_PARSER", "checks": 6, "privileged": False}:
+        sys.stderr.write(parser_check.stderr.decode("utf-8", "replace")[-8192:])
+        raise QAFailure("ordinary-user physical socket parser regression failed")
     binary_stat, binary_bytes = physical_file(binary, uid=RUNNER_UID)
     if not elf_static_arm64(binary_bytes):
         raise QAFailure("compiled service is not a static ARM64 ELF without PT_INTERP")
@@ -872,6 +897,9 @@ def prepare(scratch_arg: Path) -> int:
         "compiled_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "compile_elapsed_seconds": round(time.monotonic() - started, 3),
         "compile_exit_code": proc.returncode,
+        "event_parser_qa": {"source_sha256": sha256(parser_source_bytes),
+            "status": "PASS_SOCKET_PARSER", "checks": 6, "privileged": False,
+            "stdout_sha256": sha256(parser_check.stdout)},
         "compile_stdout_sha256": sha256(proc.stdout), "compile_stderr_sha256": sha256(proc.stderr),
     }
     json_write(scratch / "plan.json", plan, 0o600)
@@ -964,6 +992,7 @@ class ServiceQA:
         self.result.update({"run_id": token, "service_source_sha256": self.plan["source_sha256"],
                             "prepared_binary_sha256": self.plan["binary_sha256"],
                             "prepared_binary_bytes": self.plan["binary_bytes"],
+                            "event_parser_qa": self.plan["event_parser_qa"],
                             "caller_uid": RUNNER_UID, "uid_interval": [UID_FIRST, UID_LAST],
                             "workflow_commit": os.environ.get("GITHUB_SHA")})
 
@@ -1633,6 +1662,8 @@ class ServiceQA:
             completed_all_checks = True
         except BaseException as exc:
             self.result["error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
+            if isinstance(exc, QAFailure) and hasattr(exc, "native_observation"):
+                self.result["error"]["native_observation"] = exc.native_observation
         finally:
             try:
                 self.stop_owned_unit()
