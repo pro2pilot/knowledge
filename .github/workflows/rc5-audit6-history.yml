@@ -61,7 +61,7 @@ jobs:
           (public / 'SOURCE_BINDING.json').write_text(json.dumps(record, indent=2) + '\n')
           PY
       - name: Exercise 29 root-filesystem durable history cases
-        run: sudo -n /usr/bin/python3 -B qa/reliability/linux-service-history-27/run-history-qa.py --output "$RUNNER_TEMP/knowledge-history-component-$HISTORY_ARCH"
+        run: sudo -n /usr/bin/python3 -B qa/reliability/linux-service-history-27/run-history-qa.py --output "$RUNNER_TEMP/knowledge-history-component-$HISTORY_ARCH" --fixture-parent /var/lib --cleanup-fixtures
       - name: Compile fixed static daemon and exercise socket parser as ordinary runner
         run: /usr/bin/python3 -B qa/reliability/linux-admin-service-27/native_boundary_qa.py prepare --history --scratch "$HISTORY_SCRATCH"
       - name: Exercise root-native history initialization, restart, UID burn and exact cleanup

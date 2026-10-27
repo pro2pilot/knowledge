@@ -7,6 +7,8 @@ import os
 import platform
 from pathlib import Path
 import select
+import shutil
+import stat
 import struct
 import subprocess
 import tempfile
@@ -18,6 +20,8 @@ SOURCE = HERE.parents[2] / 'source' / '.knowledge' / 'tools' / 'lib'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', required=True)
+    parser.add_argument('--fixture-parent', help='existing protected root-owned parent; separate from ordinary runner output')
+    parser.add_argument('--cleanup-fixtures', action='store_true', help='remove only this unique owned QA fixture after collecting facts')
     args = parser.parse_args()
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -36,9 +40,24 @@ def main():
     (output / 'build.stderr.txt').write_text(compiled.stderr)
     if compiled.returncode:
         raise SystemExit(compiled.stderr)
-    fixtures = Path(tempfile.mkdtemp(prefix='history-fixtures-', dir=output))
+    fixture_parent = Path(args.fixture_parent).resolve() if args.fixture_parent else output
+    fixtures = Path(tempfile.mkdtemp(prefix='knowledge-history-fixtures-', dir=fixture_parent))
     os.chmod(fixtures, 0o700)
+    fixture_identity = (fixtures.stat().st_dev, fixtures.stat().st_ino)
+    cleanup_state = 'retained_diagnostic_fixtures'
     events = []
+
+    def cleanup():
+        nonlocal cleanup_state
+        if not args.cleanup_fixtures or cleanup_state == 'removed_exact_owned_fixture':
+            return
+        info = fixtures.lstat()
+        assert stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o700
+        assert (info.st_dev, info.st_ino) == fixture_identity
+        assert shutil.rmtree.avoids_symlink_attacks, 'descriptor-based fixture cleanup required'
+        shutil.rmtree(fixtures)
+        assert not fixtures.exists() and not fixtures.is_symlink()
+        cleanup_state = 'removed_exact_owned_fixture'
 
     def run(op, base, value=None, environment=None, expect=True):
         cmd = [str(binary), op, str(base / 'anchor'), str(base / 'journal')]
@@ -67,7 +86,11 @@ def main():
             events.append({'case': name, 'status': 'PASS', 'details': details})
         except Exception as error:
             events.append({'case': name, 'status': 'FAIL', 'error': repr(error)})
-            save()
+            try:
+                save()
+            finally:
+                cleanup()
+                save()
             raise
 
     def save():
@@ -80,6 +103,7 @@ def main():
             'build_command': command,
             'compiler_version': compiler_version,
             'fault_scope': 'injected operation error or userspace _exit(88); not power loss or kernel I/O stall',
+            'fixture_cleanup': cleanup_state,
             'test_count': len(events),
             'pass_count': sum(row['status'] == 'PASS' for row in events),
             'fail_count': sum(row['status'] == 'FAIL' for row in events),
@@ -229,9 +253,11 @@ def main():
                 return {'fault_phase': phase, 'fault_mode': mode,
                         'reopen_reason': observed.get('reason'), 'no_burned_uid_reissued': True}
             case('publication_' + phase + '_' + mode.lower(), interrupted)
+    cleanup()
     save()
     print(json.dumps({'status': 'PASS', 'component_tests': len(events), 'facts': str(output / 'facts.json')}))
-    # Fixtures contain intentionally corrupted histories, preserved as evidence.
+    # Local diagnostic mode retains intentionally corrupted fixtures. CI uses
+    # a protected /var/lib parent and confirms exact owned fixture cleanup.
 
 
 if __name__ == '__main__':
