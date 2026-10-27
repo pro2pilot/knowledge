@@ -301,6 +301,36 @@ const context=contextAPI.resolveKnowledgeContext({__skipCli:true,mode:'team',sys
 if(q.prepare){stage='team_register_prepare';team.registerWorkspace(context);console.log(JSON.stringify({type:'team_prepared',context,
  lock_path:team.lockPath(context.teamRoot,context.repoId),event_path:team.eventPath(context.teamRoot,context.repoId),
  workspace_path:team.workspaceDir(context.teamRoot,context.repoId,context.workspaceId)}));}
+else if(q.initialize){
+ const flow=require(path.join(q.source,'tools/flow.js'));
+ const options={env:contextAPI.contextEnv(context),budgets:{setupMs:30000,workMs:120000,cleanupMs:30000,progressMs:0},
+  macosWorkspace:{workspace_id:q.workspace_id,broker_path:q.binary,broker_socket:q.socket},
+  onProgress:phase=>console.log(JSON.stringify({type:'progress',phase}))};
+ const initArgv='ingest-existing-project.js --merge';
+ const initPaths=['project_index.json','modules/module_registry.json','evidence/file_facts.json','wiki/index.md'];
+ const initOptions={...options,budgets:{...options.budgets,workMs:180000}};
+ const reasonFor=error=>['command_work_timeout','command_progress_timeout'].includes(error?.code)?'timeout'
+  :error?.cleanup?.status&&error.cleanup.status!=='completed'?'cleanup_unconfirmed':'command_failed';
+ const publishInit=(passed,exitCode,elapsed,artifacts,reason)=>console.log(JSON.stringify({type:'team_init',
+  argv:initArgv,status:passed?'passed':'failed',exit_code:Number.isInteger(exitCode)&&exitCode>=-255&&exitCode<=255?exitCode:null,
+  elapsed_ms:Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=240000?Math.floor(elapsed):null,
+  artifacts:{project_index:artifacts.project_index===true,module_registry:artifacts.module_registry===true,
+   file_facts:artifacts.file_facts===true,wiki_index:artifacts.wiki_index===true},reason:passed?null:reason}));
+ (async()=>{
+  stage='team_init_ingest';const initStarted=process.hrtime.bigint();let init;
+  try {init=await flow.runOneAsync(initArgv,context,initOptions);}
+  catch(error){publishInit(false,null,Number(process.hrtime.bigint()-initStarted)/1e6,{},reasonFor(error));process.exitCode=2;return;}
+  const artifacts={};
+  for(const [key,relative] of Object.entries({project_index:initPaths[0],module_registry:initPaths[1],file_facts:initPaths[2],wiki_index:initPaths[3]})){
+   try{const item=fs.lstatSync(path.join(q.project,'.knowledge',relative));artifacts[key]=item.isFile()&&!item.isSymbolicLink()&&item.nlink===1;}
+   catch{artifacts[key]=false;}
+  }
+  const initElapsed=Number(process.hrtime.bigint()-initStarted)/1e6;
+  const passed=initElapsed<=240000&&init?.success===true&&init?.exit===0&&Object.values(artifacts).every(Boolean);
+  publishInit(passed,init?.exit,initElapsed,artifacts,passed?null:'init_result_or_required_artifact_invalid');
+  if(!passed){process.exitCode=2;return;}
+ })().catch(error=>{console.log(JSON.stringify({type:'result',ok:false,code:error.code||'untyped',cleanup:error.cleanup||null,diagnostic:diagnostic(error)}));process.exitCode=2;});
+}
 else{
  stage='team_main_await';
  const options={env:contextAPI.contextEnv(context),budgets:{setupMs:30000,workMs:120000,cleanupMs:30000,progressMs:0},
@@ -562,7 +592,7 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
     Restart intentionally does not forge --retry-of for an incomplete run.
     That earlier durable run remains incomplete; the new run is distinct.
     """
-    name = CASES[-1];started = time.monotonic();deadline = started+360
+    name = CASES[-1]
     row = {'name':name,'status':'FAIL','observations':{}};runner.case_results.append(row)
     project = fixture['project'];config = project/'.knowledge/config.yaml';saved = project/'.knowledge/config.before-team-fifo'
     caller = runner.evidence/'macos-team-recovery-caller.cjs';base.private_file(caller,TEAM_CALLER.encode())
@@ -585,12 +615,11 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
     base.private_file(runner.evidence/'TEAM_RECOVERY_INPUTS.json',base.canonical({
         'team_caller_sha256':base.sha_bytes(TEAM_CALLER.encode()),'original_config_sha256':base.sha_bytes(original),
         'configured_config_sha256':base.sha_bytes(configured),'updates_disabled':True,'expected_shipping_doctor_steps':8}))
-    runner.check(not saved.exists(),'macos_team_fifo_backup_exists');config.rename(saved);os.mkfifo(config,0o600)
-    fifo_fd = os.open(config,os.O_RDWR|os.O_NONBLOCK);before = set(entries());process = None;restored = False
-    runner.public_started = True;runner.public_completed = False
-    native_closures = []
 
-    def closure(attempt,entry):
+    native_closures = []
+    deadline = time.monotonic()+300
+
+    def closure(attempt,entry,include_in_recovery_proof=True):
         end = min(deadline,time.monotonic()+35)
         while time.monotonic()<end:
             nonce = os.urandom(32).hex()
@@ -606,12 +635,46 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
             ('kernel_membership_zero','admission_closed','spawn_exclusion_acquired','spawn_intents_resolved',
              'guardian_exit_confirmed','root_child_exit_confirmed','registered_authority_exited','native_scope_closed')),
             'macos_team_native_closure_unconfirmed')
-        native_closures.append(value);runner.task_uids.add(entry['descriptor']['task_ruid']);runner.expected_allocation_ids.add(attempt)
+        if include_in_recovery_proof: native_closures.append(value)
+        runner.task_uids.add(entry['descriptor']['task_ruid']);runner.expected_allocation_ids.add(attempt)
         observed = parse(runner.sudo(str(runner.uid_scan),str(entry['descriptor']['task_ruid']),name='macos-team-independent-uid-zero',timeout=15))
         runner.check(observed.get('observation_valid') is True and observed.get('member_count')==0,'macos_team_uid_not_empty')
         for role in ACTORS:
             runner.check(entry.get(role) and runner.compare_birth(entry[role]).get('state') in ('absent','replaced'),
                 'macos_team_exact_actor_exit_unconfirmed')
+
+    runner.public_started=True;runner.public_completed=False
+    init_before=set(entries());init_started=time.monotonic()
+    init_result=runner.run('macos-team-project-initialize',[str(info['node']),str(caller)],
+        data=base.canonical({**request,'initialize':True}),timeout=240)
+    init_elapsed_ms=int((time.monotonic()-init_started)*1000)
+    init_messages=[json.loads(line) for line in init_result.stdout.splitlines()]
+    init_rows=[value for value in init_messages if value.get('type')=='team_init']
+    init=init_rows[0] if len(init_rows)==1 else {}
+    init_artifacts=init.get('artifacts') if isinstance(init.get('artifacts'),dict) else {}
+    init_created={key:value for key,value in entries().items() if key not in init_before}
+    for attempt,entry in init_created.items(): closure(attempt,entry,include_in_recovery_proof=False)
+    row['team_initialization']={
+        'argv':init.get('argv') if init.get('argv')=='ingest-existing-project.js --merge' else None,
+        'status':init.get('status') if init.get('status') in ('passed','failed') else 'invalid',
+        'exit_code':init.get('exit_code') if type(init.get('exit_code')) is int and -255<=init['exit_code']<=255 else None,
+        'elapsed_ms':init_elapsed_ms if 0<=init_elapsed_ms<=240000 else None,
+        'artifacts':{key:init_artifacts.get(key) is True for key in ('project_index','module_registry','file_facts','wiki_index')},
+        'reason':init.get('reason') if init.get('reason') in ('timeout','cleanup_unconfirmed','command_failed',
+            'init_result_or_required_artifact_invalid') else None}
+    init_passed=(init_result.returncode==0 and len(init_rows)==1 and len(init_created)==1 and
+        row['team_initialization']['argv']=='ingest-existing-project.js --merge' and
+        row['team_initialization']['status']=='passed' and row['team_initialization']['exit_code']==0 and
+        0<=init_elapsed_ms<=240000 and type(init.get('elapsed_ms')) is int and 0<=init['elapsed_ms']<=240000 and
+        all(row['team_initialization']['artifacts'].values()) and row['team_initialization']['reason'] is None)
+    runner.check(init_passed,'macos_team_project_initialization_failed')
+    row['observations']['team_initialization_native_closed']=True
+    runner.public_completed=True
+
+    started=time.monotonic();deadline=started+360
+    runner.public_started=True;runner.public_completed=False
+    runner.check(not saved.exists(),'macos_team_fifo_backup_exists');config.rename(saved);os.mkfifo(config,0o600)
+    fifo_fd = os.open(config,os.O_RDWR|os.O_NONBLOCK);before = set(entries());process = None;restored = False
 
     try:
         with (runner.evidence/'team-crash.stdout.raw').open('wb') as output,(runner.evidence/'team-crash.stderr.raw').open('wb') as error:
@@ -684,7 +747,7 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
         proof={'old_owner_text':old_owner_text,'old_scope_text':old_scope_text,'quarantined_owner_text':quarantines[0].read_text(),
             'quarantined_scope_text':quarantined_scope,'old_start':old_start,'new_start':new_start,'new_final':new_final,
             'old_final_exists':old_final_exists,'team_events':events,'native_closures':native_closures,'retry_report':report,
-            'team_doctor_report':team_doctor_report,'lock_absent':not lock.exists()}
+            'team_doctor_report':team_doctor_report,'team_initialization':row['team_initialization'],'lock_absent':not lock.exists()}
         proof_bytes=base.canonical(proof);base.private_file(runner.evidence/'TEAM_RECOVERY_PROOF.private.json',proof_bytes)
         runner.check(fixture['outside'].read_bytes()==b'unchanged','macos_team_outside_canary_changed')
         row.update(controller_exit_code=retry.returncode,terminal={key:terminal[key] for key in ('type','ok','value','cleanup')},

@@ -40,7 +40,8 @@ SAFE_ERRORS = {'command_cancelled', 'command_work_timeout', 'command_cleanup_unc
 TEAM_FACTS = ('public_team_main_async', 'abandoned_lock_published', 'old_lock_scope_native_bound',
     'old_native_scope_closed_before_restart', 'new_team_run_distinct', 'new_native_attempt_distinct',
     'new_lock_generation_distinct', 'old_generation_quarantined_exact', 'old_run_remains_incomplete',
-    'new_team_lock_released', 'fresh_team_cleanup_completed', 'restart_not_retry_of', 'actual_state_writer_fifo_fd_observed')
+    'new_team_lock_released', 'fresh_team_cleanup_completed', 'restart_not_retry_of', 'actual_state_writer_fifo_fd_observed',
+    'team_initialization_native_closed')
 DOCTOR_STEPS = ('sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js',
     'build-routing-bundle.js', 'build-search-index.js', 'scan-secrets.js', 'doctor.js')
 TEAM_STEP_STATUSES = {'pass', 'fail'}
@@ -70,7 +71,7 @@ MAX_TEAM_DOCTOR_REPORT_BYTES = 2 * 1024 * 1024
 MAX_TEAM_DOCTOR_CHECKS = 4096
 DOCTOR_CHECK_STATUSES = {'pass', 'warn', 'fail'}
 DOCTOR_ISSUE_SEVERITIES = {'critical', 'high', 'medium', 'low'}
-DOCTOR_LOCK_STATUSES = {'safe', 'unsafe'}
+DOCTOR_LOCK_STATUSES = {'safe', 'unsafe', 'active', 'stale'}
 SEMANTIC_ERROR_PATTERNS = (
     (re.compile(r'^\$[^\r\n]{0,240} must be an object$'), 'json_not_object'),
     (re.compile(r'^\$[^\r\n]{0,240}\.expected_failure was not confirmed$'), 'expected_failure_not_confirmed'),
@@ -160,6 +161,15 @@ def team_proof_valid(private, row, source, binaries):
                     doctor_diag.get('errno_name') not in TEAM_DOCTOR_ERRNOS | {None} or \
                     doctor_diag.get('shape_reason') not in TEAM_DOCTOR_SHAPE_REASONS | {None}: return False
         else: return False
+        initialization = obj(p.get('team_initialization'))
+        init_artifacts = obj(initialization.get('artifacts'))
+        if set(initialization) != {'argv','status','exit_code','elapsed_ms','artifacts','reason'} or \
+                initialization.get('argv') != 'ingest-existing-project.js --merge' or initialization.get('status') != 'passed' or \
+                initialization.get('exit_code') != 0 or type(initialization.get('elapsed_ms')) is not int or \
+                not 0 <= initialization['elapsed_ms'] <= 180000 or initialization.get('reason') is not None or \
+                set(init_artifacts) != {'project_index','module_registry','file_facts','wiki_index'} or \
+                any(init_artifacts.get(key) is not True for key in ('project_index','module_registry','file_facts','wiki_index')) or \
+                row.get('team_initialization') != initialization: return False
         caller = private/'macos-team-recovery-caller.cjs'
         if inputs.get('team_caller_sha256') != sha(fixture.TEAM_CALLER.encode()) or caller.is_symlink() or caller.read_bytes() != fixture.TEAM_CALLER.encode() or \
                 inputs.get('updates_disabled') is not True or type(inputs.get('expected_shipping_doctor_steps')) is not int or inputs['expected_shipping_doctor_steps'] != 8: return False
@@ -670,6 +680,8 @@ def build(private, source, rc, arch):
                 proof = legacy.load(private/'TEAM_RECOVERY_PROOF.private.json', 4*1024*1024)
                 diagnostic = doctor_report_projection(private, proof, source, source_rows)
                 projected['team_steps'] = team_steps_projection(obj(obj(obj(row).get('terminal')).get('value')), diagnostic)
+                init = obj(proof.get('team_initialization'))
+                projected['team_initialization'] = {key:init[key] for key in ('argv','status','exit_code','elapsed_ms','artifacts')}
             else: projected['team_steps'] = []
             if not verified: projected['status']='FAIL_OR_INCOMPLETE'
     passed = type(rc) is int and rc == 0 and raw.get('status') == 'PASS_PHYSICAL_MACOS_WRITABLE' and raw.get('case_set') == 'writable' and \

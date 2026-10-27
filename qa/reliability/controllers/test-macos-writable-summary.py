@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Modeled receipt rejection tests; never claims physical macOS execution."""
-import ast, copy, importlib.util, json, os, tempfile, unittest
+import ast, copy, importlib.util, json, os, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -129,7 +129,11 @@ class ProjectionTests(unittest.TestCase):
                 {'check':'lock_safety','status':'fail'}],
             'issues':[{'code':'missing_required_file','severity':'high','message':'private issue text','artifact':'/Users/private/path'},
                 {'code':'doctor_lock_unsafe','severity':'critical','message':'private lock text','artifact':'/Users/private/path'}],
-            'lock_safety':{'status':'unsafe','findings':[{'code':'unsafe_lock_path','reason':'lstat_failed','owner':'/Users/private'}]}}
+            'lock_safety':{'schema_version':'knowledge-lock-safety.v1','status':'unsafe',
+                'findings':[{'code':'unsafe_lock_path','reason':'lstat_failed','owner':'/Users/private'}],
+                'layout_version':1,'locks':[{'lock_name':'doctor','resource_id':None,'status':'active',
+                    'legacy':{'present':False,'status':'absent','owner':None,'reason':None,'recovery_required':None},
+                    'current':{'status':'active','owner':None,'reason':None,'recovery_required':None}}]}}
         self.doctor_report_bytes=m.canonical(self.doctor_report)
         self.doctor_report_diag={'status':'captured','reason_code':None,'bytes':len(self.doctor_report_bytes),
             'sha256':m.sha(self.doctor_report_bytes),'binding':'flow_time_window_and_step_summary_match',
@@ -138,9 +142,11 @@ class ProjectionTests(unittest.TestCase):
         (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
         self.team_proof={'old_owner_text':owner_text,'old_scope_text':scope_text,'quarantined_owner_text':owner_text,'quarantined_scope_text':scope_text,
             'old_start':starts[0],'new_start':starts[1],'new_final':final,'old_final_exists':False,'lock_absent':True,
-            'team_events':events,'native_closures':closures,'retry_report':report,'team_doctor_report':copy.deepcopy(self.doctor_report_diag)}
+            'team_events':events,'native_closures':closures,'retry_report':report,'team_doctor_report':copy.deepcopy(self.doctor_report_diag),
+            'team_initialization':{'argv':'ingest-existing-project.js --merge','status':'passed','exit_code':0,'elapsed_ms':1200,
+                'artifacts':{'project_index':True,'module_registry':True,'file_facts':True,'wiki_index':True},'reason':None}}
         team=rows[-1];team.update(initial_controller_exit_code=-9,controller_exit_code=0,terminal={'type':'result','ok':True,'value':out,'cleanup':report['cleanup']},
-            quality_status='failed',overall_status='failed')
+            quality_status='failed',overall_status='failed',team_initialization=copy.deepcopy(self.team_proof['team_initialization']))
         team['observations'].update({key:True for key in m.TEAM_FACTS});team['observations'].update(manual_owner_repair=False,fresh_team_steps_executed=8)
         team['observations']['fixture_ancestor_read_control']={key:True for key in (
             'exact_root_owned_inode','search_only_read_denied','readable_read_confirmed','write_permissions_unchanged','original_mode_restored')}
@@ -353,6 +359,8 @@ class ProjectionTests(unittest.TestCase):
             {'path':'checks','index':2,'check':'tracked_files_exist','status':'fail'}])
         self.assertFalse(doctor['causal_proof'])
         self.assertTrue(m.HEX.fullmatch(steps[-1]['semantic_errors_sha256']))
+        self.assertEqual(result['cases'][-1]['team_initialization'],{key:self.team_proof['team_initialization'][key]
+            for key in ('argv','status','exit_code','elapsed_ms','artifacts')})
 
     def test_team_doctor_diagnostic_projects_static_ids_and_hides_report_payload(self):
         secret='/Users/private/doctor-token-'+('d00df00d'*8)
@@ -380,6 +388,79 @@ class ProjectionTests(unittest.TestCase):
         self.assertTrue(m.HEX.fullmatch(diag['required_artifact_unknown_digest']))
         self.assertEqual(diag['lock_safety']['unknown_count'],1)
         self.assertTrue(m.HEX.fullmatch(diag['lock_safety']['unknown_digest']))
+
+    def test_doctor_projection_accepts_current_active_lock_safety_producer_shape(self):
+        lock={'schema_version':'knowledge-lock-safety.v1','status':'active','findings':[],'layout_version':1,
+            'locks':[{'lock_name':'doctor','resource_id':None,'status':'active',
+                'legacy':{'present':False,'status':'absent','owner':None,'reason':None,'recovery_required':None},
+                'current':{'status':'active','owner':None,'reason':None,'recovery_required':None}}]}
+        self.doctor_report['lock_safety']=lock
+        self.doctor_report_bytes=m.canonical(self.doctor_report)
+        self.doctor_report_diag.update(bytes=len(self.doctor_report_bytes),sha256=m.sha(self.doctor_report_bytes))
+        self.team_proof['team_doctor_report']=copy.deepcopy(self.doctor_report_diag)
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
+        self.write_team_proof()
+        result=self.project()
+        diagnostic=result['cases'][-1]['team_steps'][-1]['doctor_report_diagnostic']
+        self.assertEqual(diagnostic['status'],'available',diagnostic)
+        self.assertEqual(diagnostic['lock_safety'],{'status':'active','finding_count':0,'findings':[],
+            'unknown_count':0,'unknown_digest':None})
+
+    def test_team_caller_runs_bounded_ingest_before_doctor_and_fails_closed(self):
+        node=shutil.which('node')
+        if not node: self.skipTest('Node.js is required for embedded Team caller contract test')
+        for mode in ('pass','fail'):
+            with self.subTest(mode=mode):
+                root=self.base/('team-caller-'+mode);source=root/'source';project=root/'project'
+                modules=source/'tools/lib';modules.mkdir(parents=True);(project/'.knowledge').mkdir(parents=True)
+                (modules/'path-context.js').write_text("module.exports={resolveKnowledgeContext:o=>({mode:o.mode,systemRoot:o.systemRoot,targetRoot:o.targetRoot,projectKnowledgeRoot:o.projectKnowledgeRoot,teamRoot:o.teamRoot,workspaceId:o.workspaceId,repoId:'test-repo'}),contextEnv:()=>({})};")
+                (modules/'team-store.js').write_text('module.exports={};')
+                event_file=root/'events.json'
+                flow=("const fs=require('node:fs'),path=require('node:path');"
+                    "const log=(event)=>{let rows=[];try{rows=JSON.parse(fs.readFileSync(process.env.FLOW_EVENTS_PATH,'utf8'));}catch{};rows.push(event);fs.writeFileSync(process.env.FLOW_EVENTS_PATH,JSON.stringify(rows));};"
+                    "module.exports={runOneAsync:async(command,context,options)=>{log({kind:'init',command,workMs:options.budgets.workMs,cwd:context.targetRoot});"
+                    "if(process.env.INIT_MODE==='pass'){for(const rel of ['project_index.json','modules/module_registry.json','evidence/file_facts.json','wiki/index.md']){const p=path.join(context.projectKnowledgeRoot,rel);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,'{}');}}"
+                    "return process.env.INIT_MODE==='pass'?{success:true,exit:0}:{success:false,exit:1};},"
+                    "mainAsync:async()=>{log({kind:'doctor'});return {value:{flow:'doctor'},cleanup:{status:'completed'},result:{}};}};")
+                (source/'tools/flow.js').write_text(flow)
+                caller=root/'caller.cjs';caller.write_text(lifecycle.TEAM_CALLER)
+                env={**os.environ,'FLOW_EVENTS_PATH':str(event_file),'INIT_MODE':mode}
+                payload={'source':str(source),'project':str(project),'workspace_id':'fixture','binary':'/fixed/broker','socket':'/fixed/socket'}
+                completed=subprocess.run([node,str(caller)],input=json.dumps({**payload,'initialize':True}),text=True,capture_output=True,
+                    cwd=root,env=env,timeout=10)
+                messages=[json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+                init=[item for item in messages if item.get('type')=='team_init']
+                self.assertEqual(len(init),1,completed.stdout+completed.stderr)
+                self.assertEqual(init[0]['argv'],'ingest-existing-project.js --merge')
+                self.assertEqual(init[0]['status'],'passed' if mode=='pass' else 'failed')
+                self.assertEqual(init[0]['exit_code'],0 if mode=='pass' else 1)
+                self.assertEqual(init[0]['elapsed_ms'] is not None,True)
+                events=json.loads(event_file.read_text())
+                self.assertEqual(events[0]['command'],'ingest-existing-project.js --merge')
+                self.assertEqual(events[0]['workMs'],180000)
+                if mode=='pass':
+                    self.assertEqual(completed.returncode,0)
+                    retry=subprocess.run([node,str(caller)],input=json.dumps(payload),text=True,capture_output=True,
+                        cwd=root,env=env,timeout=10)
+                    retry_messages=[json.loads(line) for line in retry.stdout.splitlines() if line.strip()]
+                    self.assertTrue(any(item.get('type')=='result' for item in retry_messages))
+                    self.assertEqual(retry.returncode,0)
+                    events=json.loads(event_file.read_text())
+                    self.assertEqual([item['kind'] for item in events],['init','doctor'])
+                else:
+                    self.assertEqual([item['kind'] for item in events],['init'])
+                    self.assertEqual(completed.returncode,2)
+                self.assertNotIn(str(project),json.dumps(init[0]))
+
+    def test_doctor_report_capture_follows_validated_new_start_and_final(self):
+        tree=ast.parse((HERE/'macos-writable-lifecycle.py').read_text())
+        function=next(node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name=='run_team_case_readable')
+        assigned={target.id:node.lineno for node in ast.walk(function) if isinstance(node,ast.Assign)
+            for target in node.targets if isinstance(target,ast.Name) and target.id in ('new_start','new_final')}
+        capture=next(node.lineno for node in ast.walk(function) if isinstance(node,ast.Call) and
+            isinstance(node.func,ast.Name) and node.func.id=='capture_team_doctor_report')
+        self.assertLess(assigned['new_start'],assigned['new_final'])
+        self.assertLess(assigned['new_final'],capture)
 
     def test_doctor_projection_json_failure_exports_stage_not_raw_exception(self):
         self.doctor_report_bytes=b'{private invalid report bytes'
