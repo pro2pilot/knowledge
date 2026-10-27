@@ -1,5 +1,5 @@
 name: Linux admin service boundary QA
-# Revision 2: actor-report EOF handling and bounded failure observations.
+# Revision 3: same-UID peer delegation and stale STOP after actual FD reuse.
 
 on:
   workflow_dispatch:

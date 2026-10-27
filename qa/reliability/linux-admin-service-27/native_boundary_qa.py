@@ -599,10 +599,12 @@ def pass_exact_fd_to_worker(sock_path: str, nonce: bytes, worker_uid: int) -> di
     if not reap_exact_child(pid, pidfd, 2.0):
         raise QAFailure("W delegated socket child exit remains unconfirmed; retaining QA fixture")
     os.close(pidfd); os.close(result_r)
+    connector_alive = not pidfd_ready(connector["pidfd"])
     release_actor(connector)
-    check(value.get("uid") == worker_uid and json.loads(value.get("response", "{}" )).get("status") == "denied",
+    check(connector_alive and pid != connector["pid"] and value.get("uid") == worker_uid and json.loads(value.get("response", "{}" )).get("status") == "denied",
           "W frame on a socket connected by C was not denied")
-    return {"connector_uid": RUNNER_UID, "frame_uid": worker_uid, "status": "denied"}
+    return {"connector_uid": RUNNER_UID, "frame_uid": worker_uid, "status": "denied",
+            "sender_pid_distinct": True, "connector_alive_during_frame": True}
 
 
 def memory_probe(uid: int, gid: int, authority_pid: int, authority_address: int,
@@ -947,7 +949,10 @@ class ServiceQA:
         json_write(self.public / "RESULT.json", public_result, 0o644)
 
     def record_pass(self, name: str, detail: dict | None = None) -> None:
-        self.result["checks"][name] = {"status": "PASS", **(detail or {})}
+        values = dict(detail or {})
+        if "status" in values:
+            values["observed_status"] = values.pop("status")
+        self.result["checks"][name] = {**values, "status": "PASS"}
         self.result["qa_checks_passed"].append(name)
         self.save_public()
 
@@ -994,7 +999,10 @@ class ServiceQA:
                             "prepared_binary_bytes": self.plan["binary_bytes"],
                             "event_parser_qa": self.plan["event_parser_qa"],
                             "caller_uid": RUNNER_UID, "uid_interval": [UID_FIRST, UID_LAST],
-                            "workflow_commit": os.environ.get("GITHUB_SHA")})
+                            "workflow_commit": os.environ.get("GITHUB_SHA"),
+                            "driver_sha256": sha256(Path(__file__).read_bytes()),
+                            "kernel_release": platform.release(),
+                            "kernel_version": platform.version()})
 
     def snapshot_host_policy(self) -> dict:
         return {"sysctl": sysctl_fingerprint(), "apparmor": apparmor_fingerprint(),
@@ -1314,6 +1322,26 @@ class ServiceQA:
                          "cgroup_populated": 0, **external})
         return last
 
+    def replay_closed_stop(self, old_nonce: bytes, old_status: dict,
+                           current_nonce: bytes, current_status: dict) -> None:
+        assert self.qa_root
+        old_slot, new_slot = old_status.get("qa_channel_slot"), current_status.get("qa_channel_slot")
+        if type(old_slot) is not int or old_slot < 0 or old_slot != new_slot:
+            raise QAFailure("STOP replay regression requires actual numeric channel FD reuse")
+        before = current_status["output_bytes"]
+        reply = receive_json(request_as_c(str(self.qa_root / "control.sock"), 3, old_nonce))
+        if reply.get("status") != "closed" or reply.get("sequence") != 1:
+            raise QAFailure("old STOP did not remain bound to the closed old attempt")
+        after, _ = poll_response(str(self.qa_root / "control.sock"), current_nonce,
+            lambda row: row.get("status") == "running" and row.get("output_bytes", 0) > before + 384,
+            3, "current worker continuing after old STOP with reused numeric channel FD")
+        if after.get("sequence") != 2 or after.get("stop_reason") != 0 or any(
+                pidfd_ready(fd) for fd in self.result["_pidfds"][2].values()):
+            raise QAFailure("old STOP affected the newer active attempt")
+        self.record_pass("old_stop_after_numeric_fd_reuse", {
+            "numeric_channel_fd_reused": True, "old_attempt_stayed_closed": True,
+            "new_attempt_alive_and_output_advancing": True, "no_new_stop_reason": True})
+
     def stop_broker_paused_scope(self, sequence: int, nonce: bytes, status: dict) -> dict:
         assert self.service_main_pidfd is not None and self.service_main_pid is not None and self.service_cgroup
         mainfd, identity = exact_pidfd(self.service_main_pid, self.cgroup_rel or "")
@@ -1358,6 +1386,7 @@ class ServiceQA:
             raise QAFailure("resumed broker did not publish exact watchdog timeout closure")
         release_actor(self.active_actors[-1])
         os.close(mainfd)
+        self.result["checks"]["scope_2_broker_pause"] = {"status": "COMPLETED", "terminal_check": "scope_2_sigstop_independent_keeper"}
         self.record_pass("scope_2_sigstop_independent_keeper", {"work_budget_ms": WORK_MS,
                          "cleanup_budget_ms": CLEANUP_MS, "broker_paused_by_pidfd": True,
                          "root_observed_before_sigcont": root_observation,
@@ -1648,9 +1677,12 @@ class ServiceQA:
             if delegation.get("status") != "denied":
                 raise QAFailure("delegated C socket frame from W was not denied")
             self.record_pass("caller_socket_fd_delegation", delegation)
+            same_uid = pass_exact_fd_to_worker(str(self.qa_root / "control.sock"), nonce1, RUNNER_UID)
+            self.record_pass("same_uid_different_pid_socket_delegation", same_uid)
             self.stop_scope(1, nonce1, 1)
 
             nonce2, actor2, status2 = self.start_scope(2)
+            self.replay_closed_stop(nonce1, status1, nonce2, status2)
             self.stop_broker_paused_scope(2, nonce2, status2)
 
             self.caller_death_scope(3)
