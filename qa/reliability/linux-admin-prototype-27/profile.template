@@ -1,0 +1,48 @@
+# QA ONLY. The runner substitutes one unique name and one root-owned fixed binary.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile @PROFILE@ @EXECUTABLE@ {
+  # The fixed authority binary is STATIC; there is no ELF interpreter and no
+  # blanket mmap permission for user libraries or system directory wildcards.
+  @EXECUTABLE@ mrix,
+  /proc/self r,
+  /proc/[0-9]*/attr/current rw,
+  /proc/[0-9]*/status r,
+  /proc/[0-9]*/{uid_map,gid_map,setgroups} rw,
+  userns,
+  capability sys_admin,
+  # Required only inside the mapped child, before irreversibly zeroing caps.
+  capability setpcap,
+  # Explicit NNP-compatible addition of a restrictive worker component.
+  change_profile -> &@PROFILE@//worker,
+  ptrace (read, readby, trace, tracedby) peer=@PROFILE@,
+  ptrace (read) peer=@PROFILE@//worker,
+  ptrace (read) peer="@STACK@",
+  ptrace (read) peer="@STACK_REVERSE@",
+  signal (send, receive) peer=@PROFILE@,
+  signal (send) peer=@PROFILE@//worker,
+  signal (send) peer="@STACK@",
+  signal (send) peer="@STACK_REVERSE@",
+  signal (receive) set=(kill, term, int) peer=unconfined,
+
+  profile worker {
+    # Inherit this exact worker label: never attach the authority profile.
+    @EXECUTABLE@ mrix,
+    /proc/self r,
+    /proc/[0-9]*/attr/current rw,
+    /proc/[0-9]*/status r,
+    audit deny userns,
+    audit deny capability,
+    audit deny change_profile,
+    ptrace (read, readby, trace, tracedby) peer=@PROFILE@//worker,
+    ptrace (read, readby, trace, tracedby) peer="@STACK@",
+    ptrace (read, readby, trace, tracedby) peer="@STACK_REVERSE@",
+    ptrace (readby) peer=@PROFILE@,
+    signal (send, receive) peer=@PROFILE@//worker,
+    signal (send, receive) peer="@STACK@",
+    signal (send, receive) peer="@STACK_REVERSE@",
+    signal (receive) peer=@PROFILE@,
+    signal (receive) set=(kill, term, int) peer=unconfined,
+  }
+}

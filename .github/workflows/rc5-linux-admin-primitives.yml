@@ -1,0 +1,43 @@
+name: RC5 Linux admin boundary primitives
+
+on:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths:
+      - .github/workflows/rc5-linux-admin-primitives.yml
+      - qa/reliability/linux-admin-prototype-27/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-linux-admin-primitives-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  restricted-host-primitives:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test the fixed native boundary with host restrictions unchanged
+        run: >-
+          python3 qa/reliability/linux-admin-prototype-27/run_probe.py
+          --out qa/reliability/linux-admin-prototype-27/runs/physical-arm64
+      - name: Retain the scoped public result only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc5-linux-admin-primitives-${{ github.sha }}
+          path: qa/reliability/linux-admin-prototype-27/runs/physical-arm64/summary.json
+          if-no-files-found: warn
+          retention-days: 3

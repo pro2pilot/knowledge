@@ -635,7 +635,6 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
         runner.check(len(created)==2,'macos_team_native_allocation_count');new_attempt=report['scope']['binding']['attempt_id']
         runner.check(new_attempt!=old_attempt and new_attempt in created,'macos_team_native_attempt_not_distinct')
         closure(new_attempt,created[new_attempt]);runner.check(not lock.exists(),'macos_team_new_lock_not_released')
-        team_doctor_report = capture_team_doctor_report(runner, base, runner.evidence, event_path.parents[3], new_start, out)
         events=[json.loads(line) for line in event_path.read_text().splitlines() if line.strip()]
         acquired=[value for value in events if value.get('type')=='lock_acquired' and value.get('lock')=='flow']
         runner.check(len(acquired)==2 and acquired[0]['lock_id']==old_owner['lock_id'] and acquired[1]['lock_id']!=old_owner['lock_id'],
@@ -649,6 +648,7 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
         new_final=json.loads((workspace/'flow-runs'/(new_run+'.final.json')).read_bytes())
         runner.check(not old_final_exists and new_final.get('run_id')==new_run and new_final.get('release',{}).get('status')=='released',
             'macos_team_run_finalization_binding')
+        team_doctor_report = capture_team_doctor_report(runner, base, runner.evidence, event_path.parents[3], new_start, out)
         proof={'old_owner_text':old_owner_text,'old_scope_text':old_scope_text,'quarantined_owner_text':quarantines[0].read_text(),
             'quarantined_scope_text':quarantined_scope,'old_start':old_start,'new_start':new_start,'new_final':new_final,
             'old_final_exists':old_final_exists,'team_events':events,'native_closures':native_closures,'retry_report':report,

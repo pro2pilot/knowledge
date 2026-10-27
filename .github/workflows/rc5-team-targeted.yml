@@ -5,8 +5,10 @@ on:
     branches: [codex/rc5-blocker-fixes-20261027]
     paths:
       - .github/workflows/rc5-team-targeted.yml
+      - qa/reliability/controllers/macos-writable-lifecycle.py
       - qa/reliability/controllers/macos-writable-summary.py
       - qa/reliability/controllers/test-macos-writable-summary.py
+      - qa/reliability/controllers/test-macos-writable-lifecycle-undefined.py
   workflow_dispatch:
 
 permissions:
