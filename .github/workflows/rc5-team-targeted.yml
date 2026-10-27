@@ -1,0 +1,187 @@
+name: RC5 targeted macOS Intel Team writable
+
+on:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths:
+      - .github/workflows/rc5-team-targeted.yml
+      - qa/reliability/controllers/macos-writable-summary.py
+      - qa/reliability/controllers/test-macos-writable-summary.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-team-intel-writable-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  team-intel-writable:
+    name: macOS Intel writable Team cohort
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: x64
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Freeze this checkout's product source
+        id: freeze
+        run: python3 qa/reliability/continuation-20261026/freeze-source.py --source source/.knowledge --out continuation-source
+      - name: Run only the physical writable Team cohort
+        id: lifecycle
+        if: ${{ always() && steps.freeze.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/rc5-team-intel/private"
+          chmod 700 "$RUNNER_TEMP/rc5-team-intel/private"
+          python3 - <<'PY'
+          import os, signal, subprocess, sys
+          from pathlib import Path
+
+          private = Path(os.environ['RUNNER_TEMP']) / 'rc5-team-intel' / 'private'
+          stdout_path = private / 'lifecycle.stdout.raw'
+          stderr_path = private / 'lifecycle.stderr.raw'
+          command = [sys.executable,
+              'qa/reliability/controllers/macos-writable-lifecycle.py',
+              '--source', 'continuation-source/source/.knowledge',
+              '--reference', 'qa/reliability/reference',
+              '--evidence', str(private / 'writable'),
+              '--expected-arch', 'x86_64']
+          process = None
+          timed_out = False
+          forced_kill = False
+          cleanup_unconfirmed = False
+          exit_code = 127
+          try:
+              with stdout_path.open('xb') as stdout, stderr_path.open('xb') as stderr:
+                  process = subprocess.Popen(command, stdout=stdout, stderr=stderr,
+                      stdin=subprocess.DEVNULL, start_new_session=True)
+                  try:
+                      exit_code = process.wait(timeout=1500)
+                  except subprocess.TimeoutExpired:
+                      timed_out = True
+                      try:
+                          os.killpg(process.pid, signal.SIGINT)
+                      except ProcessLookupError:
+                          pass
+                      try:
+                          exit_code = process.wait(timeout=60)
+                      except subprocess.TimeoutExpired:
+                          forced_kill = True
+                          try:
+                              os.killpg(process.pid, signal.SIGKILL)
+                          except ProcessLookupError:
+                              pass
+                          try:
+                              exit_code = process.wait(timeout=15)
+                          except subprocess.TimeoutExpired:
+                              cleanup_unconfirmed = True
+                              exit_code = 124
+          except Exception:
+              exit_code = 127
+              if process is not None and process.poll() is None:
+                  try:
+                      os.killpg(process.pid, signal.SIGINT)
+                  except ProcessLookupError:
+                      pass
+                  try:
+                      process.wait(timeout=5)
+                  except subprocess.TimeoutExpired:
+                      forced_kill = True
+                      try:
+                          os.killpg(process.pid, signal.SIGKILL)
+                      except ProcessLookupError:
+                          pass
+                      try:
+                          process.wait(timeout=15)
+                      except subprocess.TimeoutExpired:
+                          cleanup_unconfirmed = True
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as output:
+              output.write(f'exit_code={exit_code}\n')
+              output.write(f'timed_out={str(timed_out).lower()}\n')
+              output.write(f'forced_kill={str(forced_kill).lower()}\n')
+              output.write(f'cleanup_unconfirmed={str(cleanup_unconfirmed).lower()}\n')
+          print('Lifecycle controller completed; details remain in private scratch.')
+          PY
+      - name: Project private proof to the public Team summary
+        if: always()
+        continue-on-error: true
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+          CONTROLLER_EXIT_CODE: ${{ steps.lifecycle.outputs.exit_code || '127' }}
+          LIFECYCLE_TIMED_OUT: ${{ steps.lifecycle.outputs.timed_out || 'true' }}
+          LIFECYCLE_FORCED_KILL: ${{ steps.lifecycle.outputs.forced_kill || 'true' }}
+          LIFECYCLE_CLEANUP_UNCONFIRMED: ${{ steps.lifecycle.outputs.cleanup_unconfirmed || 'true' }}
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/rc5-team-intel/public"
+          chmod 755 "$RUNNER_TEMP/rc5-team-intel/public"
+          python3 qa/reliability/controllers/macos-writable-summary.py \
+            --private "$RUNNER_TEMP/rc5-team-intel/private/writable" \
+            --public "$RUNNER_TEMP/rc5-team-intel/public/macos-writable" \
+            --source continuation-source/source/.knowledge \
+            --controller-status "$CONTROLLER_EXIT_CODE" \
+            --expected-arch x86_64
+      - name: Require complete ownership proof and successful Team quality
+        if: always()
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+          CONTROLLER_EXIT_CODE: ${{ steps.lifecycle.outputs.exit_code || '127' }}
+          LIFECYCLE_TIMED_OUT: ${{ steps.lifecycle.outputs.timed_out || 'true' }}
+          LIFECYCLE_FORCED_KILL: ${{ steps.lifecycle.outputs.forced_kill || 'true' }}
+          LIFECYCLE_CLEANUP_UNCONFIRMED: ${{ steps.lifecycle.outputs.cleanup_unconfirmed || 'true' }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+
+          summary = Path(os.environ['RUNNER_TEMP']) / 'rc5-team-intel' / 'public' / 'macos-writable' / 'summary.json'
+          try:
+              value = json.loads(summary.read_text(encoding='utf-8'))
+              team = next(row for row in value['cases'] if row.get('name') == 'team_flow_controller_death_retry')
+              lifecycle_ok = os.environ.get('CONTROLLER_EXIT_CODE') == '0' and \
+                  os.environ.get('LIFECYCLE_TIMED_OUT') == 'false' and \
+                  os.environ.get('LIFECYCLE_FORCED_KILL') == 'false' and \
+                  os.environ.get('LIFECYCLE_CLEANUP_UNCONFIRMED') == 'false'
+              valid = lifecycle_ok and value.get('schema') == 'knowledge-macos-writable-public.v2' and \
+                  value.get('status') == 'PASS_PHYSICAL_MACOS_WRITABLE' and \
+                  team.get('status') == 'PASS_PHYSICAL_MACOS_WRITABLE' and \
+                  team.get('facts', {}).get('exact_team_recovery_proof_verified') is True and \
+                  team.get('quality_status') == 'ok' and team.get('overall_status') == 'ok' and \
+                  len(team.get('team_steps', [])) == 8 and all(
+                      step.get('execution_status') == 'pass' and step.get('success') is True and
+                      step.get('exit_code') == 0 and step.get('semantic_error_count') == 0 and
+                      not step.get('semantic_error_categories') and
+                      step.get('verification_status') not in {'blocked', 'broken', 'degraded', 'error', 'fail',
+                          'failed', 'needs_repair', 'runtime_error', 'storage_unavailable', 'unhealthy', 'unexpected_failure'}
+                      for step in team['team_steps'])
+          except Exception:
+              valid = False
+          if not valid:
+              print('FAIL: writable Team proof or Team quality gate is incomplete.')
+              sys.exit(1)
+          print('PASS: writable Team ownership proof and all eight Team quality steps verified.')
+          PY
+      - name: Retain only the public writable Team projection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc5-team-intel-writable-${{ github.sha }}
+          path: ${{ runner.temp }}/rc5-team-intel/public/**
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 3
