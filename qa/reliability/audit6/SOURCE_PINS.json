@@ -416,7 +416,7 @@
     "tests/update-fallback-evidence.test.js": "74d2960989d2f8f2d2eb044fd2daad465e180499dd382734bc447fdbfe28b8cb",
     "tests/update-journal-preservation.test.js": "b968b55b0eed7fc411222d1bf3b2171a10ac683bf00f1296b910d4fe8f285b25",
     "tests/verification-cleanup-transcript.test.js": "e3252a79672ec8fea336287590c1e07d9727a3d2650bb878967bc51b3d324d19",
-    "tests/verification-control.test.js": "6c3d09fc56392707c5c91595cf31908df4708b67d7e3fbee8fb55e6ecdeefb92",
+    "tests/verification-control.test.js": "6837c0b0c1096860f91455d6437f41ade10c7addcca31a4a00f6293d725f78d8",
     "tests/verification-darwin-client.test.js": "5088affb962c3b5d6b8432bef736a840a0a95f5a54e043fdca73a9db4d942d05",
     "tests/verification-darwin-transport.test.js": "84fe9b7925ba6e7673e1b6aacd5e688a4587ee2b7134f7630811f2e8393cb458",
     "tests/verification-evidence-guards.test.js": "4182662908b3bc7e4a92e77e8afc79d2575e989a10db2e68fbead59368e3073d",

@@ -100,7 +100,8 @@ test('empty/malformed/removed active state and hardlinks do not become free admi
  assert(s.owner.token);
 });
 for(const mode of ['atomic cancellation','continuous replacement','hardlink after open','corrupt replacement']) {
- test(`status reader handles ${mode} between open and fstat without accepting a stale row`,t=>{
+ test(`status reader handles ${mode} between open and fstat without accepting a stale row`,
+ {skip:process.platform==='win32'&&mode!=='hardlink after open'?'POSIX open-inode unlink race; Windows denies atomic replacement while this synchronous reader handle is open':false},t=>{
   const f=fixture(t),started=start(f),file=path.join(f.root,'maintenance/verification-control/active.json');
   const store=require('../tools/lib/json-store'),before=JSON.parse(fs.readFileSync(file,'utf8'));
   control.requestCancel(f.context,{attempt_id:started.owner.attempt_id,generation:started.owner.generation});
@@ -115,6 +116,9 @@ for(const mode of ['atomic cancellation','continuous replacement','hardlink afte
      if(mode==='hardlink after open')fs.linkSync(file,path.join(f.root,'extra-link.json'));
      else store.writeJsonAtomicContained(file,mode==='corrupt replacement'?{}:next,f.root);
      links.push(fs.fstatSync(fd,{bigint:true}).nlink);
+    } catch(error) {
+     // The caller cannot close an fd that this injected open never returns.
+     fs.closeSync(fd);throw error;
     } finally {writing=false;}
    }
    return fd;

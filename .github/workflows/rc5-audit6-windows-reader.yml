@@ -1,0 +1,55 @@
+name: RC5 audit6 Windows open-reader evidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit6-windows-reader.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: rc5-audit6-windows-reader-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows-reader:
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit6-final-exact-zip
+          path: downloaded-package
+          run-id: 40594352555
+          github-token: ${{ github.token }}
+      - name: Observe sharing refusal and replay explicitly scoped test cases
+        run: python qa/reliability/audit6/run_windows_reader_qa.py --package downloaded-package/public --arch ${{ matrix.arch }} --out windows-reader
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit6-windows-reader-${{ matrix.arch }}
+          path: |
+            windows-reader/RESULT.json
+            windows-reader/*.stdout.json
+            windows-reader/*.stderr.txt
+          retention-days: 3
+          if-no-files-found: error
