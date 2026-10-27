@@ -112,6 +112,21 @@ def unchanged(source, manifest):
     return all(sha(bounded(source / name)) == row['sha256'] for name, row in rows(manifest).items())
 
 
+def validate_extra_policy(policy, source_names):
+    if policy.get('schema_version') != 'knowledge-continuation-extra-cases.v1':
+        raise RuntimeError('Additional cohort policy schema mismatch')
+    cohorts = policy['cohorts']
+    if set(cohorts) != set(EXTRA_COHORT_COUNTS):
+        raise RuntimeError('Required additional cohort missing or unexpected')
+    for name, cohort in cohorts.items():
+        platforms = {'linux'} if name.startswith('linux-') else {'darwin'} if name.startswith('macos-') else {'win32'} if name == 'windows-powershell-selection' else {'linux', 'win32', 'darwin'} if name in {'repair-producer-dependency-closure', 'runtime-install-completeness', 'watchdog-progress-close', 'failed-command-observation'} else {'linux', 'win32'}
+        kind = 'json-selftest' if name == 'watcher-runtime-safety' else 'tap'
+        if cohort.get('count') != EXTRA_COHORT_COUNTS[name] or set(cohort.get('platforms', [])) != platforms or cohort.get('kind') != kind or \
+                not isinstance(cohort.get('files'), list) or len(cohort['files']) != 1 or not set(cohort['files']) <= source_names:
+            raise RuntimeError('Additional cohort policy differs from fixed matrix/source contract')
+    return cohorts
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--prepared', required=True)
@@ -260,18 +275,7 @@ def main():
     try:
         cohort_bytes = bounded(Path(__file__).with_name('EXTRA_CASES.json'))
         cohort_policy = json.loads(cohort_bytes)
-        if cohort_policy.get('schema_version') != 'knowledge-continuation-extra-cases.v1':
-            raise RuntimeError('Additional cohort policy schema mismatch')
-        extra_cohorts = cohort_policy['cohorts']
-        if set(extra_cohorts) != set(EXTRA_COHORT_COUNTS):
-            raise RuntimeError('Required additional cohort missing or unexpected')
-        source_names = set(rows(manifest))
-        for name, cohort in extra_cohorts.items():
-            platforms = {'darwin'} if name.startswith('macos-') else {'win32'} if name == 'windows-powershell-selection' else {'linux', 'win32', 'darwin'} if name in {'repair-producer-dependency-closure', 'runtime-install-completeness', 'watchdog-progress-close', 'failed-command-observation'} else {'linux', 'win32'}
-            kind = 'json-selftest' if name == 'watcher-runtime-safety' else 'tap'
-            if cohort.get('count') != EXTRA_COHORT_COUNTS[name] or set(cohort.get('platforms', [])) != platforms or cohort.get('kind') != kind or \
-                    not isinstance(cohort.get('files'), list) or len(cohort['files']) != 1 or not set(cohort['files']) <= source_names:
-                raise RuntimeError('Additional cohort policy differs from fixed matrix/source contract')
+        extra_cohorts = validate_extra_policy(cohort_policy, set(rows(manifest)))
         result['extra_case_policy_sha256'] = sha(cohort_bytes)
         host, output = run('host', [node, '-p', 'JSON.stringify({platform:process.platform,arch:process.arch,node:process.version})'])
         observed = json.loads(output)
