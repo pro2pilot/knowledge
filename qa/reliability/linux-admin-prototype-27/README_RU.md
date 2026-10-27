@@ -4,7 +4,7 @@
 
 Содержит фиксированный C probe и inert static tracer-control: ни один argv не задаёт исполняемый
 файл, script, профиль или произвольную команду. Ровно один временный root-owned
-STATIC ELF binary устанавливается под уникальным `/opt/knowledge-qa27-<uuid>/`; generic
+STATIC ELF binary устанавливается под уникальным `/var/lib/knowledge-qa27-<uuid>/`; generic
 Node/Python/standard helper не профилируются. Профили authority/worker уникальны
 для прогона. Системные sysctl, существующие profiles, SUID/filecaps не меняются.
 
@@ -12,7 +12,7 @@ Node/Python/standard helper не профилируются. Профили auth
 с observed profile `unconfined` и доступным `sudo -n` для отдельных install,
 apparmor_parser и удаления **только своих** fixed files. Не запускать весь
 контроллер под sudo. Требуется Linux с pidfd, AppArmor enforcing/userns restriction1,
-ABI4 policy, C compiler, Python с pidfd API. Root-owned `/opt` не должен быть
+ABI4 policy, C compiler, Python с pidfd API. Root-owned `/var/lib` не должен быть
 symlink или writable другими. Выходной каталог — новый descendant этой QA папки.
 
 После проверки исходников и workflow root может вызвать (пример, не исполнен):

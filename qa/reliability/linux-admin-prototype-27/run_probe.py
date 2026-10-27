@@ -307,26 +307,52 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    if sys.platform != "linux" or os.getresuid() != (1001, 1001, 1001) or os.getresgid() != (1001, 1001, 1001):
-        raise SystemExit("Requires the dedicated Linux QA user UID/GID1001; never run this controller as root.")
-    if Path("/proc/self/attr/current").read_text().strip() != "unconfined":
-        raise SystemExit("The same-UID parent probe requires an observed unconfined caller.")
     out = args.out.resolve()
     if not out.is_relative_to(HERE) or out == HERE or out.exists():
         raise SystemExit("Output must be a new strict descendant of this QA directory.")
     out.mkdir(parents=True, mode=0o700)
     os.chmod(out, 0o700)
+    inputs = {name: digest((HERE / name).read_bytes()) for name in
+              ("run_probe.py", "probe.c", "profile.template", "loader_sentinel.c", "ptrace_sentinel.c")}
+
+    def refuse_preflight(code: str) -> int:
+        summary = {"schema": "knowledge-linux-admin-primitive-probe.v1", "qualification": False,
+                   "status": "FAIL_OR_INCOMPLETE", "phase": "pre_install_admission",
+                   "error_code": code, "input_sha256": inputs,
+                   "admin_steps": [], "owned_installation_created": False,
+                   "native_processes_admitted": False, "global_policy_changes_attempted": False}
+        (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+        os.chmod(out / "summary.json", 0o600)
+        return 1
+
+    if sys.platform != "linux":
+        return refuse_preflight("linux_required")
+    if os.getresuid() != (1001, 1001, 1001) or os.getresgid() != (1001, 1001, 1001):
+        return refuse_preflight("dedicated_nonroot_uid_gid_required")
+    try:
+        if Path("/proc/self/attr/current").read_text().strip() != "unconfined":
+            return refuse_preflight("unconfined_parent_required")
+    except OSError:
+        return refuse_preflight("parent_label_unavailable")
     token = uuid.uuid4().hex
     profile = "knowledge_qa27_" + token
-    install = Path("/opt") / ("knowledge-qa27-" + token)
-    if not re.fullmatch(r"/opt/knowledge-qa27-[a-f0-9]{32}", str(install)):
+    install = Path("/var/lib") / ("knowledge-qa27-" + token)
+    if not re.fullmatch(r"/var/lib/knowledge-qa27-[a-f0-9]{32}", str(install)):
         raise RuntimeError("invalid_owned_install_path")
-    opt = Path("/opt").lstat()
-    if not stat.S_ISDIR(opt.st_mode) or opt.st_uid != 0 or opt.st_mode & 0o022 or install.exists():
-        raise RuntimeError("unsafe_or_existing_opt_install_root")
+    # Hosted runners intentionally make /opt writable by their normal user.
+    # Use a separate fixed administration parent; never repair its permissions.
+    try:
+        if install.exists() or install.is_symlink():
+            raise RuntimeError("existing_owned_install_path")
+        for parent in install.parents:
+            identity = parent.lstat()
+            if not stat.S_ISDIR(identity.st_mode) or identity.st_uid != 0 or identity.st_mode & 0o022:
+                raise RuntimeError("unsafe_install_parent")
+    except (OSError, RuntimeError) as error:
+        return refuse_preflight(str(error) if isinstance(error, RuntimeError) else "install_parent_unavailable")
     before = policy_snapshot()
     if before[POLICY_FILES[0]] != "1" or before[POLICY_FILES[2]] not in ("Y", "1"):
-        raise SystemExit("Requires enforcing restricted-userns prerequisites; does not change them.")
+        return refuse_preflight("enforcing_restricted_userns_required")
     source = (HERE / "probe.c").read_bytes()
     template = (HERE / "profile.template").read_text()
     binary = out / "probe"
@@ -336,7 +362,7 @@ def main() -> int:
                      .replace("@STACK_REVERSE@", profile + "//worker//&" + profile)
     profile_file.write_text(policy)
     summary = {"schema": "knowledge-linux-admin-primitive-probe.v1", "qualification": False,
-               "status": "NOT_RUN", "profile": profile, "source_sha256": digest(source),
+               "status": "NOT_RUN", "profile": profile, "source_sha256": digest(source), "input_sha256": inputs,
                "policy_sha256": digest(policy.encode()), "global_policy_before": before,
                "scope": "Fixed C QA primitives only, not production runtime support", "admin_steps": []}
     process = None
