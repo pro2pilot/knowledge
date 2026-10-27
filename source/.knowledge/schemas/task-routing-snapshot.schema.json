@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-task-routing-snapshot.v2",
+  "type": "object",
+  "required": ["schema_version", "task_scope_hash", "snapshot_hash"],
+  "properties": {
+    "schema_version": { "const": "knowledge-task-routing-snapshot.v2" },
+    "task_scope_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "snapshot_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "additionalProperties": true
+}
