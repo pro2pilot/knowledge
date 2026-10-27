@@ -6,11 +6,37 @@
 
 This is a guarantee about descendants of the admitted process. It is **not a filesystem, network, resource-limit, or hostile-code sandbox**. Commands retain ordinary access to project files and networking. A request to an existing external daemon can create work outside the descendant boundary, just as with other process-tree containment mechanisms; that work is not covered by this proof.
 
-The backend requires a Linux kernel with usable user/PID namespaces and pidfds, readable native process identity through procfs, and a permitted one-user UID/GID map. At the first build it also requires a working system `/usr/bin/cc` or `/usr/bin/gcc`, `/usr/bin/unshare` supporting the flags used by the bootstrap, and the current Node executable. There is no package download, host cgroup modification, daemon installation, privileged service, or global mount operation. If admission fails, native verification is unavailable before workload execution. Doctor and read-only diagnostics remain separate from native verification capability.
+Runtime requires a Linux kernel with usable user/PID namespaces and pidfds,
+readable native process identity through procfs, a permitted UID/GID map, and
+the packaged native helper for the current architecture. The runtime checks the
+helper's manifest, source and binary hashes, byte count, and executable bit; the
+`--probe` operation then tests actual namespace setup and cleanup. A passing
+capability probe reports `requires_runtime_setup`: it is not itself successful
+verification admission. Runtime does not compile the helper or invoke
+`/usr/bin/unshare`. Helper compilation belongs to package build time. There is no
+host cgroup modification, privileged service installation, or global mount
+operation. If admission fails, native verification is unavailable before
+workload execution. Doctor and read-only diagnostics remain separate from
+native verification capability.
 
-The runtime ZIP carries C source and the JavaScript adapter. The native executable is compiled for the actual host and cached in a private directory scoped by the caller UID and user namespace. A build manifest records the source hash, executable hash, architecture, compiler hash and bootstrap hash. A reused cached executable must match its manifest and current source. A changed helper is not silently accepted for recovery of an older descriptor.
+The runtime package carries the C source, JavaScript adapter, architecture-matched
+prebuilt executable, and `verification-linux-namespace.manifest.json` under
+`tools/lib/native/linux-<arch>/`. `preparePackagedHelper()` verifies the packaged
+source and executable against the manifest. Production invocation uses the
+isolated preparer's private executable snapshot passed through fixed trusted IPC;
+the snapshot has a private directory and executable mode, and its inode and
+contents are checked after writing. Standalone maintainer entrypoints may verify
+the packaged executable directly. There is no runtime compile fallback or
+caller-UID compiler cache. Descriptor hashes bind the exact helper bytes used;
+a changed helper is not silently accepted for recovery of an older descriptor.
 
-Capability is checked in the environment in which verification will actually execute. A Linux VM or container is Linux evidence. It is not macOS native evidence. The Darwin backend remains explicitly unavailable until a separately implemented and physically tested containment mechanism is provided.
+Capability is checked in the environment in which verification will actually
+execute. A Linux VM or container is Linux evidence, not macOS native evidence.
+This PID-namespace backend is Linux-only. The product's separate Darwin
+isolated-copy pipeline is opt-in and disabled by default; see the
+[macOS broker guide](native-darwin-broker.md) for its request flags,
+administrator-installed broker and UID provisioning. Linux namespace results do
+not qualify the separate Darwin execution path.
 
 ## Admission and work gate
 
@@ -45,7 +71,15 @@ The trusted init retains the capabilities of its new user namespace. A command w
 
 The pinned outer authority uses a separate, explicit `trustedAuthority: true` setting in the watchdog implementation. It retains only **CAP_SETFCAP inside its own newly created user namespace**, with matching inheritable/ambient state. Linux's rules for mapping parent UID 0 require this when creating the inner user namespace. This does not grant a host capability. The setting is not a verification-request option. The command worker always receives the zero-capability profile. Physical tests check both profiles after Node exec and verify denial of access to init/controller memory, environment, namespace handles and private control fds.
 
-Helper startup removes dynamic-loader injection variables. The compiler runs with a minimal fixed environment: a system executable path, `LANG=C`, `LC_ALL=C` and its own temporary directory. User compiler prefixes, include paths and library paths do not affect the native build. The compiler is itself executed inside a temporary PID namespace with a fixed Node PID1 driver and a 60-second build budget. Driver exit causes kernel cleanup of compiler descendants; the outer bootstrap has a separate 75-second transport guard. A failure of that outer guard is an unavailable/unconfirmed admission, not successful cleanup. Bootstrap timing is not a hard realtime caller-return promise.
+Before native helper calls, `nativeEnv()` removes `LD_*` dynamic-loader
+overrides; it does not launch a compiler or construct a compiler environment.
+The `--probe` subprocess has a 20-second timeout and must report both ready and
+closed with zero active processes and reaped namespace init. `job.close()` uses
+a 30-second default cleanup allowance unless the caller supplies another
+budget; it latches an unconfirmed result when the allowance expires. Other
+observer operations use their own explicit bounded timeouts. These are
+observation/cleanup budgets, not guarantees that kernel I/O or an uninterruptible
+task returns by a wall-clock deadline.
 
 ## Cleanup proof
 
@@ -92,7 +126,23 @@ Direct pidfd evidence and historical finality inference are explicitly distingui
 
 ## Verification and limits
 
-Run `node tools/self-test-linux-namespace.js` on an actually supported Linux host. An unavailable capability returns `BLOCKED` and a nonzero exit code, not PASS. The physical suite covers pre-permit work denial, native IPC/birth identity, protected handles, detached/reparented children, actual double-fork plus nested PID namespaces, nested authority/worker capability profiles, compiler-environment injection, keeper crash, cleanup-budget exhaustion, current-owner observation, old-birth safety, live recovery, post-controller-crash recovery, and boot/namespace mismatch.
+Run `node tools/self-test-linux-namespace.js` on an actually supported Linux
+host. An unavailable capability returns `BLOCKED` and a nonzero exit code, not
+PASS. The physical suite covers pre-permit work denial, native IPC/birth
+identity, protected handles, detached/reparented children, actual double-fork
+plus nested PID namespaces, nested authority/worker capability profiles,
+compiler-related environment injection against the pinned packaged helper, keeper
+crash, cleanup-budget exhaustion, current-owner observation, old-birth safety,
+live recovery, post-controller-crash recovery, and boot/namespace mismatch. The
+nested-descendant fixture invokes `/usr/bin/unshare` for its synthetic child
+namespace; this is a self-test prerequisite, not a runtime backend dependency.
+
+A separate fixed-native-actor system-service experiment reported
+[`PASS_SCOPED_QA` in run 40548260744](https://github.com/pro2pilot/knowledge/actions/runs/40548260744):
+21 named QA check groups passed, alongside six socket-parser checks, six memory/FD
+denials each for C and W, and a four-attempt UID lifecycle. It did not execute
+Node commands in isolated copies or integrate with this KVE verification backend;
+the result explicitly leaves production-backend and release qualification false.
 
 The old-birth test uses an explicitly synthetic historical birth against a real current process. It does not claim to force kernel PID-number recycling. A stopped-keeper fault uses a deliberately short test-only budget; it does not change production budget defaults. Kernel D-state is handled fail-closed but is not manufactured by dangerous host-I/O fault injection. Linux x64 physical evidence does not certify other architectures, Windows, macOS, or all distributions.
 

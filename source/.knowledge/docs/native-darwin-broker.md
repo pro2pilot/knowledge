@@ -1,6 +1,24 @@
-# Darwin broker development status
+# macOS native verification broker
 
-This reliability worktree starts from
+> Current status for unpublished `3.4.4 RC5`, audit revision
+> `independent-audit.20261027.reliability.4`. Normal production isolated-copy
+> verification is disabled by default, even if the broker is ready. A request must
+> explicitly set `native_execution.darwin.enabled=true` and
+> `mode="isolated_copy"`, with broker paths and copy limits. The broker is
+> installed and its reserved private UID range provisioned separately by an
+> administrator; the product installer does not provision that privileged service.
+> The isolated-copy path does not provide writable Flow/Team access, which uses a
+> separate admin-provisioned workspace/capability. In normal mode, a missing or
+> unhealthy configured broker refuses before project work. Fresh platform
+> qualification is incomplete. Stock-SIP behavior on a user's own Mac has not
+> been verified; physical evidence so far is from GitHub-hosted runners.
+
+> QA boundary: `--qualification-mode` and temporary-root diagnostic fixtures are
+> test-only. They do not enable the canonical production service or prove normal
+> production admission. Diagnostic results remain diagnostic; the normal opt-in
+> request contract above describes the production path.
+
+The prior reliability worktree started from
 `independent-audit.20261025.darwin-prototype.3.audit.2`. Its exact delivery
 manifest identifies the resulting derivative. The pipeline4 actor/reference
 source at repository commit `4303ef4dea1520cb556a30036612842287ed2386` was read as
@@ -16,13 +34,13 @@ actor owns mutable registry/history state. Its disk I/O is separate from the
 nonblocking transport reactor, immutable stop observer and independent root
 guardian process. A blocked durable writer never becomes a successful commit.
 
-This source includes an experimental native broker, a bounded project-copy
-planner, capability client and asynchronous production-session facade. The
-facade requires a qualified shipping descriptor; it cannot turn diagnostic
-success into accepted verification/finalization. Ordinary macOS native
-verification remains closed until that contract is qualified. The broker's source constant
-`kCapabilityQualified` is false; diagnostic observations cannot issue a production
-cleanup confirmation or a Knowledge ACK.
+The current source includes the native broker, bounded project-copy planner,
+capability client and asynchronous production-session facade. A public request
+opts in only with the exact enabled isolated-copy configuration described above.
+A ready service alone never enables execution; an absent or unhealthy configured
+broker refuses before a project claim or work and never falls back to another
+platform backend. Accepted results still depend on exact native cleanup and
+durable common finalization evidence.
 
 The selected design requires an administrator-installed native service and an
 explicit isolated project copy. It does not change the original project's owner,
@@ -152,15 +170,13 @@ Remote workspace readback and the common finalization pipeline remain separate
 requirements; this does not make a mutable filesystem an atomic snapshot.
 
 The standalone JS client validates explicit inert configuration and probes a
-protected installed broker. The public repair/agent-task request boundary now
+protected installed broker. The public repair/agent-task request boundary
 preserves `native_execution` in its normalized request and replay hash; the camel
 alias is accepted only when the snake alias is absent. Conflicting aliases,
 accessors, proxies and malformed settings refuse before execution. Explicitly
-requesting enabled Darwin execution currently returns
-`verification_containment_unavailable` before a claim or work is created. It
-cannot silently use the host Windows/Linux backend or old accepted evidence.
-The broker client does not install a service or request sudo. This remains a
-development interface without production Darwin admission until qualification.
+requesting Darwin execution does not silently use the host Windows/Linux backend
+or old accepted evidence. The broker client does not install a service or request
+sudo; service installation and reserved UID provisioning are administrator tasks.
 
 `verification-darwin-session.js` provides asynchronous probe/open/attach,
 copy/authority/permit/run, source snapshot/readback, drain, close and stop methods.
@@ -187,7 +203,8 @@ not silently shortened. The work clock starts before UID reservation and covers
 preparation, copying and commands. Cleanup has its own clock and cannot extend
 an active cleanup by repeated close requests. These are configuration limits,
 not recommended defaults or a promise of millisecond API return. The common
-profile, progress, cancellation and finalization integration is still pending.
+profile, progress, cancellation and finalization use the common verification
+contract. Fresh macOS qualification of these integrated paths remains pending.
 
 Diagnostic startup pair inspection allows 30 seconds for work and a separate
 30 seconds for stopping/reaping its own native child. Unknown wait ownership
@@ -226,8 +243,9 @@ single storage actor. History scans, file hashing and durable sync can still
 stall that actor, preventing positive persistence/cleanup proof. The observer
 and guardian do not await those operations to stop admitted work. Compile-time
 QA holds demonstrate scheduling boundaries, not a genuinely stalled kernel
-filesystem operation. Production admission remains disabled pending current
-common control/KVE/ACK integration and exact native load/fault acceptance.
+filesystem operation. The current opt-in production path is integrated with
+common control/KVE/ACK finalization; exact native load/fault acceptance and fresh
+platform qualification remain open.
 
 Native UID history is wired as an unqualified development component. Its
 independent marker/head and consumed-UID hashchain must agree with the actual
@@ -375,11 +393,9 @@ positive cleanup proof. Root maintenance
 must remain quiescent: these checks are not an atomic filesystem CAS against
 concurrent root changes.
 
-Before production support: qualify host-wide UID allocation/history protection,
-native crash/timeout/recovery qualification, all required copy/cwd readback checks,
-common watchdog/control/recovery integration and a new versioned authority-pin
-and finalization contract. Do not add these files to the legacy v3 authority list
-and treat old signatures as proof of the new backend. Then test the exact installed
-artifact on supported macOS architectures and rerun Windows/Linux regressions.
-
-Full release acceptance and publication remain blocked by those requirements.
+Remaining release qualification: complete the fresh macOS platform matrix on the
+exact candidate, verify the installed ZIP after packaging, qualify the required
+macOS host configurations (including stock-SIP user-host behavior if claimed),
+and close all other platform gates in the release status. Existing hosted-runner
+macOS scoped results are implementation evidence, not universal host support.
+Full release acceptance and publication remain blocked until those gates pass.

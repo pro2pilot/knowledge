@@ -1,9 +1,43 @@
 # Team mode — 3.4.4 RC5
 
-Ветка: Knowledge 3.4.4 RC5, независимый аудит 2026-10-21 на базе
-`darwin-prototype.3`. Точная ревизия и SHA установочного кандидата указаны
-в metadata пакета и handoff. Исходная проектная спецификация 3.2.4 сохранена
-в архиве входных материалов.
+Ветка: Knowledge 3.4.4 RC5, аудит
+`independent-audit.20261027.reliability.4`. Точные source/package pins для
+собранного кандидата фиксируются после новой сборки и qualification; прежние
+675-file baseline hashes не идентифицируют текущий кандидат. Исходная проектная
+спецификация 3.2.4 сохранена в архиве входных материалов.
+
+## Текущие reliability-границы
+
+- Darwin native verification существует как production isolated-copy pipeline,
+  но выключен по умолчанию даже при готовом broker. Явный opt-in требует
+  `native_execution.darwin.enabled=true`, `mode="isolated_copy"`, broker paths
+  и copy limits. Broker service и reserved private UID готовятся отдельно
+  администратором. Writable Flow/Team — другая capability: для неё нужен отдельно
+  provisioned workspace и соответствующая административная конфигурация;
+  isolated-copy verification не предоставляет запись в исходный проект.
+- Public lock-owner publication использует staged atomic path: private, never-reused
+  directory сначала получает owner metadata (и execution-scope descriptor, если
+  он есть), данные fsync-ятся и перечитываются, затем подготовленный каталог
+  публикуется атомарным native no-replace primitive. До публикации public lock
+  отсутствует; crash в стадии подготовки не оставляет ownerless public mutex.
+  Реализация есть в `tools/lib/contained-lock-manager.js`; это не заменяет
+  platform-specific physical qualification.
+- Targeted Team run прошёл 7 physical cases и все 8 shipping steps. Doctor
+  сообщил 86/100 `usable_with_warnings` с двумя подлинными medium warnings:
+  `suspect_module` и `low_confidence_module`; это не повышает доверие к модулям.
+  Hosted result ограничен этой выборкой и не квалифицирует stock macOS/SIP.
+- Свежий targeted current-source physical run на Windows x64 / Node 22.17.1
+  прошёл 61 selected TAP cases и 20 runtime-safety checks. Reducer correction
+  переинтерпретировал сохранённый TAP и не повторял физические тесты. Это не
+  ARM64 qualification и не full release gate.
+- Для restricted Linux hosts принято направление отдельного system broker с
+  isolated copy, но production implementation и qualification ещё отсутствуют.
+  Hosted Ubuntu 24.04 ARM64 отказал в nested PID namespace с `EPERM`; host policy
+  не меняли.
+- Причина исторического второго ownerless lock остаётся **UNKNOWN**.
+
+Все результаты относятся к точному source snapshot. Итоговый установленный ZIP
+ещё ожидает полной runtime qualification.
 
 ## Область действия
 
@@ -38,7 +72,9 @@ native identity или неподтверждённой области авто�
 доступен. На Windows/macOS provider точной области для общего lock manager ещё
 не квалифицирован: новый owner записывается с `native_identity: null`, а
 автоматический stale reclaim после аварии остаётся ограничением доступности.
-Это отдельный вопрос от native Job/broker cleanup.
+Это отдельный вопрос от native Job/broker cleanup. Наличие production macOS
+verification broker не квалифицирует общий lock manager recovery provider на
+Windows или macOS.
 
 ## Регистрация и запуск
 
@@ -202,11 +238,12 @@ Legacy `.lock` и owner v1 остаются читаемыми, но не пол
 владения. Doctor и Team status наблюдают состояние; высокий content score не
 разрешает diagnostic reader освобождать native claim.
 
-Окно между созданием public каталога и записью owner metadata пока не атомарно.
-Аварийное завершение writer в этом окне может оставить ownerless mutex даже на
-Linux. Увеличение ожидания помогает медленной записи, но не доказывает владельца
-после crash. Закрытие этого случая требует отдельного atomic-publication
-протокола и проверки миграции; новый код не выдаёт неизвестный mutex за свободный.
+Текущая реализация устраняет окно публикации owner metadata для нового lock:
+owner подготавливается и проверяется в отдельном private каталоге до атомарной
+публикации public lock. Crash до rename/native no-replace оставляет только
+private stage, а не public ownerless mutex. Recovery старых ownerless locks
+остаётся консервативным: неизвестный владелец не становится свободным, и старые
+каталоги автоматически не удаляются.
 
 Причина исторической второй блокировки без исходного process/event trace
 остаётся неизвестной. Новые физические тесты показывают поведение этой версии
@@ -217,13 +254,20 @@ Linux. Увеличение ожидания помогает медленной
 Переносимые проверки Team registry, finalization, выбранных корней, CLI и Inspector
 выполнены на Linux в собственных тестовых репозиториях. Fault injection явно
 отмечен в аудите. Он не заменяет реальный Windows filesystem/process lifecycle.
-Native verification на Linux зависит от доступности PID namespace, pidfd и
-подготовленного закреплённого helper. При отсутствии prerequisites возвращается
+Native verification на Linux сейчас зависит от доступности PID namespace, pidfd
+и подготовленного закреплённого helper. Принятый вариант отдельного system
+broker и isolated copy ещё не реализован и не квалифицирован. При отсутствии
+prerequisites возвращается
 `verification_containment_unavailable` до claim и запуска verification worker.
-Darwin production pipeline пока не квалифицирован: explicit Darwin opt-in
-отклоняется до исполнения и не переключается молча на другой backend.
-Для Windows и macOS нужны физические прогоны точных новых source/runtime bytes;
-portable тесты и исторический CI их не заменяют.
+Darwin isolated-copy production path запускается только при явном request opt-in;
+`--qualification-mode` и временные-root QA fixtures остаются diagnostic-only и
+не разрешают normal production admission. Writable Flow/Team требуют отдельной
+административной подготовки и qualification. Свежий targeted physical Windows
+x64 / Node 22.17.1 run прошёл 61 TAP cases и 20 runtime-safety checks. Team
+evidence показывает 7/7 physical cases, 8/8 shipping steps и Doctor 86/100 с
+двумя medium warnings. Свежая ARM64 и конечная installed-ZIP qualification
+открыты. Scoped
+результаты и исторический CI не заменяют qualification новых artifact bytes.
 
 [Исторический аудит механизмов](audit-3.4.4-rc5-mechanisms.md) сохраняет результаты
 своей прежней ревизии. [Текущий execution contract](verification-execution-contract.md)

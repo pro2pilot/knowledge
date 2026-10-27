@@ -158,9 +158,12 @@ Stale recovery atomically moves an observed generation into one deterministic,
 nonempty retained history directory. This blocks a delayed contender from
 moving a newer live owner. Never delete or empty these generation fences by
 TTL or as temporary-file cleanup. Old recovery writers must be drained before
-upgrade. A crash before initial owner publication can still leave an unknown
-ownerless directory; an atomic-publication protocol remains a separate
-availability requirement, including on Linux.
+upgrade. New lock owners are prepared in a private never-reused directory; owner
+metadata and any execution-scope descriptor are written, flushed and physically
+verified before atomic native no-replace publication at the public lock path.
+A crash during staging does not create an ownerless public lock. Existing
+ownerless locks from older versions remain unknown and are not automatically
+removed.
 
 An abandoned Linux mutex from a different boot or unconfirmed procfs scope is
 retained as unknown. Automatic recovery across a real OS reboot, moving a state
@@ -213,10 +216,11 @@ checks determine whether historical evidence covers the current source;
 history is not rewritten and an old acceptance does not make changed code fresh.
 
 Linux requires user and PID namespaces, pidfds, readable native identity
-metadata and a system C compiler for the bundled helper. The helper is built
-locally from the pinned source; no binary is downloaded and no host mount,
-cgroup or kernel policy is changed. The cache binds source, compiler and binary
-digests. The outer trusted authority retains only the child-user-namespace
+metadata, and the packaged architecture-matched native helper. Runtime verifies
+the helper's installed source/binary manifest and the actual native namespace
+probe; it does not compile the helper or call util-linux `unshare`. Compilation
+is a package-build operation. No host mount, cgroup or kernel policy is changed.
+The manifest binds source and binary digests. The outer trusted authority retains only the child-user-namespace
 capability needed to establish the inner namespace; command workers have no
 permitted, effective or ambient capabilities and use no-new-privileges.
 Unavailable prerequisites stop setup without admitting a command. A runtime
@@ -228,12 +232,24 @@ environment uses inherited procfs; readable process metadata is not a claim of
 private procfs isolation. Runtime capability is checked through actual native
 setup, not inferred solely from an operating-system name.
 
-The Darwin diagnostic broker is not connected to the common production
-verification/KVE/KVF/ACK pipeline. Explicit Darwin requests remain refused
-before work. The current handoff separates historical Windows recovery results
-from fresh tests of the changed source; installed and release-gate acceptance
-remain separate checks. Linux results do not certify macOS or Windows. The
-historical creator of the second ownerless lock remains unknown.
+For restricted Linux hosts, the separate system-broker/isolated-copy direction
+has been accepted, but the production service is not implemented or qualified.
+The hosted Ubuntu 24.04 ARM64 runner refused nested PID namespace setup with
+`EPERM` under its active policy; that safe refusal does not qualify a process
+scope. No host policy was changed.
+
+The current unpublished RC5 source includes a production isolated-copy
+verification path, disabled by default even if a broker is ready. Explicit opt-in
+requires `native_execution.darwin.enabled=true`, `mode="isolated_copy"`, configured
+broker paths and copy limits. Administrator installation of the privileged
+broker and reserved private UID provisioning are separate tasks. Writable
+Flow/Team operations require a separately admin-provisioned workspace; they are
+not enabled by isolated-copy verification. A missing or unhealthy configured
+broker refuses before work. Scoped historical macOS evidence does not complete
+fresh `.4` qualification, verify stock-SIP behavior on a user's Mac, or certify
+the final installed ZIP. Installed/post-ZIP and release-gate acceptance remain
+separate checks. Linux results do not certify macOS or Windows. The historical
+creator of the second ownerless lock remains unknown.
 
 Kernel basis: [Linux PID namespaces](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html),
 [pidfd lifecycle](https://man7.org/linux/man-pages/man2/pidfd_open.2.html), and
@@ -241,3 +257,10 @@ Kernel basis: [Linux PID namespaces](https://man7.org/linux/man-pages/man7/pid_n
 
 This is an unpublished audit candidate. Focused test results and their exact
 source hashes belong in its handoff. They are not a full release-gate result.
+Fresh targeted current-source physical testing on Windows x64 / Node 22.17.1
+passed 61 selected TAP cases and 20 runtime-safety checks. The reducer correction
+reinterpreted saved TAP output without rerunning the physical tests. The targeted
+Team result passed 7 physical cases and all 8 shipping steps; its Doctor score is
+86/100 `usable_with_warnings` with two medium warnings. Neither is full artifact
+qualification. Stock-SIP behavior remains unverified, and the historic second
+ownerless-lock cause is unknown.

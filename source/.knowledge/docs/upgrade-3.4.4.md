@@ -9,38 +9,57 @@ Keep a backup and follow the system-file update procedure in
 curated settings, lifecycle records and content-addressed receipts. Reinstall
 the active agent integration to update its managed instructions.
 
-This tree is audit revision `independent-audit.20261025.darwin-prototype.3.audit.2`,
-derived from the supplied prototype.3 audit.1.followup.1 snapshot declaring commit
-`2338bba15551be58309244e1f8771a066a4ab38b` and runtime SHA-256
-`7a8c1fbb08725e610620545966997f7e93d46e6b3d9dc8ae31486544c22b191c`.
-The earlier prototype.3 ancestor declared commit
-`2d336637378c1dbdbb85bb59da5332109ef43f45` and runtime SHA-256
-`7eb33f712872c03ece25e25e283ee94edd6d47fc8aee6348a835cb2aa2ab840f`;
-it is not the immediate input to this audit.
-The new handoff's source manifest and patch identify the local derivative;
-it does not claim a new Git commit. The unchanged version/candidate label does not identify
+This tree uses audit revision `independent-audit.20261027.reliability.4`. The
+675-file source snapshot at commit `5bed133f860d2d5e2ae395287d47c065c410f605`
+(SOURCE SHA-256 `bea4ec0c914990e546d84883ee429eee97b7fd5d2148eaf58407b8b8ed849229`)
+is a historical evidence baseline, not the current `.4` artifact. New source and
+package pins must be recorded after the docs-integrated candidate is rebuilt.
+The unchanged version/candidate label does not identify
 the bytes and does not promise automatic update detection. Review
 [the current audit](verification-execution-contract.md) before upgrading an audit
 fixture.
 
-The installed inventory now also requires `verification-darwin-transport.h`.
-The native broker must be rebuilt with its exact header hash; an old broker binary
-cannot satisfy the new development client. This does not enable Darwin production
-verification. Existing Windows/Linux authority path sets remain unchanged;
-stricter proof readers reject contradictory inferred/observed cleanup claims.
+The request contract supports macOS isolated-copy verification, but the product
+installer does not install the privileged broker or provision its reserved private
+UID range. Those are separate administrator tasks. A ready broker does not enable
+verification: each request must explicitly set
+`native_execution.darwin.enabled=true` and `mode="isolated_copy"`, with broker
+paths and copy limits. Writable Flow/Team requires separate admin-provisioned
+workspace access; it is distinct from isolated-copy verification. Verify exact
+broker/runtime binaries in the assembled archive and installation procedure rather
+than inferring their presence from this source guide. Fresh macOS qualification
+remains incomplete. Legacy versioned acceptance pin lists remain unchanged; this
+compatibility statement does not claim current Windows/Linux authority paths or
+runtime bytes are unchanged. Stricter proof readers reject contradictory
+inferred/observed cleanup claims.
 
 This continuation adds `verification-watchdog.js` to the required installed
 files and current currency authority pins. An older currency receipt may need
 reverification after upgrade. Historical eight-pin signed native batches remain
 readable; this does not make their factual currency current for new code.
 
-Current native verification supports Windows Jobs and Linux only when native
-namespace prerequisites pass. Current verification finalization uses KVF and
-ACKv3; Linux execution remains conditional on successful namespace setup. macOS
-verification remains unsupported and refuses before work. The experimental
-Darwin broker is not connected to public verification, KVE or ACK finalization;
-its administrator prerequisites and limits are documented in the
-[native broker development note](native-darwin-broker.md).
+Current native verification supports Windows Jobs and Linux when native namespace
+prerequisites pass. Current verification finalization uses KVF and ACKv3; Linux
+execution remains conditional on successful namespace setup. macOS verification
+stays disabled unless a request explicitly enables `native_execution.darwin` in
+`isolated_copy` mode and provides configured broker paths and copy limits. The
+administrator-installed broker and UID provisioning are separate from installer
+execution. Writable Flow/Team remains a separate admin-provisioned capability.
+See the [native broker guide](native-darwin-broker.md). Historical source-pinned
+macOS evidence does not complete fresh qualification of the `.4` artifact or the
+release gate.
+
+For restricted Linux hosts, a separate system broker with isolated-copy execution
+is the accepted design direction; production implementation and qualification
+are not complete. Hosted Ubuntu 24.04 ARM64 refused nested PID namespace setup
+with `EPERM` without changing host policy. Fresh targeted current-source physical
+testing on Windows x64 / Node 22.17.1 passed 61 selected TAP cases plus 20
+runtime-safety checks. Reducer correction reinterpreted saved TAP output without
+rerunning those physical tests. Targeted Team evidence is 7/7 physical cases
+and 8/8 shipping steps; Doctor is 86/100 `usable_with_warnings` with medium
+`suspect_module` and `low_confidence_module` warnings. These scoped results do
+not qualify stock-SIP Macs or the final installed ZIP. The historical second
+ownerless-lock cause remains unknown.
 
 Current KVEv2 command records are not a batch acceptance by themselves. Preserve
 `maintenance/verification_finalizations/` alongside execution records and retain
@@ -110,6 +129,10 @@ locks are reported for review; upgrading does not authorize deleting them.
 
 ## Reliability audit 2026-10-25
 
+Historical status for the 2026-10-25 source only. It is superseded for current
+macOS capability and integration by the source snapshot and current audit linked
+at the top of this guide.
+
 This derivative is based on the exact prototype.3 audit.1 followup.1 runtime
 `7a8c1fbb08725e610620545966997f7e93d46e6b3d9dc8ae31486544c22b191c`.
 The separate prior-chat notes describe pipeline4, whose source was not supplied;
@@ -121,7 +144,7 @@ auxiliary report writes and Team workspace selection, checks cleanup retry
 admission against a monotonic budget, and uses monotonic elapsed measurements
 for ordinary Flow/evaluation. Production work/progress/cleanup budgets are unchanged.
 
-Darwin production capability remains disabled. Changed native source requires
+In this historical revision, Darwin production capability was disabled. The changed native source then required
 fresh whole-broker/stub compilation and service/load acceptance on Intel and ARM
 macOS with the intended SIP configuration; portable C tests are not that evidence.
 The synchronous Darwin durable writer can still delay stop. Common-lock recovery

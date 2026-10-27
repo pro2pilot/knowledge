@@ -3,10 +3,15 @@
 > in its accompanying handoff. See the [latest published release](https://github.com/pro2pilot/knowledge/releases/latest)
 > for installation outside candidate testing.
 
-> Audit revision **`independent-audit.20261025.darwin-prototype.3.audit.2`**: native verification and the native
-> verification phase of `agent-task finish` require native prerequisites on Linux;
-> macOS remains unsupported; its [native broker prototype](docs/native-darwin-broker.md)
-> is disabled and not connected to the accepted pipeline.
+> Unpublished candidate, audit revision
+> **`independent-audit.20261027.reliability.4`**: native verification and the native
+> verification phase of `agent-task finish` require native prerequisites on Linux.
+> macOS is disabled by default, even with a ready broker. Explicitly set
+> `native_execution.darwin.enabled=true`, `mode="isolated_copy"`, broker paths
+> and copy limits to opt in. Broker installation and reserved private UID
+> provisioning are administrator tasks. This isolated-copy path does not enable
+> writable Flow/Team operations, which require separate workspace provisioning.
+> Fresh macOS qualification is incomplete; see the [broker guide](docs/native-darwin-broker.md).
 > Missing native prerequisites refuse before project work starts. Use a separately
 > qualified installable ZIP and the exact candidate SHA-256 from its accompanying
 > handoff; an audit source snapshot is not that ZIP.
@@ -685,13 +690,14 @@ For verification timeout behavior and Windows runtime requirements, see
 [native verification budgets](docs/agent-task-workflow.md#verification-time-budget)
 and [RC5 operational diagnostics](docs/audit-3.4.4-rc5.md). Native execution
 examples require a supported containment backend: Windows Jobs or Linux PID
-namespaces with successful runtime setup. macOS remains unsupported and refuses
-before project work; the experimental broker is diagnostic-only and is not wired
-to common verification, KVE or ACK finalization. Its development details and
-administrator prerequisites are in [the native broker note](docs/native-darwin-broker.md).
-The M3c7 five-second autonomous monitor requires independent slow/load
-qualification; targeted CI results do not establish stock-SIP qualification or
-common pipeline integration.
+namespaces with successful runtime setup. macOS verification remains disabled by
+default. Opt in explicitly with `native_execution.darwin.enabled=true` and
+`mode="isolated_copy"`, including broker paths and copy limits. Broker
+installation and reserved private UID configuration are separate administrator
+tasks. This flow does not grant writable Flow/Team access, which requires its own
+admin-provisioned workspace. Fresh macOS qualification is incomplete; this
+candidate has not passed the full release gate. See
+[the broker note](docs/native-darwin-broker.md) for setup boundaries.
 
 ## Accepted verification and Team results (RC5)
 
@@ -701,7 +707,19 @@ Legacy KVE is command-only evidence and cannot authorize new certification.
 Team Status and Inspector show the final per-attempt outcome after release;
 missing finalization is incomplete, not successful. See the
 [acceptance and retry contract](docs/verification-execution-contract.md).
-Linux native execution requires a successful namespace capability probe; macOS
-remains unsupported and refuses before work. This unpublished audit candidate has
-no release certification. Identify the exact ZIP and scoped test results by
-SHA-256 in its accompanying handoff.
+Linux native execution requires a successful namespace capability probe. macOS
+execution stays disabled unless a request explicitly enables the isolated-copy
+mode and supplies broker configuration; a missing broker refuses before work.
+The targeted hosted Team run passed 7 physical cases, including its scoped
+ownership/restart observations, and all 8 shipping steps. Doctor reported 86/100
+`usable_with_warnings`, including the medium `suspect_module` and
+`low_confidence_module` warnings; this does not promote modules to trusted. The
+fresh targeted current-source physical Windows x64 / Node 22.17.1 run passed 61
+selected TAP cases plus 20 runtime-safety checks. The reducer correction
+reinterpreted saved TAP output; it did not rerun the physical tests. This is
+scoped evidence, not full release qualification. The accepted Linux
+system-broker/isolated-copy direction is not implemented or qualified; the
+hosted Ubuntu 24.04 ARM64 nested namespace probe returned `EPERM`. This
+unpublished audit candidate has no release certification.
+Identify the exact ZIP and scoped test results by SHA-256 in its accompanying
+handoff.

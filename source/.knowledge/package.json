@@ -131,13 +131,13 @@
     "channel": "release_candidate",
     "candidate_label": "RC5",
     "candidate_name": "knowledge-v3.4.4.zip",
-    "audit_revision": "independent-audit.20261027.reliability.3",
+    "audit_revision": "independent-audit.20261027.reliability.4",
     "audit_status": "development_snapshot_not_certified",
     "audit_base_runtime_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
     "audit_lineage_root_runtime_sha256": "c0b5ce127d346b0eb4b16f23f6df05d020e4152bb58990bfaadae716c5dc8d01",
-    "audit_input_runtime_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96",
-    "audit_input_handoff_sha256": "89321413ac77e3fe82d4141651191b38f30b248a348469a0adcc300b6d8f9ad1",
-    "audit_parent_revision": "independent-audit.20261025.darwin-prototype.3.audit.2",
-    "audit_parent_runtime_sha256": "e1fe186197038ea11fa9a48cda955113c34802091a59b15981ad641a6a1f5e96"
+    "audit_input_runtime_sha256": "5ea2cd56e2bad85fc68b2b144af8c5264837bd5b02664fbeba398966738a5f7a",
+    "audit_input_handoff_sha256": "c15f618810ecead13edb99dd941f231d2c0055ee7f2aab496feb202bc82da044",
+    "audit_parent_revision": "independent-audit.20261027.reliability.3",
+    "audit_parent_runtime_sha256": "5ea2cd56e2bad85fc68b2b144af8c5264837bd5b02664fbeba398966738a5f7a"
   }
 }

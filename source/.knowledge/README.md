@@ -7,16 +7,19 @@
 > test results by SHA-256 in its accompanying handoff. Find the latest published
 > release at [GitHub Releases](https://github.com/pro2pilot/knowledge/releases/latest).
 
-> This copy is audit revision **`independent-audit.20261025.darwin-prototype.3.audit.2`**,
-> preserving the RC4 → RC5 chain and the preceding POSIX/recovery revision.
-> Windows Jobs and Linux PID namespaces retain their existing native paths.
-> macOS verification remains unsupported: the new administrator-installed
-> [isolated-copy broker prototype](docs/native-darwin-broker.md) is production-disabled
-> and has no accepted common verification/KVE/ACK pipeline integration. Its
-> administrator-asserted UID/GID interval and explicit owner UUID ACLs are initialized
-> during quiescent maintenance and cached for runtime. Identify source snapshots by commit
-> and manifest; version `3.4.4` and `RC5` alone do not identify bytes. Previous
-> installed PASS results apply only to their pinned artifacts. See
+> This unpublished candidate uses audit revision
+> **`independent-audit.20261027.reliability.4`**. Windows Jobs, Linux PID
+> namespaces, and an opt-in macOS production verification path are present in the
+> source. Darwin verification remains disabled by default even if a broker is
+> ready: the request must explicitly set `native_execution.darwin.enabled=true`
+> and `mode=isolated_copy`, with the configured broker paths and copy limits.
+> Broker installation and reserved private UID provisioning are separate
+> administrator tasks. This isolated-copy verification path does not enable
+> writable Flow/Team operations, which need a separately provisioned workspace.
+> The accepted Linux system-broker/isolated-copy direction is not implemented or
+> qualified; hosted Ubuntu 24.04 ARM64 still refused nested PID setup with `EPERM`.
+> Fresh macOS qualification is incomplete; this candidate is not release-qualified.
+> Identify snapshots by commit and manifest, not version alone. See
 > [current audit and limits](docs/verification-execution-contract.md).
 
 > New common locks use owner v2 with native Linux PID-scope checks. Unbound old
@@ -118,17 +121,42 @@ masked child output. Windows regression fixtures now identify native command
 paths and process termination using the platform's actual conventions. Team
 Doctor test failures retain their contained flow log and child process identity;
 capture rejects paths outside the selected state root and linked parents. The
-separate audit handoff records original Windows evidence, fresh Linux audit
-results and historical investigations. Current Windows evidence and remaining limits are in the accompanying handoff;
-Linux native verification now uses PID namespaces; macOS remains unsupported.
+separate audit handoff records platform-scoped evidence and remaining limits.
+Linux native verification currently uses PID namespaces when their runtime probe
+passes. A separate Linux system broker with isolated-copy execution is an accepted
+design direction, but production implementation and qualification are still
+pending. Hosted Ubuntu 24.04 ARM64 denied the required nested namespace with
+`EPERM`; host policy was not changed. The exact installed ZIP still needs complete
+post-ZIP runtime qualification.
 
-The Darwin prototype has independent history and policy bindings, cached numeric
-ACL identities, and fresh storage guards. CI25's targeted native M984 install, normal,
-pending and fault scenarios passed on Intel and ARM as scoped CI results. The M3c7
-five-second autonomous monitor requires independent slow/load qualification; these
-targeted results do not qualify stock-SIP hosts or connect the broker to common
-verification/KVE/ACK. The Darwin prototype remains diagnostic-only, with no
-production support; the historical second ownerless-lock cause remains unknown.
+The opt-in macOS production verification path uses an isolated administrative
+broker and reserved private UID allocation. Broker availability does not enable
+verification: each request must explicitly configure `native_execution.darwin`
+with `enabled: true` and `mode: "isolated_copy"`. Broker installation and UID
+provisioning are separate administrator tasks. Writable Flow/Team operations
+require a separately provisioned workspace; isolated-copy verification does not
+grant write access to the original project. Scoped macOS basic, failure, physical
+and writable results remain tied to their source snapshot. They do not complete
+fresh platform qualification or verify a stock-SIP user's machine. The historical
+second ownerless-lock cause remains unknown.
+
+The Windows watcher smoke profile uses setup 30 s, work 60 s and cleanup 15 s.
+The startup allowance is 60 s; the caller-ready window is 90 s. The default
+observation budget is `5 × setup + work + cleanup + debounce + 1 s` (227.5 s at
+the default 1.5 s debounce). `KNOWLEDGE_SMOKE_WATCH_MS` remains an exact explicit
+override. This budget is for observing the smoke run, not a hard I/O latency
+limit. Recent Windows startup observations were 11.5–22.1 s, sync about 22.7 s,
+and full smoke about 46.8 s; these are measurements, not guarantees. Fresh
+targeted current-source physical testing on Windows x64 / Node 22.17.1
+passed 61 selected TAP cases plus 20 runtime-safety checks (81 selected checks
+total). This is scoped evidence, not full release qualification; fresh ARM64 and
+final installed-ZIP qualification remain pending.
+
+The targeted Team run passed 7 physical cases and all 8 shipping steps. Its Doctor
+result is 86/100 `usable_with_warnings`, with two genuine medium warnings:
+`suspect_module` and `low_confidence_module`; the score does not promote either
+module to trusted. This hosted scoped result is not stock-macOS/SIP qualification.
+The historical second ownerless-lock cause remains unknown.
 
 The RC3 audit corrects Doctor ownership and queue publication, invalid readiness
 comparisons, currency recovery authority, recording privacy, and child-process
@@ -433,7 +461,11 @@ missing finalization is incomplete, not successful. See the
 New Team attempts use v2 records bound to the selected state root, run and log.
 Inspector displays the attempt ID and binding version; a damaged current final
 record cannot fall back to an older successful attempt.
-Linux native execution requires a successful namespace capability probe; macOS
-remains unsupported and refuses before work. This unpublished audit candidate has
-no release certification. Identify the exact ZIP and scoped test results by
+Linux native execution requires a successful namespace capability probe. macOS
+verification remains disabled by default, even if the broker is available. Enable
+it only with an explicit request using `native_execution.darwin.enabled: true`,
+`mode: isolated_copy`, broker paths and copy limits. Broker installation and
+reserved UID provisioning are administrator tasks; writable Flow/Team access is
+separate and requires its own provisioned workspace. This unpublished candidate
+has no release certification. Identify the exact ZIP and scoped test results by
 SHA-256 in its accompanying handoff.

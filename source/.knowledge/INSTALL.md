@@ -9,13 +9,19 @@ For candidate testing, use an explicitly supplied installable ZIP with its own
 manifest and results. An audit source snapshot is not an installable release.
 Never substitute GitHub source downloads for a release asset.
 
-This is audit revision `independent-audit.20261025.darwin-prototype.3.audit.2`.
-The preceding frozen POSIX/recovery runtime remains a different artifact;
-do not use its PASS results to qualify this source. Version-only update checks
-do not distinguish RC5 derivatives. Linux requires native prerequisites; macOS
-verification remains unsupported and refuses before work. The [native broker prototype](docs/native-darwin-broker.md)
-does not install or enable itself and is not connected to common verification, KVE
-or ACK finalization. See
+This unpublished candidate uses audit revision
+`independent-audit.20261027.reliability.4`. The preceding frozen POSIX/recovery runtime is a different artifact;
+its results do not qualify this source. Version-only update checks do not
+distinguish RC5 derivatives. Linux requires native prerequisites. macOS
+verification is disabled by default, even when its broker is ready. Opt in per
+request with `native_execution.darwin.enabled=true` and `mode="isolated_copy"`,
+plus the configured broker paths and copy limits. Broker installation and
+reserved private UID provisioning are separate administrator tasks; the product
+installer does not install or enable the privileged broker. Isolated-copy
+verification does not enable writable Flow/Team operations, which require a
+separately provisioned workspace. Fresh Darwin qualification is incomplete, and
+stock-SIP user-host behavior remains unverified.
+See the [broker setup and limits](docs/native-darwin-broker.md) and
 [audit installation and limits](docs/verification-execution-contract.md).
 
 Before updating this candidate, finish the old writers and allow their locks to
@@ -115,18 +121,28 @@ checkout outside the target project and rerun the check before import.
 Native verification on Windows uses the bundled Job Object helper through
 Windows PowerShell. The host must permit its local `Add-Type` compilation and
 job assignment. If these operations are unavailable, verification fails before
-starting probes. Linux uses the bundled C helper and requires system C compiler,
-util-linux `unshare`, user/PID namespaces and pidfds. Actual preparation and a
-namespace probe run before a project claim is reserved. macOS native verification
-remains unsupported and returns `verification_containment_unavailable` before
-starting a worker or probe. The separate broker is an experimental diagnostic
-component; this install guide does not expose a supported setup command. Its
-M3c7 five-second autonomous monitor requires independent slow/load qualification;
-targeted CI results do not establish stock-SIP qualification or common pipeline
-integration. See its [development note](docs/native-darwin-broker.md) for
-administrator prerequisites.
+starting probes. Linux verifies the packaged, architecture-matched C helper and
+its source/binary manifest, then runs its native namespace probe before a project
+claim is reserved. Runtime verification requires supported user/PID namespaces
+and pidfds; it does not require a system C compiler or util-linux `unshare`.
+Compiling the helper is a package-build task, not an installation-time fallback.
+macOS native verification
+remains disabled unless the request explicitly opts in with
+`native_execution.darwin.enabled=true` and `mode="isolated_copy"`. It then uses
+the configured administrator-installed broker; a missing or unhealthy broker
+refuses before work. The product installer does not provision that privileged
+service or reserve its UID range. Writable Flow/Team operations are a separate
+admin-provisioned capability and are not enabled by isolated-copy verification.
+See the [broker guide](docs/native-darwin-broker.md) for the setup boundary and
+remaining qualification limits.
 Other tools remain subject to their own operational checks. See
 [the RC5 contract](docs/audit-3.4.4-rc5.md).
+
+The accepted direction for restricted Linux hosts is a separate system broker
+and isolated project copy. That production service is not implemented or
+qualified in this candidate. The hosted Ubuntu 24.04 ARM64 run refused the
+required nested PID namespace with `EPERM`; no host policy was changed. Do not
+interpret the accepted design as an available installation option.
 
 ## Accepted verification and Team results (RC5)
 
@@ -136,7 +152,19 @@ Legacy KVE is command-only evidence and cannot authorize new certification.
 Team Status and Inspector show the final per-attempt outcome after release;
 missing finalization is incomplete, not successful. See the
 [acceptance and retry contract](docs/verification-execution-contract.md).
-Linux native execution requires a successful namespace capability probe; macOS
-remains unsupported and refuses before work. This unpublished audit candidate has
-no release certification. Identify the exact ZIP and scoped test results by
+Linux native execution requires a successful namespace capability probe. macOS
+verification remains disabled by default even with a ready broker; each request
+must explicitly enable `native_execution.darwin` in `isolated_copy` mode and
+provide its configured broker paths and copy limits. Writable Flow/Team use
+requires separate administrator provisioning. This unpublished audit candidate
+has no release certification. Identify the exact ZIP and scoped test results by
 SHA-256 in its accompanying handoff.
+
+Fresh targeted current-source physical testing on Windows x64 / Node 22.17.1
+passed 61 selected TAP cases and 20 runtime-safety checks. The reducer correction
+reinterpreted the saved TAP output without rerunning those physical tests; this
+scoped result is not a full release gate. The targeted Team
+run passed 7 physical cases and all 8 shipping steps. Its Doctor result is
+86/100 `usable_with_warnings`, with medium `suspect_module` and
+`low_confidence_module` warnings. Neither result qualifies the final installed
+ZIP, stock-SIP Macs or fresh Windows ARM64.

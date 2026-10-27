@@ -1,6 +1,52 @@
 # Release Notes
 
-## v3.4.4 RC5 — Reliability audit.2
+## v3.4.4 RC5 — Reliability continuation (unpublished candidate)
+
+Audit revision: `independent-audit.20261027.reliability.4`. Package version remains `3.4.4`, candidate status
+remains `RC5`. This is not a published release and has not passed the full release
+gate.
+
+The current source contains an opt-in macOS production verification pipeline
+through an administrator-installed isolated broker and reserved private UID
+configuration. It remains disabled by default even when a broker is ready; each
+request must explicitly set `native_execution.darwin.enabled=true` and
+`mode="isolated_copy"`. Broker availability does not enable writable Flow/Team
+operations, which need separate administrator-provisioned workspaces. Fresh macOS
+qualification remains incomplete, and stock-SIP user-host behavior is unverified.
+Linux ARM64 hosted Ubuntu 24.04 denied the required nested namespace with `EPERM`;
+host policy was not changed. The accepted direction is a separate system broker
+and isolated project copy, but that production service is not implemented or
+qualified. The exact installed ZIP still needs post-ZIP runtime qualification on
+every required platform.
+
+Fresh targeted current-source physical testing on Windows x64 / Node 22.17.1
+passed 61 selected TAP cases plus 20 runtime-safety checks (81 selected checks
+across eight groups). The reducer correction reinterpreted saved TAP output; it
+did not rerun the physical tests. This scoped result is not full release
+qualification. The targeted Team run passed
+7 physical cases and all 8 shipping steps. Doctor was 86/100
+`usable_with_warnings`, with two medium warnings: `suspect_module` and
+`low_confidence_module`. These scoped results do not qualify the final installed
+ZIP or stock-SIP Macs. The historical second ownerless-lock cause remains
+**UNKNOWN**.
+
+The Windows watcher smoke defaults are setup 30 s, work 60 s and cleanup 15 s.
+Startup allowance is 60 s and the caller-ready window is 90 s. Its default
+observation budget is `5 × setup + work + cleanup + debounce + 1 s` (227.5 s with
+the 1.5 s default debounce); `KNOWLEDGE_SMOKE_WATCH_MS` is an exact override. This
+is an observation budget, not a hard upper bound on filesystem I/O latency. The
+reported Windows measurements—startup 11.5–22.1 s, sync about 22.7 s, and full
+smoke about 46.8 s—are observations for that run, not guarantees. Current-source
+core selftests and the native watcher suite have scoped PASS results on Windows
+x64 with Node 22.17.1. Fresh ARM64 qualification and qualification of the final
+installed ZIP remain pending.
+
+The audit entries below are historical records for their named source snapshots.
+Their platform-capability and integration statements describe those revisions;
+use the status above and [current RC5 audit](docs/audit-3.4.4-rc5.md) for this
+candidate.
+
+### Historical note: 2026-10-25 reliability audit.2
 
 Audit revision: `independent-audit.20261025.darwin-prototype.3.audit.2`. Unpublished and uncertified.
 Immediate input: prototype.3 audit.1.followup.1, runtime SHA-256
@@ -111,7 +157,7 @@ interval and admits explicit owners; directory lookups occur only during quiesce
 initialization, while serving uses cached UUID ACL identities. The source binds
 policy and digest to descriptors and uses fresh storage guards. It remains
 unqualified and disconnected from common verification, KVE and ACK finalization;
-public macOS verification still refuses before work. See
+in that source, public macOS verification still refused before work. See
 [development status and remaining gates](docs/native-darwin-broker.md).
 
 Copy planning excludes unknown Knowledge state roots, leases and UI/search caches,
