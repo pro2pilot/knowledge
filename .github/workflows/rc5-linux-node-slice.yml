@@ -1,0 +1,306 @@
+name: Linux ARM64 Node service-slice component QA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/rc5-blocker-fixes-20261027
+    paths:
+      - .github/workflows/rc5-linux-node-slice.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-linux-node-slice-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-node-slice:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: arm64
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run importer unit tests and pure controller contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test qa/reliability/linux-service-slice-27/importer.test.js
+          python3 -B -m unittest discover -s qa/reliability/linux-service-slice-27 -p "test_controller*.py"
+      - name: Prepare pinned ARM64 component and validate its receipt
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_file="$RUNNER_TEMP/linux-node-slice-prepare-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          stderr_file="$RUNNER_TEMP/linux-node-slice-prepare-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.stderr"
+          before_scratch="$(python3 -c 'from pathlib import Path; print("\n".join(str(p) for p in Path("/tmp").glob("knowledge-slice-prep-*")))')"
+          set +e
+          python3 qa/reliability/linux-service-slice-27/controller.py prepare > "$receipt_file" 2> "$stderr_file"
+          prepare_rc=$?
+          set -e
+          run_id=""
+          if [[ "$prepare_rc" -eq 0 ]]; then
+            set +e
+            run_id="$(python3 - "$receipt_file" <<'PY'
+          import json, pathlib, re, sys
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256"}
+          if set(value) != expected or value.get("status") != "PREPARED_COMPONENT_QA" or \
+             value.get("architecture") != "aarch64" or value.get("node_version") != "v22.17.1" or \
+             not re.fullmatch(r"[a-f0-9]{32}", value.get("run_id", "")):
+              raise SystemExit("prepare receipt did not match the fixed schema")
+          for key in ("node_sha256", "native_sha256", "input_sha256"):
+              if not re.fullmatch(r"[a-f0-9]{64}", value.get(key, "")):
+                  raise SystemExit("prepare receipt contains an invalid digest")
+          print(value["run_id"])
+          PY
+          )"
+            receipt_rc=$?
+            set -e
+          else
+            receipt_rc=1
+          fi
+          if [[ "$prepare_rc" -ne 0 || "$receipt_rc" -ne 0 ]]; then
+            public="$RUNNER_TEMP/linux-node-slice-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/public"
+            mkdir -p "$public"
+            chmod 0755 "$public"
+            python3 - "$stderr_file" "$public/prepare-receipt.json" "$before_scratch" <<'PY'
+          import hashlib, json, os, pathlib, re, sys
+          source, destination = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          before = set(sys.argv[3].splitlines())
+          try:
+              with source.open("rb") as stream:
+                  sample = stream.read(256 * 1024 + 1)
+          except OSError:
+              sample = b""
+          truncated = len(sample) > 256 * 1024
+          sample = sample[:256 * 1024]
+          compiler_excerpt = ""
+          compiler_sample_sha256 = None
+          compiler_sample_bytes = 0
+          compiler_truncated = False
+          candidates = []
+          for candidate in pathlib.Path("/tmp").glob("knowledge-slice-prep-*"):
+              if str(candidate) in before or not re.fullmatch(r"knowledge-slice-prep-[a-f0-9]{32}", candidate.name):
+                  continue
+              try:
+                  identity = candidate.lstat()
+              except OSError:
+                  continue
+              if pathlib.Path(candidate).is_dir() and not candidate.is_symlink() and identity.st_uid == os.getuid() and \
+                 (identity.st_mode & 0o7777) == 0o700:
+                  candidates.append(candidate)
+          if len(candidates) == 1:
+              log = candidates[0] / "prepare-private" / "compile.stderr.bin"
+              try:
+                  info = log.lstat()
+                  if info.st_uid == os.getuid() and info.st_nlink == 1 and (info.st_mode & 0o7777) == 0o600 and \
+                     info.st_size <= 128 * 1024 and log.is_file() and not log.is_symlink():
+                      with log.open("rb") as stream:
+                          compiler_bytes = stream.read(16 * 1024 + 1)
+                      compiler_truncated = len(compiler_bytes) > 16 * 1024 or info.st_size > 16 * 1024
+                      compiler_bytes = compiler_bytes[:16 * 1024]
+                      compiler_sample_sha256 = hashlib.sha256(compiler_bytes).hexdigest()
+                      compiler_sample_bytes = len(compiler_bytes)
+                      compiler_excerpt = compiler_bytes.decode("utf-8", "replace").replace(str(candidates[0]), "<scratch>")
+                      compiler_excerpt = "".join(ch for ch in compiler_excerpt if ch in "\n\r\t" or ord(ch) >= 32)
+              except OSError:
+                  pass
+          value = {"schema_version": "knowledge-linux-service-slice-prepare-receipt.v1",
+                   "status": "PREPARE_FAILED", "reason": "prepare_or_receipt_validation_failed",
+                   "stderr_sample_sha256": hashlib.sha256(sample).hexdigest(),
+                   "stderr_sample_bytes": len(sample), "stderr_sample_truncated": truncated,
+                   "raw_stderr_uploaded": False, "compiler_stderr_excerpt": compiler_excerpt,
+                   "compiler_stderr_sample_sha256": compiler_sample_sha256,
+                   "compiler_stderr_sample_bytes": compiler_sample_bytes,
+                   "compiler_stderr_sample_truncated": compiler_truncated}
+          destination.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+          os.chmod(destination, 0o644)
+          PY
+            printf 'run_id=\npublic_dir=%s\n' "$public" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          scratch="/tmp/knowledge-slice-prep-${run_id}"
+          test -d "$scratch/public"
+          install -m 0644 "$receipt_file" "$scratch/public/prepare-receipt.json"
+          printf 'run_id=%s\npublic_dir=%s\n' "$run_id" "$scratch/public" >> "$GITHUB_OUTPUT"
+      - name: Run the fixed root-owned native component controller
+        id: run-component
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id='${{ steps.prepare.outputs.run_id }}'
+          [[ "$run_id" =~ ^[a-f0-9]{32}$ ]]
+          sudo -n python3 qa/reliability/linux-service-slice-27/controller.py run --run-id "$run_id"
+      - name: Write acceptance record after controller exit
+        id: finalize-result
+        if: always()
+        env:
+          RUN_OUTCOME: ${{ steps.run-component.outcome }}
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+          PUBLIC_DIR: ${{ steps.prepare.outputs.public_dir }}
+          SOURCE_REVISION: ${{ github.sha }}
+          ACTION_RUN_ID: ${{ github.run_id }}
+          ACTION_RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$PUBLIC_DIR" && -d "$PUBLIC_DIR" && ! -L "$PUBLIC_DIR" ]] || exit 0
+          public="$PUBLIC_DIR"
+          [[ -d "$public" && ! -L "$public" ]] || exit 0
+          python3 - "$public" "$RUN_OUTCOME" "$RUN_ID" "$SOURCE_REVISION" "$ACTION_RUN_ID" "$ACTION_RUN_ATTEMPT" <<'PY'
+          import hashlib, json, os, pathlib, re, sys, tempfile
+          directory = pathlib.Path(sys.argv[1])
+          outcome, run_id, revision, action_run, attempt = sys.argv[2:]
+          result_path = directory / "RESULT.json"
+          native_path = directory / "NATIVE.json"
+          receipt_path = directory / "prepare-receipt.json"
+          record = {
+              "schema_version": "knowledge-linux-service-slice-acceptance.v1",
+              "status": "REJECTED",
+              "decision_scope": "single component QA only; not production, KVE, release, or public RPC qualification",
+              "source_revision": revision,
+              "workflow_run_id": action_run,
+              "workflow_run_attempt": attempt,
+              "run_id": run_id,
+              "controller_step_outcome": outcome,
+              "prepare_receipt_sha256": None,
+              "result_sha256": None,
+              "native_sha256": None,
+              "source_pins": None,
+              "reason": "result_or_native_evidence_missing",
+          }
+          def bounded_file(path, limit):
+              try:
+                  named = path.lstat()
+                  if not path.is_file() or path.is_symlink() or named.st_nlink != 1 or named.st_size > limit:
+                      return None
+                  with path.open("rb") as stream:
+                      body = stream.read(limit + 1)
+                  if len(body) != named.st_size or len(body) > limit:
+                      return None
+                  return body
+              except OSError:
+                  return None
+          receipt = None
+          receipt_bytes = bounded_file(receipt_path, 64 * 1024)
+          if receipt_bytes is not None:
+              record["prepare_receipt_sha256"] = hashlib.sha256(receipt_bytes).hexdigest()
+              try:
+                  receipt = json.loads(receipt_bytes.decode("utf-8"))
+              except (UnicodeError, json.JSONDecodeError):
+                  receipt = None
+          result_bytes = bounded_file(result_path, 64 * 1024)
+          if result_bytes is not None:
+              record["result_sha256"] = hashlib.sha256(result_bytes).hexdigest()
+              try:
+                  result = json.loads(result_bytes.decode("utf-8"))
+              except (UnicodeError, json.JSONDecodeError):
+                  result = None
+              native_bytes = bounded_file(native_path, 160 * 1024)
+              if native_bytes is not None:
+                  record["native_sha256"] = hashlib.sha256(native_bytes).hexdigest()
+                  try:
+                      native = json.loads(native_bytes.decode("utf-8"))
+                  except (UnicodeError, json.JSONDecodeError):
+                      native = None
+              else:
+                  native = None
+              if isinstance(result, dict) and isinstance(native, dict) and isinstance(receipt, dict):
+                  waits = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status")
+                  tap = result.get("tap_inventory") or {}
+                  receipt_ok = (isinstance(receipt, dict) and
+                      set(receipt) == {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256"} and
+                      receipt.get("status") == "PREPARED_COMPONENT_QA" and receipt.get("run_id") == run_id and
+                      receipt.get("architecture") == "aarch64" and receipt.get("node_version") == "v22.17.1")
+                  pins = {key: receipt.get(key) for key in ("node_sha256", "native_sha256", "input_sha256")}
+                  pin_ok = all(isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) for value in pins.values()) and \
+                      result.get("node_sha256") == pins["node_sha256"] and result.get("native_sha256") == pins["native_sha256"] and \
+                      result.get("input_sha256") == pins["input_sha256"]
+                  native_ok = (isinstance(native, dict) and native.get("status") == "WORK_CLOSED" and
+                      native.get("observer_ack_required") is True and
+                      native.get("production_admission") is False and
+                      native.get("release_gate_qualified") is False and
+                      all(native.get(key) is True for key in (
+                          "cleanup_confirmed", "importer_namespace_drained", "importer_detached_writer_ready",
+                          "source_readonly", "authority_readback", "cgroup_empty", "output_eof")) and
+                      native.get("phase") == 4 and native.get("stop_reason") == 4 and
+                      all(type(native.get(key)) is int and native[key] == 0 for key in waits))
+                  tap_ok = (isinstance(tap, dict) and tap.get("status") == "PASS" and tap.get("tests") == 1 and
+                      tap.get("pass") == 1 and tap.get("fail") == 0 and tap.get("skipped") == 0)
+                  source_hashes_ok = all(isinstance(result.get(key), str) and
+                      re.fullmatch(r"[a-f0-9]{64}", result.get(key, "")) for key in
+                      ("native_argv_sha256", "importer_sha256", "authority_sha256"))
+                  native_summary = result.get("native") if isinstance(result, dict) else None
+                  result_ok = (result.get("status") == "CANDIDATE_COMPONENT_QA" and
+                      result.get("verification_requires") == "controller_exit_zero_and_separate_acceptance_record" and
+                      result.get("run_id") == run_id and
+                      result.get("production_admission") is False and
+                      result.get("release_gate_qualified") is False and
+                      result.get("native_proof_sha256") == record["native_sha256"] and
+                      source_hashes_ok and isinstance(native_summary, dict) and
+                      native_summary.get("status") == native.get("status") and
+                      result.get("observer_acknowledged") is True and
+                      result.get("systemd_unit_observed_before_ack") is True and
+                      result.get("systemd_run_child_reap_confirmed") is True and
+                      result.get("host_cleanup_confirmed") is True and not result.get("reasons") and tap_ok)
+                  record["source_pins"] = {**pins, "native_argv_sha256": result.get("native_argv_sha256") if isinstance(result, dict) else None,
+                                            "importer_sha256": result.get("importer_sha256") if isinstance(result, dict) else None,
+                                            "authority_sha256": result.get("authority_sha256") if isinstance(result, dict) else None}
+                  if outcome == "success" and receipt_ok and pin_ok and native_ok and result_ok:
+                      record["status"] = "ACCEPTED_COMPONENT_QA"
+                      record["reason"] = None
+                  elif outcome != "success":
+                      record["reason"] = "controller_step_not_successful"
+                  else:
+                      record["reason"] = "candidate_evidence_contract_failed"
+          body = (json.dumps(record, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+          fd, temporary = tempfile.mkstemp(prefix=".ACCEPTANCE.json.", suffix=".tmp", dir=directory)
+          try:
+              with os.fdopen(fd, "wb") as stream:
+                  stream.write(body)
+                  stream.flush()
+                  os.fsync(stream.fileno())
+              os.chmod(temporary, 0o644)
+              os.replace(temporary, directory / "ACCEPTANCE.json")
+          finally:
+              try:
+                  os.unlink(temporary)
+              except FileNotFoundError:
+                  pass
+          PY
+      - name: Require accepted evidence when the controller step succeeds
+        if: always() && steps.run-component.outcome == 'success'
+        env:
+          PUBLIC_DIR: ${{ steps.prepare.outputs.public_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PUBLIC_DIR/ACCEPTANCE.json" <<'PY'
+          import json, pathlib, sys
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if value.get("status") != "ACCEPTED_COMPONENT_QA":
+              raise SystemExit("controller step succeeded without accepted component evidence")
+          PY
+      - name: Upload sanitized public summaries, acceptance record, and prepare receipt
+        if: always() && steps.finalize-result.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-node-slice-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.prepare.outputs.public_dir }}/RESULT.json
+            ${{ steps.prepare.outputs.public_dir }}/NATIVE.json
+            ${{ steps.prepare.outputs.public_dir }}/prepare-receipt.json
+            ${{ steps.prepare.outputs.public_dir }}/ACCEPTANCE.json
+          if-no-files-found: warn
+          retention-days: 3
