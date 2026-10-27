@@ -22,7 +22,8 @@ function failure(code, message, details) {
 function relativeName(value, cwd = false) {
   if (cwd && value === '.') return '.';
   if (typeof value !== 'string' || !value || value.includes('\\') || path.posix.isAbsolute(value) ||
-      value !== value.normalize('NFC') || /[\x00-\x1f\x7f]/.test(value)) {
+      value !== value.normalize('NFC') || /[\x00-\x1f\x7f]/.test(value) ||
+      Buffer.from(value, 'utf8').toString('utf8') !== value) {
     throw failure('verification_copy_path_unsupported', 'Isolated copy requires canonical portable relative paths');
   }
   const parts = value.split('/');

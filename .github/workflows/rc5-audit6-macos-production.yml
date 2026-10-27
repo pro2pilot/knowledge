@@ -50,7 +50,7 @@ jobs:
       - name: Canonical production install and public KVE ACK gate
         env:
           REQUIRE_STOCK_SIP: ${{ inputs.require_stock_sip && '1' || '0' }}
-          CASE_SET: ${{ inputs.case_set || 'normal' }}
+          CASE_SET: ${{ inputs.case_set || 'failures' }}
         run: |
           args=()
           if [[ "$REQUIRE_STOCK_SIP" == '1' ]]; then args+=(--require-stock-sip); fi

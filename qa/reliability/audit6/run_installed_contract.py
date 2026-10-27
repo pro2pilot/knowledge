@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""Execute the manifest's public tests from one verified installed ZIP.
+
+This is installed-contract evidence, not an invented replacement for the
+missing maintainer release gate or the separate production platform matrix.
+"""
+from __future__ import annotations
+import argparse, hashlib, importlib.util, json, os, pathlib, platform, re
+import shutil, signal, stat, subprocess, sys, time, zipfile
+
+P = pathlib.Path
+ROOT = P(__file__).resolve().parents[3]
+spec = importlib.util.spec_from_file_location('audit5_pack', ROOT/'qa/reliability/audit5/run_installed.py')
+base = importlib.util.module_from_spec(spec); spec.loader.exec_module(base)
+sha, save, need = base.sha, base.save, base.need
+MAX_OUTPUT = 8 * 1024 * 1024
+REGRESSIONS = ['reliability-recovery-adapter-ledger', 'reliability-recovery-adapter-budget',
+               'reliability-recovery-outer-budget', 'reliability-recovery-deadline',
+               'verification-cleanup-transcript', 'verification-finalization-v2', 'verification-isolated-copy']
+
+def strict_json(body):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value: raise ValueError('duplicate JSON key: '+key)
+            value[key] = item
+        return value
+    def finite(value): raise ValueError('nonfinite JSON value: '+value)
+    return json.loads(body, object_pairs_hook=unique, parse_constant=finite)
+
+def execute(name, argv, cwd, out, deadline, timeout=90):
+    before = time.monotonic()
+    row = {'name':name, 'argv':argv, 'status':'FAIL', 'timed_out':False}
+    stdout, stderr = out/(name+'.stdout.json'), out/(name+'.stderr.txt')
+    tmp = out/'tmp'; tmp.mkdir(exist_ok=True); tmp = tmp.resolve(strict=True)
+    env = {k:v for k,v in os.environ.items() if not k.startswith('KNOWLEDGE_')}
+    inherited = os.environ.get('TEMP', os.environ.get('TMP', os.environ.get('TMPDIR','')))
+    env.update(CI='1', KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH='1', TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp),
+               KNOWLEDGE_AUDIT5_INHERITED_TEMP=inherited,
+               GIT_AUTHOR_NAME='Knowledge fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
+               GIT_COMMITTER_NAME='Knowledge fixture', GIT_COMMITTER_EMAIL='fixture@example.invalid')
+    allowance = min(timeout, deadline-before)
+    if allowance <= 0:
+        row.update(status='NOT_RUN_BUDGET_EXHAUSTED', cleanup_confirmed=False)
+        return row, None
+    with stdout.open('wb') as a, stderr.open('wb') as b:
+        child = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=a, stderr=b, start_new_session=(os.name != 'nt'))
+        expires = before + allowance
+        while child.poll() is None:
+            if max(stdout.stat().st_size, stderr.stat().st_size) > MAX_OUTPUT:
+                row['output_limit_exceeded'] = True
+                break
+            if time.monotonic() >= expires:
+                row['timed_out'] = True
+                break
+            try: child.wait(timeout=min(0.1, max(0.001, expires-time.monotonic())))
+            except subprocess.TimeoutExpired: pass
+        if row['timed_out'] or row.get('output_limit_exceeded'):
+            # Emergency harness cleanup is diagnostic; it cannot qualify a
+            # product cleanup barrier or let the matrix silently continue.
+            try:
+                if os.name == 'nt':
+                    subprocess.run(['taskkill','/PID',str(child.pid),'/T','/F'],stdout=b,stderr=b,timeout=10,check=False)
+                else:
+                    try: os.killpg(child.pid,signal.SIGKILL)
+                    except ProcessLookupError: pass
+                child.wait(timeout=10)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                row['emergency_cleanup_error'] = type(error).__name__+': '+str(error)
+        code = child.returncode
+    row.update(exit_code=code, elapsed_s=round(time.monotonic()-before,3),
+        stdout_sha256=sha(stdout), stderr_sha256=sha(stderr),
+        stdout_bytes=stdout.stat().st_size, stderr_bytes=stderr.stat().st_size)
+    if row['timed_out'] or row.get('output_limit_exceeded'):
+        row.update(status='TIMEOUT_CLEANUP_UNCONFIRMED' if row['timed_out'] else 'OUTPUT_LIMIT_CLEANUP_UNCONFIRMED', cleanup_confirmed=False)
+        return row, None
+    if max(stdout.stat().st_size,stderr.stat().st_size)>MAX_OUTPUT:
+        row.update(status='OUTPUT_LIMIT_CLEANUP_UNCONFIRMED', output_limit_exceeded=True,
+                   cleanup_confirmed=False, error='output_size_exceeded');return row,None
+    value = None
+    try: value=strict_json(stdout.read_text(encoding='utf8'))
+    except (ValueError,UnicodeError): pass
+    row['status']='PASS_PROCESS' if code==0 else 'FAIL_PROCESS'
+    return row,value
+
+def admit_report(script, row, value):
+    if row['status']!='PASS_PROCESS': return
+    if not isinstance(value,dict):
+        row.update(status='FAIL_REPORT',error='complete_json_object_required');return
+    if script=='tools/self-test-linux-namespace.js':
+        valid=value.get('schema_version')=='knowledge-linux-namespace-selftest.v1' and \
+          type(value.get('fail')) is int and value['fail']==0 and \
+          type(value.get('blocked')) is int and value['blocked']==0 and \
+          type(value.get('pass')) is int and value['pass']>0
+    else:
+        valid=value.get('status') in ('pass','passed')
+    for key in ['fail','failed','tests_failed','failed_count']:
+        if key in value:
+            count=value[key]
+            if type(count) is int: valid=valid and count==0
+            elif isinstance(count,list): valid=valid and not count
+            else: valid=False
+    row['reported_status']=value.get('status')
+    row['status']='PASS_SELFTEST' if valid else 'FAIL_REPORT'
+    for key in ['schema_version','checks_total','tests_total','tests_passed','tests_failed',
+                'total','passed','pass','fail','blocked','skipped','evidence_kind',
+                'native_lock_recovery','native_execution_capability','child_processes_executed',
+                'workflow_fixture','temp_root_cleaned']:
+        if key in value: row[key]=value[key]
+    if 'checks_total' not in row and isinstance(value.get('checks'),list):row['checks_total']=len(value['checks'])
+
+def extract(args,out,report):
+    package=P(args.package).resolve(strict=True)
+    prov=strict_json((package/'BUILD_PROVENANCE.json').read_text())
+    need(prov['status']=='PASS_PACKAGED_STRUCTURAL_VALIDATION','package_not_validated')
+    archive_path=package/prov['artifact_name']
+    need(sha(archive_path)==prov['artifact_sha256'],'package_digest_mismatch')
+    need(sha(package/'PACKAGE_CONTENTS.json')==prov['package_contents_sha256'],'entry_manifest_digest_mismatch')
+    need(sha(package/'SOURCE_PINS.json')==prov['source_pins_sha256'],'source_inventory_digest_mismatch')
+    contents=strict_json((package/'PACKAGE_CONTENTS.json').read_text())
+    extracted=out/'fresh-install';extracted.mkdir()
+    with zipfile.ZipFile(archive_path) as archive:
+        need(len(archive.namelist())==len(contents) and set(archive.namelist())==set(contents),'entry_inventory_mismatch')
+        need(archive.testzip() is None,'zip_crc_failed')
+        for info in archive.infolist():
+            base.safe_name(info.filename)
+            need(info.filename.startswith('.knowledge/') and not info.is_dir() and
+                 not stat.S_ISLNK(info.external_attr>>16),'invalid_archive_entry')
+            data=archive.read(info);entry=contents[info.filename]
+            need(hashlib.sha256(data).hexdigest()==entry['sha256'] and len(data)==entry['bytes'],'entry_digest_mismatch')
+            dest=extracted/info.filename;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(data)
+            if os.name!='nt':dest.chmod(entry['mode'])
+    report.update(artifact_sha256=prov['artifact_sha256'],artifact_bytes=archive_path.stat().st_size,
+                  artifact_name=archive_path.name,source_pins_sha256=prov['source_pins_sha256'],entries_verified=len(contents))
+    return extracted,contents
+
+def installed(args,out,report):
+    deadline=time.monotonic()+660
+    extracted,contents=extract(args,out,report);system=extracted/'.knowledge'
+    contract=strict_json((system/'install-manifest.json').read_text())['release_contract']
+    scripts=contract['public_self_test_paths']
+    need(len(scripts)==54 and len(set(scripts))==54,'public_contract_inventory_changed')
+    need(all((system/s).is_file() for s in scripts),'missing_public_selftest')
+    for expected in contract['native_runtime_artifacts']:
+        base.native_pair(system,expected,system/expected['binary'],system/expected['manifest'])
+    node=shutil.which('node');need(bool(node),'node_unavailable')
+    row,runtime=execute('installed-native-load',[node,'-e',base.NATIVE_JS],system,out,deadline)
+    report['steps'].append(row)
+    need(row['status']=='PASS_PROCESS' and runtime and runtime.get('status')=='pass' and
+         runtime.get('arch')==args.arch,'native_runtime_not_qualified')
+    row['status']='PASS_NATIVE_LOAD';report['runtime']=runtime
+    # The ZIP is installed into an actual disposable Git project. Public
+    # self-tests create their own fixtures using these installed modules.
+    for name,argv in [('git-init',['git','init','--initial-branch=main']),
+                      ('install-check',[node,str(system/'tools/install-check.js'),'--json'])]:
+        row,value=execute(name,argv,extracted,out,deadline)
+        report['steps'].append(row)
+        if name=='install-check':
+            row['report']=value
+            row['status']='PASS_INSTALL_CHECK' if row['status']=='PASS_PROCESS' and isinstance(value,dict) and value.get('status') in ('ok','warning','warnings','pass') else 'FAIL_INSTALL_CHECK'
+        need(row['status'].startswith('PASS'),name+'_failed')
+    # Run cheap contract checks first. The heavier physical lifecycle scripts
+    # retain independent per-script deadlines and cannot outlive this cohort.
+    heavy=['tools/self-test-team-mode.js','tools/self-test-team-registry-concurrency.js',
+           'tools/self-test-dedicated-verification.js','tools/self-test-linux-namespace.js']
+    ordered=[s for s in scripts if s not in heavy]+[s for s in heavy if s in scripts]
+    report['public_selftests']=scripts;report['selftests']=[]
+    for script in ordered:
+        name=P(script).stem
+        if script=='tools/self-test-linux-namespace.js' and sys.platform!='linux':
+            report['selftests'].append({'name':name,'script':script,'status':'NOT_APPLICABLE',
+                'reason':'physical_linux_namespace_requires_linux'});continue
+        args_extra=['--keep-temp'] if script=='tools/self-test-team-mode.js' else []
+        if script=='tools/self-test-recording-blockers.js' and sys.platform in ('linux','win32'):
+            args_extra=['--workflow-fixture']
+        row,value=execute(name,[node,str(system/script)]+args_extra,system,out,deadline,
+                          timeout=150 if script in heavy else 90)
+        row['script']=script;admit_report(script,row,value);report['selftests'].append(row)
+        if row['status'] in ('TIMEOUT_CLEANUP_UNCONFIRMED','OUTPUT_LIMIT_CLEANUP_UNCONFIRMED','NOT_RUN_BUDGET_EXHAUSTED'):
+            report['cohort_halted']=True
+            report['remaining_not_run']=[s for s in ordered[ordered.index(script)+1:]];break
+        if script=='tools/self-test-linux-namespace.js' and isinstance(value,dict):
+            closure=[x for x in value.get('results',[]) if x.get('name')=='physical_fixture_cleanup_requires_all_original_native_births_exited']
+            if not closure or closure[0].get('status')!='PASS':
+                report['fixture_cleanup_unconfirmed']=True;report['cohort_halted']=True;break
+    # New source tests are deliberately absent from the public archive. Stage
+    # just their pinned test bodies beside a copy of the actual installed code.
+    report['source_regressions']=[]
+    if not report.get('cohort_halted'):
+        pins=strict_json((P(args.package)/'SOURCE_PINS.json').read_text())
+        testroot=out/'source-regressions'/'.knowledge';shutil.copytree(system,testroot)
+        for name in REGRESSIONS:
+            rel='tests/'+name+'.test.js';original=ROOT/'source/.knowledge'/rel
+            need(rel in pins['files'] and sha(original)==pins['files'][rel],'regression_source_pin_mismatch:'+rel)
+            target=testroot/rel;target.parent.mkdir(exist_ok=True);shutil.copyfile(original,target)
+        for name in REGRESSIONS:
+            row,_=execute('source-'+name,[node,'--test','--test-reporter=tap',str(testroot/'tests'/(name+'.test.js'))],testroot,out,deadline,35)
+            body=(out/('source-'+name+'.stdout.json')).read_text() if 'stdout_sha256' in row else ''
+            inventory=re.findall(r'^# (tests|pass|fail|skipped|cancelled|todo) (\d+)\s*$',body,re.M)
+            counts={k:int(v) for k,v in inventory}
+            tap_ok=len(inventory)==6 and len(counts)==6 and counts.get('tests',0)>0 and counts.get('pass')==counts.get('tests') and all(counts.get(k)==0 for k in ('fail','skipped','cancelled','todo'))
+            row['tap']=counts;row['status']='PASS_SOURCE_REGRESSION' if row['status']=='PASS_PROCESS' and tap_ok else row['status'] if row['status']!='PASS_PROCESS' else 'FAIL_TAP'
+            platform_excluded = sys.platform == 'darwin' and name in ('reliability-recovery-adapter-ledger', 'reliability-recovery-adapter-budget')
+            all_skipped = len(inventory)==6 and len(counts)==6 and counts.get('tests',0)>0 and counts.get('skipped')==counts.get('tests') and all(counts.get(k)==0 for k in ('pass','fail','cancelled','todo'))
+            if row['status']=='FAIL_TAP' and platform_excluded and all_skipped:
+                row.update(status='NOT_APPLICABLE_SOURCE', reason='source fixture selects only Linux/Windows recovery adapters; exact all-skipped TAP preserved')
+            report['source_regressions'].append(row)
+            if row.get('timed_out') or row.get('output_limit_exceeded') or row['status']=='NOT_RUN_BUDGET_EXHAUSTED':
+                report['cohort_halted']=True;break
+    changes=[name for name,entry in contents.items() if not (extracted/name).is_file() or sha(extracted/name)!=entry['sha256']]
+    report['installed_byte_changes']=changes;report['installed_bytes_unchanged']=not changes
+    rows=report['selftests'];report['selftest_counts']={s:sum(x['status']==s for x in rows) for s in sorted({x['status'] for x in rows})}
+    complete=len(rows)==54 and all(x['status'] in ('PASS_SELFTEST','NOT_APPLICABLE') for x in rows) and \
+      len(report['source_regressions'])==len(REGRESSIONS) and all(x['status'] in ('PASS_SOURCE_REGRESSION','NOT_APPLICABLE_SOURCE') for x in report['source_regressions'])
+    need(complete and not changes and not report.get('fixture_cleanup_unconfirmed'),'installed_contract_incomplete')
+    report['status']='PASS_INSTALLED_PUBLIC_CONTRACT'
+
+def main():
+    ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['pack','installed'])
+    for name in ['out','source','pins','native-input','package','arch']:ap.add_argument('--'+name,required=name=='out')
+    args=ap.parse_args();out=P(args.out).resolve();out.mkdir(parents=True,exist_ok=False)
+    report={'schema_version':'knowledge-audit6-installed-contract.v1','status':'FAIL','mode':args.mode,
+      'commit':os.environ.get('GITHUB_SHA'),'workflow_run':os.environ.get('GITHUB_RUN_ID'),'steps':[],
+      'host':{'system':platform.system(),'machine':platform.machine(),'python':platform.python_version()},
+      'release_qualified':False,'full_release_gate':'BLOCKED_MAINTAINER_GATE_MISSING',
+      'production_platform_qualification':'SEPARATE_REQUIRED_EVIDENCE',
+      'scope':'Manifest-listed public tests from identical extracted ZIP plus explicit source regression cohort; internal skips and refusal-only tests retain their own narrower scope.'}
+    try:
+        if args.mode=='pack':base.pack(args,out,report['steps'],report)
+        else:installed(args,out,report)
+        return 0
+    except BaseException as error:
+        report['error']={'type':type(error).__name__,'message':str(error)};return 1
+    finally:
+        save(out/'RESULT.json',report)
+        print(json.dumps({'status':report['status'],'selftest_counts':report.get('selftest_counts'),
+                          'error':report.get('error'),'artifact_sha256':report.get('artifact_sha256')}))
+
+if __name__=='__main__':sys.exit(main())

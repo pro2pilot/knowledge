@@ -1,0 +1,96 @@
+name: RC5 audit6 Linux durable history service composition
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit6-history.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit6-history-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  history-service:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    env:
+      HISTORY_ARCH: ${{ matrix.arch }}
+      HISTORY_PUBLIC: ${{ github.workspace }}/results/linux-history-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify frozen shipping source and record the exact component inputs
+        run: |
+          /usr/bin/python3 -B - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          with open(os.environ['GITHUB_ENV'], 'a') as handle:
+              handle.write('HISTORY_SCRATCH=' + str(Path(os.environ['RUNNER_TEMP']) / ('knowledge-history-' + os.environ['HISTORY_ARCH'])) + '\n')
+          assert os.getuid() == 1001 and os.geteuid() == 1001, 'Physical runner UID1001 required'
+          public = Path(os.environ['HISTORY_PUBLIC'])
+          public.mkdir(parents=True, exist_ok=False)
+          source = Path('source/.knowledge')
+          pins_path = Path('qa/reliability/audit6/SOURCE_PINS.json')
+          body = pins_path.read_bytes()
+          pins = json.loads(body)
+          for name, expected in pins['files'].items():
+              assert hashlib.sha256((source / name).read_bytes()).hexdigest() == expected, name
+          (public / 'SOURCE_PINS.json').write_bytes(body)
+          files = [Path('qa/reliability/linux-admin-service-27') / name for name in ('native_boundary_qa.py', 'service.c', 'native_event_qa.c')]
+          files += [Path('qa/reliability/linux-service-history-27') / name for name in ('native-history-qa.c', 'run-history-qa.py')]
+          files += [source / 'tools/lib' / ('verification-linux-uid-history' + suffix) for suffix in ('.c', '.h')]
+          record = {'scope': 'fixed native service plus durable UID history; no production broker or KVE qualification',
+              'source_revision': os.environ['GITHUB_SHA'], 'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'workflow_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'source_pins_sha256': hashlib.sha256(body).hexdigest(),
+              'files': {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}}
+          (public / 'SOURCE_BINDING.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY
+      - name: Exercise 29 root-filesystem durable history cases
+        run: sudo -n /usr/bin/python3 -B qa/reliability/linux-service-history-27/run-history-qa.py --output "$RUNNER_TEMP/knowledge-history-component-$HISTORY_ARCH"
+      - name: Compile fixed static daemon and exercise socket parser as ordinary runner
+        run: /usr/bin/python3 -B qa/reliability/linux-admin-service-27/native_boundary_qa.py prepare --history --scratch "$HISTORY_SCRATCH"
+      - name: Exercise root-native history initialization, restart, UID burn and exact cleanup
+        run: sudo -n /usr/bin/env GITHUB_SHA="$GITHUB_SHA" /usr/bin/python3 -B qa/reliability/linux-admin-service-27/native_boundary_qa.py run --history --scratch "$HISTORY_SCRATCH" --public "$HISTORY_PUBLIC"
+      - name: Preserve the explicit ordinary-user build records
+        if: always()
+        run: |
+          /usr/bin/python3 -B - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          scratch, public = Path(os.environ['HISTORY_SCRATCH']), Path(os.environ['HISTORY_PUBLIC'])
+          public.mkdir(parents=True, exist_ok=True)
+          for name in ('plan.json', 'compile.stdout.log', 'compile.stderr.log'):
+              source = scratch / name
+              if source.is_file() and not source.is_symlink() and source.stat().st_size <= 1024 * 1024:
+                  shutil.copyfile(source, public / name)
+          component = Path(os.environ['RUNNER_TEMP']) / ('knowledge-history-component-' + os.environ['HISTORY_ARCH'])
+          destination = public / 'component'
+          destination.mkdir(exist_ok=True)
+          for name in ('facts.json', 'build.stdout.txt', 'build.stderr.txt'):
+              source = component / name
+              if source.is_file() and not source.is_symlink() and source.stat().st_size <= 1024 * 1024:
+                  shutil.copyfile(source, destination / name)
+          PY
+      - name: Preserve source-bound public PASS, FAIL and history checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit6-linux-history-${{ matrix.arch }}
+          path: results/linux-history-${{ matrix.arch }}/**
+          if-no-files-found: error
+          retention-days: 3

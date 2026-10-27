@@ -33,6 +33,8 @@ import uuid
 
 HERE = Path(__file__).resolve().parent
 SERVICE_SOURCE = HERE / "service.c"
+HISTORY_ROOT = HERE.parents[2] / "source" / ".knowledge" / "tools" / "lib"
+HISTORY_SOURCES = [HISTORY_ROOT / ("verification-linux-uid-history" + suffix) for suffix in (".h", ".c")]
 RUNNER_UID = 1001
 UID_FIRST = 1000010200
 UID_LAST = UID_FIRST + 2 * 4 - 1
@@ -126,7 +128,8 @@ def elf_static_arm64(data: bytes) -> bool:
     e_type, machine = struct.unpack_from("<HH", data, 16)
     phoff = struct.unpack_from("<Q", data, 32)[0]
     phentsize, phnum = struct.unpack_from("<HH", data, 54)
-    if e_type != 2 or machine != 183 or phentsize < 56 or phnum < 1 or phnum > 128:
+    expected_machine = 183 if platform.machine().lower() in {"aarch64", "arm64"} else 62
+    if e_type != 2 or machine != expected_machine or phentsize < 56 or phnum < 1 or phnum > 128:
         return False
     if phoff + phentsize * phnum > len(data):
         return False
@@ -832,10 +835,10 @@ def root_harness_positive_fixture() -> dict:
             raise QAFailure("root positive control child exit remained unconfirmed")
 
 
-def prepare(scratch_arg: Path) -> int:
+def prepare(scratch_arg: Path, history: bool = False) -> int:
     if os.geteuid() == 0 or os.getuid() != RUNNER_UID:
         raise QAFailure("prepare must run as the actual non-root Ubuntu runner UID 1001")
-    if platform.machine().lower() not in {"aarch64", "arm64"}:
+    if platform.machine().lower() not in ({"aarch64", "arm64", "x86_64"} if history else {"aarch64", "arm64"}):
         raise QAFailure("this workflow is deliberately restricted to Ubuntu ARM64")
     source_stat, source_bytes = physical_file(SERVICE_SOURCE, uid=RUNNER_UID, maximum=256 * 1024)
     token = uuid.uuid4().hex[:12]
@@ -851,11 +854,23 @@ def prepare(scratch_arg: Path) -> int:
     cc = Path("/usr/bin/cc")
     if not cc.is_file():
         raise QAFailure("fixed /usr/bin/cc compiler is unavailable")
-    argv = [str(cc), "-std=gnu11", "-O2", "-static", "-no-pie", "-Wall", "-Wextra",
+    flags = [str(cc), "-std=gnu11", "-O2", "-static", "-no-pie", "-Wall", "-Wextra",
             "-Wno-misleading-indentation", "-Werror=implicit-function-declaration",
             f'-DQA_ROOT="{qa_root}"', f'-DQA_CGROUP="{qa_cgroup}"',
-            f"-DQA_CALLER_UID={RUNNER_UID}", f"-DQA_UID_FIRST={UID_FIRST}",
-            str(SERVICE_SOURCE), "-o", str(binary)]
+            f"-DQA_CALLER_UID={RUNNER_UID}", f"-DQA_UID_FIRST={UID_FIRST}"]
+    history_sources = {}
+    history_link = []
+    if history:
+        machine_id = Path('/etc/machine-id').read_text().strip()
+        if not re.fullmatch('[0-9a-f]{32}', machine_id):
+            raise QAFailure('machine-id must be the fixed 16-byte host binding')
+        for source in HISTORY_SOURCES:
+            _, body = physical_file(source, uid=RUNNER_UID, maximum=256 * 1024)
+            history_sources[str(source)] = sha256(body)
+        flags += ['-DQA_DURABLE_HISTORY', '-I', str(HISTORY_ROOT),
+                  f'-DQA_HISTORY_INSTALLATION="{token + "0" * 20}"', f'-DQA_HISTORY_HOST="{machine_id}"']
+        history_link = [str(HISTORY_SOURCES[1]), '-lcrypto']
+    argv = [*flags, str(SERVICE_SOURCE), *history_link, "-o", str(binary)]
     started = time.monotonic()
     proc = subprocess.run(argv, cwd=HERE, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           timeout=150, check=False, shell=False,
@@ -870,7 +885,7 @@ def prepare(scratch_arg: Path) -> int:
     parser_binary = scratch / "event-parser.static"
     parser_source = HERE / "native_event_qa.c"
     _, parser_source_bytes = physical_file(parser_source, uid=RUNNER_UID, maximum=64 * 1024)
-    parser_argv = [*argv[:-3], str(parser_source), "-o", str(parser_binary)]
+    parser_argv = [*flags, str(parser_source), *history_link, "-o", str(parser_binary)]
     parser_build = subprocess.run(parser_argv, cwd=HERE, stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=150, check=False,
         env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "TMPDIR": str(scratch)})
@@ -891,7 +906,8 @@ def prepare(scratch_arg: Path) -> int:
         raise QAFailure("prepared service binary unexpectedly has set-id bits")
     plan = {
         "schema_version": "linux-admin-service-qa-plan.v1", "run_id": token,
-        "runner_uid": RUNNER_UID, "runner_gid": os.getgid(), "architecture": "aarch64",
+        "runner_uid": RUNNER_UID, "runner_gid": os.getgid(), "architecture": platform.machine().lower(),
+        "durable_history": history, "history_source_sha256": history_sources,
         "source_path": str(SERVICE_SOURCE), "source_sha256": sha256(source_bytes), "source_bytes": len(source_bytes),
         "binary_path": str(binary), "binary_sha256": sha256(binary_bytes), "binary_bytes": len(binary_bytes),
         "root_path": qa_root, "unit": unit, "cgroup_path": qa_cgroup,
@@ -911,18 +927,22 @@ def prepare(scratch_arg: Path) -> int:
 
 
 class ServiceQA:
-    def __init__(self, scratch: Path, public: Path):
+    def __init__(self, scratch: Path, public: Path, history: bool = False):
         if os.geteuid() != 0 or os.environ.get("SUDO_UID") != str(RUNNER_UID):
             raise QAFailure("run must be invoked as the fixed sudo controller with SUDO_UID=1001")
-        if platform.machine().lower() not in {"aarch64", "arm64"}:
+        if platform.machine().lower() not in ({"aarch64", "arm64", "x86_64"} if history else {"aarch64", "arm64"}):
             raise QAFailure("run is restricted to the Ubuntu ARM64 workflow")
         self.scratch = scratch.absolute()
         self.public = public.absolute()
         self.plan_path = self.scratch / "plan.json"
         self.plan: dict = {}
+        self.history = history
+        self.history_directories = {}
+        self.history_initializer_created = False
         self.private = self.scratch / "private-root"
         self.result = {"schema_version": "linux-admin-service-boundary-qa.v1",
-                       "status": "RUNNING", "scope": "Manual restricted Ubuntu ARM64 native service boundary QA; not production qualification.",
+                       "status": "RUNNING", "scope": "Fixed native service lifecycle plus durable UID history QA; not production qualification." if history else "Manual restricted Ubuntu ARM64 native service boundary QA; not production qualification.",
+                       "durable_history_component": history,
                        "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                        "architecture": platform.machine(), "checks": {}, "admin_operations": [],
                        "qa_checks_passed": [], "non_product_observations": {}}
@@ -973,7 +993,8 @@ class ServiceQA:
             raise QAFailure("invalid unique run id in runner plan")
         expected = {
             "schema_version": "linux-admin-service-qa-plan.v1", "runner_uid": RUNNER_UID,
-            "architecture": "aarch64", "caller_uid": RUNNER_UID, "uid_first": UID_FIRST, "uid_last": UID_LAST,
+            "architecture": platform.machine().lower(), "caller_uid": RUNNER_UID, "uid_first": UID_FIRST, "uid_last": UID_LAST,
+            "durable_history": self.history,
             "root_path": f"/var/lib/knowledge-svc-{token}", "unit": f"knowledge-svc-{token}",
             "cgroup_path": f"/sys/fs/cgroup/system.slice/knowledge-svc-{token}.service",
             "source_path": str(SERVICE_SOURCE), "binary_path": str((self.scratch / "service.static").absolute()),
@@ -983,6 +1004,11 @@ class ServiceQA:
         source_stat, source_bytes = physical_file(SERVICE_SOURCE, uid=RUNNER_UID, maximum=256 * 1024)
         if sha256(source_bytes) != self.plan.get("source_sha256"):
             raise QAFailure("service.c changed after unprivileged static build")
+        if self.history:
+            for source in HISTORY_SOURCES:
+                _, body = physical_file(source, uid=RUNNER_UID, maximum=256 * 1024)
+                if self.plan.get('history_source_sha256', {}).get(str(source)) != sha256(body):
+                    raise QAFailure('native history source changed after ordinary-user build')
         binary_stat, binary_bytes = physical_file(self.scratch / "service.static", uid=RUNNER_UID)
         if sha256(binary_bytes) != self.plan.get("binary_sha256") or len(binary_bytes) != self.plan.get("binary_bytes") or \
                 not elf_static_arm64(binary_bytes) or binary_stat.st_mode & (stat.S_ISUID | stat.S_ISGID):
@@ -1002,7 +1028,8 @@ class ServiceQA:
                             "workflow_commit": os.environ.get("GITHUB_SHA"),
                             "driver_sha256": sha256(Path(__file__).read_bytes()),
                             "kernel_release": platform.release(),
-                            "kernel_version": platform.version()})
+                            "kernel_version": platform.version(),
+                            "history_source_sha256": self.plan.get('history_source_sha256', {})})
 
     def snapshot_host_policy(self) -> dict:
         return {"sysctl": sysctl_fingerprint(), "apparmor": apparmor_fingerprint(),
@@ -1078,7 +1105,7 @@ class ServiceQA:
 
     def release_qa_interval(self) -> None:
         if self.uid_reservation is None:return
-        if HELPER_UNCONFIRMED or self.unit_created or self.result.get("cleanup",{}).get("systemd_stop_error"):
+        if HELPER_UNCONFIRMED or self.unit_created or self.history_initializer_created or self.result.get("cleanup",{}).get("systemd_stop_error"):
             self.result.setdefault("cleanup",{})["uid_reservation"]="preserved_unconfirmed";return
         self.occupied_uid_preflight()
         claim,device,inode,digest=self.uid_reservation
@@ -1123,6 +1150,26 @@ class ServiceQA:
         self.record_pass("fresh_root_install", {"root_mode": "0755", "binary_mode": "0755",
                          "binary_root_owned": True, "binary_not_setid": True, "binary_not_caller_writable": True,
                          "binary_readback_sha256": self.binary_hash, "binary_bytes": len(installed)})
+        if self.history:
+            for name in ('history-anchor', 'history-journal'):
+                directory = self.qa_root / name
+                directory.mkdir(mode=0o700)
+                os.chown(directory, 0, 0)
+                info = directory.lstat()
+                self.history_directories[name] = (info.st_dev, info.st_ino)
+            # Dispatch may time out after systemd accepted the request. Track
+            # this separate native root actor BEFORE dispatch, so no cleanup
+            # can unlink its installation while its exit is unconfirmed.
+            self.history_initializer_created = True
+            bounded_command('systemd-run-explicit-native-history-init',
+                ['systemd-run', '--system', '--wait', '--collect', '--quiet',
+                 f'--unit={self.unit}-initialize', '--property=RuntimeMaxSec=10',
+                 '--property=TimeoutStopSec=5', '--', str(destination), '--initialize-history'],
+                ADMIN_TIMEOUT, self.private, self.result)
+            self.confirm_history_initializer_stopped()
+            self.verify_native_history(0, False)
+            self.record_pass('explicit_root_native_history_initialization',
+                             {'journal_and_anchor_mode': '0700', 'auto_initialize_on_restart': False})
 
     def systemd_args(self) -> list[str]:
         assert self.unit and self.qa_root
@@ -1535,8 +1582,110 @@ class ServiceQA:
                          "start_denied": True, "attempt_count_after_restart": 0,
                          "uid_burn_records": records, "uid_reuse": False})
 
+    def restart_closed_history(self) -> None:
+        assert self.history and self.unit and self.qa_root
+        self.verify_native_history(1, False)
+        old_pid = self.service_main_pid
+        self.stop_owned_unit()
+        if self.service_main_pidfd is None or not pidfd_ready(self.service_main_pidfd):
+            raise QAFailure('closed-history restart lacks exact old broker exit')
+        os.close(self.service_main_pidfd)
+        self.service_main_pidfd = None
+        if self.qa_anchor_pidfd is not None:
+            if not pidfd_ready(self.qa_anchor_pidfd):
+                raise QAFailure('closed-history restart lacks exact old QA anchor exit')
+            os.close(self.qa_anchor_pidfd)
+            self.qa_anchor_pidfd = None
+        deadline = time.monotonic() + 10
+        while True:
+            state = bounded_command('systemctl-closed-history-gc',
+                ['systemctl', 'show', '--no-pager', self.unit, '--property=LoadState'],
+                ADMIN_TIMEOUT, self.private, self.result, expected={0, 1})
+            if parse_systemd_show(state.stdout).get('LoadState') == 'not-found':
+                break
+            if time.monotonic() >= deadline:
+                raise QAFailure('closed-history transient unit definition not collected')
+            time.sleep(.1)
+        self.start_first_service()
+        self.hello()
+        if self.service_main_pid == old_pid:
+            raise QAFailure('restart did not produce a distinct broker process')
+        self.verify_native_history(1, False)
+        self.record_pass('closed_history_restart_retains_allocation',
+                         {'durable_allocations': 1, 'new_broker_pid': True, 'next_pair_required': True})
+
+    def verify_native_history(self, allocations: int, pending: bool) -> list[dict]:
+        assert self.qa_root
+        anchor, directory = self.qa_root / 'history-anchor', self.qa_root / 'history-journal'
+        for name, location in (('history-anchor', anchor), ('history-journal', directory)):
+            info = location.lstat()
+            if (info.st_dev, info.st_ino) != self.history_directories[name] or info.st_uid != 0 or \
+                    stat.S_IMODE(info.st_mode) != 0o700 or not stat.S_ISDIR(info.st_mode):
+                raise QAFailure('native history directory identity/mode changed')
+        read = lambda location: physical_file(location, uid=0, maximum=256 * 16)
+        marker_info, marker = read(anchor / 'marker')
+        head_info, head = read(anchor / 'head')
+        journal_info, journal = read(directory / 'journal')
+        lock_info, lock = read(directory / 'lock')
+        for info in (marker_info, head_info, journal_info, lock_info):
+            if stat.S_IMODE(info.st_mode) != 0o600:
+                raise QAFailure('native history file protection differs from root0600')
+        if lock or len(marker) != 256 or len(head) != 256 or not journal or len(journal) % 256:
+            raise QAFailure('native history fixed record lengths invalid')
+        records = [journal[offset:offset+256] for offset in range(0, len(journal), 256)]
+        if records[0] != marker or records[-1] != head:
+            raise QAFailure('native history marker/head do not match full journal')
+        if struct.unpack_from('<QQQQQ', marker, 184) != \
+                (journal_info.st_dev, journal_info.st_ino, lock_info.st_dev, lock_info.st_ino, 1):
+            raise QAFailure('native history does not bind protected journal/lock inodes')
+        found, active, nonces, rows = 0, None, set(), []
+        for index, record in enumerate(records):
+            kind, version = struct.unpack_from('<II', record, 8)
+            seq, allocation = struct.unpack_from('<QQ', record, 16)
+            authority, worker = struct.unpack_from('<II', record, 32)
+            if record[:8] != b'KVLH001\0' or version != 1 or seq != index or \
+                    hashlib.sha256(record[:224]).digest() != record[224:]:
+                raise QAFailure('independent native history chain verification failed')
+            if not index:
+                if kind != 1 or authority != UID_FIRST or worker != UID_LAST:
+                    raise QAFailure('native history genesis range mismatch')
+                continue
+            if record[152:184] != records[index-1][224:] or record[40:72] != marker[40:72] or any(record[184:224]):
+                raise QAFailure('native history chain, epoch or reserved bytes mismatch')
+            binding = (allocation, authority, worker, record[72:120])
+            if kind == 2:
+                found += 1
+                if active is not None or allocation != found or authority != UID_FIRST + (found-1)*2 or \
+                        worker != authority+1 or record[88:120] in nonces or any(record[120:152]):
+                    raise QAFailure('native allocation duplicated or pair sequence changed')
+                nonces.add(record[88:120]); active = binding
+                rows.append({'sequence': allocation, 'authority_uid': authority, 'worker_uid': worker,
+                             'record_sha256': sha256(record), 'mode': '0600'})
+            elif kind == 3:
+                if active != binding or not any(record[120:152]):
+                    raise QAFailure('native closure did not match its pending burn')
+                active = None
+            else:
+                raise QAFailure('unexpected native history record kind')
+        if found != allocations or (active is not None) != pending:
+            raise QAFailure('native history pending/allocation state differs from real lifecycle')
+        self.result.setdefault('native_history_checkpoints', []).append({
+            'allocations': found, 'pending_cleanup': active is not None,
+            'records': len(records)-1, 'journal_sha256': sha256(journal),
+            'head_sha256': sha256(head), 'marker_sha256': sha256(marker),
+            'journal_inode': str(journal_info.st_ino), 'lock_inode': str(lock_info.st_ino),
+            'independent_sha256_replay': True})
+        # Preserve exact bytes alongside public facts; this is an ephemeral QA
+        # installation. Production history has no deletion/reset operation.
+        for name, body in (('marker', marker), ('head', head), ('journal', journal)):
+            evidence = self.public / f'history-{allocations}-{int(pending)}-{name}.bin'
+            evidence.write_bytes(body); evidence.chmod(0o644)
+        return rows
+
     def verify_uid_burn_history(self) -> list[dict]:
         assert self.qa_root
+        if self.history:
+            return self.verify_native_history(4, True)
         records = []
         for sequence in range(1, 5):
             path = self.qa_root / f"uid-burn-{sequence}"
@@ -1555,6 +1704,12 @@ class ServiceQA:
         return records
 
     def stop_owned_unit(self) -> None:
+        if self.history_initializer_created:
+            assert self.unit
+            bounded_command('systemctl-stop-history-initializer',
+                            ['systemctl', 'stop', self.unit + '-initialize'],
+                            ADMIN_TIMEOUT, self.private, self.result, expected={0, 5})
+            self.confirm_history_initializer_stopped()
         if not self.unit or not self.unit_created:
             return
         if self.resume_fd is not None:
@@ -1591,11 +1746,35 @@ class ServiceQA:
                 raise QAFailure("owned service cgroup was not empty after bounded systemd stop")
         self.unit_created = False
 
+    def confirm_history_initializer_stopped(self) -> None:
+        if not self.history_initializer_created:
+            return
+        assert self.unit
+        name = self.unit + '-initialize'
+        observed = bounded_command('systemctl-show-history-initializer',
+            ['systemctl', 'show', '--no-pager', name, '--property=LoadState',
+             '--property=ActiveState', '--property=MainPID', '--property=ControlGroup'],
+            ADMIN_TIMEOUT, self.private, self.result, expected={0, 1})
+        value = parse_systemd_show(observed.stdout)
+        expected_group = '/system.slice/' + name + '.service'
+        if value.get('LoadState') == 'not-found':
+            pass
+        elif value.get('LoadState') == 'loaded' and value.get('ActiveState') in {'inactive', 'failed'} and \
+                value.get('MainPID') == '0' and value.get('ControlGroup') in {'', expected_group}:
+            pass
+        else:
+            raise QAFailure('native history initializer exit remains unconfirmed')
+        group = Path('/sys/fs/cgroup') / expected_group.lstrip('/')
+        if group.exists() and read_cgroup_events(group).get('populated') != 0:
+            raise QAFailure('native history initializer cgroup remains populated')
+        self.history_initializer_created = False
+        self.result.setdefault('cleanup', {})['history_initializer'] = 'confirmed_stopped_or_absent'
+
     def cleanup_installation(self) -> None:
         if HELPER_UNCONFIRMED:
             self.result.setdefault("cleanup", {})["installation"] = "preserved_quarantine_fixture_exact_child_unconfirmed"
             return
-        if self.unit_created or "systemd_stop_error" in self.result.get("cleanup", {}):
+        if self.unit_created or self.history_initializer_created or "systemd_stop_error" in self.result.get("cleanup", {}):
             self.result.setdefault("cleanup", {})["installation"] = "preserved_quarantine_fixture_unit_cleanup_unconfirmed"
             return
         if not self.install_created or self.qa_root is None or self.root_inode is None:
@@ -1608,6 +1787,21 @@ class ServiceQA:
         st = self.qa_root.lstat()
         if (st.st_dev, st.st_ino) != self.root_inode or st.st_uid != 0 or stat.S_IMODE(st.st_mode) != 0o755:
             raise QAFailure("refusing to clean an installation path whose inode/owner/mode changed")
+        if self.history:
+            for name, allowed_files in (('history-anchor', {'marker', 'head'}), ('history-journal', {'lock', 'journal'})):
+                directory = self.qa_root / name
+                info = directory.lstat()
+                if (info.st_dev, info.st_ino) != self.history_directories.get(name) or info.st_uid != 0 or \
+                        stat.S_IMODE(info.st_mode) != 0o700 or not stat.S_ISDIR(info.st_mode):
+                    raise QAFailure('owned history directory identity changed before QA cleanup')
+                if not set(os.listdir(directory)).issubset(allowed_files):
+                    raise QAFailure('unexpected history file; preserve incomplete QA fixture')
+                for child in directory.iterdir():
+                    item, _ = physical_file(child, uid=0, maximum=256*16)
+                    if stat.S_IMODE(item.st_mode) != 0o600:
+                        raise QAFailure('history file mode changed before QA cleanup')
+                    child.unlink()
+                directory.rmdir()
         allowed = {"service", "control.sock", *(f"uid-burn-{i}" for i in range(1, 5))}
         names = set(os.listdir(self.qa_root))
         if not names.issubset(allowed):
@@ -1680,9 +1874,20 @@ class ServiceQA:
             same_uid = pass_exact_fd_to_worker(str(self.qa_root / "control.sock"), nonce1, RUNNER_UID)
             self.record_pass("same_uid_different_pid_socket_delegation", same_uid)
             self.stop_scope(1, nonce1, 1)
+            if self.history:
+                self.verify_native_history(1, False)
+                self.restart_closed_history()
 
             nonce2, actor2, status2 = self.start_scope(2)
-            self.replay_closed_stop(nonce1, status1, nonce2, status2)
+            if self.history:
+                stale = receive_json(request_as_c(str(self.qa_root / 'control.sock'), 3, nonce1))
+                if stale.get('status') != 'unavailable':
+                    raise QAFailure('old daemon nonce was accepted as current live attempt')
+                self.record_pass('new_daemon_next_uid_pair', {
+                    'authority_uid': status2['authority_uid'], 'worker_uid': status2['worker_uid'],
+                    'old_nonce_stop_rejected': True, 'uid_reuse': False})
+            else:
+                self.replay_closed_stop(nonce1, status1, nonce2, status2)
             self.stop_broker_paused_scope(2, nonce2, status2)
 
             self.caller_death_scope(3)
@@ -1721,7 +1926,7 @@ class ServiceQA:
                 policy_unchanged = False
             self.result["checks"]["host_policy_unchanged"] = {"status": "PASS" if policy_unchanged else "FAIL_OR_UNAVAILABLE"}
             cleanup_ok = self.result.get("cleanup", {}).get("installation") in {"removed_exact_owned_root", "not_created"} and \
-                "systemd_stop_error" not in self.result.get("cleanup", {}) and self.uid_reservation is None and not OWNED_HELPERS and not HELPER_UNCONFIRMED
+                "systemd_stop_error" not in self.result.get("cleanup", {}) and not self.history_initializer_created and self.uid_reservation is None and not OWNED_HELPERS and not HELPER_UNCONFIRMED
             self.result["completed_all_checks"] = completed_all_checks
             self.result["status"] = "PASS_SCOPED_QA" if completed_all_checks and not self.result.get("error") and policy_unchanged and cleanup_ok else "FAIL_OR_INCOMPLETE"
             self.result["finished_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -1738,13 +1943,15 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     prep = sub.add_parser("prepare", help="compile the exact service.c as the ordinary runner")
     prep.add_argument("--scratch", type=Path, required=True)
+    prep.add_argument('--history', action='store_true', help='compose native history with fixed daemon lifecycle (x64/ARM64)')
     run = sub.add_parser("run", help="run the fixed root system-service boundary controller")
     run.add_argument("--scratch", type=Path, required=True)
     run.add_argument("--public", type=Path, required=True)
+    run.add_argument('--history', action='store_true')
     args = parser.parse_args()
     if args.command == "prepare":
-        return prepare(args.scratch)
-    return ServiceQA(args.scratch, args.public).run_all()
+        return prepare(args.scratch, args.history)
+    return ServiceQA(args.scratch, args.public, args.history).run_all()
 
 
 if __name__ == "__main__":

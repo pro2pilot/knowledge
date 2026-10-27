@@ -214,9 +214,12 @@ test('rejects links, supported special files, traversal, and canonical aliases',
     }
   });
 
-  for (const name of ['../outside', 'a/../b', 'a\\b', 'cafe\u0301.txt', 'bad.']) {
+  for (const name of ['../outside', 'a/../b', 'a\\b', 'cafe\u0301.txt', 'bad.',
+    'bad\ud800.txt', 'bad\udc00.txt', 'bad\ud800x\udc00.txt']) {
     assert.throws(() => copy.relativeName(name), { code: 'verification_copy_path_unsupported' }, name);
   }
+  // Well-formed non-BMP names remain stable across manifest and filename bytes.
+  assert.equal(copy.relativeName('docs/rocket-\ud83d\ude80.txt'), 'docs/rocket-\ud83d\ude80.txt');
 
   const upper = path.join(project, 'Case.txt');
   const lower = path.join(project, 'case.txt');

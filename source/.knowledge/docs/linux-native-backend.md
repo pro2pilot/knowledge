@@ -1,5 +1,10 @@
 # Linux native verification backend
 
+The separate administrator-installed service remains an unadmitted production
+path. Its new root-native UID history and the exact remaining integration
+boundary are documented in [Linux native service history](linux-native-service-history.md).
+That persistence component does not change the namespace backend described here.
+
 ## Contract and supported environment
 
 `linux_pid_namespace` creates a separate user namespace and PID namespace for each owned verification boundary. A small C program is the namespace init and an outside C keeper owns its exact pidfd. The public watchdog uses an outer boundary for the authority; that authority creates an inner boundary for command execution. A detached process, `setsid`, reparenting, or a further descendant PID namespace does not leave the ancestor PID namespace.

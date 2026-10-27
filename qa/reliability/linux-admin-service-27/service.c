@@ -25,6 +25,16 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#if defined(QA_DURABLE_HISTORY)
+#include "verification-linux-uid-history.h"
+#include <openssl/evp.h>
+#ifndef QA_HISTORY_INSTALLATION
+#error QA_HISTORY_INSTALLATION must bind the explicit ephemeral installation
+#endif
+#ifndef QA_HISTORY_HOST
+#error QA_HISTORY_HOST must bind the observed host machine-id
+#endif
+#endif
 #ifndef SO_PEERPIDFD
 #define SO_PEERPIDFD 77
 #endif
@@ -51,11 +61,70 @@ struct attempt {
   unsigned char nonce[16]; int sequence, keeper, keeperfd, channel, init, authority, worker;
   int authority_uid, worker_uid, authority_fd, done, closed, exit_status, stop_reason,keeper_wait_status,init_wait_status;
   uint64_t authority_address,output_bytes; int worker_memory_denied,output_fd,output_eof,expired; long long started,cleanup_end;
+#if defined(QA_DURABLE_HISTORY)
+  kv_linux_uid_reservation reservation;
+#endif
 };
 struct init_args { int report, keeperfd, gate,output; uid_t authority, worker; };
 static volatile uint64_t authority_canary = UINT64_C(0x4b4e4f574c454447);
 static struct attempt attempts[MAX_ATTEMPTS];
 static int attempt_count, quarantine, daemonfd, rootfd, qa_anchor_pid;
+#if defined(QA_DURABLE_HISTORY)
+static kv_linux_uid_history *uid_history;
+static uint64_t prior_allocations;
+static unsigned char native_boot_id[16];
+static int hex_id(const char *text,unsigned char *out) {
+  if(strlen(text)!=32)return -1;
+  for(unsigned i=0;i<16;i++){
+    unsigned char a=(unsigned char)text[i*2],b=(unsigned char)text[i*2+1];
+    if(!((a>='0'&&a<='9')||(a>='a'&&a<='f'))||!((b>='0'&&b<='9')||(b>='a'&&b<='f')))return -1;
+    out[i]=(unsigned char)(((a<='9'?a-'0':a-'a'+10)<<4)|(b<='9'?b-'0':b-'a'+10));
+  }return 0;
+}
+static int history_configuration(kv_linux_uid_configuration *config) {
+  memset(config,0,sizeof(*config));config->anchor_dir=QA_ROOT "/history-anchor";
+  config->journal_dir=QA_ROOT "/history-journal";config->uid_first=QA_UID_FIRST;
+  config->uid_last=QA_UID_FIRST+MAX_ATTEMPTS*2-1;
+  return hex_id(QA_HISTORY_INSTALLATION,config->installation_id)||hex_id(QA_HISTORY_HOST,config->host_id)?-1:0;
+}
+static int read_native_boot(void) {
+  char body[40],hex[33]={0};int fd=open("/proc/sys/kernel/random/boot_id",O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
+  if(fd<0)return -1;ssize_t count=read(fd,body,sizeof(body));close(fd);
+  if(count!=37||body[36]!='\n')return -1;
+  unsigned at=0;for(unsigned i=0;i<36;i++){
+    if(i==8||i==13||i==18||i==23){if(body[i]!='-')return -1;}
+    else hex[at++]=body[i];
+  }return hex_id(hex,native_boot_id);
+}
+static int record_native_close(struct attempt *a) {
+  /* This digest is produced only after the root lifecycle actor has checked
+   * the retained keeper pidfd/wait result, exact init receipt, output EOF,
+   * live cgroup.events and the ORIGINAL cleanup endpoint. No public packet
+   * supplies any part of this closure proof or requests a CLOSED transition. */
+  struct {
+    unsigned char installation[16],host[16],nonce[32],boot[16];
+    uint64_t allocation,cleanup_end,observed_ms,output_bytes;
+    uint32_t authority,worker,keeper,init,keeper_wait,init_wait,output_eof,cgroup_empty;
+  } proof;
+  memset(&proof,0,sizeof(proof));
+  if(hex_id(QA_HISTORY_INSTALLATION,proof.installation)||hex_id(QA_HISTORY_HOST,proof.host))return -1;
+  memcpy(proof.nonce,a->reservation.attempt_nonce,32);memcpy(proof.boot,a->reservation.boot_id,16);
+  proof.allocation=a->reservation.allocation_sequence;proof.cleanup_end=(uint64_t)a->cleanup_end;
+  struct timespec now;if(clock_gettime(CLOCK_MONOTONIC,&now))return -1;
+  proof.observed_ms=(uint64_t)now.tv_sec*1000+(uint64_t)now.tv_nsec/1000000;
+  if(proof.observed_ms>proof.cleanup_end)return -1;
+  proof.output_bytes=a->output_bytes;proof.authority=(uint32_t)a->authority_uid;proof.worker=(uint32_t)a->worker_uid;
+  proof.keeper=(uint32_t)a->keeper;proof.init=(uint32_t)a->init;
+  proof.keeper_wait=(uint32_t)a->keeper_wait_status;proof.init_wait=(uint32_t)a->init_wait_status;
+  proof.output_eof=1;proof.cgroup_empty=1;
+  unsigned char digest[32];unsigned length=0;
+  EVP_MD_CTX *ctx=EVP_MD_CTX_new();if(!ctx)return -1;
+  int ok=EVP_DigestInit_ex(ctx,EVP_sha256(),NULL)==1&&EVP_DigestUpdate(ctx,&proof,sizeof(proof))==1&&
+    EVP_DigestFinal_ex(ctx,digest,&length)==1&&length==32;
+  EVP_MD_CTX_free(ctx);
+  return ok?kv_linux_uid_record_closed(uid_history,&a->reservation,digest):-1;
+}
+#endif
 static void reap_unpermitted_child(pid_t child);
 static long long monotonic_ms(void) { struct timespec t; if(clock_gettime(CLOCK_MONOTONIC,&t))_exit(110);return (long long)t.tv_sec*1000+t.tv_nsec/1000000; }
 static int pidfd_open_exact(int pid) { return (int)syscall(SYS_pidfd_open,pid,0); }
@@ -236,20 +305,37 @@ static void observe(void) {
     }
     if(ready(a->keeperfd)&&!a->exit_status){int status;pid_t r=waitpid(a->keeper,&status,WNOHANG);if(r==a->keeper){a->exit_status=WIFEXITED(status)&&WEXITSTATUS(status)==0?1:-1;a->keeper_wait_status=status;}}
     if(a->cleanup_end&&monotonic_ms()>a->cleanup_end){a->expired=1;quarantine=1;}
-    if(!a->expired&&a->done==1&&a->exit_status==1&&a->output_eof&&cgroup_empty(a->sequence)&&monotonic_ms()<=a->cleanup_end){a->closed=1;close(a->channel);close(a->keeperfd);}
+    if(!a->expired&&a->done==1&&a->exit_status==1&&a->output_eof&&cgroup_empty(a->sequence)&&monotonic_ms()<=a->cleanup_end){
+#if defined(QA_DURABLE_HISTORY)
+      if(record_native_close(a)||monotonic_ms()>a->cleanup_end){a->expired=1;quarantine=1;}
+      else
+#endif
+      {a->closed=1;close(a->channel);close(a->keeperfd);}
+    }
     if(a->exit_status==-1)quarantine=1;
   }
 }
 static int burn_and_start(const unsigned char nonce[16],int callerfd) {
   if(quarantine||attempt_count==MAX_ATTEMPTS)return -1;
   for(int i=0;i<attempt_count;i++)if(!attempts[i].closed)return -1;
-  int seq=attempt_count+1;char leaf[32],cg[PATH_MAX];snprintf(leaf,sizeof(leaf),"uid-burn-%d",seq);
+  int seq=attempt_count+1;char cg[PATH_MAX];
+#if defined(QA_DURABLE_HISTORY)
+  if(prior_allocations+(uint64_t)attempt_count>=MAX_ATTEMPTS)return -1;
+  unsigned char expanded_nonce[32]={0};memcpy(expanded_nonce,nonce,16);
+  kv_linux_uid_reservation reservation;
+  if(kv_linux_uid_reserve(uid_history,expanded_nonce,native_boot_id,&reservation)){quarantine=1;return -1;}
+  if(reservation.allocation_sequence>MAX_ATTEMPTS){quarantine=1;return -1;}
+  seq=(int)reservation.allocation_sequence;
+  struct {unsigned authority,worker;} record={reservation.authority_uid,reservation.worker_uid};
+#else
+  char leaf[32];snprintf(leaf,sizeof(leaf),"uid-burn-%d",seq);
   /* The history is never removed/reused. Incomplete prior history quarantines restart. */
   int fd=openat(rootfd,leaf,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);if(fd<0)return -1;
   struct { unsigned char nonce[16];uint32_t authority,worker; } record;
   memcpy(record.nonce,nonce,16);record.authority=QA_UID_FIRST+(unsigned)(seq-1)*2;record.worker=record.authority+1;
   int ok=write_all(fd,&record,sizeof(record))==0&&fsync(fd)==0;close(fd);
   if(!ok||fsync(rootfd)){quarantine=1;return -1;}
+#endif
   snprintf(cg,sizeof(cg),QA_CGROUP "/attempt-%d",seq);if(mkdir(cg,0700)){quarantine=1;return -1;}
   int channel[2]={-1,-1},gate[2]={-1,-1},output[2]={-1,-1};
   if(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_NONBLOCK|SOCK_CLOEXEC,0,channel)||pipe2(gate,O_CLOEXEC)||pipe2(output,O_CLOEXEC)||fcntl(output[0],F_SETFL,O_NONBLOCK)){
@@ -261,7 +347,10 @@ static int burn_and_start(const unsigned char nonce[16],int callerfd) {
   if(pidfd<0){close(gate[1]);close(channel[0]);close(output[0]);quarantine=1;reap_unpermitted_child(pid);return -1;}
   struct attempt *a=&attempts[attempt_count++];memcpy(a->nonce,nonce,16);a->sequence=seq;a->keeper=pid;a->keeperfd=pidfd;a->channel=channel[0];
   a->authority_uid=record.authority;a->worker_uid=record.worker;a->started=monotonic_ms();a->output_fd=output[0];
-  if(write_all(gate[1],"K",1)){quarantine=1;}close(gate[1]);return seq-1;
+#if defined(QA_DURABLE_HISTORY)
+  a->reservation=reservation;
+#endif
+  if(write_all(gate[1],"K",1)){quarantine=1;}close(gate[1]);return attempt_count-1;
 }
 static int request_read(int fd,struct request *out,int *callerfd) {
   unsigned char raw[sizeof(*out)+1];union {struct cmsghdr align;char bytes[CMSG_SPACE(sizeof(struct ucred))+CMSG_SPACE(16*sizeof(int))];} control={0};
@@ -290,11 +379,29 @@ static void reply(int fd,const struct request *r,int callerfd) {
   if(n>0&&(size_t)n<sizeof(text))send(fd,text,(size_t)n,MSG_NOSIGNAL|MSG_DONTWAIT);
 }
 int main(int argc,char **argv) {
-  (void)argv;if(argc!=1||getuid()!=0||geteuid()!=0||getppid()!=1||QA_CALLER_UID==0||QA_UID_FIRST<1000000000)_exit(140);
+  if(getuid()!=0||geteuid()!=0||getppid()!=1||QA_CALLER_UID==0||QA_UID_FIRST<1000000000)_exit(140);
+#if defined(QA_DURABLE_HISTORY)
+  kv_linux_uid_configuration config;const char *history_reason=NULL;
+  if(history_configuration(&config))_exit(152);
+  if(argc==2&&!strcmp(argv[1],"--initialize-history")){
+    int initialized=kv_linux_uid_initialize(&config,&history_reason);
+    printf("{\"status\":\"%s\",\"reason\":\"%s\"}\n",initialized?"failed":"initialized",history_reason);
+    return initialized?153:0;
+  }
+  if(argc!=1)_exit(140);
+#else
+  (void)argv;if(argc!=1)_exit(140);
+#endif
   signal(SIGPIPE,SIG_IGN);umask(077);
   rootfd=open(QA_ROOT,O_RDONLY|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW);struct stat s;
   if(rootfd<0||fstat(rootfd,&s)||s.st_uid!=0||(s.st_mode&0022))_exit(141);
+#if defined(QA_DURABLE_HISTORY)
+  uid_history=kv_linux_uid_open(&config,&history_reason);kv_linux_uid_snapshot snapshot;
+  if(!uid_history||kv_linux_uid_read(uid_history,&snapshot)||read_native_boot())_exit(154);
+  prior_allocations=snapshot.allocations;if(snapshot.pending_cleanup)quarantine=1;
+#else
   for(int i=1;i<=MAX_ATTEMPTS;i++){char leaf[32];snprintf(leaf,sizeof(leaf),"uid-burn-%d",i);if(fstatat(rootfd,leaf,&s,AT_SYMLINK_NOFOLLOW)==0)quarantine=1;else if(errno!=ENOENT)_exit(142);}
+#endif
   daemonfd=pidfd_open_exact(getpid());if(daemonfd<0)_exit(143);
   int server=socket(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC|SOCK_NONBLOCK,0);int one=1;
   if(server<0||setsockopt(server,SOL_SOCKET,SO_PASSCRED,&one,sizeof(one)))_exit(144);
