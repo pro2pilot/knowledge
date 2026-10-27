@@ -99,6 +99,38 @@ test('empty/malformed/removed active state and hardlinks do not become free admi
  fs.unlinkSync(file);assert.throws(()=>control.readStatus(f.context),{code:'verification_control_missing'});assert.throws(()=>start(f),{code:'verification_control_missing'});
  assert(s.owner.token);
 });
+for(const mode of ['atomic cancellation','continuous replacement','hardlink after open','corrupt replacement']) {
+ test(`status reader handles ${mode} between open and fstat without accepting a stale row`,t=>{
+  const f=fixture(t),started=start(f),file=path.join(f.root,'maintenance/verification-control/active.json');
+  const store=require('../tools/lib/json-store'),before=JSON.parse(fs.readFileSync(file,'utf8'));
+  control.requestCancel(f.context,{attempt_id:started.owner.attempt_id,generation:started.owner.generation});
+  const next=JSON.parse(fs.readFileSync(file,'utf8'));
+  store.writeJsonAtomicContained(file,before,f.root);
+  const open=fs.openSync;let changes=0,writing=false;const links=[];
+  fs.openSync=function(target,...args) {
+   const fd=open.call(fs,target,...args);
+   if(target===file&&!writing&&(mode==='continuous replacement'||changes===0)) {
+    changes++;writing=true;
+    try {
+     if(mode==='hardlink after open')fs.linkSync(file,path.join(f.root,'extra-link.json'));
+     else store.writeJsonAtomicContained(file,mode==='corrupt replacement'?{}:next,f.root);
+     links.push(fs.fstatSync(fd,{bigint:true}).nlink);
+    } finally {writing=false;}
+   }
+   return fd;
+  };
+  try {
+   if(mode==='atomic cancellation') {
+    const status=control.readStatus(f.context);
+    assert.equal(status.attempt.cancel.requested,true);
+    assert.equal(status.attempt.revision,next.revision);
+   } else assert.throws(()=>control.readStatus(f.context),{code:mode==='continuous replacement'
+    ?'verification_control_read_raced':mode==='hardlink after open'?'verification_control_unsafe':'verification_control_corrupt'});
+   assert.equal(changes,mode==='continuous replacement'?3:1);
+   assert.deepEqual(links,Array(changes).fill(mode==='hardlink after open'?2n:0n));
+  } finally {fs.openSync=open;}
+ });
+}
 test('terminal history is preserved and a different generation cannot cancel the next attempt',t=>{
  const f=fixture(t),first=start(f);done(f,first.owner);const before=fs.readFileSync(path.join(f.root,'maintenance/verification-control/active.json'));
  const second=start(f),archive=path.join(f.root,'maintenance/verification-control/attempts',first.owner.attempt_id+'.json');assert.deepEqual(fs.readFileSync(archive),before);

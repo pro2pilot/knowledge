@@ -3878,7 +3878,7 @@ process.stdout.write(JSON.stringify({pid: process.pid, path: handle.path, lock_i
       const deadLockId = owner.lock_id;
       const old = new Date(Date.now() - 60_000);
       fs.utimesSync(departed.path, old, old);
-      if (owner.native_identity === null) {
+      if (owner.schema_version !== 'knowledge-lock-owner.v3' && owner.native_identity === null) {
         const before = fs.readFileSync(ownerPath);
         const beforeStat = fs.statSync(departed.path);
         const error = expectThrow(() => acquireContainedLock(request), null, 'unverified exited owner was reclaimed');
@@ -3891,12 +3891,24 @@ process.stdout.write(JSON.stringify({pid: process.pid, path: handle.path, lock_i
         fs.rmSync(departed.path, { recursive: true, force: true });
         return;
       }
+      if (owner.schema_version === 'knowledge-lock-owner.v3') {
+        // v3 ownership is proved by the exact published owner-inode lease.
+        // Its optional Linux procfs identity is normally null on Darwin.
+        assert(owner.publication === 'atomic-directory-noreplace.v1', 'v3 owner lacks atomic publication binding');
+        assert(owner.kernel_lease?.method === (process.platform === 'win32'
+          ? 'windows-owner-event.v1' : 'owner-inode-lease.v1'), 'v3 owner lacks the platform kernel lease');
+        const observed = inspectLockSafety({ ...request, timeoutMs: 5000 });
+        assert(observed.current.status === 'stale' && observed.current.reason === 'abandoned_kernel_owner_lease',
+          'exited v3 owner lacks an independently observed free kernel lease');
+      }
       const replacement = acquireContainedLock(request);
       const current = JSON.parse(fs.readFileSync(path.join(replacement.path, 'owner.json'), 'utf8'));
       assert(current.lock_id && current.lock_id !== deadLockId, 'dead lock was not replaced');
       replacement.release();
       assert(!fs.existsSync(replacement.path), 'reclaimed lock was not released');
-      nativeLockRecovery = { status: 'pass', observed_child_exit: true, native_method: owner.native_identity.method };
+      nativeLockRecovery = { status: 'pass', observed_child_exit: true,
+        native_method: owner.schema_version === 'knowledge-lock-owner.v3'
+          ? owner.kernel_lease.method : owner.native_identity.method };
     });
 
     check('locking: releasing an old handle cannot delete a replacement owner', () => {

@@ -124,7 +124,10 @@ function physicalRead(loc,file) {
     const fd = fs.openSync(file,fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
     try {
       const opened = fs.fstatSync(fd,{bigint:true});
-      requireThat(opened.isFile() && opened.nlink === 1n && opened.size <= BigInt(MAX_BYTES),'verification_control_unsafe');
+      requireThat(opened.isFile() && opened.nlink <= 1n && opened.size <= BigInt(MAX_BYTES),'verification_control_unsafe');
+      // Atomic publication may unlink the opened old inode before fstat.
+      // Discard it and reread the current row under load's bounded retries.
+      requireThat(opened.nlink === 1n,'verification_control_read_raced');
       requireThat(snapshotEqual(before,opened),'verification_control_read_raced');
       const buffer=Buffer.alloc(MAX_BYTES+1);let size=0,count;
       do {count=fs.readSync(fd,buffer,size,buffer.length-size,null);size+=count;} while(count>0 && size<buffer.length);

@@ -77,6 +77,7 @@ function exactGeneratedProducerArgv(...args) { return executionCore.exactGenerat
 // Common-lock observers reach these fixed control dependencies through the
 // command runner. Keep exact provenance even for dormant platform branches.
 const GENERATED_NATIVE_CONTROL_DEPENDENCIES = Object.freeze([
+  'command-authority-entry.js',
   'macos-command-runner.js', 'macos-command-scope.js', 'macos-workspace-protocol.js',
   'macos-workspace-session.js', 'verification-darwin-preparation.js',
   'verification-darwin-session.js', 'verification-darwin-storage-guardian.js',

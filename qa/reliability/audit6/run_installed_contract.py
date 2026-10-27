@@ -16,7 +16,8 @@ sha, save, need = base.sha, base.save, base.need
 MAX_OUTPUT = 8 * 1024 * 1024
 REGRESSIONS = ['reliability-recovery-adapter-ledger', 'reliability-recovery-adapter-budget',
                'reliability-recovery-outer-budget', 'reliability-recovery-deadline',
-               'verification-cleanup-transcript', 'verification-finalization-v2', 'verification-isolated-copy', 'reliability-macos-failed-observation']
+               'verification-cleanup-transcript', 'verification-finalization-v2', 'verification-isolated-copy', 'reliability-macos-failed-observation',
+               'repair-producer-dependency-closure', 'verification-control']
 
 def strict_json(body):
     def unique(pairs):
@@ -180,7 +181,8 @@ def extract(args,out,report):
     return extracted,contents
 
 def installed(args,out,report):
-    deadline=time.monotonic()+660
+    targeted=args.mode=='targeted'
+    deadline=time.monotonic()+(330 if targeted else 660)
     extracted,contents=extract(args,out,report);system=extracted/'.knowledge'
     contract=strict_json((system/'install-manifest.json').read_text())['release_contract']
     scripts=contract['public_self_test_paths']
@@ -216,16 +218,39 @@ def installed(args,out,report):
             need(rel in pins['files'] and sha(original)==pins['files'][rel],'regression_source_pin_mismatch:'+rel)
             target=testroot/rel;target.parent.mkdir(exist_ok=True);shutil.copyfile(original,target)
         for name in REGRESSIONS:
-            row,_=execute('source-'+name,[node,'--test','--test-reporter=tap',str(testroot/'tests'/(name+'.test.js'))],testroot,out,deadline,35,fixture_tmp=fixture_tmp)
+            selected_pattern='^status reader handles .* between open and fstat without accepting a stale row$' if name=='verification-control' else None
+            test_argv=[node,'--test','--test-reporter=tap']+(['--test-name-pattern='+selected_pattern] if selected_pattern else [])+[str(testroot/'tests'/(name+'.test.js'))]
+            row,_=execute('source-'+name,test_argv,testroot,out,deadline,35,fixture_tmp=fixture_tmp)
+            if selected_pattern:row['explicit_test_name_pattern']=selected_pattern
             body=(out/('source-'+name+'.stdout.json')).read_text() if 'stdout_sha256' in row else ''
             inventory=re.findall(r'^# (tests|pass|fail|skipped|cancelled|todo) (\d+)\s*$',body,re.M)
             counts={k:int(v) for k,v in inventory}
             tap_ok=len(inventory)==6 and len(counts)==6 and counts.get('tests',0)>0 and counts.get('pass')==counts.get('tests') and all(counts.get(k)==0 for k in ('fail','skipped','cancelled','todo'))
+            if name=='repair-producer-dependency-closure':
+                tap_ok=tap_ok and counts.get('tests')==11
+                row['expected_test_count']=11
+            if selected_pattern:
+                # This declares the four race cases before execution; other
+                # ledger scenarios are not part of this targeted regression.
+                tap_ok=len(inventory)==6 and len(counts)==6 and counts.get('pass')==4 and \
+                    counts.get('tests')==counts.get('pass',0)+counts.get('skipped',0) and \
+                    counts.get('skipped') in (0,37) and all(counts.get(k)==0 for k in ('fail','cancelled','todo'))
             row['tap']=counts;row['status']='PASS_SOURCE_REGRESSION' if row['status']=='PASS_PROCESS' and tap_ok else row['status'] if row['status']!='PASS_PROCESS' else 'FAIL_TAP'
-            platform_excluded = sys.platform == 'darwin' and name in ('reliability-recovery-adapter-ledger', 'reliability-recovery-adapter-budget')
-            all_skipped = len(inventory)==6 and len(counts)==6 and counts.get('tests',0)>0 and counts.get('skipped')==counts.get('tests') and all(counts.get(k)==0 for k in ('pass','fail','cancelled','todo'))
-            if row['status']=='FAIL_TAP' and platform_excluded and all_skipped:
-                row.update(status='NOT_APPLICABLE_SOURCE', reason='source fixture selects only Linux/Windows recovery adapters; exact all-skipped TAP preserved')
+            excluded_count = 4 if name=='reliability-recovery-adapter-ledger' and sys.platform in ('darwin','win32') else 8 if name=='reliability-recovery-adapter-budget' and sys.platform=='darwin' else None
+            all_skipped = len(inventory)==6 and len(counts)==6 and counts.get('tests')==excluded_count and counts.get('skipped')==counts.get('tests') and all(counts.get(k)==0 for k in ('pass','fail','cancelled','todo'))
+            if row['status']=='FAIL_TAP' and excluded_count is not None and all_skipped:
+                row.update(status='NOT_APPLICABLE_SOURCE', reason='source fixture selects Linux only' if name=='reliability-recovery-adapter-ledger' else 'source fixture selects Linux/Windows recovery adapters', excluded_test_count=excluded_count)
+            if row['status']=='FAIL_TAP' and sys.platform=='win32' and name=='verification-isolated-copy':
+                expected_skips = {
+                    'special files':'Windows does not expose a project-local FIFO through Node filesystem APIs',
+                    'snapshot rejects a parent replacement during read even when the file inode is preserved':'Windows prevents renaming a parent of the open source file; the pre-open replacement is tested separately',
+                    'regular-file to FIFO race cannot block the open before fstat rejection':'FIFO replacement is a POSIX filesystem scenario'
+                }
+                skipped_rows=re.findall(r'^\s*ok \d+ - (.*?) # SKIP(?: (.*))?$',body,re.M)
+                exact_skips=len(skipped_rows)==3 and dict(skipped_rows)==expected_skips
+                if len(inventory)==6 and len(counts)==6 and counts=={'tests':27,'pass':24,'fail':0,'skipped':3,'cancelled':0,'todo':0} and exact_skips:
+                    row.update(status='PASS_SCOPED_SOURCE_REGRESSION', limitations=expected_skips,
+                               reason='24 executed cases passed; exactly three named POSIX filesystem scenarios excluded on Windows')
             report['source_regressions'].append(row)
             if row.get('timed_out') or row.get('output_limit_exceeded') or row['status']=='NOT_RUN_BUDGET_EXHAUSTED':
                 report['cohort_halted']=True;break
@@ -235,9 +260,22 @@ def installed(args,out,report):
            'tools/self-test-team-mode.js','tools/self-test-dedicated-verification.js',
            'tools/self-test-linux-namespace.js','tools/self-test-agent-task-workflow.js']
     ordered=[s for s in scripts if s not in heavy]+[s for s in heavy if s in scripts]
+    if targeted:
+        common=['tools/self-test-field-report.js','tools/self-test-native-verification-boundaries.js']
+        # The classic public worker/repair path is usable on these hosts. The
+        # macOS canonical broker and the ARM AppArmor rejection have separate
+        # physical evidence; this subset does not recertify those paths.
+        classic=sys.platform=='win32' or (sys.platform=='linux' and args.arch=='x64')
+        ordered=common+(['tools/self-test-verification-finalization.js','tools/self-test-repair-on-touch.js'] if classic else [])
+        need(all(s in scripts for s in ordered),'targeted_test_missing_from_public_contract')
+        report['full_installed_product_acceptance']='NOT_RUN_IN_THIS_TARGETED_COHORT'
+        report['public_scripts_excluded_from_targeted_scope']=[s for s in scripts if s not in ordered]
+        report['scope']='Explicit final installed regression subset: public error envelope, field-report lock recovery, four ledger race cases, producer closure and pinned reliability tests; classic finalization/repair additionally on Linux x64 and Windows. No full contract or platform qualification claim.'
     report['public_selftests']=scripts;report['selftests']=[]
     report['planned_public_order']=ordered
     report['script_time_caps_s']={'default':90,'heavy':150,'tools/self-test-agent-task-workflow.js':240}
+    report['cohort_time_cap_s']=330 if targeted else 660
+    if targeted:report['script_time_caps_s']['tools/self-test-repair-on-touch.js']=180
     if report.get('cohort_halted'):report['remaining_not_run']=ordered
     for script in ([] if report.get('cohort_halted') else ordered):
         name=P(script).stem
@@ -248,7 +286,7 @@ def installed(args,out,report):
         if script=='tools/self-test-recording-blockers.js' and sys.platform in ('linux','win32'):
             args_extra=['--workflow-fixture']
         row,value=execute(name,[node,str(system/script)]+args_extra,system,out,deadline,
-                          timeout=240 if script=='tools/self-test-agent-task-workflow.js' else 150 if script in heavy else 90,fixture_tmp=fixture_tmp)
+                          timeout=180 if targeted and script=='tools/self-test-repair-on-touch.js' else 240 if script=='tools/self-test-agent-task-workflow.js' else 150 if script in heavy else 90,fixture_tmp=fixture_tmp)
         row['script']=script;admit_report(script,row,value);report['selftests'].append(row)
         if row['status'] in ('TIMEOUT_CLEANUP_UNCONFIRMED','OUTPUT_LIMIT_CLEANUP_UNCONFIRMED','NOT_RUN_BUDGET_EXHAUSTED'):
             report['cohort_halted']=True
@@ -260,13 +298,13 @@ def installed(args,out,report):
     changes=[name for name,entry in contents.items() if not (extracted/name).is_file() or sha(extracted/name)!=entry['sha256']]
     report['installed_byte_changes']=changes;report['installed_bytes_unchanged']=not changes
     rows=report['selftests'];report['selftest_counts']={s:sum(x['status']==s for x in rows) for s in sorted({x['status'] for x in rows})}
-    complete=len(rows)==54 and all(x['status'] in ('PASS_SELFTEST','NOT_APPLICABLE') for x in rows) and \
-      len(report['source_regressions'])==len(REGRESSIONS) and all(x['status'] in ('PASS_SOURCE_REGRESSION','NOT_APPLICABLE_SOURCE') for x in report['source_regressions'])
+    complete=len(rows)==len(ordered) and all(x['status'] in ('PASS_SELFTEST','NOT_APPLICABLE') for x in rows) and \
+      len(report['source_regressions'])==len(REGRESSIONS) and all(x['status'] in ('PASS_SOURCE_REGRESSION','PASS_SCOPED_SOURCE_REGRESSION','NOT_APPLICABLE_SOURCE') for x in report['source_regressions'])
     need(complete and not changes and not report.get('fixture_cleanup_unconfirmed'),'installed_contract_incomplete')
-    report['status']='PASS_INSTALLED_PUBLIC_CONTRACT'
+    report['status']='PASS_TARGETED_INSTALLED_REGRESSIONS' if targeted else 'PASS_INSTALLED_PUBLIC_CONTRACT'
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['pack','installed'])
+    ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['pack','installed','targeted'])
     for name in ['out','source','pins','native-input','package','arch']:ap.add_argument('--'+name,required=name=='out')
     args=ap.parse_args();out=P(args.out).resolve();out.mkdir(parents=True,exist_ok=False)
     report={'schema_version':'knowledge-audit6-installed-contract.v1','status':'FAIL','mode':args.mode,

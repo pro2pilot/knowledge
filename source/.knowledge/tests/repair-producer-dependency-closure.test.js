@@ -11,6 +11,18 @@ const mutate = (suffix, edit) => ({ readSource(file, encoding) {
 test('current generated producer closures include all recursive literal and qualified native control dependencies', () => {
   verifyGeneratedProducerClosures();
 });
+for (const producer of ['build-search-index', 'build-routing-bundle', 'build-wiki-graph']) {
+  test(`${producer} rejects an omitted transitive command authority snapshot dependency`, () => {
+    const target = '.knowledge/tools/' + producer + '.js';
+    assert.throws(() => verifyGeneratedProducerClosures({ dependencyClosure(entry) {
+      const closure = generatedProducerDependencyClosure(entry);
+      return entry === target
+        ? closure.filter(file => !file.endsWith('/command-authority-entry.js'))
+        : closure;
+    } }), error => error.message ===
+      `producer closure omitted .knowledge/tools/lib/command-authority-entry.js from ${target}`);
+  });
+}
 test('an unapproved producer cannot acquire child_process merely because native observers use it', () => {
   assert.throws(() => verifyGeneratedProducerClosures(mutate('/tools/build-search-index.js',
     source => source + "\nrequire('child_process');\n")), /unexpected process-spawning producer dependency/);

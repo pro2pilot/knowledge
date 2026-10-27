@@ -69,6 +69,7 @@ function assertContainmentAvailable(nativeExecution) {
       code: 'verification_containment_unavailable',
       containment: capability,
       execution: { status: 'not_started' },
+      completed_executions: [],
       teardown: { status: 'not_required', reason: 'no_worker_started' }
     });
   }
