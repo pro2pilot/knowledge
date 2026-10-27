@@ -94,7 +94,8 @@ async function runCheckWorker(spec, runtime = {}) {
   const deadline = runtime.workDeadline ?? owned.mono() + policy.workMs;
   const [file, ...args] = spec.command.split(/\s+/);
   const command = { executable: process.execPath, args: [path.join(context.systemRoot, file), ...args],
-    cwd: context.targetRoot, env: contextEnv(context), nestedAuthority: ['flow.js', 'evaluation-harness.js'].includes(path.basename(file)) };
+    cwd: context.targetRoot, env: contextEnv(context) };
+  command.nestedAuthority = require('./lib/command-authority-entry').installedAuthorityEntry(command) !== null;
   const start = owned.mono(); let r, attempts = 0, emptyExitRetries = 0;
   runtime.onProgress?.('step_admitted', spec.name);
   for (let attempt = 1; attempt <= 3; attempt++) {

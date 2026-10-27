@@ -28,10 +28,12 @@ process.on('message', async message => {
       observerLineage = message.observerLineage; proofRelay = message.proofRelay;
       if (proofRelay) require('./command-scope-proof').setScopeProofRelay(proofRelay);
       if (message.kind === 'command') {
-        const command = message.payload;
+        const setupEnd = runner.mono() + sessionPolicy.setupMs;
+        const command = require('./command-authority-entry').snapshotCommand(message.payload, () => {
+          if (runner.mono() >= setupEnd) throw Object.assign(new Error('Command admission expired'), { code: 'command_setup_timeout' });
+        });
         const path = require('path');
-        const target = command.executable === process.execPath && command.nestedAuthority === true ? path.resolve(command.args[0] || '') : null;
-        const entry = target === path.resolve(__dirname, '../flow.js') ? 'flow' : target === path.resolve(__dirname, '../evaluation-harness.js') ? 'evaluation' : null;
+        const entry = require('./command-authority-entry').validateCommandAuthority(command);
         const child = require('child_process').spawn(command.executable, entry ? [path.join(__dirname, 'command-cli-worker.js')] : command.args, {
           cwd: command.cwd, env: runner.safeEnvironment(command.env), stdio: entry ? ['ignore', 1, 2, 'ipc'] : ['ignore', 1, 2], windowsHide: true
         });

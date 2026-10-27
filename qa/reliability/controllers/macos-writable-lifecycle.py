@@ -38,6 +38,119 @@ def observe_fifo_reader(runner, helpers, identity, target, name):
             'macos_fifo_observer_identity_unconfirmed')
     return value
 
+
+MAX_TEAM_DOCTOR_REPORT_BYTES = 2 * 1024 * 1024
+TEAM_DOCTOR_REPORT_STATUSES = {'healthy', 'usable_with_warnings', 'structurally_broken'}
+
+
+def bounded_stream_read(stream, maximum):
+    if type(maximum) is not int or maximum < 0: raise ValueError('read_limit_invalid')
+    body = stream.read(maximum + 1)
+    if not isinstance(body, bytes) or len(body) > maximum: raise ValueError('read_limit_exceeded')
+    return body
+
+
+def no_symlink_components(root, path):
+    root = Path(root).resolve(strict=True)
+    candidate = Path(os.path.abspath(path))
+    if not candidate.is_relative_to(root): return False
+    current = root
+    try:
+        for part in candidate.relative_to(root).parts:
+            current = current / part
+            info = current.lstat()
+            if stat.S_ISLNK(info.st_mode): return False
+        return True
+    except OSError:
+        return False
+
+
+def read_bounded_regular_file(path, maximum):
+    """Read a stable unique regular file through a no-follow bounded fd."""
+    path = Path(path)
+    before = path.lstat()
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise ValueError('file_not_unique_regular')
+    if before.st_size <= 0 or before.st_size > maximum:
+        raise ValueError('file_size_out_of_bounds')
+    flags = os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        identity = lambda item: (item.st_dev, item.st_ino, item.st_nlink, item.st_mode, item.st_size,
+            item.st_mtime_ns)
+        stable_descriptor = lambda item: (*identity(item), item.st_ctime_ns)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1 or identity(opened) != identity(before) or opened.st_size > maximum:
+            raise ValueError('file_changed_before_read')
+        with os.fdopen(descriptor, 'rb', closefd=False) as stream:
+            body = bounded_stream_read(stream, maximum)
+        after_fd = os.fstat(descriptor)
+        after_path = path.lstat()
+        if stat.S_ISLNK(after_path.st_mode) or not stat.S_ISREG(after_path.st_mode) or after_path.st_nlink != 1 or \
+                stable_descriptor(after_fd) != stable_descriptor(opened) or identity(after_path) != identity(opened) or len(body) != opened.st_size:
+            raise ValueError('file_changed_during_read')
+        return body
+    finally:
+        os.close(descriptor)
+
+
+def capture_team_doctor_report(runner, base, evidence, team_root, start, flow_value):
+    """Retain a bounded private Doctor report and bind it conservatively to Flow.
+
+    The timing and summary match is diagnostic evidence, not proof that this
+    report was the exact parsed object consumed by Flow.
+    """
+    unavailable = {'status': 'unavailable', 'reason_code': 'report_missing',
+        'bytes': None, 'sha256': None, 'binding': 'none', 'causal_proof': False}
+    try:
+        relative = Path(start.get('state_root', ''))
+        if not relative.parts or relative.is_absolute() or any(part in ('', '.', '..') for part in relative.parts):
+            unavailable['reason_code'] = 'state_root_invalid';return unavailable
+        root = Path(team_root).resolve(strict=True)
+        state_candidate = root / relative
+        if not no_symlink_components(root, state_candidate):
+            unavailable['reason_code'] = 'state_root_mismatch';return unavailable
+        state = state_candidate.resolve(strict=True)
+        if not state.is_relative_to(root) or Path(flow_value.get('state_root', '')).resolve(strict=True) != state:
+            unavailable['reason_code'] = 'state_root_mismatch';return unavailable
+        maintenance = state / 'maintenance'
+        maintenance_stat = maintenance.lstat()
+        if not stat.S_ISDIR(maintenance_stat.st_mode) or stat.S_ISLNK(maintenance_stat.st_mode):
+            unavailable['reason_code'] = 'report_not_unique_regular';return unavailable
+        report_path = maintenance / 'quality_report.json'
+        if not report_path.resolve(strict=True).is_relative_to(state) or not no_symlink_components(state, report_path):
+            unavailable['reason_code'] = 'report_not_unique_regular';return unavailable
+        try: body = read_bounded_regular_file(report_path, MAX_TEAM_DOCTOR_REPORT_BYTES)
+        except ValueError as error:
+            unavailable['reason_code'] = 'report_size_out_of_bounds' if str(error) == 'file_size_out_of_bounds' else 'report_changed_during_read'
+            return unavailable
+        report = json.loads(body)
+        if not isinstance(report, dict):
+            unavailable['reason_code'] = 'report_shape_invalid';return unavailable
+        score, status = report.get('quality_score'), report.get('status')
+        generated = report.get('generated_at')
+        started = flow_value.get('started_at');duration = flow_value.get('duration_total_ms')
+        if not isinstance(generated, str) or not generated.endswith('Z') or not isinstance(started, str) or not started.endswith('Z'):
+            unavailable['reason_code'] = 'report_flow_summary_mismatch';return unavailable
+        timestamp = __import__('datetime').datetime.fromisoformat(generated.replace('Z', '+00:00')).timestamp()
+        flow_begin = __import__('datetime').datetime.fromisoformat(started.replace('Z', '+00:00')).timestamp()
+        if (report.get('mode') != 'team' or type(score) is not int or not 0 <= score <= 100 or
+                status not in TEAM_DOCTOR_REPORT_STATUSES or not isinstance(generated, str) or
+                not isinstance(started, str) or type(duration) is not int or not 0 <= duration <= 30 * 60 * 1000 or
+                timestamp < flow_begin or timestamp > flow_begin + duration / 1000 + 5 or
+                not isinstance(flow_value.get('steps'), list) or len(flow_value['steps']) != 8 or
+                flow_value['steps'][-1].get('command') != 'doctor.js' or
+                flow_value['steps'][-1].get('summary') != f'{score} /100 {status}'):
+            unavailable['reason_code'] = 'report_flow_summary_mismatch';return unavailable
+        destination = evidence / 'TEAM_DOCTOR_REPORT.private.json'
+        base.private_file(destination, body)
+        return {'status': 'captured', 'reason_code': None, 'bytes': len(body),
+            'sha256': base.sha_bytes(body), 'binding': 'flow_time_window_and_step_summary_match',
+            'generated_at': generated, 'causal_proof': False}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        unavailable['reason_code'] = 'report_unreadable'
+        return unavailable
+
 LEAF = r"""'use strict';
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),cp=require('node:child_process');
 const root=process.cwd(),mode=process.argv[2],file=name=>path.join(root,name);
@@ -522,6 +635,7 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
         runner.check(len(created)==2,'macos_team_native_allocation_count');new_attempt=report['scope']['binding']['attempt_id']
         runner.check(new_attempt!=old_attempt and new_attempt in created,'macos_team_native_attempt_not_distinct')
         closure(new_attempt,created[new_attempt]);runner.check(not lock.exists(),'macos_team_new_lock_not_released')
+        team_doctor_report = capture_team_doctor_report(runner, base, runner.evidence, event_path.parents[3], new_start, out)
         events=[json.loads(line) for line in event_path.read_text().splitlines() if line.strip()]
         acquired=[value for value in events if value.get('type')=='lock_acquired' and value.get('lock')=='flow']
         runner.check(len(acquired)==2 and acquired[0]['lock_id']==old_owner['lock_id'] and acquired[1]['lock_id']!=old_owner['lock_id'],
@@ -537,7 +651,8 @@ def run_team_case_readable(runner, base, info, fixture, birth, send, entries, pa
             'macos_team_run_finalization_binding')
         proof={'old_owner_text':old_owner_text,'old_scope_text':old_scope_text,'quarantined_owner_text':quarantines[0].read_text(),
             'quarantined_scope_text':quarantined_scope,'old_start':old_start,'new_start':new_start,'new_final':new_final,
-            'old_final_exists':old_final_exists,'team_events':events,'native_closures':native_closures,'retry_report':report,'lock_absent':not lock.exists()}
+            'old_final_exists':old_final_exists,'team_events':events,'native_closures':native_closures,'retry_report':report,
+            'team_doctor_report':team_doctor_report,'lock_absent':not lock.exists()}
         proof_bytes=base.canonical(proof);base.private_file(runner.evidence/'TEAM_RECOVERY_PROOF.private.json',proof_bytes)
         runner.check(fixture['outside'].read_bytes()==b'unchanged','macos_team_outside_canary_changed')
         row.update(controller_exit_code=retry.returncode,terminal={key:terminal[key] for key in ('type','ok','value','cleanup')},

@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { MAX_CHILD_JSON_BYTES } = require('./semantic-json');
 const SCHEMA = 'knowledge-command-scope.v1';
+const COMMAND_ADMISSION_START = Symbol('command_admission_start');
 const MAX_TIMER = 2147483647;
 const HOST = path.join(__dirname, 'command-worker.js');
 const mono = () => Number(process.hrtime.bigint()) / 1e6;
@@ -152,8 +153,17 @@ async function prepareLinux(options, policy) {
 }
 
 async function createScope(kind, payload, options = {}) {
+  const created = kind === 'command' ? options[COMMAND_ADMISSION_START] ?? mono() : mono();
   const policy = budgets(options.budgets);
-  const created = mono();
+  let nestedEntry = null;
+  if (kind === 'command') {
+    try {
+      const checkAdmission = () => { if (mono() >= created + policy.setupMs) throw fail('command_setup_timeout'); };
+      payload = require('./command-authority-entry').snapshotCommand(payload, checkAdmission);
+      nestedEntry = require('./command-authority-entry').validateCommandAuthority(payload);
+      options = { ...options, cwd: payload.cwd, env: payload.env };
+    } catch (error) { throw Object.assign(error, { cleanup: { status: 'completed', method: 'no_scope_admitted', active_processes: 0, output_closed: true } }); }
+  }
   const absolute = value => {
     if (typeof value !== 'string' || !/^(0|[1-9]\d{0,31})$/.test(value)) throw fail('command_clock_invalid');
     return Number(BigInt(value)) / 1e6;
@@ -168,7 +178,11 @@ async function createScope(kind, payload, options = {}) {
   if (absoluteWorkEnd !== undefined && mono() >= absoluteWorkEnd) throw fail('command_work_timeout', undefined, { cleanup: { status: 'completed', method: 'no_scope_admitted' } });
   const setupLimit = Math.min(policy.setupMs, absoluteWorkEnd === undefined ? policy.setupMs : absoluteWorkEnd - created);
   let helper;
-  if (['linux', 'win32'].includes(process.platform)) helper = await prepareLinux(options, { ...policy, setupMs: Math.max(1, Math.ceil(setupLimit)) });
+  if (['linux', 'win32'].includes(process.platform)) {
+    const preparationRemaining = kind === 'command' ? setupLimit - (mono() - created) : setupLimit;
+    if (preparationRemaining <= 0) throw fail('command_setup_timeout', undefined, { cleanup: { status: 'completed', method: 'no_scope_admitted', active_processes: 0, output_closed: true } });
+    helper = await prepareLinux(options, { ...policy, setupMs: Math.max(1, Math.ceil(preparationRemaining)) });
+  }
   else throw fail('command_containment_unavailable', 'This platform has no qualified native scope for ordinary project writes');
   const ownsHelper = !!helper?.snapshot && !options.preparedHelper;
   if (options.signal?.aborted || absoluteWorkEnd !== undefined && mono() >= absoluteWorkEnd) {
@@ -215,7 +229,7 @@ async function createScope(kind, payload, options = {}) {
   if (process.platform === 'linux') {
     const backend = require('./verification-linux-namespace');
     ({ worker, job } = backend.spawnLinuxContainedWorker(process.execPath, [HOST], nativeOptions, {
-      preparedHelper: helper, lifetimeMs, trustedAuthority: kind !== 'command' || payload.nestedAuthority === true,
+      preparedHelper: helper, lifetimeMs, trustedAuthority: kind !== 'command' || nestedEntry !== null,
       onFailure: reject
     }));
   } else {
@@ -398,6 +412,10 @@ async function createScope(kind, payload, options = {}) {
     async request(command) {
       if (stopping || firstError || mono() >= workEnd()) throw firstError || fail('command_work_timeout');
       if (pending.size) throw fail('command_concurrent_request', 'A command session admits one command at a time');
+      command = require('./command-authority-entry').snapshotCommand(command, () => {
+        if (mono() >= workEnd()) throw fail('command_work_timeout');
+      });
+      require('./command-authority-entry').validateCommandAuthority(command);
       const id = ++nextRequest;
       return new Promise((resolve, requestReject) => {
         pending.set(id, { resolve, reject: requestReject });
@@ -502,10 +520,20 @@ async function runOwnedOperation(operation, payload, options = {}) {
   return result;
 }
 async function runOwnedCommand(command, options = {}) {
-  if (!command || !Array.isArray(command.args) || command.args.some(x => typeof x !== 'string' || x.includes('\0')) ||
-      !path.isAbsolute(command.executable || '') || !path.isAbsolute(command.cwd || '')) throw fail('command_invalid');
-  if (process.platform === 'darwin' && options.macosRemote) return options.macosRemote.run(command, { signal: options.signal });
+  const admissionStarted = mono();
+  let scopeRequested = false;
   try {
+    const policy = budgets(options.budgets);
+    command = require('./command-authority-entry').snapshotCommand(command, () => {
+      if (mono() >= admissionStarted + policy.setupMs) throw fail('command_setup_timeout');
+    });
+    if (!command || !Array.isArray(command.args) || command.args.some(x => typeof x !== 'string' || x.includes('\0')) ||
+        typeof command.executable !== 'string' || !path.isAbsolute(command.executable) ||
+        typeof command.cwd !== 'string' || !path.isAbsolute(command.cwd)) throw fail('command_invalid');
+    require('./command-authority-entry').validateCommandAuthority(command);
+    options = { ...options, [COMMAND_ADMISSION_START]: admissionStarted };
+    scopeRequested = true;
+    if (process.platform === 'darwin' && options.macosRemote) return options.macosRemote.run(command, { signal: options.signal });
     if (process.platform === 'darwin') {
       const result = await require('./macos-command-runner').runOwnedOperation('macos-command', { command }, options);
       return { ...result.value, scope: result.scope, ownership: { status: 'completed', cleanup: result.cleanup } };
@@ -515,7 +543,8 @@ async function runOwnedCommand(command, options = {}) {
     return { ...result.value, stdout: result.stdout, stderr: result.stderr, cleanup: result.cleanup, scope: result.scope };
   } catch (error) {
     return { status: null, signal: null, error: { code: error.code || 'command_failed', message: error.message },
-      stdout: error.stdout || '', stderr: error.stderr || '', cleanup: error.cleanup || { status: 'unconfirmed' } };
+      stdout: error.stdout || '', stderr: error.stderr || '', cleanup: error.cleanup || (scopeRequested ? { status: 'unconfirmed' }
+        : { status: 'completed', method: 'no_scope_admitted', active_processes: 0, output_closed: true }) };
   }
 }
 async function createCommandSession(options = {}) {

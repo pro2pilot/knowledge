@@ -6,6 +6,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('macos_summary_under_test', HERE/'macos-writable-summary.py')
 m = importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+lifecycle_spec = importlib.util.spec_from_file_location('macos_lifecycle_under_test', HERE/'macos-writable-lifecycle.py')
+lifecycle = importlib.util.module_from_spec(lifecycle_spec);lifecycle_spec.loader.exec_module(lifecycle)
+
+
+class PrivateEvidenceWriter:
+    @staticmethod
+    def private_file(path, data):
+        if path.exists() or path.is_symlink(): raise FileExistsError(path)
+        path.parent.mkdir(parents=True, exist_ok=True);path.write_bytes(data)
+
+    @staticmethod
+    def sha_bytes(data): return m.sha(data)
 
 
 class ProjectionTests(unittest.TestCase):
@@ -13,11 +25,13 @@ class ProjectionTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix='macos-summary-', dir=os.environ.get('TMPDIR'))
         self.addCleanup(self.tmp.cleanup);self.base = Path(self.tmp.name)
         self.source = self.base/'.knowledge';self.private = self.base/'private';self.private.mkdir()
-        for name in ('tools/lib/verification-darwin-broker.m', 'tools/lib/verification-darwin-stub.c', 'tools/native/lock-publication.c', 'tools/example.js',
+        for name in ('tools/lib/verification-darwin-broker.m', 'tools/lib/verification-darwin-stub.c', 'tools/native/lock-publication.c', 'tools/example.js', 'tools/doctor.js', 'tools/lib/contained-lock-manager.js',
                      'docs/external-memory.md', 'docs/external-memory/claude-mem-bridge.md'):
             file = self.source/name;file.parent.mkdir(parents=True, exist_ok=True);file.write_bytes(name.encode())
         (self.source/'config.yaml').write_bytes(b'updates:\n  enabled: true\n')
         (self.source/'tools/example.js').write_text("throw fail('command_exact_static_failure');\n")
+        (self.source/'tools/doctor.js').write_text("const projectRequired = ['project_index.json','modules/module_registry.json'];\nconst stateRequired = ['maintenance/trust_report.json'];\nchecks.push({ check: 'json_parse', status: 'pass' });\nchecks.push({ check: 'artifact_shapes', status: 'fail' });\nchecks.push({ check: 'tracked_files_exist', status: 'fail' });\nchecks.push({ check: 'required_file', status: 'fail' });\nchecks.push({ check: 'runtime_file', status: 'fail' });\nchecks.push({ check: 'lock_safety', status: 'fail' });\nissue(issues, file.includes('routing_bundle') ? 'medium' : 'high', 'missing_required_file', 'private');\nissue(issues, 'critical', 'doctor_lock_unsafe', 'private');\n")
+        (self.source/'tools/lib/contained-lock-manager.js').write_text("const finding = { code: 'unsafe_lock_path', reason: 'lstat_failed', os_code: 'EACCES' };\n")
         self.source_rows = [{'path': file.relative_to(self.source.parent).as_posix(), 'bytes': file.stat().st_size,
             'sha256': m.sha(file.read_bytes()), 'executable': False} for file in sorted(self.source.rglob('*')) if file.is_file()]
         self.inputs = {'files': self.source_rows, 'writable_assets': {name: m.sha((HERE/name).read_bytes()) for name in m.ASSETS},
@@ -89,25 +103,41 @@ class ProjectionTests(unittest.TestCase):
         scope_text=m.canonical(scopes[0]).decode();owner_text=m.canonical({'schema_version':'knowledge-lock-owner.v3','lock_id':old_lock,'pid':123,
             'publication':'atomic-directory-noreplace.v1','kernel_lease':{'method':'owner-inode-lease.v1','owner_ino':'1','directory_ino':'2'},
             'execution_scope':{'schema_version':'knowledge-command-scope-binding.v1','backend':'macos_uid_guardian','sha256':m.sha(scope_text.encode())}}).decode()
-        starts=[{'schema_version':'knowledge-team-flow-start.v2','run_id':'TFR-'+str(i)*32,'repo_id':'repo','workspace_id':'work','state_root':'state',
-            'flow':'doctor','retry_of':None,'content_sha256':str(i)*64} for i in (1,2)]
+        starts=[{'schema_version':'knowledge-team-flow-start.v2','run_id':'TFR-'+str(i)*32,'repo_id':'repo','workspace_id':'work','state_root':'repos/repo/workspaces/work/state',
+            'flow':'doctor','retry_of':None,'started_at':'2026-10-27T00:00:00.000Z','content_sha256':str(i)*64} for i in (1,2)]
         team_steps=[{'command':name,'exit':0 if index < 7 else 1,'success':index < 7,
             'status':'pass' if index < 7 else 'fail','json_status':'ok' if index < 7 else 'failed',
-            'semantic_errors':[] if index < 7 else ['$.status is failed'],
+            'semantic_errors':[] if index < 7 else ['$.checks[1].status is fail','$.checks[2].status is fail'],
             'duration_ms':100+index,
-            'summary':'39 /100 failed' if name == 'doctor.js' else ''}
+            'summary':'39 /100 usable_with_warnings' if name == 'doctor.js' else ''}
             for index,name in enumerate(m.DOCTOR_STEPS)]
         out={**starts[1],'checks_status':'failed','overall_status':'failed','flow_log_status':'written',
-            'team_release':{'status':'released'},'steps_total':8,'steps_ok':7,'steps':team_steps}
+            'team_release':{'status':'released'},'started_at':'2026-10-27T00:00:00.000Z','duration_total_ms':2000,
+            'steps_total':8,'steps_ok':7,'steps':team_steps}
         out.update({key:{'status':'completed'} for key in ('ownership','command_cleanup','command_authority_cleanup')})
         report={'value':out,'scope':scopes[1],'cleanup':{'status':'completed'}}
         final={**starts[1],'schema_version':'knowledge-team-flow-finalization.v2','start_sha256':starts[1]['content_sha256'],
             'release':{'status':'released'},'final_status':'failed','checks_status':'failed'}
         events=[{'type':'lock_acquired','lock':'flow','lock_id':name} for name in (old_lock,new_lock)]
         events.append({'type':'lock_released','lock':'flow','lock_id':new_lock,'released':True})
+        self.doctor_report={'schema_version':'knowledge-test-doctor-report.v1','mode':'team','generated_at':'2026-10-27T00:00:01.500Z',
+            'quality_score':39,'status':'usable_with_warnings','checks':[{'check':'json_parse','status':'pass'},
+                {'check':'artifact_shapes','status':'fail','artifact':'/Users/private/path','message':'private report text'},
+                {'check':'tracked_files_exist','status':'fail'},
+                {'check':'required_file','status':'fail','artifact':'.knowledge/project_index.json'},
+                {'check':'runtime_file','status':'fail','artifact':'.knowledge-team/repos/repo/workspaces/work/state/maintenance/trust_report.json'},
+                {'check':'lock_safety','status':'fail'}],
+            'issues':[{'code':'missing_required_file','severity':'high','message':'private issue text','artifact':'/Users/private/path'},
+                {'code':'doctor_lock_unsafe','severity':'critical','message':'private lock text','artifact':'/Users/private/path'}],
+            'lock_safety':{'status':'unsafe','findings':[{'code':'unsafe_lock_path','reason':'lstat_failed','owner':'/Users/private'}]}}
+        self.doctor_report_bytes=m.canonical(self.doctor_report)
+        self.doctor_report_diag={'status':'captured','reason_code':None,'bytes':len(self.doctor_report_bytes),
+            'sha256':m.sha(self.doctor_report_bytes),'binding':'flow_time_window_and_step_summary_match',
+            'generated_at':self.doctor_report['generated_at'],'causal_proof':False}
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
         self.team_proof={'old_owner_text':owner_text,'old_scope_text':scope_text,'quarantined_owner_text':owner_text,'quarantined_scope_text':scope_text,
             'old_start':starts[0],'new_start':starts[1],'new_final':final,'old_final_exists':False,'lock_absent':True,
-            'team_events':events,'native_closures':closures,'retry_report':report}
+            'team_events':events,'native_closures':closures,'retry_report':report,'team_doctor_report':copy.deepcopy(self.doctor_report_diag)}
         team=rows[-1];team.update(initial_controller_exit_code=-9,controller_exit_code=0,terminal={'type':'result','ok':True,'value':out,'cleanup':report['cleanup']},
             quality_status='failed',overall_status='failed')
         team['observations'].update({key:True for key in m.TEAM_FACTS});team['observations'].update(manual_owner_repair=False,fresh_team_steps_executed=8)
@@ -127,6 +157,37 @@ class ProjectionTests(unittest.TestCase):
     def project(self):
         self.write('SUMMARY.json',self.raw);self.write('INPUTS.json',self.inputs);self.write('MACOS_WRITABLE_INPUTS.json',self.special)
         return m.build(self.private,self.source,0,'x86_64')
+    def test_lifecycle_captures_only_current_bounded_report_as_private_evidence(self):
+        class GrowingReader:
+            def __init__(self): self.requested=None
+            def read(self,maximum): self.requested=maximum;return b'x'*maximum
+        growing=GrowingReader()
+        with self.assertRaises(ValueError): lifecycle.bounded_stream_read(growing,32)
+        self.assertEqual(growing.requested,33)
+        team_root=self.base/'team';state_rel=Path('repos/repo/workspaces/work/state')
+        state=team_root/state_rel;(state/'maintenance').mkdir(parents=True)
+        report={'mode':'team','generated_at':'2026-10-27T00:00:01.500Z','quality_score':39,'status':'usable_with_warnings'}
+        (state/'maintenance/quality_report.json').write_bytes(m.canonical(report))
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').unlink()
+        flow={**self.team_proof['retry_report']['value']}
+        flow['state_root']=str(state)
+        start=self.team_proof['new_start']
+        diagnostic=lifecycle.capture_team_doctor_report(None,PrivateEvidenceWriter,self.private,team_root,start,flow)
+        self.assertEqual(diagnostic['status'],'captured',diagnostic)
+        self.assertEqual(diagnostic['binding'],'flow_time_window_and_step_summary_match')
+        self.assertFalse(diagnostic['causal_proof'])
+        self.assertEqual(diagnostic['sha256'],m.sha((self.private/'TEAM_DOCTOR_REPORT.private.json').read_bytes()))
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').unlink()
+        flow['steps'][-1]['summary']='forged summary'
+        diagnostic=lifecycle.capture_team_doctor_report(None,PrivateEvidenceWriter,self.private,team_root,start,flow)
+        self.assertEqual(diagnostic['status'],'unavailable')
+        self.assertEqual(diagnostic['reason_code'],'report_flow_summary_mismatch')
+        self.assertFalse((self.private/'TEAM_DOCTOR_REPORT.private.json').exists())
+        (state/'maintenance/quality_report.json').write_bytes(b'{}'*(lifecycle.MAX_TEAM_DOCTOR_REPORT_BYTES//2+1))
+        diagnostic=lifecycle.capture_team_doctor_report(None,PrivateEvidenceWriter,self.private,team_root,start,
+            {**flow,'steps':self.team_proof['retry_report']['value']['steps']})
+        self.assertEqual(diagnostic['reason_code'],'report_size_out_of_bounds')
+        self.assertFalse((self.private/'TEAM_DOCTOR_REPORT.private.json').exists())
     def test_positive_exact_derived_inventory(self):
         self.assertEqual(self.project()['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
     def test_fifo_observer_requires_current_birth_exact_inode_and_read_descriptor(self):
@@ -221,10 +282,86 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual([step['command'] for step in steps],list(m.DOCTOR_STEPS))
         self.assertEqual(steps[-1]['execution_status'],'fail')
         self.assertEqual(steps[-1]['verification_status'],'failed')
-        self.assertEqual(steps[-1]['semantic_error_count'],1)
+        self.assertEqual(steps[-1]['semantic_error_count'],2)
         self.assertEqual(steps[-1]['semantic_error_categories'],['failure_status'])
-        self.assertEqual(steps[-1]['quality_summary'],{'score':39,'status':'failed'})
+        self.assertEqual(steps[-1]['quality_summary'],{'score':39,'status':'usable_with_warnings'})
+        doctor=steps[-1]['doctor_report_diagnostic']
+        self.assertEqual(doctor['status'],'available',doctor)
+        self.assertEqual(doctor['report_status'],'usable_with_warnings')
+        self.assertEqual(doctor['score'],39)
+        self.assertEqual(doctor['checks'],[{'id':'artifact_shapes','status':'fail'},
+            {'id':'json_parse','status':'pass'},{'id':'lock_safety','status':'fail'},
+            {'id':'required_file','status':'fail'},{'id':'runtime_file','status':'fail'},
+            {'id':'tracked_files_exist','status':'fail'}])
+        self.assertEqual(doctor['required_artifacts'],[
+            {'path':'.knowledge/maintenance/trust_report.json','status':'fail'},
+            {'path':'.knowledge/project_index.json','status':'fail'}])
+        self.assertEqual(doctor['issues'],[
+            {'code':'doctor_lock_unsafe','severity':'critical','count':1},
+            {'code':'missing_required_file','severity':'high','count':1}])
+        self.assertEqual(doctor['issue_unknown_count'],0)
+        self.assertEqual(doctor['lock_safety'],{'status':'unsafe','finding_count':1,
+            'findings':[{'code':'unsafe_lock_path','reason':'lstat_failed','count':1}],
+            'unknown_count':0,'unknown_digest':None})
+        self.assertEqual(doctor['semantic_error_locations'],[
+            {'path':'checks','index':1,'check':'artifact_shapes','status':'fail'},
+            {'path':'checks','index':2,'check':'tracked_files_exist','status':'fail'}])
+        self.assertFalse(doctor['causal_proof'])
         self.assertTrue(m.HEX.fullmatch(steps[-1]['semantic_errors_sha256']))
+
+    def test_team_doctor_diagnostic_projects_static_ids_and_hides_report_payload(self):
+        secret='/Users/private/doctor-token-'+('d00df00d'*8)
+        self.doctor_report['issues'][0].update(message=secret,artifact=secret)
+        self.doctor_report['checks'][1].update(artifact=secret,message=secret)
+        self.doctor_report['checks'][3]['artifact']=secret
+        self.doctor_report['issues'][0]['code']=secret
+        self.doctor_report['lock_safety']['findings'][0].update(code=secret,reason=secret,owner=secret)
+        self.doctor_report_bytes=m.canonical(self.doctor_report)
+        self.doctor_report_diag.update(bytes=len(self.doctor_report_bytes),sha256=m.sha(self.doctor_report_bytes))
+        self.team_proof['team_doctor_report']=copy.deepcopy(self.doctor_report_diag)
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
+        self.write_team_proof()
+        result=self.project();public=json.dumps(result)
+        self.assertNotIn(secret,public)
+        self.assertNotIn('private report text',public)
+        self.assertNotIn('/Users/private/path',public)
+        diag=result['cases'][-1]['team_steps'][-1]['doctor_report_diagnostic']
+        self.assertEqual(diag['status'],'available')
+        self.assertEqual(diag['report_sha256'],m.sha(self.doctor_report_bytes))
+        self.assertEqual(diag['issues'],[{'code':'doctor_lock_unsafe','severity':'critical','count':1}])
+        self.assertEqual(diag['issue_unknown_count'],1)
+        self.assertTrue(m.HEX.fullmatch(diag['issue_unknown_digest']))
+        self.assertEqual(diag['required_artifact_unknown_count'],1)
+        self.assertTrue(m.HEX.fullmatch(diag['required_artifact_unknown_digest']))
+        self.assertEqual(diag['lock_safety']['unknown_count'],1)
+        self.assertTrue(m.HEX.fullmatch(diag['lock_safety']['unknown_digest']))
+
+    def test_missing_doctor_report_does_not_replace_or_invalidate_physical_proof(self):
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').unlink()
+        result=self.project()
+        case=result['cases'][-1]
+        self.assertEqual(result['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
+        self.assertEqual(case['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
+        self.assertTrue(case['facts']['exact_team_recovery_proof_verified'])
+        diag=case['team_steps'][-1]['doctor_report_diagnostic']
+        self.assertEqual(diag['status'],'unavailable')
+        self.assertEqual(diag['reason_code'],'report_unreadable')
+        self.assertFalse(diag['causal_proof'])
+
+    def test_doctor_report_hostile_check_id_or_status_fails_closed_without_breaking_physical_proof(self):
+        self.doctor_report['checks'][1]['check']='/Users/private/secret'
+        self.doctor_report['checks'][1]['status']='failed: '+('a'*64)
+        self.doctor_report_bytes=m.canonical(self.doctor_report)
+        self.doctor_report_diag.update(bytes=len(self.doctor_report_bytes),sha256=m.sha(self.doctor_report_bytes))
+        self.team_proof['team_doctor_report']=copy.deepcopy(self.doctor_report_diag)
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
+        self.write_team_proof()
+        result=self.project();public=json.dumps(result)
+        self.assertEqual(result['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
+        self.assertTrue(result['cases'][-1]['facts']['exact_team_recovery_proof_verified'])
+        self.assertNotIn('/Users/private/secret',public)
+        self.assertNotIn('failed: ',public)
+        self.assertEqual(result['cases'][-1]['team_steps'][-1]['doctor_report_diagnostic']['status'],'unavailable')
     def test_team_step_projection_digests_hostile_raw_details_and_allowlists_enums(self):
         secret='/Users/private/team-token-'+('a1b2c3d4'*8)
         raw=self.team_proof['retry_report']['value']['steps'][-1]
@@ -240,6 +377,12 @@ class ProjectionTests(unittest.TestCase):
         self.assertIsNone(step['quality_summary'])
         self.assertTrue(m.HEX.fullmatch(step['semantic_errors_sha256']))
         self.assertTrue(m.HEX.fullmatch(step['summary_sha256']))
+
+    def test_quality_summary_matches_shipped_doctor_status_format(self):
+        for status in m.TEAM_DOCTOR_REPORT_STATUSES:
+            self.assertEqual(m.quality_status_projection(f'39 /100 {status}'),{'score':39,'status':status})
+        for hostile in ('39 /100 failed','101 /100 healthy','39 /100 healthy '+('x'*200)):
+            self.assertIsNone(m.quality_status_projection(hostile))
 
     def test_team_proof_rejects_final_status_conflicting_with_failed_flow(self):
         self.team_proof['new_final']['final_status']='ok'

@@ -66,6 +66,8 @@ const DEFAULT_MANIFEST = {
     'install-manifest.json'
   ],
   required_system_files: [
+    'tools/lib/watch-intervals.js',
+    'tools/lib/command-authority-entry.js',
     'tools/lib/macos-command-runner.js',
     'tools/lib/macos-command-scope.js',
     'tools/lib/macos-command-worker.js',

@@ -8,7 +8,7 @@ const installer = require(path.join(root, 'tools/update-system-files'));
 const validator = require(path.join(root, 'tools/validate-release-artifact'));
 const contracts = require(path.join(root, 'tools/lib/release-contract'));
 const cleanup = require(path.join(root, 'tools/lib/strict-temp-cleanup'));
-const files = ['macos-command-runner.js', 'macos-command-scope.js', 'macos-command-worker.js',
+const files = ['watch-intervals.js', 'command-authority-entry.js', 'macos-command-runner.js', 'macos-command-scope.js', 'macos-command-worker.js',
   'macos-lock-preflight.js', 'macos-worker-envelope.js', 'macos-workspace-protocol.js',
   'macos-workspace-session.js', 'watch-maintenance-worker.js'].map(name => 'tools/lib/' + name)
   .concat('schemas/verification-execution-observation.schema.json');
