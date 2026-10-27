@@ -137,7 +137,7 @@ def kernel_denial_snapshot():
                 operation_value = field('operation')
                 operation = operation_value if operation_value in {'userns_create', 'clone', 'clone3', 'unshare', 'capable'} else None
                 class_value = field('class')
-                class_name = class_value if class_value in {'namespace', 'userns', 'capability'} else None
+                class_name = class_value if class_value in {'namespace', 'userns', 'capability', 'cap'} else None
                 info_value = field('info')
                 info_lower = (info_value or '').lower()
                 info = ('user_namespace_restricted' if 'user namespace' in info_lower and 'restrict' in info_lower else
@@ -175,11 +175,11 @@ def kernel_denial_delta(before, after, owned_processes):
     attributed = []
     for item in after.get('events', []):
         owned = owned_processes.get(item.get('private_pid'))
-        if item['line_sha256'] in previous or not owned or not item.get('operation'):
+        if item['line_sha256'] in previous or not item.get('operation'):
             continue
         projected = {key: value for key, value in item.items() if key != 'private_pid'}
         projected['sampled_process_label'] = owned[1] if isinstance(owned, tuple) else owned
-        projected['attribution'] = 'numeric_pid_and_test_window_correlation_only'
+        projected['attribution'] = 'numeric_pid_and_test_window_correlation_only' if owned else 'test_window_only'
         projected['causal_proof'] = False
         attributed.append(projected)
     if status == 'captured' and after.get('events') and not attributed:
@@ -275,6 +275,7 @@ def main():
     parser.add_argument('--public-invocation-fixture')
     parser.add_argument('--public-invocation-fixture-sha256')
     parser.add_argument('--suite', choices=['full', 'linux-nested-diagnostic'], default='full')
+    parser.add_argument('--boundary-diagnostic')
     args = parser.parse_args()
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -700,6 +701,21 @@ def main():
         run('qualified-addon-current-runtime', [node, '-e', info, source / 'tools/lib/lock-publication.js'], cwd=source,
             check=args.suite != 'linux-nested-diagnostic')
         if args.suite == 'linux-nested-diagnostic':
+            if args.boundary_diagnostic:
+                diagnostic = Path(args.boundary_diagnostic).resolve(strict=True)
+                boundary_before = kernel_denial_snapshot()
+                record, diagnostic_output = run('linux-publication-boundary-diagnostic', [node, diagnostic, source], cwd=source, timeout=40, check=False, observe_owned_processes=True)
+                record['kernel_denial_capture'] = kernel_denial_delta(boundary_before, kernel_denial_snapshot(), owned_process_map)
+                # This fixed, repository-owned diagnostic emits only typed
+                # facts. Bind its bytes separately from the frozen product.
+                record['diagnostic_source_sha256'] = file_sha(diagnostic)
+                try:
+                    value = json.loads(diagnostic_output)
+                    if value.get('schema_version') != 'knowledge-linux-boundary-diagnostic.v1': raise ValueError('schema')
+                    record['boundary_observation'] = value
+                except (ValueError, TypeError):
+                    record['result'] = 'FAIL'
+                save()
             expected_nested_cases = [
                 'nonzero UID: three real authority scopes retain no capabilities and preserve UID mapping',
                 'current UID: the exact nested mapping determines the authority capability profile',

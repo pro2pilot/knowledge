@@ -291,7 +291,7 @@ def main():
             qa_out = private / 'native-qa'
             native_command = [sys.executable, controller / 'native_qa.py', '--archive', prepared / 'SOURCE.zip', '--manifest', prepared / 'SOURCE_MANIFEST.json', '--out', qa_out]
             if args.suite == 'linux-arm64-nested-watchers':
-                native_command.extend(['--suite', 'linux-nested-diagnostic'])
+                native_command.extend(['--suite', 'linux-nested-diagnostic', '--boundary-diagnostic', Path(__file__).with_name('linux-boundary-diagnostic.cjs')])
             if args.platform == 'linux' and args.suite == 'full':
                 # Explicit supplemental QA fixture: the frozen source, including
                 # its original test, remains byte-identical. The native controller
