@@ -40,7 +40,7 @@ def accepted_record(directory: Path, controller_exit: int, run_id: str, revision
         for name, key in (("RESULT.json", "result_sha256"), ("NATIVE.json", "native_sha256"), ("prepare-receipt.json", "prepare_receipt_sha256")):
             record[key] = c.sha256(raws[name])
         mode = receipt.get("fault_mode")
-        c.require(type(mode) is int and mode in {0, 1, 2} and type(result.get("fault_mode")) is int and result["fault_mode"] == mode,
+        c.require(type(mode) is int and mode in {0, 1, 2, 3, 4} and type(result.get("fault_mode")) is int and result["fault_mode"] == mode,
                   "acceptance_fault_profile", "Evidence has the wrong fixed fault profile")
         record["fault_mode"] = mode
         c.require(set(receipt) == {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256", "fault_mode"} and
@@ -71,11 +71,14 @@ def accepted_record(directory: Path, controller_exit: int, run_id: str, revision
                   result.get("host_cleanup_confirmed") is True and result.get("reasons") == [] and
                   result.get("systemd_run_child_reap_confirmed") is True,
                   "acceptance_result", "Controller result is incomplete or contradictory")
-        c.require(set(native) == {"status", "production_admission", "release_gate_qualified", "observer_ack_required", "component",
+        native_fields = {"status", "production_admission", "release_gate_qualified", "observer_ack_required", "component",
                   "cleanup_confirmed", "fault_mode", "fault_reached", "importer_namespace_drained", "importer_detached_writer_ready",
                   "source_readonly", "authority_readback", "phase", "work_ms", "cleanup_ms", "proof_emitted_ms", "stop_reason",
                   "init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status",
-                  "importer_report_hex", "cgroup_empty", "output_eof", "output_bytes", "input_manifest_sha256", "directories_sha256", "output_hex"} and
+                  "importer_report_hex", "cgroup_empty", "output_eof", "output_bytes", "input_manifest_sha256", "directories_sha256", "output_hex"}
+        if mode in {3, 4}:
+            native_fields |= c.DRAIN_FIELDS
+        c.require(set(native) == native_fields and
                   native.get("production_admission") is False and native.get("release_gate_qualified") is False and
                   native.get("component") == "readonly_node_namespace", "acceptance_native_schema", "Native schema is not exact")
         c.require(type(native.get("output_bytes")) is int and 0 <= native["output_bytes"] <= c.MAX_WORKER_OUTPUT and

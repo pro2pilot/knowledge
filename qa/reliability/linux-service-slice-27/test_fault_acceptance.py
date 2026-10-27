@@ -28,13 +28,17 @@ class Acceptance(unittest.TestCase):
              "cleanup_confirmed": True, "cgroup_empty": True, "output_eof": True,
              "importer_namespace_drained": mode != 1, "importer_detached_writer_ready": mode != 1,
              "source_readonly": mode != 1, "authority_readback": mode != 1,
-             "phase": {0: 4, 1: 2, 2: 3}[mode], "work_ms": 30001 if mode else 2000, "cleanup_ms": 2,
+             "phase": {0: 4, 1: 2, 2: 3, 3: 3, 4: 3}[mode], "work_ms": 30001 if mode else 2000, "cleanup_ms": 2,
              "proof_emitted_ms": 30004 if mode else 2004, "stop_reason": 3 if mode else 4,
-             "init_wait_status": 9 if mode else 0, "keeper_wait_status": 0, "worker_wait_status": -1 if mode == 1 else 0,
+             "init_wait_status": 9 if mode else 0, "keeper_wait_status": 9 if mode == 3 else 0, "worker_wait_status": -1 if mode == 1 else 0,
              "authority_wait_status": -1 if mode else 0, "importer_wait_status": 0,
              "input_manifest_sha256": "" if mode == 1 else fixture["manifest_sha256"],
              "directories_sha256": "" if mode == 1 else fixture["directories_sha256"],
              "importer_report_hex": "" if mode == 1 else imported.hex(), "output_bytes": len(output), "output_hex": output.hex()}
+        if mode in {3, 4}:
+            n.update({key: True for key in c.DRAIN_BOOLS})
+            n.update(drain_observer_emergency_cleanup=False, drain_broker_wait_status=256 if mode == 3 else 9,
+                     drain_target_pid=102, drain_survivor_pid=103, drain_init_pid=104)
         receipt = {"status": "PREPARED_COMPONENT_QA", "run_id": "a" * 32, "architecture": "aarch64", "node_version": c.NODE_VERSION,
                    "node_sha256": "b" * 64, "native_sha256": "c" * 64, "input_sha256": c.sha256(blob), "fault_mode": mode}
         result = {"status": "CANDIDATE_FAULT_QA" if mode else "CANDIDATE_COMPONENT_QA", "run_id": receipt["run_id"],
@@ -71,36 +75,61 @@ class Acceptance(unittest.TestCase):
                     (directory / name).chmod(0o644)
             return a.accepted_record(directory, rc, "a" * 32, "e" * 40, "123", "1", outcome)
 
-    def test_nominal_and_both_fixed_faults_have_distinct_acceptance(self):
-        for mode in (0, 1, 2):
+    def test_nominal_and_four_fixed_faults_have_distinct_acceptance(self):
+        for mode in range(5):
             got = self.run_case(mode)
             self.assertEqual(got["status"], "ACCEPTED_FAULT_QA" if mode else "ACCEPTED_COMPONENT_QA", got)
             self.assertFalse(got["production_admission"])
             self.assertFalse(got["release_gate_qualified"])
 
     def test_failed_cancelled_skipped_or_partial_controller_cannot_pass(self):
-        for mode in (0, 1, 2):
+        for mode in range(5):
             for rc, outcome in ((1, "success"), (0, "failure"), (0, "cancelled"), (0, "skipped")):
                 self.assertEqual(self.run_case(mode, rc=rc, outcome=outcome)["status"], "REJECTED")
             self.assertEqual(self.run_case(mode, omit="NATIVE.json")["status"], "REJECTED")
 
     def test_fault_trigger_wrong_phase_and_late_success_are_rejected(self):
-        for mode in (1, 2):
+        for mode in (1, 2, 3, 4):
             for key, value in (("fault_reached", False), ("fault_mode", 0), ("status", "WORK_CLOSED"),
                                ("phase", 4), ("stop_reason", 4), ("work_ms", 29999), ("cleanup_ms", 10001),
-                               ("proof_emitted_ms", 30000), ("init_wait_status", 0), ("keeper_wait_status", 9)):
+                               ("proof_emitted_ms", 30000), ("init_wait_status", 0), ("keeper_wait_status", 0 if mode == 3 else 9)):
                 with self.subTest(mode=mode, key=key):
                     got = self.run_case(mode, mutate=lambda r,n,p:n.update({key:value}))
                     self.assertEqual(got["status"], "REJECTED", got)
 
     def test_missing_cleanup_reap_and_forbidden_observer_success_are_rejected(self):
-        for mode in (0, 1, 2):
+        for mode in range(5):
             for key in ("host_cleanup_confirmed", "systemd_run_child_reap_confirmed"):
                 self.assertEqual(self.run_case(mode, mutate=lambda r,n,p:r.update({key:False}))["status"], "REJECTED")
             for key in ("cleanup_confirmed", "cgroup_empty", "output_eof"):
                 self.assertEqual(self.run_case(mode, mutate=lambda r,n,p:n.update({key:False}))["status"], "REJECTED")
-        for mode in (1, 2):
+        for mode in (1, 2, 3, 4):
             self.assertEqual(self.run_case(mode, mutate=lambda r,n,p:r.update(observer_acknowledged=True))["status"], "REJECTED")
+
+    def test_drain_requires_observed_boundary_exact_target_and_surviving_holder(self):
+        for mode in (3, 4):
+            for key in c.DRAIN_BOOLS - {"drain_observer_emergency_cleanup", "drain_init_exit_before_fault"}:
+                for value in (False, 1, "true"):
+                    with self.subTest(mode=mode, key=key, value=value):
+                        self.assertEqual(self.run_case(mode, mutate=lambda r,n,p:n.update({key:value}))["status"], "REJECTED")
+            for key, value in (("drain_observer_emergency_cleanup", True), ("drain_observer_emergency_cleanup", 0),
+                               ("drain_init_exit_before_fault", "false"), ("drain_broker_wait_status", 0),
+                               ("drain_broker_wait_status", True), ("drain_target_pid", -1),
+                               ("drain_survivor_pid", True), ("drain_init_pid", 2**31),
+                               ("drain_init_pid", 102), ("drain_survivor_pid", 102)):
+                with self.subTest(mode=mode, key=key, value=value):
+                    self.assertEqual(self.run_case(mode, mutate=lambda r,n,p:n.update({key:value}))["status"], "REJECTED")
+            for key in c.DRAIN_FIELDS:
+                with self.subTest(mode=mode, omitted=key):
+                    self.assertEqual(self.run_case(mode, mutate=lambda r,n,p:n.pop(key))["status"], "REJECTED")
+
+    def test_drain_scope_records_both_possible_init_exit_observations(self):
+        # Stop dispatch precedes holder death; the namespace may already have
+        # exited. Its reap/closure transaction is still held by A, not by C.
+        for mode in (3, 4):
+            for exited in (False, True):
+                got = self.run_case(mode, mutate=lambda r,n,p:n.update(drain_init_exit_before_fault=exited))
+                self.assertEqual(got["status"], "ACCEPTED_FAULT_QA", got)
 
     def test_duplicate_native_json_and_nonfinite_values_are_rejected(self):
         self.assertEqual(self.run_case(raw_change=lambda raw: raw.replace(b'{', b'{"status":"FAIL",', 1))["status"], "REJECTED")

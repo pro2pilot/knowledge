@@ -13,6 +13,7 @@
 #include <sched.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,10 +48,12 @@
 #define SLICE_FAULT_NONE 0
 #define SLICE_FAULT_IMPORT_RECEIPT_HELD 1
 #define SLICE_FAULT_RESULT_HELD 2
+#define SLICE_FAULT_KEEPER_DURING_DRAIN 3
+#define SLICE_FAULT_BROKER_DURING_DRAIN 4
 #ifndef SLICE_FAULT_MODE
 #define SLICE_FAULT_MODE SLICE_FAULT_NONE
 #endif
-#if SLICE_FAULT_MODE < SLICE_FAULT_NONE || SLICE_FAULT_MODE > SLICE_FAULT_RESULT_HELD
+#if SLICE_FAULT_MODE < SLICE_FAULT_NONE || SLICE_FAULT_MODE > SLICE_FAULT_BROKER_DURING_DRAIN
 #error Unknown fixed component fault mode
 #endif
 struct work_result { int phase, importer_drained, importer_detached_writer, readonly, authority_readback, worker_status, authority_status, importer_wait_status;
@@ -58,13 +61,65 @@ struct work_result { int phase, importer_drained, importer_detached_writer, read
   char importer_report[257];
   char manifest[65], directories[65]; unsigned files, bytes; };
 struct keeper_result { int kind, init, init_status, init_reaped, cgroup_empty, cleanup_confirmed, reason;
-  long long work_ms, cleanup_ms, completed_ms; struct work_result work; };
+  long long work_ms, cleanup_ms, completed_ms, cleanup_started_ms, cleanup_deadline_ms;
+  int drain_entered, stop_dispatched; struct work_result work; };
 struct init_args { int gate, keeperfd, report, output; };
 static volatile sig_atomic_t cancelled;
+/* A separate fixed native QA observer holds independent exact pidfds. It never
+ * grants work or supplies the survivor's cleanup proof. Its emergency signals
+ * make the experiment fail rather than substitute a successful drain. */
+enum observation_kind { OBS_KEEPER=10, OBS_INIT=11, OBS_OUTPUT=12,
+  OBS_DRAIN=13, OBS_BROKER_DRAIN=14, OBS_KEEPER_FINAL=15, OBS_BROKER_FINAL=16 };
+struct observation { int kind, pid, keeper_status, output_eof;
+  struct keeper_result result; size_t bytes; unsigned char output[OUTPUT_CAP]; };
+struct drain_evidence { int verified, fault_signal_sent, fault_exit_confirmed, survivor_confirmed,
+  emergency, broker_status, target_pid, survivor_pid, init_pid, init_exit_before_fault, init_not_observer_child; };
+static int observation_channel=-1;
+static pid_t observation_parent;
 static long long now_ms(void) { struct timespec t; if(clock_gettime(CLOCK_MONOTONIC,&t)) _exit(110); return (long long)t.tv_sec*1000+t.tv_nsec/1000000; }
 static int pidfd(int pid) { return (int)syscall(SYS_pidfd_open,pid,0); }
 static int dead(int fd) { struct pollfd p={fd,POLLIN,0}; int rc=poll(&p,1,0); return rc>0&&(p.revents&(POLLIN|POLLHUP|POLLERR)); }
 static int kill_exact(int fd) { return (int)syscall(SYS_pidfd_send_signal,fd,SIGKILL,NULL,0); }
+static int observe_send(int kind,const struct keeper_result *result,int held,int pid,
+    int keeper_status,int output_eof,const unsigned char *output,size_t bytes) {
+  if(observation_channel<0||bytes>OUTPUT_CAP)return -1;
+  struct observation event={.kind=kind,.pid=pid,.keeper_status=keeper_status,.output_eof=output_eof,.bytes=bytes};
+  if(result)event.result=*result;if(bytes)memcpy(event.output,output,bytes);
+  union {struct cmsghdr align;char bytes[CMSG_SPACE(sizeof(int))];} control={0};
+  struct iovec io={&event,offsetof(struct observation,output)+bytes};struct msghdr message={0};
+  message.msg_iov=&io;message.msg_iovlen=1;
+  if(held>=0){message.msg_control=control.bytes;message.msg_controllen=sizeof(control.bytes);
+    struct cmsghdr *c=CMSG_FIRSTHDR(&message);c->cmsg_level=SOL_SOCKET;c->cmsg_type=SCM_RIGHTS;c->cmsg_len=CMSG_LEN(sizeof(int));memcpy(CMSG_DATA(c),&held,sizeof(held));}
+  return sendmsg(observation_channel,&message,MSG_NOSIGNAL|MSG_DONTWAIT)==(ssize_t)io.iov_len?0:-1;
+}
+static int observe_receive(int channel,struct observation *event,int *received,int *sender) {
+  union {struct cmsghdr align;char bytes[CMSG_SPACE(16*sizeof(int))+CMSG_SPACE(sizeof(struct ucred))];} control={0};
+  struct iovec io={event,sizeof(*event)};struct msghdr message={0};
+  message.msg_iov=&io;message.msg_iovlen=1;message.msg_control=control.bytes;message.msg_controllen=sizeof(control.bytes);
+  ssize_t n=recvmsg(channel,&message,MSG_DONTWAIT|MSG_CMSG_CLOEXEC);*received=-1;*sender=-1;
+  if(n<=0)return n==0?0:(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR?0:-1);
+  int count=0,bad=0,credentials=0;
+  for(struct cmsghdr *c=CMSG_FIRSTHDR(&message);c;c=CMSG_NXTHDR(&message,c)){
+    if(c->cmsg_level==SOL_SOCKET&&c->cmsg_type==SCM_CREDENTIALS&&c->cmsg_len==CMSG_LEN(sizeof(struct ucred))){
+      struct ucred value;memcpy(&value,CMSG_DATA(c),sizeof(value));
+      if(credentials++||value.pid<=0||value.uid!=0||value.gid!=0)bad=1;*sender=value.pid;continue;
+    }
+    if(c->cmsg_level!=SOL_SOCKET||c->cmsg_type!=SCM_RIGHTS||c->cmsg_len<CMSG_LEN(0)){bad=1;continue;}
+    size_t bytes=c->cmsg_len-CMSG_LEN(0);if(bytes%sizeof(int))bad=1;
+    int *fds=(int *)CMSG_DATA(c);
+    for(size_t i=0;i<bytes/sizeof(int);i++){if(count++==0)*received=fds[i];else close(fds[i]);}
+  }
+  if(n<(ssize_t)offsetof(struct observation,output)){
+    if(*received>=0)close(*received);*received=-1;return -1;
+  }
+  int expects_fd=event->kind==OBS_KEEPER||event->kind==OBS_INIT||event->kind==OBS_OUTPUT;
+  if(event->bytes>OUTPUT_CAP||
+      n!=(ssize_t)(offsetof(struct observation,output)+event->bytes)||
+      (message.msg_flags&(MSG_TRUNC|MSG_CTRUNC))||bad||credentials!=1||count!=(expects_fd?1:0)){
+    if(*received>=0)close(*received);*received=-1;return -1;
+  }
+  return 1;
+}
 static int send_birth(int channel,const struct keeper_result *result,int held) {
   union {struct cmsghdr align;char bytes[CMSG_SPACE(sizeof(int))];} control={0};
   struct iovec io={(void *)result,sizeof(*result)};struct msghdr message={0};
@@ -307,7 +362,7 @@ static int execute_phase(struct work_result *result,int output,int fault_report)
   result->authority_readback=1;
   pid_t worker=fork();if(worker<0)return -1;if(!worker)worker_exec(output);close(output);
   if(exact_reap(worker,&result->worker_status))return -1;
-  if(SLICE_FAULT_MODE==SLICE_FAULT_RESULT_HELD&&WIFEXITED(result->worker_status)&&WEXITSTATUS(result->worker_status)==0)
+  if(SLICE_FAULT_MODE>=SLICE_FAULT_RESULT_HELD&&WIFEXITED(result->worker_status)&&WEXITSTATUS(result->worker_status)==0)
     hold_fault_pipe(fault_report,result);
   if(write_all(control[1],"STOP\n",5))return -1;close(control[1]);
   if(exact_reap(authority,&result->authority_status))return -1;
@@ -369,7 +424,7 @@ static int observe_and_remove(int fd,const struct stat *identity) {
   return acknowledged&&!cancelled&&now_ms()<end;
 }
 static void keeper(int channel,int ownerfd,int output,long long started) {
-  int keep[]={channel,ownerfd,output};if(close_except(keep,3))_exit(160);
+  int keep[]={channel,ownerfd,output,observation_channel};if(close_except(keep,observation_channel>=0?4:3))_exit(160);
   int report[2],gate[2];if(pipe2(report,O_CLOEXEC|O_NONBLOCK)||pipe2(gate,O_CLOEXEC))_exit(161);
   int self=pidfd(getpid());if(self<0)_exit(162);char *stack=malloc(STACK_BYTES);if(!stack)_exit(163);
   struct init_args args={gate[0],self,report[1],output};
@@ -397,58 +452,45 @@ static void keeper(int channel,int ownerfd,int output,long long started) {
     if(!result.reason&&dead(held))result.reason=4;
   }
   long long cleanup_start=now_ms(),cleanup_end=cleanup_start+CLEANUP_MS;result.work_ms=cleanup_start-started;
-  if(!dead(held)&&kill_exact(held)&&errno!=ESRCH)result.reason=5;
+  result.cleanup_started_ms=cleanup_start;result.cleanup_deadline_ms=cleanup_end;
+  int work_received=0;
+  if(SLICE_FAULT_MODE>=SLICE_FAULT_KEEPER_DURING_DRAIN){
+    ssize_t n=read(report[0],&result.work,sizeof(result.work));work_received=n==sizeof(result.work);
+    if(!work_received)memset(&result.work,0,sizeof(result.work));
+  }
+  if(!dead(held)){
+    if(kill_exact(held)){if(errno!=ESRCH)result.reason=5;}
+    else result.stop_dispatched=1;
+  }
+  if(SLICE_FAULT_MODE>=SLICE_FAULT_KEEPER_DURING_DRAIN){
+    /* The stop was actually sent. Hold before waitpid/global closure so an
+     * independent observer can fault a holder inside the drain transaction.
+     * This is not a fabricated process stall and not a kernel D-state claim. */
+    result.drain_entered=work_received&&result.work.fault_reached&&result.reason==3&&result.stop_dispatched;
+    result.kind=3;
+    int sent=send(channel,&result,sizeof(result),MSG_NOSIGNAL|MSG_DONTWAIT)==sizeof(result)&&
+      observe_send(OBS_DRAIN,&result,-1,getpid(),0,0,NULL,0)==0;
+    int release=0;
+    while(sent&&now_ms()<cleanup_end&&!release){
+      struct pollfd p={observation_channel,POLLIN,0};if(poll(&p,1,20)<0&&errno!=EINTR)break;
+      if(p.revents&POLLIN){char byte[2];release=recv(observation_channel,byte,sizeof(byte),MSG_DONTWAIT)==1&&byte[0]=='D';break;}
+      if(p.revents&(POLLHUP|POLLERR))break;
+    }
+    if(!sent||!release)result.reason=5;
+  }
   while(!dead(held)&&now_ms()<cleanup_end){struct pollfd p={held,POLLIN,0};poll(&p,1,20);}
   pid_t got=waitpid(init,&result.init_status,WNOHANG);result.init_reaped=got==init;
-  if(result.init_reaped){ssize_t n=read(report[0],&result.work,sizeof(result.work));if(n!=sizeof(result.work))memset(&result.work,0,sizeof(result.work));}
+  if(result.init_reaped&&!work_received){ssize_t n=read(report[0],&result.work,sizeof(result.work));if(n!=sizeof(result.work))memset(&result.work,0,sizeof(result.work));}
   while(result.init_reaped&&now_ms()<cleanup_end){if(cgroup_empty()){result.cgroup_empty=1;break;}poll(NULL,0,20);}
   result.completed_ms=now_ms();result.cleanup_ms=result.completed_ms-cleanup_start;
   result.cleanup_confirmed=result.init_reaped&&dead(held)&&result.cgroup_empty&&result.completed_ms<=cleanup_end;
   result.kind=2;(void)send(channel,&result,sizeof(result),MSG_NOSIGNAL|MSG_DONTWAIT);
+  if(observation_channel>=0)(void)observe_send(OBS_KEEPER_FINAL,&result,-1,getpid(),0,0,NULL,0);
   close(held);close(report[0]);close(channel);free(stack);_exit(result.cleanup_confirmed?0:167);
 }
-int main(int argc,char **argv) {
-  (void)argv;if(argc!=1||getuid()!=0||geteuid()!=0||getppid()!=1||SLICE_A_UID<1000000000||SLICE_W_UID<1000000000||
-    SLICE_A_UID>=1900000000||SLICE_W_UID>=1900000000||SLICE_A_UID==SLICE_W_UID)return 170;
-  struct stat root;if(lstat(SLICE_ROOT,&root)||!S_ISDIR(root.st_mode)||root.st_uid!=0||(root.st_mode&0022))return 171;
-  signal(SIGPIPE,SIG_IGN);signal(SIGTERM,cancel_signal);signal(SIGINT,cancel_signal);umask(077);
-  if(prctl(PR_SET_CHILD_SUBREAPER,1)||create_work_cgroup())return 172;
-  long long started=now_ms();int owner=pidfd(getpid()),channel[2],output[2];
-  if(owner<0||socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_NONBLOCK|SOCK_CLOEXEC,0,channel)||pipe2(output,O_NONBLOCK|O_CLOEXEC))return 173;
-  pid_t child=fork();if(child<0)return 174;
-  if(!child){close(channel[0]);close(output[0]);keeper(channel[1],owner,output[1],started);_exit(175);}
-  close(channel[1]);close(output[1]);close(owner);int keeperfd=pidfd(child),initfd=-1;
-  if(keeperfd<0){close(channel[0]);return 176;}
-  struct keeper_result final={0};int eof=0,overflow=0,keeper_status=-1,keeper_reaped=0,protocol_bad=0,have_final=0;
-  unsigned char bytes[OUTPUT_CAP];size_t used=0;long long limit=started+WORK_MS+CLEANUP_MS+2000;
-  while(now_ms()<limit){
-    if(cancelled||overflow){(void)send(channel[0],"S",1,MSG_NOSIGNAL|MSG_DONTWAIT);cancelled=2;}
-    struct keeper_result message;ssize_t n;int received=-1;
-    while((n=receive_keeper(channel[0],&message,&received))>0){
-      if(message.kind==1&&initfd<0&&!have_final){
-        initfd=received;received=-1;
-        const char *reply=cancelled||overflow||protocol_bad||now_ms()>=started+5000?"S":"G";
-        (void)send(channel[0],reply,1,MSG_NOSIGNAL|MSG_DONTWAIT);
-      }
-      else if(message.kind==2&&initfd>=0&&!have_final){final=message;have_final=1;}
-      else protocol_bad=1;
-      if(received>=0)close(received);
-    }
-    if(n==-2)protocol_bad=1;
-    unsigned char buffer[4096];n=read(output[0],buffer,sizeof(buffer));
-    if(n>0){if((size_t)n>OUTPUT_CAP-used)overflow=1;else{memcpy(bytes+used,buffer,(size_t)n);used+=(size_t)n;}}
-    else if(n==0)eof=1;else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)protocol_bad=1;
-    if(dead(keeperfd)&&!keeper_reaped){pid_t got=waitpid(child,&keeper_status,WNOHANG);if(got==child)keeper_reaped=1;}
-    if(keeper_reaped&&eof)break;
-    if(protocol_bad)(void)send(channel[0],"S",1,MSG_NOSIGNAL|MSG_DONTWAIT);
-    poll(NULL,0,10);
-  }
-  int closed=have_final&&final.cleanup_confirmed&&keeper_reaped&&WIFEXITED(keeper_status)&&WEXITSTATUS(keeper_status)==0&&
-    initfd>=0&&dead(initfd)&&eof&&cgroup_empty();
-  if(!closed){if(initfd>=0&&!dead(initfd))(void)kill_exact(initfd);if(!dead(keeperfd))(void)kill_exact(keeperfd);}
-  int pass=SLICE_FAULT_MODE==SLICE_FAULT_NONE&&closed&&!cancelled&&!overflow&&!protocol_bad&&final.reason==4&&WIFEXITED(final.init_status)&&WEXITSTATUS(final.init_status)==0&&
-    final.work.phase==4&&final.work.importer_drained&&final.work.importer_detached_writer&&final.work.readonly&&final.work.authority_readback;
-  struct stat observer_identity;int observer=pass?observation_gate(&observer_identity):-1;if(pass&&observer<0)pass=0;
+static int emit_result(const struct keeper_result *value,int pass,int closed,int keeper_status,int eof,
+    const unsigned char *bytes,size_t used,long long started,const struct drain_evidence *e) {
+  struct keeper_result final=*value;
   printf("{\"status\":\"%s\",\"production_admission\":false,\"release_gate_qualified\":false,\"component\":\"readonly_node_namespace\",\"observer_ack_required\":true,\"fault_mode\":%d,\"fault_reached\":%s,"
     "\"cleanup_confirmed\":%s,\"importer_namespace_drained\":%s,\"importer_detached_writer_ready\":%s,\"source_readonly\":%s,\"authority_readback\":%s,\"phase\":%d,"
     "\"work_ms\":%lld,\"cleanup_ms\":%lld,\"proof_emitted_ms\":%lld,\"stop_reason\":%d,\"init_wait_status\":%d,\"keeper_wait_status\":%d,"
@@ -460,8 +502,214 @@ int main(int argc,char **argv) {
     final.work.manifest,final.work.directories);
   for(size_t i=0;i<used;i++)printf("%02x",bytes[i]);printf("\",\"importer_report_hex\":\"");
   for(size_t i=0;i<strnlen(final.work.importer_report,sizeof(final.work.importer_report));i++)printf("%02x",(unsigned char)final.work.importer_report[i]);
-  puts("\"}");
-  if(fflush(stdout))pass=0;
+  printf("\"");
+  if(e)printf(",\"drain_entered\":%s,\"drain_stop_dispatched\":%s,\"drain_observer_verified\":%s,"
+    "\"drain_fault_signal_sent\":%s,\"drain_fault_exit_confirmed\":%s,\"drain_survivor_confirmed\":%s,"
+    "\"drain_observer_emergency_cleanup\":%s,\"drain_broker_wait_status\":%d,\"drain_target_pid\":%d,"
+    "\"drain_survivor_pid\":%d,\"drain_init_pid\":%d,\"drain_init_exit_before_fault\":%s,\"drain_init_not_observer_child\":%s",
+    final.drain_entered?"true":"false",final.stop_dispatched?"true":"false",e->verified?"true":"false",
+    e->fault_signal_sent?"true":"false",e->fault_exit_confirmed?"true":"false",e->survivor_confirmed?"true":"false",
+    e->emergency?"true":"false",e->broker_status,e->target_pid,e->survivor_pid,e->init_pid,
+    e->init_exit_before_fault?"true":"false",e->init_not_observer_child?"true":"false");
+  puts("}");
+  return fflush(stdout);
+}
+static int broker_main(int argc,char **argv) {
+  (void)argv;if(argc!=1||getuid()!=0||geteuid()!=0||getppid()!=(observation_parent?observation_parent:1)||SLICE_A_UID<1000000000||SLICE_W_UID<1000000000||
+    SLICE_A_UID>=1900000000||SLICE_W_UID>=1900000000||SLICE_A_UID==SLICE_W_UID)return 170;
+  struct stat root;if(lstat(SLICE_ROOT,&root)||!S_ISDIR(root.st_mode)||root.st_uid!=0||(root.st_mode&0022))return 171;
+  signal(SIGPIPE,SIG_IGN);signal(SIGTERM,cancel_signal);signal(SIGINT,cancel_signal);umask(077);
+  if(prctl(PR_SET_CHILD_SUBREAPER,1)||create_work_cgroup())return 172;
+  long long started=now_ms();int owner=pidfd(getpid()),channel[2],output[2];
+  if(owner<0||socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_NONBLOCK|SOCK_CLOEXEC,0,channel)||pipe2(output,O_NONBLOCK|O_CLOEXEC))return 173;
+  pid_t child=fork();if(child<0)return 174;
+  if(!child){close(channel[0]);close(output[0]);keeper(channel[1],owner,output[1],started);_exit(175);}
+  close(channel[1]);close(output[1]);close(owner);int keeperfd=pidfd(child),initfd=-1;
+  if(keeperfd<0){close(channel[0]);return 176;}
+  if(observation_channel>=0&&(observe_send(OBS_KEEPER,NULL,keeperfd,child,0,0,NULL,0)||
+      observe_send(OBS_OUTPUT,NULL,output[0],getpid(),0,0,NULL,0)))return 177;
+  struct keeper_result final={0};int eof=0,overflow=0,keeper_status=-1,keeper_reaped=0,protocol_bad=0,have_final=0,have_drain=0;
+  unsigned char bytes[OUTPUT_CAP];size_t used=0;long long limit=started+WORK_MS+CLEANUP_MS+2000;
+  while(now_ms()<limit){
+    if(cancelled||overflow){(void)send(channel[0],"S",1,MSG_NOSIGNAL|MSG_DONTWAIT);cancelled=2;}
+    struct keeper_result message;ssize_t n;int received=-1;
+    while((n=receive_keeper(channel[0],&message,&received))>0){
+      if(message.kind==1&&initfd<0&&!have_final){
+        initfd=received;received=-1;
+        if(observation_channel>=0&&observe_send(OBS_INIT,&message,initfd,message.init,0,0,NULL,0))protocol_bad=1;
+        const char *reply=cancelled||overflow||protocol_bad||now_ms()>=started+5000?"S":"G";
+        (void)send(channel[0],reply,1,MSG_NOSIGNAL|MSG_DONTWAIT);
+      }
+      else if(message.kind==2&&initfd>=0&&!have_final){final=message;have_final=1;}
+      else if(message.kind==3&&observation_channel>=0&&initfd>=0&&!have_drain&&!have_final){
+        final=message;have_drain=1;
+        if(observe_send(OBS_BROKER_DRAIN,&message,-1,getpid(),0,eof,bytes,used))protocol_bad=1;
+      }
+      else protocol_bad=1;
+      if(received>=0)close(received);
+    }
+    if(n==-2)protocol_bad=1;
+    unsigned char buffer[4096];n=read(output[0],buffer,sizeof(buffer));
+    if(n>0){if((size_t)n>OUTPUT_CAP-used)overflow=1;else{memcpy(bytes+used,buffer,(size_t)n);used+=(size_t)n;}}
+    else if(n==0)eof=1;else if(errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)protocol_bad=1;
+    if(dead(keeperfd)&&!keeper_reaped){pid_t got=waitpid(child,&keeper_status,WNOHANG);if(got==child)keeper_reaped=1;}
+    if(SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN&&keeper_reaped&&have_drain&&!have_final&&
+        final.drain_entered&&final.stop_dispatched&&WIFSIGNALED(keeper_status)&&WTERMSIG(keeper_status)==SIGKILL){
+      /* A was killed between its actual stop and reap. B already held this
+       * exact init pidfd and is the subreaper; never open a replacement PID. */
+      if(!dead(initfd))(void)kill_exact(initfd);
+      if(!final.init_reaped){pid_t got=waitpid(final.init,&final.init_status,WNOHANG);if(got==final.init)final.init_reaped=1;}
+      final.cgroup_empty=cgroup_empty();
+      final.completed_ms=now_ms();final.cleanup_ms=final.completed_ms-final.cleanup_started_ms;
+      if(final.init_reaped&&dead(initfd)&&final.cgroup_empty&&eof&&final.completed_ms<=final.cleanup_deadline_ms){
+        final.cleanup_confirmed=1;have_final=1;
+      }
+    }
+    if(keeper_reaped&&eof&&(SLICE_FAULT_MODE!=SLICE_FAULT_KEEPER_DURING_DRAIN||have_final))break;
+    if(protocol_bad)(void)send(channel[0],"S",1,MSG_NOSIGNAL|MSG_DONTWAIT);
+    poll(NULL,0,10);
+  }
+  int keeper_closed=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?
+    WIFSIGNALED(keeper_status)&&WTERMSIG(keeper_status)==SIGKILL:WIFEXITED(keeper_status)&&WEXITSTATUS(keeper_status)==0;
+  int closed=!protocol_bad&&!overflow&&!cancelled&&have_final&&final.cleanup_confirmed&&keeper_reaped&&keeper_closed&&
+    initfd>=0&&dead(initfd)&&eof&&cgroup_empty();
+  if(!closed){if(initfd>=0&&!dead(initfd))(void)kill_exact(initfd);if(!dead(keeperfd))(void)kill_exact(keeperfd);}
+  int pass=SLICE_FAULT_MODE==SLICE_FAULT_NONE&&closed&&!cancelled&&!overflow&&!protocol_bad&&final.reason==4&&WIFEXITED(final.init_status)&&WEXITSTATUS(final.init_status)==0&&
+    final.work.phase==4&&final.work.importer_drained&&final.work.importer_detached_writer&&final.work.readonly&&final.work.authority_readback;
+  struct stat observer_identity;int observer=pass?observation_gate(&observer_identity):-1;if(pass&&observer<0)pass=0;
+  if(observation_channel>=0) {
+    (void)observe_send(OBS_BROKER_FINAL,&final,-1,getpid(),keeper_status,eof,bytes,used);
+  } else if(emit_result(&final,pass,closed,keeper_status,eof,bytes,used,started,NULL))pass=0;
   if(observer>=0&&!observe_and_remove(observer,&observer_identity))pass=0;
   if(initfd>=0)close(initfd);close(keeperfd);close(channel[0]);close(output[0]);return pass?0:1;
+}
+
+static int held_pid(int fd) {
+  char name[80],body[2048];int count=snprintf(name,sizeof(name),"/proc/self/fdinfo/%d",fd);
+  if(count<0||(size_t)count>=sizeof(name))return -1;
+  int input=open(name,O_RDONLY|O_CLOEXEC|O_NOFOLLOW);if(input<0)return -1;
+  ssize_t n=read(input,body,sizeof(body)-1);close(input);
+  if(n<=0||n>=(ssize_t)sizeof(body)-1)return -1;body[n]=0;
+  const char *line=!strncmp(body,"Pid:\t",5)?body:strstr(body,"\nPid:\t");
+  if(!line)return -1;if(*line=='\n')line++;
+  int pid=-1;char tail=0;return sscanf(line,"Pid:\t%d%c",&pid,&tail)==2&&tail=='\n'?pid:-1;
+}
+static int same_drain(const struct keeper_result *a,const struct keeper_result *b) {
+  return a->kind==3&&b->kind==3&&a->init==b->init&&a->reason==3&&b->reason==3&&
+    a->drain_entered&&b->drain_entered&&a->stop_dispatched&&b->stop_dispatched&&
+    a->cleanup_started_ms==b->cleanup_started_ms&&a->cleanup_deadline_ms==b->cleanup_deadline_ms&&
+    a->work_ms==b->work_ms&&a->work.phase==3&&a->work.fault_reached&&
+    a->work.worker_status==0&&a->work.importer_wait_status==0&&
+    !memcmp(&a->work,&b->work,sizeof(a->work));
+}
+static int drain_observer_main(int argc,char **argv) {
+  if(argc!=1||getuid()!=0||geteuid()!=0||getppid()!=1)return 190;
+  signal(SIGPIPE,SIG_IGN);signal(SIGTERM,cancel_signal);signal(SIGINT,cancel_signal);
+  if(prctl(PR_SET_CHILD_SUBREAPER,1))return 191;
+  int pair[2],credential=1;
+  if(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_NONBLOCK|SOCK_CLOEXEC,0,pair)||
+    setsockopt(pair[0],SOL_SOCKET,SO_PASSCRED,&credential,sizeof(credential)))return 192;
+  long long observer_started=now_ms(),limit=observer_started+WORK_MS+CLEANUP_MS+2000;
+  observation_parent=getpid();pid_t broker=fork();if(broker<0)return 193;
+  if(!broker){close(pair[0]);observation_channel=pair[1];_exit(broker_main(argc,argv));}
+  close(pair[1]);int brokerfd=pidfd(broker),keeperfd=-1,initfd=-1,outputfd=-1;
+  if(brokerfd<0){close(pair[0]);return 194;}
+  int keeper_pid=-1,init_pid=-1,have_a_drain=0,have_b_drain=0,have_final=0;
+  int broker_reaped=0,keeper_reaped=0,keeper_status=-1,eof=0,bad=0;
+  struct keeper_result a_drain={0},b_drain={0},final={0};
+  struct drain_evidence evidence={.broker_status=-1};
+  unsigned char output[OUTPUT_CAP];size_t used=0;
+  while(!bad&&!cancelled&&now_ms()<limit){
+    struct observation event;int received=-1,sender=-1,rc;
+    while((rc=observe_receive(pair[0],&event,&received,&sender))>0){
+      int is_broker=sender==broker,is_keeper=keeper_pid>0&&sender==keeper_pid;
+      if(event.kind==OBS_KEEPER&&is_broker&&keeperfd<0&&event.pid>0&&held_pid(received)==event.pid){
+        keeperfd=received;received=-1;keeper_pid=event.pid;
+      } else if(event.kind==OBS_INIT&&is_broker&&initfd<0&&event.pid>0&&held_pid(received)==event.pid){
+        initfd=received;received=-1;init_pid=event.pid;
+      } else if(event.kind==OBS_OUTPUT&&is_broker&&outputfd<0){
+        struct stat s;
+        if(fstat(received,&s)||!S_ISFIFO(s.st_mode))bad=1;
+        else{outputfd=received;received=-1;}
+      } else if(event.kind==OBS_DRAIN&&is_keeper&&!have_a_drain&&!evidence.fault_signal_sent){
+        a_drain=event.result;have_a_drain=1;
+      } else if(event.kind==OBS_BROKER_DRAIN&&is_broker&&!have_b_drain&&!evidence.fault_signal_sent){
+        b_drain=event.result;have_b_drain=1;used=event.bytes;memcpy(output,event.output,used);
+      } else if(event.kind==OBS_KEEPER_FINAL&&is_keeper&&SLICE_FAULT_MODE==SLICE_FAULT_BROKER_DURING_DRAIN&&evidence.fault_signal_sent&&!have_final){
+        final=event.result;have_final=1;
+      } else if(event.kind==OBS_BROKER_FINAL&&is_broker&&SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN&&evidence.fault_signal_sent&&!have_final){
+        final=event.result;keeper_status=event.keeper_status;keeper_reaped=1;have_final=1;
+        if(event.bytes!=used||memcmp(output,event.output,used)||!event.output_eof)bad=1;
+      } else bad=1;
+      if(received>=0)close(received);
+    }
+    if(rc<0)bad=1;
+    if(!evidence.fault_signal_sent&&have_a_drain&&have_b_drain&&keeperfd>=0&&initfd>=0&&outputfd>=0){
+      siginfo_t info;memset(&info,0,sizeof(info));errno=0;
+      int probe=waitid(P_PIDFD,(id_t)initfd,&info,WEXITED|WNOHANG|WNOWAIT),probe_errno=errno;
+      evidence.init_not_observer_child=probe==-1&&probe_errno==ECHILD;
+      evidence.init_exit_before_fault=dead(initfd);
+      long long check=now_ms();
+      /* Two independently authenticated native senders agree on the entered
+       * drain; C observes both holders alive and that the exact init is still
+       * outside C's reap custody. Stop was dispatched; no closure was issued. */
+      evidence.verified=same_drain(&a_drain,&b_drain)&&a_drain.init==init_pid&&
+        a_drain.work_ms>=WORK_MS&&a_drain.work_ms<=WORK_MS+1000&&
+        a_drain.cleanup_deadline_ms==a_drain.cleanup_started_ms+CLEANUP_MS&&
+        check>=a_drain.cleanup_started_ms&&check<a_drain.cleanup_deadline_ms&&
+        !dead(brokerfd)&&!dead(keeperfd)&&held_pid(initfd)==init_pid&&evidence.init_not_observer_child;
+      evidence.target_pid=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?keeper_pid:broker;
+      evidence.survivor_pid=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?broker:keeper_pid;
+      evidence.init_pid=init_pid;
+      if(!evidence.verified){bad=1;break;}
+      int target=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?keeperfd:brokerfd;
+      evidence.fault_signal_sent=kill_exact(target)==0;
+      if(!evidence.fault_signal_sent){bad=1;break;}
+      if(SLICE_FAULT_MODE==SLICE_FAULT_BROKER_DURING_DRAIN&&send(pair[0],"D",1,MSG_NOSIGNAL|MSG_DONTWAIT)!=1){bad=1;break;}
+      limit=a_drain.cleanup_deadline_ms;
+    }
+    if(dead(brokerfd)&&!broker_reaped){pid_t got=waitpid(broker,&evidence.broker_status,WNOHANG);broker_reaped=got==broker;}
+    if(SLICE_FAULT_MODE==SLICE_FAULT_BROKER_DURING_DRAIN&&broker_reaped&&keeperfd>=0&&dead(keeperfd)&&!keeper_reaped){
+      pid_t got=waitpid(keeper_pid,&keeper_status,WNOHANG);keeper_reaped=got==keeper_pid;
+    }
+    /* B was the only reader until death/exit. C's retained pipe now observes
+     * the actual last-writer EOF instead of trusting a serialized flag. */
+    if(broker_reaped&&outputfd>=0){
+      unsigned char more[4096];ssize_t n;
+      while((n=read(outputfd,more,sizeof(more)))>0){if((size_t)n>OUTPUT_CAP-used){bad=1;break;}memcpy(output+used,more,(size_t)n);used+=(size_t)n;}
+      if(n==0)eof=1;else if(n<0&&errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)bad=1;
+    }
+    if(have_final&&broker_reaped&&keeper_reaped&&eof)break;
+    poll(NULL,0,5);
+  }
+  int target_status=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?keeper_status:evidence.broker_status;
+  int survivor_status=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?evidence.broker_status:keeper_status;
+  int target_fd=SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?keeperfd:brokerfd;
+  evidence.fault_exit_confirmed=evidence.fault_signal_sent&&target_fd>=0&&dead(target_fd)&&
+    WIFSIGNALED(target_status)&&WTERMSIG(target_status)==SIGKILL;
+  evidence.survivor_confirmed=have_final&&final.cleanup_confirmed&&final.init_reaped&&
+    final.drain_entered&&final.stop_dispatched&&final.reason==3&&final.init==init_pid&&
+    final.cleanup_started_ms==a_drain.cleanup_started_ms&&final.cleanup_deadline_ms==a_drain.cleanup_deadline_ms&&
+    final.completed_ms<=final.cleanup_deadline_ms&&final.cleanup_ms>=0&&final.cleanup_ms<=CLEANUP_MS&&
+    WIFSIGNALED(final.init_status)&&WTERMSIG(final.init_status)==SIGKILL&&
+    WIFEXITED(survivor_status)&&WEXITSTATUS(survivor_status)==(SLICE_FAULT_MODE==SLICE_FAULT_KEEPER_DURING_DRAIN?1:0);
+  int closed=!bad&&!cancelled&&evidence.verified&&evidence.fault_exit_confirmed&&evidence.survivor_confirmed&&
+    broker_reaped&&keeper_reaped&&initfd>=0&&dead(initfd)&&eof&&cgroup_empty()&&now_ms()<=limit;
+  if(!closed){
+    evidence.emergency=1;
+    if(initfd>=0&&!dead(initfd))(void)kill_exact(initfd);
+    if(keeperfd>=0&&!dead(keeperfd))(void)kill_exact(keeperfd);
+    if(!dead(brokerfd))(void)kill_exact(brokerfd);
+    long long end=now_ms()+1000;int status;
+    while(now_ms()<end){pid_t got=waitpid(-1,&status,WNOHANG);if(got<0&&errno==ECHILD)break;poll(NULL,0,5);}
+  }
+  if(!have_final)final=a_drain;
+  final.cgroup_empty=cgroup_empty();
+  long long started=final.cleanup_started_ms?final.cleanup_started_ms-final.work_ms:observer_started;
+  (void)emit_result(&final,0,closed,keeper_status,eof,output,used,started,&evidence);
+  if(outputfd>=0)close(outputfd);if(initfd>=0)close(initfd);if(keeperfd>=0)close(keeperfd);
+  close(brokerfd);close(pair[0]);return 1;
+}
+int main(int argc,char **argv) {
+  return SLICE_FAULT_MODE>=SLICE_FAULT_KEEPER_DURING_DRAIN?drain_observer_main(argc,argv):broker_main(argc,argv);
 }

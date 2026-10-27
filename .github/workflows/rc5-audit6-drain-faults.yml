@@ -1,0 +1,63 @@
+name: RC5 audit6 Linux drain holder faults
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit6-drain-faults.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit6-drain-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-drain-faults:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run component and adversarial acceptance regressions
+        run: |
+          mkdir regression-evidence
+          node --test --test-reporter=tap qa/reliability/linux-service-slice-27/importer.test.js > regression-evidence/importer.tap
+      - name: Execute all 54 regression cases as root with no skips
+        run: |
+          sudo -n env PATH="$PATH" "$(command -v python3)" -B - > regression-evidence/root-unit.log 2>&1 <<'PY'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('qa/reliability/linux-service-slice-27', pattern='test_*.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() and result.testsRun == 54 and not result.skipped else 1)
+          PY
+      - name: Execute both drain holder deaths and separate post-exit acceptance
+        run: python -B qa/reliability/audit5/run_faults.py --out fault-audit --pins qa/reliability/audit6/SOURCE_PINS.json --modes keeper-during-drain broker-during-drain
+      - name: Preserve raw fault evidence, FAIL and source pins
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit6-linux-drain-faults-${{ matrix.arch }}
+          path: |
+            fault-audit/**
+            regression-evidence/**
+          if-no-files-found: error
+          retention-days: 3

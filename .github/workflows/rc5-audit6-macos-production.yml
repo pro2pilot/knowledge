@@ -1,0 +1,65 @@
+name: RC5 audit6 canonical macOS production admission
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_stock_sip:
+        description: Refuse before privileged setup unless observed SIP is enabled
+        type: boolean
+        default: false
+      case_set:
+        description: Explicit production cohort; both choices retain the same job deadline
+        type: choice
+        options: [normal, failures]
+        default: normal
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit6-macos-production.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit6-macos-production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  production-normal:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Canonical production install and public KVE ACK gate
+        env:
+          REQUIRE_STOCK_SIP: ${{ inputs.require_stock_sip && '1' || '0' }}
+          CASE_SET: ${{ inputs.case_set || 'normal' }}
+        run: |
+          args=()
+          if [[ "$REQUIRE_STOCK_SIP" == '1' ]]; then args+=(--require-stock-sip); fi
+          python qa/reliability/audit6/run_macos_production.py --source source/.knowledge --pins qa/reliability/audit6/SOURCE_PINS.json --out macos-production-audit --arch '${{ matrix.arch }}' --case-set "$CASE_SET" "${args[@]}"
+      - name: Preserve typed observations and source pins
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit6-macos-production-${{ matrix.arch }}
+          path: macos-production-audit/public/**
+          if-no-files-found: error
+          retention-days: 3

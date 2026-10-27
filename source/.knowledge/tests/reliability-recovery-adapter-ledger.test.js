@@ -38,7 +38,8 @@ function fixture(t, late) {
       ] };
   });
   const adapter = recovery.createNativeRecovery(control.readStatus(context).attempt, { remainingMs: () => left });
-  return { context, owner, adapter, id: { attempt_id: owner.attempt_id, generation: owner.generation }, get calls() { return calls; } };
+  return { context, owner, adapter, id: { attempt_id: owner.attempt_id, generation: owner.generation },
+    expire() { left = 0; }, get calls() { return calls; } };
 }
 
 test('late native recovery retains the durable claim and records unconfirmed cleanup', { skip: !native }, t => {
@@ -64,4 +65,51 @@ test('timely recovery releases only the failed attempt and never produces a succ
   assert.equal(attempt.cleanup.status, 'confirmed');
   assert.equal(attempt.terminal.ack_sha256, null);
   assert.equal(attempt.cleanup.native_transcript.payload.native_return.namespace_drained, true);
+});
+
+test('deadline expiry during final ledger read keeps the exact recovery claim fenced', { skip: !native }, t => {
+  const f = fixture(t, false);
+  const active = path.join(f.context.stateRoot, 'maintenance/verification-control/active.json');
+  const original = fs.readSync;
+  let boundary = 0;
+  t.mock.method(fs, 'readSync', function(fd, ...args) {
+    const result = original.call(fs, fd, ...args);
+    if (f.calls === 1 && boundary === 0 && fs.fstatSync(fd, { bigint: true }).ino === fs.statSync(active, { bigint: true }).ino) {
+      boundary++;
+      f.expire();
+    }
+    return result;
+  });
+  assert.throws(() => control.recoverAttempt(f.context, f.id, f.adapter), { code: 'verification_recovery_budget_exceeded' });
+  assert.equal(boundary, 1, 'the fault must occur after native proof at the actual ledger read');
+  const attempt = control.readStatus(f.context).attempt;
+  assert.equal(attempt.claimed, true);
+  assert.equal(attempt.phase, 'cleanup_unconfirmed');
+  assert.equal(attempt.recovery.reason_code, 'verification_recovery_budget_exceeded');
+  assert.equal(attempt.terminal, null);
+  assert.throws(() => control.beginAttempt(f.context, { request_sha256: H }), { code: 'verification_recovery_required' });
+});
+
+test('a late durable ledger write cannot return a timely recovery result or success ACK', { skip: !native }, t => {
+  const f = fixture(t, false);
+  const active = path.join(f.context.stateRoot, 'maintenance/verification-control/active.json');
+  const original = fs.renameSync;
+  let boundary = 0;
+  t.mock.method(fs, 'renameSync', function(from, to, ...args) {
+    const result = original.call(fs, from, to, ...args);
+    if (f.calls === 1 && boundary === 0 && path.resolve(to) === active) {
+      boundary++;
+      f.expire();
+    }
+    return result;
+  });
+  assert.throws(() => control.recoverAttempt(f.context, f.id, f.adapter), { code: 'verification_recovery_budget_exceeded' });
+  assert.equal(boundary, 1, 'the fault must occur at the actual terminal rename');
+  const attempt = control.readStatus(f.context).attempt;
+  // The exact native closure was already proven and its failed terminal row
+  // became durable. Do not rewrite it to pretend the filesystem write vanished.
+  assert.equal(attempt.claimed, false);
+  assert.equal(attempt.cleanup.status, 'confirmed');
+  assert.equal(attempt.terminal.outcome, 'failed');
+  assert.equal(attempt.terminal.ack_sha256, null);
 });

@@ -5,18 +5,41 @@ import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, time
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--out', required=True)
+    parser.add_argument('--pins', help='Optional exact shipping-source pin file to bind this component run')
+    modes = {'none': 0, 'import-receipt-held': 1, 'result-held': 2,
+        'keeper-during-drain': 3, 'broker-during-drain': 4}
+    parser.add_argument('--modes', nargs='+', choices=tuple(modes), default=list(modes),
+        help='Fixed cases only; default runs all five. Each fault retains its original 30s work budget.')
     args = parser.parse_args()
+    if len(args.modes) != len(set(args.modes)): parser.error('Duplicate modes are not allowed')
     out = pathlib.Path(args.out).resolve(); out.mkdir(parents=True, exist_ok=False)
     code = pathlib.Path(__file__).resolve().parents[1] / 'linux-service-slice-27'
+    pin_digest = None
+    if args.pins:
+        pin_path = pathlib.Path(args.pins).resolve()
+        pin_body = pin_path.read_bytes(); pin_data = json.loads(pin_body)
+        source = pathlib.Path(__file__).resolve().parents[3] / 'source' / '.knowledge'
+        if not isinstance(pin_data.get('files'), dict) or not pin_data['files']:
+            raise RuntimeError('source_pins_invalid')
+        for name, expected in pin_data['files'].items():
+            relative = pathlib.PurePosixPath(name)
+            if relative.is_absolute() or '..' in relative.parts or not re.fullmatch('[a-f0-9]{64}', expected):
+                raise RuntimeError('source_pin_entry_invalid')
+            if hashlib.sha256((source / name).read_bytes()).hexdigest() != expected:
+                raise RuntimeError('source_pin_mismatch: ' + name)
+        pin_digest = hashlib.sha256(pin_body).hexdigest()
+        (out / 'SOURCE_PINS.json').write_bytes(pin_body)
     results = {'schema_version': 'knowledge-audit5-component-faults.v1',
         'source_revision': os.environ.get('GITHUB_SHA'), 'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
-        'scope': 'isolated readonly component; pipe stalls are not disk or kernel D-state tests',
+        'scope': 'isolated readonly component; drain faults follow actual stop dispatch and precede reap; no disk or kernel D-state claim',
+        'requested_modes': args.modes,
+        'source_pins_sha256': pin_digest,
         'production_qualified': False, 'release_qualified': False, 'status': 'RUNNING', 'cases': [],
         'qa_source_sha256': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(code.iterdir())
             if p.is_file() and p.suffix in {'.py', '.js', '.c'}}}
     def save(): (out / 'RESULTS.json').write_text(json.dumps(results, indent=2) + '\n')
     save()
-    for mode in ('none', 'import-receipt-held', 'result-held'):
+    for mode in args.modes:
         case_dir = out / mode; case_dir.mkdir()
         row = {'fault': mode, 'status': 'FAIL'}; results['cases'].append(row)
         started = time.monotonic()
@@ -37,7 +60,7 @@ def main():
             run_id = receipt.get('run_id')
             if not isinstance(run_id, str) or not re.fullmatch('[a-f0-9]{32}', run_id) or \
                 receipt.get('status') != 'PREPARED_COMPONENT_QA' or \
-                receipt.get('fault_mode') != {'none': 0, 'import-receipt-held': 1, 'result-held': 2}[mode]:
+                receipt.get('fault_mode') != modes[mode]:
                 raise RuntimeError('invalid_prepare_receipt')
             public = pathlib.Path('/tmp') / ('knowledge-slice-prep-' + run_id) / 'public'
             if public.is_symlink() or not public.is_dir(): raise RuntimeError('public_directory_unavailable')
@@ -93,7 +116,7 @@ def main():
             if not cleanup:
                 results['stopped_after_unconfirmed_cleanup'] = True
                 break
-    results['status'] = 'PASS_COMPONENT_FAULTS' if len(results['cases']) == 3 and all(r['status'].startswith('ACCEPTED_') for r in results['cases']) else 'FAIL'
+    results['status'] = 'PASS_COMPONENT_FAULTS' if len(results['cases']) == len(args.modes) and all(r['status'].startswith('ACCEPTED_') for r in results['cases']) else 'FAIL'
     save()
     return 0 if results['status'] == 'PASS_COMPONENT_FAULTS' else 1
 

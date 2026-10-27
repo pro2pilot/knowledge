@@ -98,6 +98,7 @@ function createNativeRecovery(attempt, options={}) {
     if(native?.status!=='completed') fail(typeof native?.code==='string' && /^[a-z0-9_]{1,128}$/.test(native.code)?native.code:'verification_cleanup_unconfirmed');
     const proof=bindProof(snapshot,native);remaining();return proof;
   };
+  Object.defineProperty(adapter,'assertRemainingBudget',{value:remaining});
   const identityBudget={timeoutMs:Math.min(darwin?5000:process.platform==='win32'?30000:15000,remaining())};
   adapter.owner_identity=copyInertData(darwin?backend.currentProcessIdentity(attempt.containment.descriptor,
     identityBudget):backend.currentProcessIdentity(identityBudget));
@@ -129,7 +130,9 @@ function recoverAttempt(context,input) {
     const profileDeadline=started+BigInt(attempt.profile.cleanup_budget_ms)*1000000n;
     const deadline=requestedDeadline!==null && requestedDeadline<profileDeadline ? requestedDeadline : profileDeadline;
     requireThat(process.hrtime.bigint()<deadline,'verification_recovery_budget_exceeded');
-    return control.recoverInvocation(context,{...input,deadline_ns:String(deadline)});
+    const result=control.recoverInvocation(context,{...input,deadline_ns:String(deadline)});
+    requireThat(process.hrtime.bigint()<deadline,'verification_recovery_budget_exceeded');
+    return result;
   }
   if(input?.startup_nonce_sha256!==undefined) {
     requireThat(typeof input.startup_nonce_sha256==='string' && /^[a-f0-9]{64}$/.test(input.startup_nonce_sha256) &&
@@ -140,22 +143,22 @@ function recoverAttempt(context,input) {
     input={...input,attempt_id:attempt.attempt_id,generation:attempt.generation};
   }
   requireThat(attempt && input && attempt.attempt_id===input.attempt_id && attempt.generation===input.generation,'verification_attempt_mismatch');
-  if(attempt.storage_protocol===control.STORAGE_PROTOCOL || requestedDeadline!==null) {
-    const profileDeadline=started+BigInt(attempt.profile.cleanup_budget_ms)*1000000n;
-    // A caller may shorten this invocation's admission epoch, never enlarge
-    // the configured cleanup budget. Reading state and waiting for the old
-    // storage writer both consume the same original monotonic epoch.
-    const deadline=requestedDeadline!==null && requestedDeadline<profileDeadline ? requestedDeadline : profileDeadline;
-    const remainingMs=()=>Math.floor(Number(deadline-process.hrtime.bigint())/1e6);
-    const invoke=()=>{
-      requireThat(remainingMs()>0,'verification_recovery_budget_exceeded');
-      return recoverUnderLease(context,input,{remainingMs});
-    };
-    requireThat(remainingMs()>0,'verification_recovery_budget_exceeded');
-    return attempt.storage_protocol===control.STORAGE_PROTOCOL ?
-      control.withStorageLease(context,invoke,{timeoutMs:Math.min(600000,remainingMs())}) : invoke();
-  }
-  return recoverUnderLease(context,input);
+  const profileDeadline=started+BigInt(attempt.profile.cleanup_budget_ms)*1000000n;
+  // Every path, including the narrow no-process proof and legacy storage,
+  // spends the epoch captured before the first state read. A lease wait or
+  // lease release cannot start a new allowance or hide a late return.
+  const deadline=requestedDeadline!==null && requestedDeadline<profileDeadline ? requestedDeadline : profileDeadline;
+  const remainingMs=()=>Math.floor(Number(deadline-process.hrtime.bigint())/1e6);
+  const check=()=>requireThat(remainingMs()>0,'verification_recovery_budget_exceeded');
+  const invoke=()=>{
+    check();
+    const result=recoverUnderLease(context,{...input,deadline_ns:String(deadline)},{remainingMs});
+    check();return result;
+  };
+  check();
+  const result=attempt.storage_protocol===control.STORAGE_PROTOCOL ?
+    control.withStorageLease(context,invoke,{timeoutMs:Math.min(600000,remainingMs())}) : invoke();
+  check();return result;
 }
 function recoverUnderLease(context,input,options={}) {
   const attempt=control.readStatus(context).attempt;

@@ -313,7 +313,7 @@ def build(private, source, controller_status, architecture, case_set='normal'):
             if part.removeprefix('cleanup:') in FAILURES][:4] if isinstance(raw.get('failure'), str) else [],
         'workflow_commit': os.environ.get('GITHUB_SHA') if re.fullmatch('[a-f0-9]{40}', os.environ.get('GITHUB_SHA', '')) else None,
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID') if re.fullmatch('[0-9]+', os.environ.get('GITHUB_RUN_ID', '')) else None,
-        'release_gate_qualified': False, 'scope': 'Fixed public production cohort. Double storage-guardian and controller death preserves a live writer claim until explicitly operator-assisted exit. Kernel I/O stalls and release qualification remain separate.',
+        'release_gate_qualified': False, 'scope': 'Only the selected fixed public production cohort on the observed host. Failure cases require independently confirmed native storage exit and reject operator-assisted storage exit. Kernel I/O stalls, stock-SIP and full release qualification remain separate.',
         'raw_evidence_scope': 'runner-private; tokens, raw native replies, account/host identifiers, paths and payload output excluded'}
     parent = raw.get('installation_parent') if isinstance(raw.get('installation_parent'), dict) else {}
     summary['installation_parent'] = {key: boolean(parent.get(key)) for key in

@@ -55,7 +55,13 @@ ROOT_STAGE_TIMEOUT = 135
 UNIT_STOP_TIMEOUT = 25
 WORK_BUDGET_MS = 30000
 CLEANUP_BUDGET_MS = 10000
-FAULT_PROFILES = {"none": 0, "import-receipt-held": 1, "result-held": 2}
+FAULT_PROFILES = {"none": 0, "import-receipt-held": 1, "result-held": 2,
+                  "keeper-during-drain": 3, "broker-during-drain": 4}
+DRAIN_BOOLS = {"drain_entered", "drain_stop_dispatched", "drain_observer_verified",
+               "drain_fault_signal_sent", "drain_fault_exit_confirmed", "drain_survivor_confirmed",
+               "drain_observer_emergency_cleanup", "drain_init_exit_before_fault", "drain_init_not_observer_child"}
+DRAIN_INTS = {"drain_broker_wait_status", "drain_target_pid", "drain_survivor_pid", "drain_init_pid"}
+DRAIN_FIELDS = DRAIN_BOOLS | DRAIN_INTS
 CLAIM_PATH = Path(f"/run/knowledge-slice-uid-reservation-{AUTHORITY_UID}-{WORKER_UID}")
 NODE_VERSION = "v22.17.1"
 EXPECTED_INPUT_TEXT = "component-slice-input-v1\n"
@@ -806,7 +812,7 @@ def component_acceptance(return_code: int, value: dict, observer_acknowledged: b
 def fault_acceptance(return_code: int, value: dict, mode: int, observer_acknowledged: bool,
                      child_reaped: bool, tap: dict | None) -> bool:
     """A successful fault experiment requires a failed work result plus exact closure."""
-    if not (type(mode) is int and mode in {1, 2} and type(return_code) is int and return_code == 1 and
+    if not (type(mode) is int and mode in {1, 2, 3, 4} and type(return_code) is int and return_code == 1 and
             type(value.get("fault_mode")) is int and value["fault_mode"] == mode and value.get("fault_reached") is True and
             value.get("status") == "FAIL" and value.get("production_admission") is False and
             value.get("release_gate_qualified") is False and value.get("observer_ack_required") is True and
@@ -817,7 +823,7 @@ def fault_acceptance(return_code: int, value: dict, mode: int, observer_acknowle
             type(value.get("proof_emitted_ms")) is int and
             value["work_ms"] + value["cleanup_ms"] <= value["proof_emitted_ms"] <= WORK_BUDGET_MS + CLEANUP_BUDGET_MS + 2000 and
             all(type(value.get(name)) is int for name in ("phase", "init_wait_status", "keeper_wait_status", "importer_wait_status", "worker_wait_status", "authority_wait_status")) and
-            value["init_wait_status"] == signal.SIGKILL and value["keeper_wait_status"] == 0 and
+            value["init_wait_status"] == signal.SIGKILL and value["keeper_wait_status"] == (signal.SIGKILL if mode == 3 else 0) and
             value["importer_wait_status"] == 0 and value["authority_wait_status"] == -1):
         return False
     if mode == 1:
@@ -825,9 +831,23 @@ def fault_acceptance(return_code: int, value: dict, mode: int, observer_acknowle
                 value.get("input_manifest_sha256") == "" and value.get("directories_sha256") == "" and
                 value.get("importer_report_hex") == "" and
                 all(value.get(name) is False for name in ("importer_namespace_drained", "importer_detached_writer_ready", "source_readonly", "authority_readback")) and tap is None)
+    if mode in {3, 4} and not drain_acceptance(value, mode):
+        return False
     return (value["phase"] == 3 and value["worker_wait_status"] == 0 and
             all(value.get(name) is True for name in ("importer_namespace_drained", "importer_detached_writer_ready", "source_readonly", "authority_readback")) and
             tap is not None and tap.get("tests") == 1 and tap.get("pass") == 1 and tap.get("fail") == 0 and tap.get("skipped") == 0)
+
+
+def drain_acceptance(value: dict, mode: int) -> bool:
+    """Native stop/reap transaction evidence, never an observer fallback proof."""
+    required_true = DRAIN_BOOLS - {"drain_observer_emergency_cleanup", "drain_init_exit_before_fault"}
+    pids = [value.get(key) for key in ("drain_target_pid", "drain_survivor_pid", "drain_init_pid")]
+    return (mode in {3, 4} and all(value.get(key) is True for key in required_true) and
+            value.get("drain_observer_emergency_cleanup") is False and
+            type(value.get("drain_init_exit_before_fault")) is bool and
+            all(type(pid) is int and 0 < pid < 2**31 for pid in pids) and len(set(pids)) == 3 and
+            type(value.get("drain_broker_wait_status")) is int and
+            value["drain_broker_wait_status"] == (1 << 8 if mode == 3 else signal.SIGKILL))
 
 
 def bounded_native_failure(body: bytes | None) -> bool:
@@ -1270,7 +1290,7 @@ class RootRun:
         require(self.native_child_reaped, "systemd_run_reap_unconfirmed", "Exact systemd-run child exit remains unconfirmed")
         if fault_mode == 0 and not self.observer_acknowledged and bounded_native_failure(self.native_json_body):
             raise SliceFailure("native_reported_failure", "Native reported failure without an observer ACK")
-        require(self.observer_acknowledged or fault_mode in {1, 2},
+        require(self.observer_acknowledged or fault_mode in {1, 2, 3, 4},
                 "observer_ack_missing", "Native observer did not complete its root ACK exchange")
         require(not timed_out, "systemd_run_timeout", "Component service exceeded bounded outer wait")
         require(not output_limited, "systemd_run_output_limit", "Native or systemd output exceeded bounded storage")
@@ -1293,6 +1313,8 @@ class RootRun:
                   "cleanup_ms", "proof_emitted_ms", "stop_reason", "init_wait_status", "keeper_wait_status",
                   "worker_wait_status", "authority_wait_status", "importer_wait_status", "importer_report_hex", "cgroup_empty", "output_eof", "output_bytes",
                   "input_manifest_sha256", "directories_sha256", "output_hex"}
+        if self.plan.get("fault_mode") in {3, 4}:
+            fields |= DRAIN_FIELDS
         require(isinstance(value, dict) and set(value) == fields and value["status"] in {"WORK_CLOSED", "FAIL"} and
                 value["production_admission"] is False and value["release_gate_qualified"] is False and
                 value["observer_ack_required"] is True and value["component"] == "readonly_node_namespace",
@@ -1302,6 +1324,10 @@ class RootRun:
         bools = ("cleanup_confirmed", "importer_namespace_drained", "importer_detached_writer_ready",
                  "source_readonly", "authority_readback", "cgroup_empty", "output_eof")
         require(all(type(value[name]) is bool for name in bools), "native_output_types", "Native output boolean fields are invalid")
+        if value["fault_mode"] in {3, 4}:
+            require(all(type(value[key]) is bool for key in DRAIN_BOOLS) and
+                    all(type(value[key]) is int for key in DRAIN_INTS),
+                    "native_drain_types", "Native drain observer fields have invalid types")
         nonnegative_ints = ("phase", "work_ms", "cleanup_ms", "proof_emitted_ms", "stop_reason", "output_bytes")
         wait_statuses = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status")
         require(all(type(value[name]) is int and value[name] >= 0 for name in nonnegative_ints) and
@@ -1310,7 +1336,7 @@ class RootRun:
         require(isinstance(value["importer_report_hex"], str) and
                 re.fullmatch(r"(?:[0-9a-f]{2}){0,257}", value["importer_report_hex"]) is not None,
                 "native_importer_report_invalid", "Native importer receipt is not bounded hexadecimal bytes")
-        if value["status"] == "WORK_CLOSED" or value["fault_mode"] == 2:
+        if value["status"] == "WORK_CLOSED" or value["fault_mode"] in {2, 3, 4}:
             expected_import = ("KSM1 chroot_root_not_mountpoint EINVAL\n"
                 f"KSI1 {self.plan['blob']['manifest_sha256']} {self.plan['blob']['directories_sha256']} "
                 f"{self.plan['blob']['files']} {self.plan['blob']['total_bytes']}\n"

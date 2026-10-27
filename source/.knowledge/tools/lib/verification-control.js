@@ -330,7 +330,12 @@ function mutate(context, fn, deadline=null) {
   requireThat(!resourceScopes.has(resourceKey(loc)),'verification_resource_busy');
   const timeoutMs=deadline===null?5000:Math.min(5000,Math.floor(Number(deadline-process.hrtime.bigint())/1e6));
   requireThat(timeoutMs>0,'verification_recovery_budget_exceeded');
-  return withContainedLock({context,rootKind:'state',rootPath:loc.root,lockName:'verification-control',purpose:LOCKS['verification-control'].purpose,timeoutMs},()=>fn(loc,load(loc)));
+  return withContainedLock({context,rootKind:'state',rootPath:loc.root,lockName:'verification-control',purpose:LOCKS['verification-control'].purpose,timeoutMs},()=>{
+    if(deadline!==null)requireThat(process.hrtime.bigint()<deadline,'verification_recovery_budget_exceeded');
+    const current=load(loc);
+    if(deadline!==null)requireThat(process.hrtime.bigint()<deadline,'verification_recovery_budget_exceeded');
+    return fn(loc,current);
+  });
 }
 function publicAttempt(a) {
   if(!a) return null;
@@ -732,9 +737,26 @@ function commitFinish(context,owner,input) {
   });
 }
 function recoverAttempt(context,input,nativeRecovery=null) {
-  input=inert(input);const loc=location(context),snapshot=load(loc);
+  const started=process.hrtime.bigint();
+  input=inert(input);
+  let requestedDeadline=null;
+  if(input?.deadline_ns!==undefined) {
+    requireThat(typeof input.deadline_ns==='string' && /^\d{1,32}$/.test(input.deadline_ns),'verification_clock_invalid');
+    requestedDeadline=BigInt(input.deadline_ns);
+    requireThat(started<requestedDeadline,'verification_recovery_budget_exceeded');
+  }
+  const loc=location(context),snapshot=load(loc);
   requireThat(snapshot && input && snapshot.attempt_id===input.attempt_id && snapshot.generation===input.generation,'verification_attempt_mismatch');
-  if(snapshot.invocation!==null)return recoverInvocation(context,input);
+  const profileDeadline=started+BigInt(snapshot.profile.cleanup_budget_ms)*1000000n;
+  const deadline=requestedDeadline!==null && requestedDeadline<profileDeadline?requestedDeadline:profileDeadline;
+  const checkBudget=()=>{
+    requireThat(process.hrtime.bigint()<deadline,'verification_recovery_budget_exceeded');
+    // The native adapter started before identity observation. Preserve that
+    // earlier epoch through reservation, ledger CAS/readback and return.
+    if(typeof nativeRecovery?.assertRemainingBudget==='function')nativeRecovery.assertRemainingBudget();
+  };
+  checkBudget();
+  if(snapshot.invocation!==null)return recoverInvocation(context,{...input,deadline_ns:String(deadline)});
   if(!snapshot.claimed)return {status:'already_terminal',attempt:publicAttempt(snapshot)};
   requireStorageLease(loc,snapshot);
   // Only existing exact-handle exit evidence can recover this narrow case.
@@ -742,18 +764,22 @@ function recoverAttempt(context,input,nativeRecovery=null) {
   if(typeof nativeRecovery!=='function') {
     requireThat(snapshot.recovery?.status!=='active','verification_recovery_in_progress');
     if(snapshot.processes.length===0 && snapshot.containment===null) {
-      return mutate(context,(loc,a)=>{
+      const result=mutate(context,(loc,a)=>{
+        checkBudget();
         requireThat(a && a.attempt_id===snapshot.attempt_id && a.generation===snapshot.generation && a.revision===snapshot.revision,'verification_control_conflict');
         return finishRecord(loc,a,{outcome:a.cancel.requested?'cancelled':'failed',
           cleanup_proof:{attempt_id:a.attempt_id,generation:a.generation,method:'no_processes_started'}});
-      });
+      },deadline);
+      checkBudget();return result;
     }
     if(!controllerOnly(snapshot))return {status:'requires_native_recovery',attempt:publicAttempt(snapshot)};
-    return mutate(context,(loc,a)=>{
+    const result=mutate(context,(loc,a)=>{
+      checkBudget();
       requireThat(a && a.attempt_id===snapshot.attempt_id && a.generation===snapshot.generation && a.revision===snapshot.revision,'verification_control_conflict');
       const proof={attempt_id:a.attempt_id,generation:a.generation,status:'completed',method:'controller_only',evidence_sha256:hash(JSON.stringify({attempt_id:a.attempt_id,generation:a.generation,processes:a.processes}))};
       return finishRecord(loc,a,{outcome:a.cancel.requested?'cancelled':'failed',cleanup_proof:proof});
-    });
+    },deadline);
+    checkBudget();return result;
   }
   // Native actions are allowed only after a durable, irreversible work fence.
   // This reservation is independent of the short filesystem mutex. Its age is
@@ -762,6 +788,7 @@ function recoverAttempt(context,input,nativeRecovery=null) {
   if(snapshot.recovery?.status==='active') {
     requireThat(typeof nativeRecovery.verify_recoverer_exit==='function','verification_recovery_in_progress');
     previousOwnerExit=inert(nativeRecovery.verify_recoverer_exit(inert(snapshot.recovery.owner_identity)));
+    checkBudget();
     requireThat(previousOwnerExit && previousOwnerExit.status==='exited' &&
       previousOwnerExit.owner_identity_sha256===hash(JSON.stringify(snapshot.recovery.owner_identity)) &&
       HASH.test(previousOwnerExit.evidence_sha256),'verification_recovery_in_progress');
@@ -770,6 +797,7 @@ function recoverAttempt(context,input,nativeRecovery=null) {
   requireThat(ownerIdentity && !Array.isArray(ownerIdentity) && typeof ownerIdentity==='object' && Buffer.byteLength(JSON.stringify(ownerIdentity))<=8192,'verification_recovery_owner_invalid');
   const reservationToken=crypto.randomBytes(32).toString('hex');
   const reserved=mutate(context,(loc,a)=>{
+    checkBudget();
     requireThat(a && a.attempt_id===snapshot.attempt_id && a.generation===snapshot.generation && a.revision===snapshot.revision,'verification_control_conflict');
     requireThat(!a.recovery || a.recovery.status!=='active' || previousOwnerExit!==null,'verification_recovery_in_progress');
     a.stop_reason ||= 'failure';
@@ -777,7 +805,7 @@ function recoverAttempt(context,input,nativeRecovery=null) {
     a.recovery={ordinal:(a.recovery?.ordinal??0)+1,recovery_id:crypto.randomBytes(16).toString('hex'),token_sha256:hash(reservationToken),
       owner_identity:ownerIdentity,started_at:now(),status:'active',reason_code:null};
     return changed(loc,a);
-  });
+  },deadline);
   const recoveryCheck=a=>{
     requireThat(a && a.attempt_id===reserved.attempt_id && a.generation===reserved.generation && a.claimed &&
       a.recovery?.recovery_id===reserved.recovery.recovery_id && a.recovery.status==='active' &&
@@ -788,9 +816,12 @@ function recoverAttempt(context,input,nativeRecovery=null) {
     requireThat(same(binding(a.containment),binding(reserved.containment)),'verification_control_conflict');
   };
   try {
+    checkBudget();
     const proof=inert(nativeRecovery(publicAttempt(reserved)));
+    checkBudget();
     requireThat(proof && typeof proof.then!=='function','verification_recovery_proof_invalid');
-    return mutate(context,(loc,a)=>{
+    const result=mutate(context,(loc,a)=>{
+      checkBudget();
       recoveryCheck(a);
       // Exact process births and the complete native container proof are both
       // required. An arbitrary disappeared PID or elapsed lease is insufficient.
@@ -815,9 +846,14 @@ function recoverAttempt(context,input,nativeRecovery=null) {
           seen.add(exit.spawn_id);p.exit_observed=true;
         }
       }
+      checkBudget();
       a.recovery.status='completed';
       return finishRecord(loc,a,{outcome:a.cancel.requested?'cancelled':'failed',cleanup_proof:proof});
-    });
+    },deadline);
+    // A filesystem write can have become durable before a slow readback
+    // returns. Do not report a timely result after the original budget; do
+    // not roll back an already durable, physically proven closure either.
+    checkBudget();return result;
   } catch(error) {
     // A rejected proof is not a successful cleanup. Retain the coarse claim
     // and the work fence, but make a subsequent explicit recovery retry possible.
