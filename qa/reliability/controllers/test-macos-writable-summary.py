@@ -13,7 +13,8 @@ class ProjectionTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix='macos-summary-', dir=os.environ.get('TMPDIR'))
         self.addCleanup(self.tmp.cleanup);self.base = Path(self.tmp.name)
         self.source = self.base/'.knowledge';self.private = self.base/'private';self.private.mkdir()
-        for name in ('tools/lib/verification-darwin-broker.m', 'tools/lib/verification-darwin-stub.c', 'tools/native/lock-publication.c', 'tools/example.js'):
+        for name in ('tools/lib/verification-darwin-broker.m', 'tools/lib/verification-darwin-stub.c', 'tools/native/lock-publication.c', 'tools/example.js',
+                     'docs/external-memory.md', 'docs/external-memory/claude-mem-bridge.md'):
             file = self.source/name;file.parent.mkdir(parents=True, exist_ok=True);file.write_bytes(name.encode())
         (self.source/'config.yaml').write_text('updates:\n  enabled: true\n')
         (self.source/'tools/example.js').write_text("throw fail('command_exact_static_failure');\n")
@@ -33,7 +34,7 @@ class ProjectionTests(unittest.TestCase):
         native = stage/'tools/lib/native/darwin-x64';native.mkdir(parents=True)
         (native/'lock-publication.node').write_bytes(b'addon');(native/'lock-publication.manifest.json').write_bytes(m.canonical(addon))
         members = [{'path': file.relative_to(stage).as_posix(), 'bytes': file.stat().st_size, 'sha256': m.sha(file.read_bytes())}
-            for file in sorted(stage.rglob('*')) if file.is_file()]
+            for file in sorted(stage.rglob('*'), key=lambda item: item.relative_to(stage).as_posix()) if file.is_file()]
         (self.private/'macos-workspace-provision').write_bytes(b'provision')
         self.special = {'leaf_sha256': m.sha(m.fixture.LEAF.encode()), 'caller_sha256': m.sha(m.fixture.CALLER.encode()),
             'provision_source_sha256': m.sha((HERE/'macos-workspace-provision.c').read_bytes()), 'provision_binary_sha256': m.sha(b'provision'),
@@ -49,6 +50,9 @@ class ProjectionTests(unittest.TestCase):
             observation = {key: True for key in ('exact_actor_exits', 'independent_uid_zero', 'typed_native_closure', 'automatic_native_cleanup',
                 'outside_canary_unchanged', 'scheduling_pause_not_kernel_io', 'actual_state_writer_fifo_fd_observed', 'both_guardians_and_controller_exact_kill_delivered')}
             observation.update(acceptance_after_cancel=False, external_recovery_requested=False, private_allocation_count=2 if name in (m.CASES[0],m.CASES[-1]) else 1)
+            observation['fifo_reader'] = {'schema':'knowledge-macos-qa-fifo-reader.v1',
+                **{key:True for key in ('observed','target_fifo','birth_before','birth_after','target_stable','fd_scan_complete')},
+                'fd_count':20,'vnode_count':8,'fifo_count':1,'exact_read_fd_count':1,'errno':0}
             terminal = {'ok': True, 'value': {'status': 'pass', 'ownership': {'status': 'completed'}}};rc = 0
             if name == m.CASES[0]:
                 a = {key: True for key in ('detached_tree_ready', 'private_uid_outside_write_denied', 'metadata_change_denied', 'owner_uid_escalation_denied', 'nonpinned_exec_denied')};a['uid'] = 1000000001
@@ -64,6 +68,9 @@ class ProjectionTests(unittest.TestCase):
         self.raw = {'status':'PASS_PHYSICAL_MACOS_WRITABLE', 'case_set':'writable', 'architecture':'x86_64', 'source_unchanged':True,
             'cleanup_confirmed':True, 'cases':rows, 'binary_history':[history], 'native_addon':addon,
             'installed_bindings':[{'role':name, 'source_sha256':m.sha(name.encode()), 'installed_sha256':m.sha(name.encode())} for name in ('broker','stub','node')]}
+        (self.private/'production-process-observer').write_bytes(b'observer')
+        self.raw['failure_helper_pins']={'process_observer_pin':{'source_sha256':m.sha((HERE/'darwin-production-process-observer.c').read_bytes()),
+            'binary_sha256':m.sha(b'observer')}}
         bindings=[];closures=[]
         for i in (1,2):
             descriptor={'attempt_id':str(i)*64,'source_sha256':history['source_sha256'],'stub_source_sha256':history['stub_source_sha256'],
@@ -113,6 +120,14 @@ class ProjectionTests(unittest.TestCase):
         return m.build(self.private,self.source,0,'x86_64')
     def test_positive_exact_derived_inventory(self):
         self.assertEqual(self.project()['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
+    def test_fifo_observer_requires_current_birth_exact_inode_and_read_descriptor(self):
+        row=self.raw['cases'][5];original=copy.deepcopy(row['observations']['fifo_reader'])
+        for key,value in (('schema','wrong'),('observed',False),('target_fifo',False),('birth_before',False),
+            ('birth_after',False),('target_stable',False),('fd_scan_complete',False),('exact_read_fd_count',0),
+            ('exact_read_fd_count',2),('exact_read_fd_count',True),('fifo_count',0),('fd_count','20'),('errno',13)):
+            row['observations']['fifo_reader']=copy.deepcopy(original);row['observations']['fifo_reader'][key]=value
+            self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE',key)
+        row['observations']['fifo_reader']=original
     def test_every_missing_or_nonboolean_cleanup_fact_rejected(self):
         for index in range(len(m.CASES)):
             for key in ('exact_actor_exits','independent_uid_zero','typed_native_closure','automatic_native_cleanup','outside_canary_unchanged','external_recovery_requested','acceptance_after_cancel'):

@@ -278,7 +278,14 @@ def main():
                 paths.extend([[name] for name in EXTRA_LINUX])
             write_new(controller / 'EXPECTED_CASES.json', encoded(policy))
             qa_out = private / 'native-qa'
-            run('native-runtime', [sys.executable, controller / 'native_qa.py', '--archive', prepared / 'SOURCE.zip', '--manifest', prepared / 'SOURCE_MANIFEST.json', '--out', qa_out], 1200)
+            native_command = [sys.executable, controller / 'native_qa.py', '--archive', prepared / 'SOURCE.zip', '--manifest', prepared / 'SOURCE_MANIFEST.json', '--out', qa_out]
+            if args.platform == 'linux':
+                # Explicit supplemental QA fixture: the frozen source, including
+                # its original test, remains byte-identical. The native controller
+                # binds both fixture hashes and records the external derivation.
+                native_command.extend(['--public-invocation-fixture', Path(__file__).with_name('public-invocation-idempotence.test.js'),
+                    '--public-invocation-fixture-sha256', '63c30e48a615e79eaa88e7f232bed5af36fcc0936f71802f819232b9911df522'])
+            run('native-runtime', native_command, 1200)
             copy_public(qa_out / 'public', public / 'native-runtime')
             runtime_source = qa_out / 'scratch/.knowledge'
             if not unchanged(runtime_source, manifest): raise RuntimeError('Native cohort source changed')

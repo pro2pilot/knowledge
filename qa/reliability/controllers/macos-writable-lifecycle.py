@@ -19,6 +19,24 @@ CASES = ('normal_two_flow_steps', 'evaluation_check', 'cancel', 'controller_deat
          'double_guardian_controller_death', 'state_writer_fifo_read_cancel', 'team_flow_controller_death_retry')
 ACTORS = ('authority', 'authority_guardian', 'state_writer', 'state_guardian', 'controller')
 
+def observe_fifo_reader(runner, helpers, identity, target, name):
+    result = runner.sudo(str(helpers['process_observer']), '--fifo',
+        *(str(identity[key]) for key in ('pid', 'unique_id', 'start_sec', 'start_usec', 'ruid')), str(target),
+        name=name, timeout=10)
+    runner.check(result.returncode in (0, 1), 'macos_fifo_observer_failed')
+    value = json.loads(result.stdout)
+    flags = ('observed', 'target_fifo', 'birth_before', 'birth_after', 'target_stable', 'fd_scan_complete')
+    counts = ('fd_count', 'vnode_count', 'fifo_count', 'exact_read_fd_count', 'errno')
+    runner.check(isinstance(value, dict) and value.get('schema') == 'knowledge-macos-qa-fifo-reader.v1'
+        and all(type(value.get(key)) is bool for key in flags)
+        and all(type(value.get(key)) is int and 0 <= value[key] <= 16384 for key in counts)
+        and (result.returncode == 0) is value['observed'], 'macos_fifo_observer_protocol')
+    if value['observed']:
+        runner.check(all(value[key] is True for key in flags) and value['exact_read_fd_count'] == 1 and value['errno'] == 0
+            and value['fd_count'] >= value['vnode_count'] >= value['fifo_count'] >= 1,
+            'macos_fifo_observer_identity_unconfirmed')
+    return value
+
 LEAF = r"""'use strict';
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),cp=require('node:child_process');
 const root=process.cwd(),mode=process.argv[2],file=name=>path.join(root,name);
@@ -184,7 +202,7 @@ def install(runner, base, info, directory):
     runner.root('install-owned-macos-registration', '/usr/bin/install', '-o', '0', '-g', '0', '-m', '0600', str(registration), str(target))
     caller = runner.evidence/'macos-writable-caller.cjs';base.private_file(caller, CALLER.encode())
     package_rows = [{'path': item.relative_to(stage).as_posix(), 'bytes': item.stat().st_size,
-        'sha256': base.sha_file(item)} for item in sorted(stage.rglob('*')) if item.is_file()]
+        'sha256': base.sha_file(item)} for item in sorted(stage.rglob('*'), key=lambda item: item.relative_to(stage).as_posix()) if item.is_file()]
     base.private_file(runner.evidence/'MACOS_WRITABLE_INPUTS.json', base.canonical({
         'leaf_sha256': base.sha_bytes(LEAF.encode()), 'caller_sha256': base.sha_bytes(CALLER.encode()),
         'provision_source_sha256': base.sha_file(directory/'macos-workspace-provision.c'),
@@ -288,11 +306,12 @@ def run_cases(runner, base, info, directory):
                         if name == 'state_writer_fifo_read_cancel':
                             reader_deadline = min(deadline, time.monotonic()+20)
                             while time.monotonic() < reader_deadline:
-                                observed = runner.sudo('/usr/sbin/lsof', '-a', '-p', str(actors['state_writer']['pid']), str(config_file),
-                                    name='macos-writable-actual-fifo-reader', timeout=10)
-                                if observed.returncode == 0 and str(config_file).encode() in observed.stdout: break
+                                observed = observe_fifo_reader(runner, helpers, actors['state_writer'], config_file,
+                                    'macos-writable-actual-fifo-reader')
+                                row['observations']['fifo_reader'] = observed
+                                if observed['observed']: break
                                 runner.check(process.poll() is None, 'macos_writable_fifo_controller_exited');time.sleep(.1)
-                            runner.check(observed.returncode == 0 and str(config_file).encode() in observed.stdout,
+                            runner.check(observed['observed'],
                                 'macos_writable_fifo_read_not_observed')
                             row['observations']['actual_state_writer_fifo_fd_observed'] = True
                         send(actors['controller'], signal.SIGTERM)
@@ -418,9 +437,9 @@ def run_team_case(runner, base, info, fixture, birth, send, entries, parse):
                 if len(candidates)==1:
                     old_attempt,old_entry=candidates[0]
                     if all(old_entry.get(role) for role in ACTORS) and (lock/'owner.json').is_file() and (lock/'execution-scope.json').is_file():
-                        observed=runner.sudo('/usr/sbin/lsof','-a','-p',str(old_entry['state_writer']['pid']),str(config),
-                            name='macos-team-actual-fifo-reader',timeout=10)
-                        if observed.returncode==0 and str(config).encode() in observed.stdout:break
+                        observed=observe_fifo_reader(runner,helpers,old_entry['state_writer'],config,'macos-team-actual-fifo-reader')
+                        row['observations']['fifo_reader']=observed
+                        if observed['observed']:break
                 time.sleep(.1)
             if process.poll() is not None:
                 row['initial_controller_exit_code']=process.returncode
@@ -429,7 +448,7 @@ def run_team_case(runner, base, info, fixture, birth, send, entries, parse):
                     failures=[item for item in terminal_rows if item.get('type')=='result']
                     if len(failures)==1:row['terminal']=failures[0]
                 except (ValueError,TypeError):pass
-            runner.check(old_entry and (lock/'owner.json').is_file() and observed is not None and observed.returncode==0 and str(config).encode() in observed.stdout,
+            runner.check(old_entry and (lock/'owner.json').is_file() and observed is not None and observed['observed'],
                 'macos_team_lock_and_fifo_not_observed')
             old_owner_text=(lock/'owner.json').read_text();old_scope_text=(lock/'execution-scope.json').read_text()
             old_owner=json.loads(old_owner_text);old_scope=json.loads(old_scope_text)

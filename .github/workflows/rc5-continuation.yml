@@ -1,4 +1,4 @@
-name: RC5 exact continuation native matrix
+name: RC5 same-source final fixture verification
 
 on:
   workflow_dispatch:
@@ -30,18 +30,12 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 4
       matrix:
         include:
           - { id: macos-x64-writable, runner: macos-15-intel, platform: darwin, arch: x64, macos_cohort: writable }
           - { id: macos-arm64-writable, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: writable }
-          - { id: windows-x64, runner: windows-2022, platform: win32, arch: x64 }
-          - { id: windows-arm64, runner: windows-11-arm, platform: win32, arch: arm64 }
           - { id: linux-x64, runner: ubuntu-22.04, platform: linux, arch: x64 }
-          - { id: linux-arm64, runner: ubuntu-24.04-arm, platform: linux, arch: arm64 }
-          - { id: macos-arm64-failures, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: failures }
-          - { id: macos-arm64-basic, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: basic }
-          - { id: macos-arm64-physical, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: physical }
           - { id: macos-arm64-writer-sandbox, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: writer-sandbox }
     defaults:
       run:

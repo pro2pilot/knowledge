@@ -188,7 +188,7 @@ def package_valid(private, source, source_rows, special, addon, arch):
             actual[name] = {key: row[key] for key in ('bytes', 'sha256')}
         if actual != expected or [row['path'] for row in members] != sorted(actual): return False
         physical = []
-        for file in sorted(stage.rglob('*')):
+        for file in sorted(stage.rglob('*'), key=lambda item: item.relative_to(stage).as_posix()):
             if file.is_symlink(): return False
             if file.is_file():
                 st = file.stat()
@@ -205,6 +205,16 @@ def case_projection(row, catalog=None):
         'typed_native_closure', 'automatic_native_cleanup', 'outside_canary_unchanged')}
     facts['no_acceptance_after_cancel'] = o.get('acceptance_after_cancel') is False
     facts['no_external_recovery'] = o.get('external_recovery_requested') is False
+    fifo = obj(o.get('fifo_reader'))
+    fifo_flags = ('observed', 'target_fifo', 'birth_before', 'birth_after', 'target_stable', 'fd_scan_complete')
+    fifo_counts = ('fd_count', 'vnode_count', 'fifo_count', 'exact_read_fd_count', 'errno')
+    fifo_diagnostic = {key: fifo.get(key) if type(fifo.get(key)) is bool else None for key in fifo_flags}
+    fifo_diagnostic.update({key: fifo.get(key) if type(fifo.get(key)) is int and 0 <= fifo[key] <= 16384 else None for key in fifo_counts})
+    if name in ('state_writer_fifo_read_cancel', 'team_flow_controller_death_retry'):
+        facts['exact_fifo_inode_and_writer_birth'] = fifo.get('schema') == 'knowledge-macos-qa-fifo-reader.v1' and \
+            all(fifo_diagnostic[key] is True for key in fifo_flags) and fifo_diagnostic['exact_read_fd_count'] == 1 and fifo_diagnostic['errno'] == 0 and \
+            all(fifo_diagnostic[key] is not None for key in fifo_counts) and \
+            fifo_diagnostic['fd_count'] >= fifo_diagnostic['vnode_count'] >= fifo_diagnostic['fifo_count'] >= 1
     count = 2 if name in ('normal_two_flow_steps', 'team_flow_controller_death_retry') else 1
     facts['exact_allocation_count'] = type(o.get('private_allocation_count')) is int and o['private_allocation_count'] == count
     rc = row.get('controller_exit_code')
@@ -247,7 +257,7 @@ def case_projection(row, catalog=None):
     return {'name': name if name in CASES else 'unknown_case', 'status': 'PASS_PHYSICAL_MACOS_WRITABLE' if valid else 'FAIL_OR_INCOMPLETE',
         'facts': facts, 'elapsed_ms': elapsed, 'controller_exit_code': rc if type(rc) is int and -255 <= rc <= 255 else None,
         'error_code': code if isinstance(code, str) and code in (catalog[0] if catalog else SAFE_ERRORS) else None,
-        'diagnostic': diagnostic,
+        'diagnostic': diagnostic, 'fifo_observation': fifo_diagnostic if name in ('state_writer_fifo_read_cancel', 'team_flow_controller_death_retry') else None,
         'quality_status': row.get('quality_status') if name==CASES[-1] and row.get('quality_status') in ('ok','failed') else None,
         'overall_status': row.get('overall_status') if name==CASES[-1] and row.get('overall_status') in ('ok','failed') else None}
 
@@ -273,6 +283,11 @@ def build(private, source, rc, arch):
     provision = private/'macos-workspace-provision'
     fixture_checks['provision_binary'] = bool(provision.is_file() and not provision.is_symlink() and
         special.get('provision_binary_sha256') == sha(provision.read_bytes()))
+    observer = private/'production-process-observer'
+    observer_pin = obj(obj(raw.get('failure_helper_pins')).get('process_observer_pin'))
+    fixture_checks['fifo_observer_binary'] = bool(observer.is_file() and not observer.is_symlink() and
+        observer.stat().st_nlink == 1 and observer_pin.get('binary_sha256') == sha(observer.read_bytes()) and
+        observer_pin.get('source_sha256') == sha((HERE/'darwin-production-process-observer.c').read_bytes()))
     batch = legacy.load(private/'MACOS_SIGNAL_BATCH_INPUTS.json')
     batch_source = private/'macos-exact-signal-batch.c';batch_binary = private/'macos-exact-signal-batch'
     batch_code = next(ast.literal_eval(node.value) for node in ast.walk(ast.parse((HERE/'macos-writable-lifecycle.py').read_text()))

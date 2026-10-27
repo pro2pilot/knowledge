@@ -113,6 +113,8 @@ def main():
     parser.add_argument('--manifest', required=True)
     parser.add_argument('--out', required=True)
     parser.add_argument('--node', default=shutil.which('node'))
+    parser.add_argument('--public-invocation-fixture')
+    parser.add_argument('--public-invocation-fixture-sha256')
     args = parser.parse_args()
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -131,7 +133,7 @@ def main():
     env.update({'NODE_OPTIONS': '', 'NODE_PATH': '', 'CI': 'true',
                 'TMPDIR': str(scratch / 'tmp'), 'TMP': str(scratch / 'tmp'), 'TEMP': str(scratch / 'tmp')})
     for name in ['KNOWLEDGE_LOCK_TEST_SOURCE', 'KNOWLEDGE_AUDIT_SYSTEM_ROOT',
-                 'KNOWLEDGE_LOCK_TIMEOUT_MS', 'KNOWLEDGE_LOCK_STALE_MS']:
+                 'KNOWLEDGE_LOCK_TIMEOUT_MS', 'KNOWLEDGE_LOCK_STALE_MS', 'KNOWLEDGE_PUBLIC_INVOCATION_SOURCE']:
         env.pop(name, None)
     (scratch / 'tmp').mkdir()
     result['controlled_environment'] = {key: env[key] for key in ['NODE_OPTIONS', 'NODE_PATH', 'CI', 'TMPDIR', 'TMP', 'TEMP']}
@@ -403,14 +405,28 @@ def main():
                         target.chmod(member.mode & 0o777)
         return destination
 
+    external_public_invocation = None
+
     def tests(node, names, label, source, platform_name, group, timeout=420):
         for name in names:
             if not (source / name).is_file():
                 raise Failure('Requested test does not exist: ' + name)
+        paths = [source / name for name in names]
+        external_used = group == 'linux_runtime' and external_public_invocation is not None
+        if external_used:
+            original = 'tests/reliability-kve-invocation-public.test.js'
+            if names.count(original) != 1 or file_sha(external_public_invocation) != args.public_invocation_fixture_sha256:
+                raise Failure('External invocation fixture binding changed before execution.')
+            paths[names.index(original)] = external_public_invocation
         record, output = run(label, [node, '--test', '--test-reporter=tap', '--test-concurrency=1',
-                                     *[source / name for name in names]], cwd=source, timeout=timeout, check=False)
+                                     *paths], cwd=source, timeout=timeout, check=False)
         decoded = output.decode('utf-8', errors='strict')
         record['requested_test_files'] = names
+        record['executed_test_files'] = [str(path) for path in paths]
+        if external_used:
+            record['external_public_invocation_fixture'] = result['external_public_invocation_fixture']
+            if file_sha(external_public_invocation) != args.public_invocation_fixture_sha256:
+                raise Failure('External invocation fixture binding changed during execution.')
         assessed = (assess_nested_tap if group == 'linux_runtime' else assess_tap)(decoded, platform_name, group, case_policy)
         record.update(assessed)
         # SKIP remains visible and is never counted as platform qualification.
@@ -429,6 +445,32 @@ def main():
         (public / 'SOURCE_MANIFEST.json').write_text(json.dumps(manifest, indent=2) + '\n')
         result['source_zip_sha256'] = file_sha(args.archive)
         source = extract_source(Path(args.archive), manifest)
+        if bool(args.public_invocation_fixture) != bool(args.public_invocation_fixture_sha256):
+            raise Failure('External invocation fixture requires both an explicit path and SHA256.')
+        if args.public_invocation_fixture:
+            expected = args.public_invocation_fixture_sha256
+            if not re.fullmatch(r'[a-f0-9]{64}', expected):
+                raise Failure('Invalid external invocation fixture SHA256.')
+            supplied = Path(args.public_invocation_fixture).resolve(strict=True)
+            with supplied.open('rb') as handle:
+                body = handle.read(1024 * 1024 + 1)
+            if len(body) > 1024 * 1024 or sha(body) != expected:
+                raise Failure('External invocation fixture does not match its bounded SHA256 binding.')
+            original = 'tests/reliability-kve-invocation-public.test.js'
+            base_sha = file_sha(source / original)
+            if base_sha != '18906a5e77bd05fd35ebeefc2ef4d96085c5b84c750ab566b481fd73270dfdec':
+                raise Failure('External invocation fixture is not derived from the frozen 675-file source fixture.')
+            external_public_invocation = scratch / 'public-invocation-idempotence.test.js'
+            external_public_invocation.write_bytes(body)
+            (public / 'PUBLIC_INVOCATION_FIXTURE.js').write_bytes(body)
+            env['KNOWLEDGE_PUBLIC_INVOCATION_SOURCE'] = str(source)
+            result['external_public_invocation_fixture'] = {
+                'sha256': expected, 'bytes': len(body), 'artifact': 'PUBLIC_INVOCATION_FIXTURE.js',
+                'derived_from': original, 'derived_from_sha256': base_sha,
+                'runtime_source_zip_sha256': result['source_zip_sha256'],
+                'runtime_source': str(source), 'source_inventory_modified': False,
+                'reason': 'External and automatic crash recovery may race; identical failed terminal attempt, generation, invocation and native closure proof remain mandatory.',
+                'case_count': 3, 'case_names_and_budgets_unchanged': True}
         node = Path(args.node).resolve(strict=True)
         _, observed = run('host-runtime', [node, '-p', 'JSON.stringify({platform:process.platform,architecture:process.arch,node:process.version,napi:process.versions.napi})'])
         host = json.loads(observed)

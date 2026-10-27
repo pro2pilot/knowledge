@@ -46,7 +46,7 @@ def package_valid(private,source,rows,special,addon,arch):
         actual[name]={k:row[k] for k in ('bytes','sha256')}
     if actual!=expected or [row['path'] for row in members]!=sorted(actual):return False
     physical=[]
-    for file in sorted(stage.rglob('*')):
+    for file in sorted(stage.rglob('*'), key=lambda item: item.relative_to(stage).as_posix()):
         if file.is_symlink():return False
         if file.is_file():
             if file.stat().st_nlink!=1:return False

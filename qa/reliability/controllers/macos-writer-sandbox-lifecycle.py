@@ -157,7 +157,7 @@ def run_cases(runner, base, info, directory):
     runner.root('require-absent-writer-registration',sys.executable,'-c','import os,sys;assert not os.path.lexists(sys.argv[1])',str(target))
     runner.root('install-writer-registration','/usr/bin/install','-o','0','-g','0','-m','0600',str(registration),str(target))
     caller=runner.evidence/'macos-writer-sandbox-caller.cjs';base.private_file(caller,CALLER.encode())
-    members=[{'path':item.relative_to(stage).as_posix(),'bytes':item.stat().st_size,'sha256':base.sha_file(item)} for item in sorted(stage.rglob('*')) if item.is_file()]
+    members=[{'path':item.relative_to(stage).as_posix(),'bytes':item.stat().st_size,'sha256':base.sha_file(item)} for item in sorted(stage.rglob('*'), key=lambda item: item.relative_to(stage).as_posix()) if item.is_file()]
     base.private_file(runner.evidence/'MACOS_WRITER_SANDBOX_INPUTS.json',base.canonical({
         'worker_sha256':base.sha_bytes(WORKER.encode()),'caller_sha256':base.sha_bytes(CALLER.encode()),
         'owner_canary_source_sha256':base.sha_file(directory/'macos-owner-exec-canary.c'),'owner_canary_binary_sha256':base.sha_file(canary_binary),
