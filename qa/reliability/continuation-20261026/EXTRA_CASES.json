@@ -1,6 +1,43 @@
 {
   "schema_version": "knowledge-continuation-extra-cases.v1",
   "cohorts": {
+    "watchdog-progress-close": {
+      "kind": "tap", "files": ["tests/reliability-watchdog-progress-close.test.js"], "platforms": ["linux", "win32", "darwin"],
+      "timeout_seconds": 90, "count": 3,
+      "cases": [
+        "watchdog withholds terminal envelope until outer lifecycle graceful finish completes",
+        "watchdog refuses candidate on outer lifecycle finish failure while preserving native cleanup proof",
+        "watchdog outer epoch flush and graceful finish use one original cleanup deadline"
+      ]
+    },
+    "macos-storage-guardian-contract": {
+      "kind": "tap", "files": ["tests/reliability-darwin-storage-guardian-contract.test.js"], "platforms": ["darwin"],
+      "timeout_seconds": 90, "count": 6,
+      "cases": [
+        "fixed storage stays behind native P until independent root custody acknowledges exact births",
+        "failed root custody never permits storage and never claims physical writer exit",
+        "abnormal guardian loss notifies admission owner before stopped storage can produce IPC EOF",
+        "already-running storage stop helper is bounded by the same shorter cleanup epoch without false writer finality",
+        "macOS operation permit requires native workspace sandbox and exact configured-root digest",
+        "macOS authority role remains separately attested and cannot masquerade as a confined operation writer"
+      ]
+    },
+    "runtime-install-completeness": {
+      "kind": "tap", "files": ["tests/reliability-runtime-install-completeness.test.js"], "platforms": ["linux", "win32", "darwin"],
+      "timeout_seconds": 180, "count": 10,
+      "cases": [
+        "new runtime modules enter the package and installer plan with exact source hashes",
+        "manifestless and reduced-manifest installer paths retain every new runtime requirement",
+        "package and installer refuse missing required runtime module: macos-command-runner.js",
+        "package and installer refuse missing required runtime module: macos-command-scope.js",
+        "package and installer refuse missing required runtime module: macos-command-worker.js",
+        "package and installer refuse missing required runtime module: macos-lock-preflight.js",
+        "package and installer refuse missing required runtime module: macos-worker-envelope.js",
+        "package and installer refuse missing required runtime module: macos-workspace-protocol.js",
+        "package and installer refuse missing required runtime module: macos-workspace-session.js",
+        "package and installer refuse missing required runtime module: watch-maintenance-worker.js"
+      ]
+    },
     "macos-lock-preflight": {
       "kind": "tap", "files": ["tests/reliability-macos-lock-preflight.test.js"], "platforms": ["darwin"],
       "timeout_seconds": 90, "count": 8,
@@ -17,8 +54,11 @@
     },
     "macos-custody": {
       "kind": "tap", "files": ["tests/reliability-macos-custody.test.js"], "platforms": ["darwin"],
-      "timeout_seconds": 90, "count": 1,
-      "cases": ["independent custody survives planned command retirement and kills double-fault writers without storage"]
+      "timeout_seconds": 90, "count": 2,
+      "cases": [
+        "independent custody survives planned command retirement and kills double-fault writers without storage",
+        "fixed writer exit fallback preserves birth across exec and signals only the fresh audit-token version"
+      ]
     },
     "watcher-attempt-ownership": {
       "kind": "tap",

@@ -60,13 +60,15 @@ def reduce_case(item, codes):
            'live_storage_recovery_blocked': boolean(observation.get('live_storage_recovery_blocked')),
            'claim_retained_while_storage_live': boolean(observation.get('claim_retained_while_storage_live')),
            'live_storage_recovery_code': observation.get('live_storage_recovery_code') if observation.get('live_storage_recovery_code') == 'lock_timeout' else None,
+           'live_storage_recovery_phase': enum(observation.get('live_storage_recovery_phase'), ('before_controller_death',)),
            'caller_returned_result': boolean(terminal.get('returned')),
            'acceptance_count': len(terminal['acceptances']) if isinstance(terminal.get('acceptances'), list) else None,
            'source_unchanged': boolean(terminal.get('source_unchanged'))}
     for key in ('execution_observed', 'initial_UID_members_at_least_three', 'actors_parent_birth_bound',
                 'native_allocation_bound', 'caller_exit_observed', 'cleanup_confirmed', 'claim_released',
                 'no_ACK_verified', 'original_source_unchanged', 'acceptance_released',
-                'independent_storage_stop_confirmed', 'storage_guardian_stop_delivered', 'storage_guardian_kill_delivered'):
+                'independent_storage_stop_confirmed', 'storage_guardian_stop_delivered', 'storage_guardian_kill_delivered',
+                'controller_stop_delivered'):
         row[key] = boolean(observation.get(key))
     for key in ('UID_after_stop', 'UID_final'):
         value = observation.get(key) if isinstance(observation.get(key), dict) else {}
@@ -94,10 +96,11 @@ def reduce_case(item, codes):
     if name.startswith('paused_storage_') or name == 'double_storage_guardian_controller_death':
         valid = valid and row['storage_stop_delivered'] is True
     if name == 'double_storage_guardian_controller_death':
-        valid = valid and row['operator_assisted_storage_exit'] is True and row['live_storage_recovery_blocked'] is True and \
+        valid = valid and row['operator_assisted_storage_exit'] is False and row['live_storage_recovery_blocked'] is True and \
             row['claim_retained_while_storage_live'] is True and row['live_storage_recovery_code'] == 'lock_timeout' and \
+            row['live_storage_recovery_phase'] == 'before_controller_death' and row['controller_stop_delivered'] is True and \
             row['storage_guardian_stop_delivered'] is True and row['storage_guardian_kill_delivered'] is True and \
-            row['independent_storage_stop_confirmed'] is False
+            row['independent_storage_stop_confirmed'] is True
     else:
         valid = valid and row['operator_assisted_storage_exit'] is False and row['independent_storage_stop_confirmed'] is True
     if name == 'paused_storage_guardian_death':

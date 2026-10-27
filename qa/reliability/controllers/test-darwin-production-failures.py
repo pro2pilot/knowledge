@@ -18,8 +18,8 @@ def fixture(name):
         'actors_parent_birth_bound', 'native_allocation_bound', 'caller_exit_observed', 'cleanup_confirmed',
         'claim_released', 'no_ACK_verified', 'original_source_unchanged')}
     observation.update(case=name, operation=name, acceptance_released=False,
-                       operator_assisted_storage_exit=name == 'double_storage_guardian_controller_death',
-                       independent_storage_stop_confirmed=name != 'double_storage_guardian_controller_death',
+                       operator_assisted_storage_exit=False,
+                       independent_storage_stop_confirmed=True,
                        terminal_outcome='cancelled' if name in ('cancel', 'paused_storage_cancel') else 'failed')
     for key in ('UID_after_stop', 'UID_final'):
         observation[key] = {'empty': True, 'elapsed_ms': 100}
@@ -32,7 +32,8 @@ def fixture(name):
     if name == 'double_storage_guardian_controller_death':
         observation.update(storage_guardian_stop_delivered=True, storage_guardian_kill_delivered=True,
                            live_storage_recovery_blocked=True, claim_retained_while_storage_live=True,
-                           live_storage_recovery_code='lock_timeout')
+                           live_storage_recovery_code='lock_timeout', live_storage_recovery_phase='before_controller_death',
+                           controller_stop_delivered=True)
     if name == 'paused_storage_guardian_death':
         observation['storage_guardian_kill_delivered'] = True
     terminal = {'type': 'observation', 'case_name': name, 'stage': 'observed-outcome', 'returned': False,
@@ -84,10 +85,12 @@ class Cases(unittest.TestCase):
                 change(value)
                 self.assertEqual(module.reduce_case(value, CODES)['status'], 'FAIL_OR_INCOMPLETE')
 
-    def test_live_writer_fence_has_exact_refusal_and_manual_cleanup_label(self):
+    def test_live_writer_fence_then_independent_root_cleanup_no_manual_rescue(self):
         for key, bad in (('storage_stop_delivered', False), ('live_storage_recovery_blocked', False),
                          ('claim_retained_while_storage_live', False), ('live_storage_recovery_code', 'unrelated_error'),
-                         ('operator_assisted_storage_exit', False)):
+                         ('operator_assisted_storage_exit', True), ('controller_stop_delivered', False),
+                         ('live_storage_recovery_phase', 'after_controller_death'),
+                         ('independent_storage_stop_confirmed', False)):
             with self.subTest(key=key):
                 value = fixture('double_storage_guardian_controller_death')
                 value['observations'][key] = bad

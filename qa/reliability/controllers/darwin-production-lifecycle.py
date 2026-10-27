@@ -78,7 +78,7 @@ def diagnostic(error, stage):
 def main():
     ap = argparse.ArgumentParser();ap.add_argument('--source', required=True);ap.add_argument('--reference', required=True)
     ap.add_argument('--evidence', required=True);ap.add_argument('--expected-arch', required=True, choices=('x86_64', 'arm64'))
-    ap.add_argument('--case-set', choices=('normal', 'basic', 'failures', 'writable'), default='normal')
+    ap.add_argument('--case-set', choices=('normal', 'basic', 'failures', 'writable', 'writable-sandbox'), default='normal')
     args = ap.parse_args()
     evidence = Path(args.evidence).resolve();source = Path(args.source).resolve(strict=True)
     if platform.system() != 'Darwin' or os.environ.get('GITHUB_ACTIONS') != 'true':
@@ -395,7 +395,10 @@ def main():
                 's.st_dev==e["dev"] and s.st_ino==e["ino"] and stat.S_IMODE(s.st_mode)==e["mode"]\n')
             self.root('verify-owned-canonical-inodes', sys.executable, '-c', validate, json.dumps(self.root_identities))
             state = self.fixture_registry_snapshot()
+            host_binding = None
             if state:
+                probe = json.loads((evidence/'normal-probe.private.json').read_bytes())
+                host_binding = {key: probe[key] for key in ('host_id', 'boot_id')}
                 self.check(state.get('active_attempt') == '', 'normal_active_allocation_preserve_fixture')
                 for entry in state['attempts'].values():
                     self.check(entry.get('state') == 'closed' and entry.get('admission_closed') is True and
@@ -406,12 +409,24 @@ def main():
                         if entry.get(role):
                             observed = self.compare_birth(entry[role])
                             self.check(observed.get('state') in ('absent', 'replaced'), 'normal_actor_birth_preserve_fixture')
+                fixed = state.get('fixed_writer_custodies', {})
+                self.check(isinstance(fixed, dict), 'normal_fixed_custody_shape_preserve_fixture')
+                for nonce, custody in fixed.items():
+                    self.check(isinstance(nonce, str) and re.fullmatch('[a-f0-9]{64}', nonce) is not None and
+                        isinstance(custody, dict) and len(custody) == 13 and custody.get('custody_nonce') == nonce and
+                        custody.get('schema') == 'knowledge-macos-fixed-writer-custody.v1' and
+                        all(custody.get(key) == value for key, value in host_binding.items()),
+                        'normal_fixed_custody_binding_preserve_fixture')
+                    for role in ('controller', 'writer', 'guardian'):
+                        self.check(isinstance(custody.get(role), dict) and
+                            self.compare_birth(custody[role]).get('state') in ('absent', 'replaced'),
+                            'normal_fixed_custody_actor_preserve_fixture')
             # A root actor before credential drop is not visible in the private
             # UID scan. Take every exact admission inode lock and repeat birth
             # and UID observations while those exclusions remain held through
             # removal. The stopped service cannot create another allocation.
             remove = validate + '''import fcntl,subprocess,shutil
-state=json.loads(sys.argv[2]);registry=sys.argv[3];birth_observer=sys.argv[4];uid_scan=sys.argv[5];held=[]
+state=json.loads(sys.argv[2]);registry=sys.argv[3];birth_observer=sys.argv[4];uid_scan=sys.argv[5];host=json.loads(sys.argv[6]);held=[]
 for attempt,entry in (state or {}).get('attempts',{}).items():
  assert entry.get('state')=='closed' and entry.get('admission_closed') is True and entry.get('spawn_intent') is False and entry.get('authority_spawn_intent') is False
  saved=entry['admission_inode'];fd=os.open(os.path.join(registry,attempt+'.admission'),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
@@ -424,13 +439,22 @@ for attempt,entry in (state or {}).get('attempts',{}).items():
    observed=json.loads(r.stdout);assert r.returncode==0 and observed.get('state') in ('absent','replaced')
  r=subprocess.run([uid_scan,str(entry['descriptor']['task_ruid'])],capture_output=True,timeout=20)
  observed=json.loads(r.stdout);assert r.returncode==0 and observed.get('observation_valid') is True and observed.get('member_count')==0
+fixed=(state or {}).get('fixed_writer_custodies',{});assert isinstance(fixed,dict)
+for nonce,custody in fixed.items():
+ assert isinstance(nonce,str) and len(nonce)==64 and all(c in '0123456789abcdef' for c in nonce)
+ assert isinstance(custody,dict) and len(custody)==13 and custody.get('custody_nonce')==nonce and custody.get('schema')=='knowledge-macos-fixed-writer-custody.v1'
+ assert isinstance(host,dict) and all(custody.get(k)==v for k,v in host.items())
+ for role in ('controller','writer','guardian'):
+  identity=custody[role];assert isinstance(identity,dict)
+  r=subprocess.run([birth_observer,str(identity['pid']),str(identity['unique_id']),str(identity['start_sec']),str(identity['start_usec'])],capture_output=True,timeout=10)
+  observed=json.loads(r.stdout);assert r.returncode==0 and observed.get('state') in ('absent','replaced')
 for p,e in d.items():
  s=os.lstat(p);assert stat.S_ISDIR(s.st_mode) and s.st_uid==0 and s.st_dev==e['dev'] and s.st_ino==e['ino'] and stat.S_IMODE(s.st_mode)==e['mode']
 for p in d: shutil.rmtree(p)
 for fd in held: os.close(fd)
 '''
             self.root('remove-owned-canonical-inodes', sys.executable, '-c', remove, json.dumps(self.root_identities),
-                json.dumps(state), str(self.roots.get('registry', '')), str(self.birth_observer), str(self.uid_scan), timeout=90)
+                json.dumps(state), str(self.roots.get('registry', '')), str(self.birth_observer), str(self.uid_scan), json.dumps(host_binding), timeout=90)
             self.root_identities = {};self.roots = {};self.fixture_initialized = False
             self.check(not (isinstance(self.install_parent_observation, dict) and self.install_parent_observation.get('created') is True)
                 or self.install_parent_identity is not None or self.install_parent_observation.get('removed') is True,
@@ -472,6 +496,9 @@ for fd in held: os.close(fd)
                 inputs['writable_assets'] = {name: base.sha_file(Path(__file__).with_name(name)) for name in (
                     'macos-writable-lifecycle.py', 'macos-workspace-provision.c', 'darwin-production-failure-cases.py',
                     'darwin-production-process-observer.c', 'darwin-test-signal.c')}
+            if args.case_set == 'writable-sandbox':
+                inputs['writer_sandbox_assets'] = {name: base.sha_file(Path(__file__).with_name(name)) for name in (
+                    'macos-writer-sandbox-lifecycle.py', 'macos-workspace-provision.c', 'macos-owner-exec-canary.c')}
             base.private_file(evidence/'INPUTS.json', base.canonical(inputs))
             self.prepare_runtime();self.compile_uid_scan();self.compile_birth_observer();self.compile_pair(False)
             if args.case_set == 'failures':
@@ -479,8 +506,8 @@ for fd in held: os.close(fd)
             self.fixture_path();st = self.fixture.lstat();self.fixture_identity = {'dev': st.st_dev, 'ino': st.st_ino}
             base.private_file(evidence/'created-fixture.json', base.canonical(self.fixture_identity))
             info = self.setup_normal()
-            if args.case_set == 'writable':
-                writable_path = Path(__file__).with_name('macos-writable-lifecycle.py')
+            if args.case_set in ('writable', 'writable-sandbox'):
+                writable_path = Path(__file__).with_name('macos-writable-lifecycle.py' if args.case_set == 'writable' else 'macos-writer-sandbox-lifecycle.py')
                 writable_spec = importlib.util.spec_from_file_location('production_writable_cases', writable_path)
                 writable_module = importlib.util.module_from_spec(writable_spec);writable_spec.loader.exec_module(writable_module)
                 writable_module.run_cases(self, base, info, Path(__file__).parent)
@@ -493,7 +520,7 @@ for fd in held: os.close(fd)
                     failure_module.run_case(self, base, info, Path(__file__).parent, self.failure_helpers, name)
             self.cleanup()
             self.status = {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
-                           'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'writable': 'PASS_PHYSICAL_MACOS_WRITABLE'}[args.case_set]
+                           'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'writable': 'PASS_PHYSICAL_MACOS_WRITABLE', 'writable-sandbox': 'PASS_PHYSICAL_MACOS_WRITER_SANDBOX'}[args.case_set]
 
     runner = Runner();failure = None;diagnostics = [];raw_traceback = None
     try: runner.execute()
@@ -517,10 +544,10 @@ for fd in held: os.close(fd)
                 'installation_parent': runner.install_parent_observation,
                 'records': runner.records, 'diagnostics': diagnostics, 'raw_traceback': raw_traceback,
                 'release_gate_qualified': False, 'scope': ('Administrator-provisioned writable macOS public Flow/evaluation and independent actor/UID closure; not readonly isolated-copy.'
-                    if args.case_set == 'writable' else 'Normal public production request on disposable hosted macOS; other production failures have separate gates.')}
+                    if args.case_set == 'writable' else 'Fixed QA original-owner writer sandbox and private-RUID setuid execution denial; not shipping Flow evidence.' if args.case_set == 'writable-sandbox' else 'Normal public production request on disposable hosted macOS; other production failures have separate gates.')}
             (evidence/'SUMMARY.json').write_text(json.dumps(summary, indent=2)+'\n')
     return 0 if runner.status == {'basic': 'PASS_PHYSICAL_PRODUCTION_BASIC', 'failures': 'PASS_PHYSICAL_PRODUCTION_FAILURES',
-                                  'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'writable': 'PASS_PHYSICAL_MACOS_WRITABLE'}[args.case_set] else 1
+                                  'normal': 'PASS_PHYSICAL_PRODUCTION_NORMAL', 'writable': 'PASS_PHYSICAL_MACOS_WRITABLE', 'writable-sandbox': 'PASS_PHYSICAL_MACOS_WRITER_SANDBOX'}[args.case_set] else 1
 
 
 if __name__ == '__main__':

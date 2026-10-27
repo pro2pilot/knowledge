@@ -199,28 +199,11 @@ def run_case(runner, base, info, directory, helpers, name):
                 # signal helper confirms that this exact birth received STOP;
                 # the experiment records paused scheduling, not kernel I/O.
                 observations['storage_stop_delivered'] = True
-            if name in ('cancel', 'paused_storage_cancel'):
-                answer = control('cancel', current)
-                runner.check(answer.get('ok') is True and answer.get('status', {}).get('attempt', {}).get('cancel', {}).get('requested') is True,
-                             'production_failure_cancel_not_durable')
-                observations['durable_cancel_observed'] = True
-            elif name == 'authority_death':
-                send(actor_births['authority'], signal.SIGKILL)
-            elif name == 'paused_storage_guardian_death':
-                send(actor_births['storage_guardian'], signal.SIGKILL)
-                observations['storage_guardian_kill_delivered'] = True
-            else:
-                send(actor_births['controller'], signal.SIGKILL)
-                if name == 'double_storage_guardian_controller_death':
-                    wait_gone(actor_births['controller'])
-                    send(actor_births['storage_guardian'], signal.SIGKILL)
-                    observations['storage_guardian_kill_delivered'] = True
-            observations['UID_after_stop'] = wait_uid_zero(uid)
-
             if name == 'double_storage_guardian_controller_death':
-                # Both independent ordinary-UID enforcers M and G are lost. The native
-                # UID authority is independent, but S's live lease still fences
-                # shared state. This explicitly tests retained, non-ACK state.
+                # Before either independent ordinary-UID enforcer is killed,
+                # a live paused writer must retain its shared-state claim.
+                # Once M and G die below, the independent root custody must
+                # terminate S automatically; operator rescue is never a pass.
                 alive = runner.compare_birth(actor_births['storage'])
                 runner.check(alive.get('state') == 'same_running', 'production_failure_paused_writer_missing')
                 blocked = control('recover', current, 2000)
@@ -233,12 +216,33 @@ def run_case(runner, base, info, directory, helpers, name):
                              and attempt.get('generation') == current['generation'] and attempt.get('claimed') is True
                              and attempt.get('terminal') is None, 'production_failure_live_writer_claim_lost')
                 observations.update(live_storage_recovery_blocked=True, claim_retained_while_storage_live=True,
-                                    operator_assisted_storage_exit=True, live_storage_recovery_code='lock_timeout')
-                send(actor_births['storage'], signal.SIGKILL)
+                                    live_storage_recovery_code='lock_timeout',
+                                    live_storage_recovery_phase='before_controller_death')
+            if name in ('cancel', 'paused_storage_cancel'):
+                answer = control('cancel', current)
+                runner.check(answer.get('ok') is True and answer.get('status', {}).get('attempt', {}).get('cancel', {}).get('requested') is True,
+                             'production_failure_cancel_not_durable')
+                observations['durable_cancel_observed'] = True
+            elif name == 'authority_death':
+                send(actor_births['authority'], signal.SIGKILL)
+            elif name == 'paused_storage_guardian_death':
+                send(actor_births['storage_guardian'], signal.SIGKILL)
+                observations['storage_guardian_kill_delivered'] = True
+            else:
+                if name == 'double_storage_guardian_controller_death':
+                    # Freeze M before removing G so M cannot rescue S between
+                    # the two exact-birth kills. Root custody may kill G/S as
+                    # soon as M dies, so kill G first while M is stopped.
+                    send(actor_births['controller'], signal.SIGSTOP)
+                    observations['controller_stop_delivered'] = True
+                    send(actor_births['storage_guardian'], signal.SIGKILL)
+                    observations['storage_guardian_kill_delivered'] = True
+                send(actor_births['controller'], signal.SIGKILL)
+            observations['UID_after_stop'] = wait_uid_zero(uid)
 
             observations['storage_exit'] = wait_gone(actor_births['storage'])
             observations['storage_guardian_exit'] = wait_gone(actor_births['storage_guardian'])
-            observations['independent_storage_stop_confirmed'] = name != 'double_storage_guardian_controller_death'
+            observations['independent_storage_stop_confirmed'] = True
             observations['authority_exit'] = wait_gone(actor_births['authority'])
             process.wait(timeout=remaining(75))
             observations['caller_exit_observed'] = True

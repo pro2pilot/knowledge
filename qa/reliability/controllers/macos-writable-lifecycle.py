@@ -16,32 +16,51 @@ import sys
 import time
 
 CASES = ('normal_two_flow_steps', 'evaluation_check', 'cancel', 'controller_death',
-         'double_guardian_controller_death', 'state_writer_fifo_read_cancel')
+         'double_guardian_controller_death', 'state_writer_fifo_read_cancel', 'team_flow_controller_death_retry')
 ACTORS = ('authority', 'authority_guardian', 'state_writer', 'state_guardian', 'controller')
 
 LEAF = r"""'use strict';
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),cp=require('node:child_process');
 const root=process.cwd(),mode=process.argv[2],file=name=>path.join(root,name);
 const write=(name,value)=>fs.writeFileSync(file(name),JSON.stringify(value),{mode:0o600});
-if(mode==='grandchild'){write('qa-grandchild.json',{pid:process.pid,uid:process.getuid()});setInterval(()=>fs.appendFileSync(file('qa-heartbeat'),'x'),20);}
-else if(mode==='child'){cp.spawn(process.execPath,[__filename,'grandchild'],{cwd:root,detached:true,stdio:'ignore'}).unref();write('qa-child.json',{pid:process.pid,uid:process.getuid()});setInterval(()=>{},1000);}
+let qaStage='leaf_bootstrap';
+const stages=new Set(['leaf_bootstrap','first_write','scratch_write','scratch_rename','boundary_checks','child_spawn','child_write','grandchild_spawn','grandchild_write','grandchild_heartbeat','child_stderr','grandchild_stderr','child_exit','grandchild_exit','descendant_wait_timeout']);
+const errno=new Set(['EPERM','EACCES','ENOENT','EINVAL','EAGAIN','ENOMEM','ENOSYS','EMFILE','ENFILE','ERR_ASSERTION']);
+function record(stage,error,details={}){
+ const value={qa_descendant_failure:true,stage:stages.has(stage)?stage:'leaf_bootstrap',code:errno.has(error?.code)?error.code:null,
+  exit:Number.isInteger(details.exit)?details.exit:null,signal:['SIGKILL','SIGTERM','SIGABRT','SIGSEGV'].includes(details.signal)?details.signal:null};
+ try{if(!fs.existsSync(file('qa-descendant-error.json')))write('qa-descendant-error.json',value);}catch{}
+ try{fs.writeSync(2,JSON.stringify(value)+'\n');}catch{}
+}
+process.on('uncaughtException',error=>{record(qaStage,error);process.exit(5);});
+function spawnDescendant(next){
+ qaStage=next==='child'?'child_spawn':'grandchild_spawn';
+ const child=cp.spawn(process.execPath,[__filename,next],{cwd:root,detached:true,stdio:['ignore','ignore','pipe']});
+ child.on('error',error=>record(next==='child'?'child_spawn':'grandchild_spawn',error));
+ let bytes='';child.stderr.on('data',part=>{bytes=(bytes+part.toString()).slice(0,4096);for(const line of bytes.split('\n')){try{const value=JSON.parse(line);if(value.qa_descendant_failure===true&&stages.has(value.stage))record(value.stage,{code:value.code},value);}catch{}}});
+ child.stderr.on('error',error=>record(next==='child'?'child_stderr':'grandchild_stderr',error));
+ child.once('exit',(exit,signal)=>{if(!fs.existsSync(file('qa-ready.json')))record(next==='child'?'child_exit':'grandchild_exit',null,{exit,signal});});
+ child.stderr.unref();child.unref();return child;
+}
+if(mode==='grandchild'){qaStage='grandchild_write';write('qa-grandchild.json',{pid:process.pid,uid:process.getuid()});setInterval(()=>{qaStage='grandchild_heartbeat';fs.appendFileSync(file('qa-heartbeat'),'x');},20);}
+else if(mode==='child'){spawnDescendant('grandchild');qaStage='child_write';write('qa-child.json',{pid:process.pid,uid:process.getuid()});setInterval(()=>{},1000);}
 else if(mode==='first'||mode==='hold'){
- process.umask(0o077);write('qa-first.json',{uid:process.getuid(),pid:process.pid});
+ qaStage='first_write';process.umask(0o077);write('qa-first.json',{uid:process.getuid(),pid:process.pid});
  fs.writeFileSync(file('qa-private0600'),'original',{mode:0o600});
- const scratch=path.join(process.env.TMPDIR,'qa-scratch0600');fs.writeFileSync(scratch,'scratch',{mode:0o600});
- fs.renameSync(scratch,file('qa-renamed0600'));
+ qaStage='scratch_write';const scratch=path.join(process.env.TMPDIR,'qa-scratch0600');fs.writeFileSync(scratch,'scratch',{mode:0o600});
+ qaStage='scratch_rename';fs.renameSync(scratch,file('qa-renamed0600'));qaStage='boundary_checks';
  let outside=false,metadata=false,identity=false;
  try{fs.writeFileSync(process.env.KNOWLEDGE_QA_OUTSIDE,'escaped');}catch(error){outside=['EACCES','EPERM'].includes(error.code);}
  try{fs.chmodSync(file('qa-private0600'),0o777);}catch(error){metadata=['EACCES','EPERM'].includes(error.code);}
  try{process.setuid(Number(process.env.KNOWLEDGE_QA_OWNER));}catch(error){identity=['EACCES','EPERM'].includes(error.code);}
  const external=cp.spawnSync('/usr/bin/true',[],{stdio:'ignore'});
  assert(outside&&metadata&&identity&&(external.error||external.status!==0));
- cp.spawn(process.execPath,[__filename,'child'],{cwd:root,detached:true,stdio:'ignore'}).unref();
+ spawnDescendant('child');
  const end=Date.now()+10000;const timer=setInterval(()=>{
   if(fs.existsSync(file('qa-grandchild.json'))){clearInterval(timer);write('qa-ready.json',{uid:process.getuid(),pid:process.pid});
    if(mode==='first')console.log(JSON.stringify({status:'ok',uid:process.getuid(),detached_tree_ready:true,
     private_uid_outside_write_denied:outside,metadata_change_denied:metadata,owner_uid_escalation_denied:identity,nonpinned_exec_denied:true}));else setInterval(()=>{},1000);
-  }else if(Date.now()>end){clearInterval(timer);process.exitCode=3;}
+  }else if(Date.now()>end){record('descendant_wait_timeout',null);clearInterval(timer);process.exitCode=3;}
  },20);
 }else if(mode==='second'){
  const first=JSON.parse(fs.readFileSync(file('qa-first.json'),'utf8'));assert.notEqual(first.uid,process.getuid());
@@ -53,6 +72,16 @@ else if(mode==='first'||mode==='hold'){
 CALLER = r"""'use strict';
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const q=JSON.parse(fs.readFileSync(0,'utf8')),abort=new AbortController();
+let stage='caller_bootstrap',lastStep=null;
+function diagnostic(error){
+ let descendant=null;for(const line of String(lastStep?.stderr||'').split('\n')){try{const value=JSON.parse(line);if(value.qa_descendant_failure===true){descendant=value;break;}}catch{}}
+ const code=value=>typeof value==='string'&&/^(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]{1,98}|EACCES|EPERM|ENOENT)$/.test(value)?value:null;
+ const frames=[];const pattern=/\b(macos-command-runner|macos-workspace-session|verification-darwin-session|verification-darwin-client|macos-command-worker|macos-worker-envelope|flow|evaluation-harness)\.js:(\d+):(\d+)/g;
+ for(const match of String(error.stack||'').matchAll(pattern)){if(frames.length===8)break;frames.push({file:match[1]+'.js',line:Number(match[2]),column:Number(match[3])});}
+ return {stage,code:code(error.code),error_name:['Error','TypeError','RangeError','SyntaxError','AssertionError'].includes(error.name)?error.name:null,
+  native_error_code:code(error.native_code||error.reply?.error||error.native_error||error.cause?.code),frames,
+  step_failure_code:code(lastStep?.failure_code),step_exit:Number.isInteger(lastStep?.exit)?lastStep.exit:null,descendant};
+}
 process.on('SIGTERM',()=>abort.abort());
 Object.assign(process.env,{KNOWLEDGE_MACOS_WORKSPACE_ID:q.workspace_id,KNOWLEDGE_MACOS_BROKER_PATH:q.binary,
  KNOWLEDGE_MACOS_BROKER_SOCKET:q.socket,KNOWLEDGE_SYSTEM_ROOT:q.source,KNOWLEDGE_TARGET_ROOT:q.project,
@@ -65,22 +94,58 @@ const context={mode:'repo',systemRoot:q.source,targetRoot:q.project,projectKnowl
 const options={signal:abort.signal,budgets:{setupMs:30000,workMs:60000,cleanupMs:30000,progressMs:0},
  macosWorkspace:{workspace_id:q.workspace_id,broker_path:q.binary,broker_socket:q.socket}};
 (async()=>{
- const flow=require(path.join(q.source,'tools/flow.js'));let value;
+ stage='caller_load_flow';const flow=require(path.join(q.source,'tools/flow.js'));let value;
  if(q.case==='normal_two_flow_steps'){
+  stage='first_flow_await';
   const first=await flow.runOneAsync('macos-qa-step.js first',context,options);
+  lastStep=first;stage='first_flow_assert';
   assert.equal(first.success,true);assert.equal(first.ownership.status,'completed');
   for(const name of ['qa-private0600','qa-renamed0600']){assert(fs.readFileSync(path.join(q.project,name),'utf8').length);fs.appendFileSync(path.join(q.project,name),'owner');}
-  const second=await flow.runOneAsync('macos-qa-step.js second',context,options);
+  stage='second_flow_await';const second=await flow.runOneAsync('macos-qa-step.js second',context,options);
+  lastStep=second;stage='second_flow_assert';
   assert.equal(second.success,true);assert.equal(second.ownership.status,'completed');
   assert.notEqual(first.parsed.uid,second.parsed.uid);value={first,second,owner_write_continuity:true};
  }else if(q.case==='evaluation_check'){
+  stage='evaluation_check_await';
   value=await require(path.join(q.source,'tools/evaluation-harness.js')).runCheckAsync({name:'writable-continuity',command:'tools/macos-qa-step.js second'},options);
   assert.equal(value.status,'pass');assert.equal(value.ownership.status,'completed');
- }else if(q.case==='state_writer_fifo_read_cancel') value=await flow.runFlowAsync({name:'lint',context},options);
- else value=await flow.runOneAsync('macos-qa-step.js hold',context,options);
+ }else if(q.case==='state_writer_fifo_read_cancel'){stage='state_fifo_flow_await';value=await flow.runFlowAsync({name:'lint',context},options);}
+ else{stage='hold_flow_await';value=await flow.runOneAsync('macos-qa-step.js hold',context,options);}
  console.log(JSON.stringify({type:'result',ok:true,value}));
 })().catch(error=>{console.log(JSON.stringify({type:'result',ok:false,code:error.code||'untyped',cleanup:error.cleanup||null,
- recovery_required:error.recovery_required===true}));process.exitCode=2;});
+ recovery_required:error.recovery_required===true,diagnostic:diagnostic(error)}));process.exitCode=2;});
+"""
+
+TEAM_CALLER = r"""'use strict';
+const fs=require('node:fs'),path=require('node:path');const q=JSON.parse(fs.readFileSync(0,'utf8'));
+let stage='team_context_prepare';
+function diagnostic(error){
+ const code=value=>typeof value==='string'&&/^(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]{1,98}|EACCES|EPERM|ENOENT)$/.test(value)?value:null;
+ const frames=[],pattern=/\b(macos-command-runner|macos-workspace-session|verification-darwin-session|verification-darwin-client|macos-command-worker|macos-worker-envelope|flow|evaluation-harness)\.js:(\d+):(\d+)/g;
+ for(const match of String(error.stack||'').matchAll(pattern)){if(frames.length===8)break;frames.push({file:match[1]+'.js',line:Number(match[2]),column:Number(match[3])});}
+ return {stage,code:code(error.code),error_name:['Error','TypeError','RangeError','SyntaxError','AssertionError'].includes(error.name)?error.name:null,
+  native_error_code:code(error.native_code||error.reply?.error||error.native_error||error.cause?.code),frames};
+}
+try{
+Object.assign(process.env,{KNOWLEDGE_DISABLE_GIT_DISCOVERY:'1',KNOWLEDGE_FLOW_NO_OPEN:'1',CI:'true',
+ KNOWLEDGE_MACOS_WORKSPACE_ID:q.workspace_id,KNOWLEDGE_MACOS_BROKER_PATH:q.binary,KNOWLEDGE_MACOS_BROKER_SOCKET:q.socket});
+delete process.env.KNOWLEDGE_STATE_ROOT;
+const contextAPI=require(path.join(q.source,'tools/lib/path-context')),team=require(path.join(q.source,'tools/lib/team-store'));
+const context=contextAPI.resolveKnowledgeContext({__skipCli:true,mode:'team',systemRoot:q.source,targetRoot:q.project,
+ projectKnowledgeRoot:path.join(q.project,'.knowledge'),teamRoot:path.join(q.project,'team'),workspaceId:'macos-qa',agentId:'macos-ci'});
+if(q.prepare){stage='team_register_prepare';team.registerWorkspace(context);console.log(JSON.stringify({type:'team_prepared',context,
+ lock_path:team.lockPath(context.teamRoot,context.repoId),event_path:team.eventPath(context.teamRoot,context.repoId),
+ workspace_path:team.workspaceDir(context.teamRoot,context.repoId,context.workspaceId)}));}
+else{
+ stage='team_main_await';
+ const options={env:contextAPI.contextEnv(context),budgets:{setupMs:30000,workMs:120000,cleanupMs:30000,progressMs:0},
+  macosWorkspace:{workspace_id:q.workspace_id,broker_path:q.binary,broker_socket:q.socket},
+  onProgress:phase=>console.log(JSON.stringify({type:'progress',phase}))};
+ require(path.join(q.source,'tools/flow')).mainAsync(['doctor','--exclusive','--json'],options).then(result=>{
+  console.log(JSON.stringify({type:'result',ok:true,value:result.value,cleanup:result.cleanup,result}));
+ },error=>{console.log(JSON.stringify({type:'result',ok:false,code:error.code||'untyped',cleanup:error.cleanup||null,diagnostic:diagnostic(error)}));process.exitCode=2;});
+}
+}catch(error){console.log(JSON.stringify({type:'result',ok:false,code:error.code||'untyped',diagnostic:diagnostic(error)}));process.exitCode=2;}
 """
 
 
@@ -179,7 +244,7 @@ def run_cases(runner, base, info, directory):
             and value.get('native_result') == 0 and value.get('signal') == signal.SIGKILL for value in replies),
             'macos_writable_three_faults_not_realized')
 
-    for name in CASES:
+    for name in CASES[:-1]:
         start = time.monotonic();deadline = start+210;before = set(entries());actors = {};process = None;fifo_fd = None
         row = {'name': name, 'status': 'FAIL', 'observations': {}};runner.case_results.append(row)
         runner.public_started = True;runner.public_completed = False
@@ -283,6 +348,152 @@ def run_cases(runner, base, info, directory):
             if name == 'state_writer_fifo_read_cancel' and runner.public_completed:
                 config_file.unlink();saved_config.rename(config_file)
             if process is not None and process.poll() is not None: runner.active_monitor = None
+    run_team_case(runner, base, info, fixture, birth, send, entries, parse)
+
+
+def run_team_case(runner, base, info, fixture, birth, send, entries, parse):
+    """Real abandoned Team lock -> automatic native closure -> public restart.
+
+    Restart intentionally does not forge --retry-of for an incomplete run.
+    That earlier durable run remains incomplete; the new run is distinct.
+    """
+    name = CASES[-1];started = time.monotonic();deadline = started+360
+    row = {'name':name,'status':'FAIL','observations':{}};runner.case_results.append(row)
+    project = fixture['project'];config = project/'.knowledge/config.yaml';saved = project/'.knowledge/config.before-team-fifo'
+    caller = runner.evidence/'macos-team-recovery-caller.cjs';base.private_file(caller,TEAM_CALLER.encode())
+    request = {key:str(fixture[key]) for key in ('source','project','workspace_id')}
+    request.update(binary=str(info['binary']),socket=str(info['socket']))
+    prepared = runner.run('macos-team-register-public-workspace',[str(info['node']),str(caller)],
+        data=base.canonical({**request,'prepare':True}),timeout=30)
+    row['controller_exit_code']=prepared.returncode
+    if prepared.returncode != 0:
+        try: row['terminal']=json.loads(prepared.stdout)
+        except (ValueError,TypeError): pass
+    setup = parse(prepared);runner.check(setup.get('type')=='team_prepared','macos_team_prepare_protocol')
+    lock = Path(setup['lock_path']);workspace = Path(setup['workspace_path']);event_path = Path(setup['event_path'])
+    for target in (lock,workspace,event_path):
+        runner.check(target.is_relative_to(project/'team'),'macos_team_fixture_path_binding')
+    original = config.read_bytes();text = original.decode('utf8')
+    runner.check(text.count('updates:\n  enabled: true') == 1,'macos_team_updates_fixture_shape')
+    configured = text.replace('updates:\n  enabled: true','updates:\n  enabled: false',1).encode()
+    config.write_bytes(configured)
+    base.private_file(runner.evidence/'TEAM_RECOVERY_INPUTS.json',base.canonical({
+        'team_caller_sha256':base.sha_bytes(TEAM_CALLER.encode()),'original_config_sha256':base.sha_bytes(original),
+        'configured_config_sha256':base.sha_bytes(configured),'updates_disabled':True,'expected_shipping_doctor_steps':8}))
+    runner.check(not saved.exists(),'macos_team_fifo_backup_exists');config.rename(saved);os.mkfifo(config,0o600)
+    fifo_fd = os.open(config,os.O_RDWR|os.O_NONBLOCK);before = set(entries());process = None;restored = False
+    runner.public_started = True;runner.public_completed = False
+    native_closures = []
+
+    def closure(attempt,entry):
+        end = min(deadline,time.monotonic()+35)
+        while time.monotonic()<end:
+            nonce = os.urandom(32).hex()
+            value = runner.native_request(info,{'op':'observe_scope','attempt_id':attempt,
+                'descriptor_sha256':entry['descriptor_sha256'],'observation_nonce':nonce},'macos-team-readonly-closure',timeout=10)
+            if value.get('status')=='completed':break
+            time.sleep(.1)
+        runner.check(value.get('status')=='completed' and value.get('attempt_id')==attempt and
+            value.get('descriptor_sha256')==entry['descriptor_sha256'] and value.get('observation_nonce')==nonce and
+            value.get('schema')=='knowledge-darwin-scope-observation.v1' and value.get('cleanup_only') is True and
+            value.get('proof_current') is False and value.get('observation_cached') is False and value.get('capability_qualified') is True and
+            value.get('source_sha256')==runner.binaries['shipping']['source_sha256'] and all(value.get(key) is True for key in
+            ('kernel_membership_zero','admission_closed','spawn_exclusion_acquired','spawn_intents_resolved',
+             'guardian_exit_confirmed','root_child_exit_confirmed','registered_authority_exited','native_scope_closed')),
+            'macos_team_native_closure_unconfirmed')
+        native_closures.append(value);runner.task_uids.add(entry['descriptor']['task_ruid']);runner.expected_allocation_ids.add(attempt)
+        observed = parse(runner.sudo(str(runner.uid_scan),str(entry['descriptor']['task_ruid']),name='macos-team-independent-uid-zero',timeout=15))
+        runner.check(observed.get('observation_valid') is True and observed.get('member_count')==0,'macos_team_uid_not_empty')
+        for role in ACTORS:
+            runner.check(entry.get(role) and runner.compare_birth(entry[role]).get('state') in ('absent','replaced'),
+                'macos_team_exact_actor_exit_unconfirmed')
+
+    try:
+        with (runner.evidence/'team-crash.stdout.raw').open('wb') as output,(runner.evidence/'team-crash.stderr.raw').open('wb') as error:
+            process = subprocess.Popen([str(info['node']),str(caller)],stdin=subprocess.PIPE,stdout=output,stderr=error)
+            runner.active_monitor=process;process.stdin.write(base.canonical(request));process.stdin.close();controller=birth(process.pid)
+            old_entry = None;observed = None
+            while time.monotonic()<deadline and process.poll() is None:
+                candidates=[(key,value) for key,value in entries().items() if key not in before]
+                if len(candidates)==1:
+                    old_attempt,old_entry=candidates[0]
+                    if all(old_entry.get(role) for role in ACTORS) and (lock/'owner.json').is_file() and (lock/'execution-scope.json').is_file():
+                        observed=runner.sudo('/usr/sbin/lsof','-a','-p',str(old_entry['state_writer']['pid']),str(config),
+                            name='macos-team-actual-fifo-reader',timeout=10)
+                        if observed.returncode==0 and str(config).encode() in observed.stdout:break
+                time.sleep(.1)
+            if process.poll() is not None:
+                row['initial_controller_exit_code']=process.returncode
+                try:
+                    terminal_rows=[json.loads(line) for line in (runner.evidence/'team-crash.stdout.raw').read_bytes().splitlines()]
+                    failures=[item for item in terminal_rows if item.get('type')=='result']
+                    if len(failures)==1:row['terminal']=failures[0]
+                except (ValueError,TypeError):pass
+            runner.check(old_entry and (lock/'owner.json').is_file() and observed is not None and observed.returncode==0 and str(config).encode() in observed.stdout,
+                'macos_team_lock_and_fifo_not_observed')
+            old_owner_text=(lock/'owner.json').read_text();old_scope_text=(lock/'execution-scope.json').read_text()
+            old_owner=json.loads(old_owner_text);old_scope=json.loads(old_scope_text)
+            runner.check(old_owner.get('pid')==old_entry['state_writer']['pid'] and old_scope.get('backend')=='macos_uid_guardian' and
+                old_scope['binding']['attempt_id']==old_attempt and old_scope['binding']['descriptor_sha256']==old_entry['descriptor_sha256'] and
+                old_owner['execution_scope']['sha256']==base.sha_bytes(old_scope_text.encode()),'macos_team_old_lock_scope_binding')
+            starts=list((workspace/'flow-runs').glob('*.start.json'));runner.check(len(starts)==1,'macos_team_old_run_count')
+            old_start=json.loads(starts[0].read_bytes());old_run=old_start['run_id']
+            runner.check(not (workspace/'flow-runs'/(old_run+'.final.json')).exists(),'macos_team_crash_run_already_finalized')
+            send(controller,signal.SIGKILL);process.wait(timeout=15)
+        runner.check(process.returncode==-signal.SIGKILL,'macos_team_controller_kill_not_observed')
+        row['initial_controller_exit_code']=process.returncode;closure(old_attempt,old_entry)
+        runner.check((lock/'owner.json').read_text()==old_owner_text and (lock/'execution-scope.json').read_text()==old_scope_text,
+            'macos_team_lock_changed_before_public_restart')
+        os.close(fifo_fd);fifo_fd=None;config.unlink();saved.rename(config);restored=True
+        retry=runner.run('macos-team-public-restart',[str(info['node']),str(caller)],data=base.canonical(request),timeout=210)
+        messages=[json.loads(line) for line in retry.stdout.splitlines()]
+        terminals=[value for value in messages if value.get('type')=='result']
+        row['controller_exit_code']=retry.returncode
+        if len(terminals)==1:row['terminal']=terminals[0]
+        runner.check(retry.returncode==0 and len(terminals)==1 and terminals[0].get('ok') is True,'macos_team_public_restart_failed')
+        terminal=terminals[0];report=terminal['result'];out=report['value'];new_run=out.get('run_id')
+        runner.check(new_run and new_run!=old_run and out.get('retry_of') is None and out.get('team_release',{}).get('status')=='released' and
+            report.get('cleanup',{}).get('status')=='completed' and out.get('ownership',{}).get('status')=='completed' and
+            out.get('command_cleanup',{}).get('status')=='completed' and out.get('command_authority_cleanup',{}).get('status')=='completed' and
+            out.get('steps_total')==8 and isinstance(out.get('steps'),list) and len(out['steps'])==8 and
+            any(value.get('type')=='progress' and value.get('phase')=='step_admitted' for value in messages),
+            'macos_team_restart_ownership_or_execution_failed')
+        created={key:value for key,value in entries().items() if key not in before}
+        runner.check(len(created)==2,'macos_team_native_allocation_count');new_attempt=report['scope']['binding']['attempt_id']
+        runner.check(new_attempt!=old_attempt and new_attempt in created,'macos_team_native_attempt_not_distinct')
+        closure(new_attempt,created[new_attempt]);runner.check(not lock.exists(),'macos_team_new_lock_not_released')
+        events=[json.loads(line) for line in event_path.read_text().splitlines() if line.strip()]
+        acquired=[value for value in events if value.get('type')=='lock_acquired' and value.get('lock')=='flow']
+        runner.check(len(acquired)==2 and acquired[0]['lock_id']==old_owner['lock_id'] and acquired[1]['lock_id']!=old_owner['lock_id'],
+            'macos_team_new_lock_generation_not_distinct')
+        quarantines=[item for item in (lock.parent/'.stale').glob('*/owner.json') if item.read_text()==old_owner_text]
+        runner.check(len(quarantines)==1,'macos_team_old_generation_not_retained')
+        quarantined_scope=(quarantines[0].parent/'execution-scope.json').read_text()
+        runner.check(quarantined_scope==old_scope_text,'macos_team_quarantined_scope_changed')
+        old_final_exists=(workspace/'flow-runs'/(old_run+'.final.json')).exists()
+        new_start=json.loads((workspace/'flow-runs'/(new_run+'.start.json')).read_bytes())
+        new_final=json.loads((workspace/'flow-runs'/(new_run+'.final.json')).read_bytes())
+        runner.check(not old_final_exists and new_final.get('run_id')==new_run and new_final.get('release',{}).get('status')=='released',
+            'macos_team_run_finalization_binding')
+        proof={'old_owner_text':old_owner_text,'old_scope_text':old_scope_text,'quarantined_owner_text':quarantines[0].read_text(),
+            'quarantined_scope_text':quarantined_scope,'old_start':old_start,'new_start':new_start,'new_final':new_final,
+            'old_final_exists':old_final_exists,'team_events':events,'native_closures':native_closures,'retry_report':report,'lock_absent':not lock.exists()}
+        proof_bytes=base.canonical(proof);base.private_file(runner.evidence/'TEAM_RECOVERY_PROOF.private.json',proof_bytes)
+        runner.check(fixture['outside'].read_bytes()==b'unchanged','macos_team_outside_canary_changed')
+        row.update(controller_exit_code=retry.returncode,terminal={key:terminal[key] for key in ('type','ok','value','cleanup')},
+            team_recovery_proof_sha256=base.sha_bytes(proof_bytes),quality_status=out['checks_status'],overall_status=out['overall_status'],
+            elapsed_ms=(time.monotonic()-started)*1000,status='PASS_PHYSICAL_MACOS_WRITABLE')
+        row['observations'].update(exact_actor_exits=True,independent_uid_zero=True,typed_native_closure=True,private_allocation_count=2,
+            acceptance_after_cancel=False,automatic_native_cleanup=True,external_recovery_requested=False,outside_canary_unchanged=True,
+            public_team_main_async=True,abandoned_lock_published=True,old_lock_scope_native_bound=True,old_native_scope_closed_before_restart=True,
+            new_team_run_distinct=True,new_native_attempt_distinct=True,new_lock_generation_distinct=True,old_generation_quarantined_exact=True,
+            old_run_remains_incomplete=True,new_team_lock_released=True,fresh_team_steps_executed=8,fresh_team_cleanup_completed=True,
+            restart_not_retry_of=True,manual_owner_repair=False,actual_state_writer_fifo_fd_observed=True)
+        runner.public_completed=True;runner.active_monitor=None
+    finally:
+        if fifo_fd is not None:os.close(fifo_fd)
+        if runner.public_completed and restored:config.write_bytes(original)
+        if process is not None and process.poll() is not None:runner.active_monitor=None
 
 
 def main():

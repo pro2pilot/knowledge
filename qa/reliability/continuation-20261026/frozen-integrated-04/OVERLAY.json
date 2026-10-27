@@ -1,0 +1,739 @@
+{
+  "schema_version": "knowledge-continuation-overlay.v1",
+  "base": {
+    "archive_sha256": "750c3b561b594e97358adfa46969aa52f416e5c8cd3ce9a754dd533e5e02647c",
+    "manifest_sha256": "bc4aa130f2d85addaf6b9d2d3f8062141e3c32fcfdf34b104a5e36e33fd64723",
+    "file_count": 650
+  },
+  "target_manifest_sha256": "de8f0b1985175d83206841fe7b389c32bb651010ae0ca1ab309b14c81d77c58e",
+  "target_archive": {
+    "sha256": "56cf215aaead2c07c285202243a75f57ca7e9ba81f4f7bc14ec504f604f08096",
+    "bytes": 7375291
+  },
+  "changes": [
+    {
+      "path": "install-manifest.json",
+      "overlay": "overlays/0000.bin",
+      "base": {
+        "path": "install-manifest.json",
+        "bytes": 27599,
+        "sha256": "e0bdefbc7bd8ab88cf7141ec17b948a0c53cb4bb46dfcb6689039b3b2ea17c1d",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "install-manifest.json",
+        "bytes": 27938,
+        "sha256": "f811e4ed00a5608ca48a9aba40c26571f3ba3900a1dcae1d125826ca816e66e8",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "package.json",
+      "overlay": "overlays/0001.bin",
+      "base": {
+        "path": "package.json",
+        "bytes": 8991,
+        "sha256": "0ec9c200e251d0832150e08a8b290b93ab54602dd578dde9057f544fe9424db5",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "package.json",
+        "bytes": 8991,
+        "sha256": "1ae82965dba18d36a088fff63d6a9e4796459d30d481c871d75cbc26d5c421a1",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-darwin-boolean-wire.test.js",
+      "overlay": "overlays/0002.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-darwin-boolean-wire.test.js",
+        "bytes": 4941,
+        "sha256": "251ca3b66068a37180c75a0458d108e0121cdc508cfb15ec85e29e215e0d8eac",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-darwin-scope-query.test.js",
+      "overlay": "overlays/0003.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-darwin-scope-query.test.js",
+        "bytes": 7108,
+        "sha256": "2b757896ebf176c607d8ec38a2cecbcdb941a39290f4602c7bfada5c2f297d41",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-darwin-scratch.test.js",
+      "overlay": "overlays/0004.bin",
+      "base": {
+        "path": "tests/reliability-darwin-scratch.test.js",
+        "bytes": 4159,
+        "sha256": "72717b569de868f97e53aa1dccf447375fba31a6e666c0f6b8c40c3a53f8388f",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-darwin-scratch.test.js",
+        "bytes": 4262,
+        "sha256": "0774c19fa38f946e0b1ed0187d1bb9a6b8df26006a89fa5271f1cdc506e0bab7",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-darwin-storage-guardian-contract.test.js",
+      "overlay": "overlays/0005.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-darwin-storage-guardian-contract.test.js",
+        "bytes": 9701,
+        "sha256": "a65ea6401201cfd0a447b6834d8b54481a295083ae0c573c7ee52d2806205185",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-flow-owned.test.js",
+      "overlay": "overlays/0006.bin",
+      "base": {
+        "path": "tests/reliability-flow-owned.test.js",
+        "bytes": 9190,
+        "sha256": "83df55c730ca8200526bfec7c80796f1aa345039a7f5c68db3e44e12f0e3a8bd",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-flow-owned.test.js",
+        "bytes": 11320,
+        "sha256": "17e5383b617627802b746098aaf4d13ce459f553a955b0939948313af68cd976",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-macos-command-runner.test.js",
+      "overlay": "overlays/0007.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-macos-command-runner.test.js",
+        "bytes": 27705,
+        "sha256": "40ab39aabc3ffad5ef4a69af0715383bab8c48b0c10eaae81e7abf529773f9b8",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-macos-custody.test.js",
+      "overlay": "overlays/0008.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-macos-custody.test.js",
+        "bytes": 10894,
+        "sha256": "a37eafa4d5eb42e1b06560708538c185bd6793a65facd937d2a128d8c715d20d",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-macos-lock-preflight.test.js",
+      "overlay": "overlays/0009.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-macos-lock-preflight.test.js",
+        "bytes": 8188,
+        "sha256": "0377b6f13a04778767554f40243c6710e459b489b62a09175cb9dc132ea389a1",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-macos-native-authority.test.js",
+      "overlay": "overlays/0010.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-macos-native-authority.test.js",
+        "bytes": 8114,
+        "sha256": "4a90ea692ade02f318327b5d9509cee67697bd489a1feb505573752d30f17720",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-macos-worker-envelope.test.js",
+      "overlay": "overlays/0011.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-macos-worker-envelope.test.js",
+        "bytes": 5234,
+        "sha256": "c6ab6cf9afc83fd06cad6dd222871be1747de4aabcf5a350db57c5da0a684119",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-macos-workspace-protocol.test.js",
+      "overlay": "overlays/0012.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-macos-workspace-protocol.test.js",
+        "bytes": 13272,
+        "sha256": "171dff6ebd8505e1808d236af646511e28dccb4dd96df99fd911792986e3a587",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-progress-graceful-close.test.js",
+      "overlay": "overlays/0013.bin",
+      "base": {
+        "path": "tests/reliability-progress-graceful-close.test.js",
+        "bytes": 4954,
+        "sha256": "f75d74c0513270766410f3f766edfc698b7c5835ef548ec5c111337952eaf1d5",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-progress-graceful-close.test.js",
+        "bytes": 8511,
+        "sha256": "7a8f4b602188ad9118d183024390ab5621d7036674f5554645de137110d0afcf",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-runtime-install-completeness.test.js",
+      "overlay": "overlays/0014.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-runtime-install-completeness.test.js",
+        "bytes": 4693,
+        "sha256": "59a904102b4d982e25282da8e64f54352909def40fdebcc39a28163ebc5e612f",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-scope-query-budget.test.js",
+      "overlay": "overlays/0015.bin",
+      "base": {
+        "path": "tests/reliability-scope-query-budget.test.js",
+        "bytes": 9031,
+        "sha256": "6f0a322d521053ae1d1db13c2e2274e5479598d3704975b85c7fa81dd8a27c4c",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/reliability-scope-query-budget.test.js",
+        "bytes": 11770,
+        "sha256": "a022de654cb6d421078289c96d3297785965edaf4fe9fa44aa628ebd0a4ecaf9",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-watchdog-progress-close.test.js",
+      "overlay": "overlays/0016.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-watchdog-progress-close.test.js",
+        "bytes": 5628,
+        "sha256": "bb59601cec7308b47eedd5501852c91ceb837086cff2a34f134d87cf7ec806a8",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-watcher-control.test.js",
+      "overlay": "overlays/0017.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-watcher-control.test.js",
+        "bytes": 18083,
+        "sha256": "1facf59ce34a96355f4c313a6259935766ee106b9f68b2daff99bd195e6703eb",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/reliability-watcher-native.test.js",
+      "overlay": "overlays/0018.bin",
+      "base": null,
+      "result": {
+        "path": "tests/reliability-watcher-native.test.js",
+        "bytes": 12822,
+        "sha256": "a3d04f88b114a59349d0fc0d406330d2746288775c15b1d396a950fcbe515498",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/repair-producer-dependency-closure.test.js",
+      "overlay": "overlays/0019.bin",
+      "base": null,
+      "result": {
+        "path": "tests/repair-producer-dependency-closure.test.js",
+        "bytes": 3082,
+        "sha256": "1fc639763c0b8fa64e1fc59ef90b2e18b8e167b3a81be1049f628d72eb033d61",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/report-generation.test.js",
+      "overlay": "overlays/0020.bin",
+      "base": {
+        "path": "tests/report-generation.test.js",
+        "bytes": 12023,
+        "sha256": "171ae354200c18d8c2d95fcc25384db3e1188e4362ce53f87763d0a42dab4441",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/report-generation.test.js",
+        "bytes": 16298,
+        "sha256": "1f370f471c61eae61077feed054f0e981d046939c044385d69fb6c2c25f29cee",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/verification-darwin-client.test.js",
+      "overlay": "overlays/0021.bin",
+      "base": {
+        "path": "tests/verification-darwin-client.test.js",
+        "bytes": 15151,
+        "sha256": "01de261c72893301f9def06828435584944b5b41776cd1acd2d1a8cd7d6db65e",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/verification-darwin-client.test.js",
+        "bytes": 15802,
+        "sha256": "5088affb962c3b5d6b8432bef736a840a0a95f5a54e043fdca73a9db4d942d05",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tests/watch-attempt-ownership.test.js",
+      "overlay": "overlays/0022.bin",
+      "base": {
+        "path": "tests/watch-attempt-ownership.test.js",
+        "bytes": 37012,
+        "sha256": "2a4949ae2018ab467d4400d40eb73d2035c320c68dd4b1dc28f7f4a2b8a5959e",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tests/watch-attempt-ownership.test.js",
+        "bytes": 41197,
+        "sha256": "00ce0d592cb1928f6f809aa63313dfc7aa4c4c21fb2627a5f9c2be1be6d3f293",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/evaluation-harness.js",
+      "overlay": "overlays/0023.bin",
+      "base": {
+        "path": "tools/evaluation-harness.js",
+        "bytes": 11362,
+        "sha256": "a30352e392be25562d67806b1a6a3204d922403a4b4b5ed75943de7244d68f63",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/evaluation-harness.js",
+        "bytes": 11409,
+        "sha256": "f278f2fde83be251db42bd01f0a8bc71ccce351abc30e95da31110fbc2c93c50",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/flow.js",
+      "overlay": "overlays/0024.bin",
+      "base": {
+        "path": "tools/flow.js",
+        "bytes": 37121,
+        "sha256": "a2279f49850cf83b02d5dad9b53c9e7150b7a2036048f98fc35c2e7ff241b4e2",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/flow.js",
+        "bytes": 37429,
+        "sha256": "0a1066e21260b355ea7d4799f05337bae28d791c9e216869a75d3d92848db222",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-runner.js",
+      "overlay": "overlays/0025.bin",
+      "base": {
+        "path": "tools/lib/command-runner.js",
+        "bytes": 36814,
+        "sha256": "4bbbb17efd829ccdf10973bfe146734454b1227e506b8e13f7d30bf99e87b57c",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/command-runner.js",
+        "bytes": 37799,
+        "sha256": "db49bb78ac0e03d36949a078ba3f292a3f6ebbb757f91ab5186ec1edfc5d0c33",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-scope-proof.js",
+      "overlay": "overlays/0026.bin",
+      "base": {
+        "path": "tools/lib/command-scope-proof.js",
+        "bytes": 8539,
+        "sha256": "6cec2d118297850efc379bf48702d550796447a01136632e0f764576f8cd6064",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/command-scope-proof.js",
+        "bytes": 11531,
+        "sha256": "8b23826878ccddce0b4c9b1a72bfeae5bf9e4bfbd7ac45c65ca3187d5cfc745b",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-sync-driver.js",
+      "overlay": "overlays/0027.bin",
+      "base": {
+        "path": "tools/lib/command-sync-driver.js",
+        "bytes": 4688,
+        "sha256": "9b6953e5c0fa5ab49b03fcbc31b8abc76af6409d38a07859d093fdef838e4993",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/command-sync-driver.js",
+        "bytes": 4793,
+        "sha256": "26929899c210905f4e8c703f5ccba7cad1aa5eb1ef8cfb00d33e10549630db75",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/command-worker.js",
+      "overlay": "overlays/0028.bin",
+      "base": {
+        "path": "tools/lib/command-worker.js",
+        "bytes": 8072,
+        "sha256": "2c7bb046b23f0dfe3cdf36bfddc3a450c117ee2a84487995bebc4180ab46b7ee",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/command-worker.js",
+        "bytes": 8186,
+        "sha256": "0fed0465a9be374897430a7ac019e64ad115902eaf77252a0f4aef194c22e11a",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/lock-owner-schema.js",
+      "overlay": "overlays/0029.bin",
+      "base": {
+        "path": "tools/lib/lock-owner-schema.js",
+        "bytes": 5737,
+        "sha256": "e4b520be13bfc8265d69e604c6ca8c5a6067696a483a770e998e9653c3fde3d6",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/lock-owner-schema.js",
+        "bytes": 5759,
+        "sha256": "679dad454d26be2385531eadf89c0e0f6a6acda19d80a4428e9a966f7b26845c",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-command-runner.js",
+      "overlay": "overlays/0030.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-command-runner.js",
+        "bytes": 17366,
+        "sha256": "1477799df33a79eee01638cd00ff90f9b89fc78731ad0c7d4b99867587ef23f6",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-command-scope.js",
+      "overlay": "overlays/0031.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-command-scope.js",
+        "bytes": 12125,
+        "sha256": "f041b0503e38b342b1e60dd213e921a70889830e2940d46f067538d95bb16062",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-command-worker.js",
+      "overlay": "overlays/0032.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-command-worker.js",
+        "bytes": 13574,
+        "sha256": "1eeda5e3592f3c90119b9cbb21ecd66291f66dbc1e73e0d71e88974a13903a17",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-lock-preflight.js",
+      "overlay": "overlays/0033.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-lock-preflight.js",
+        "bytes": 5415,
+        "sha256": "e7d11f06e44d18f8b830df1f465da81e114f2dc0fb895a137b3318a2b1f60429",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-worker-envelope.js",
+      "overlay": "overlays/0034.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-worker-envelope.js",
+        "bytes": 7775,
+        "sha256": "ec3f9d1b9a976fd193331cf1bb976cf5b13b3062a4f11142f033d478453455a2",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-workspace-protocol.js",
+      "overlay": "overlays/0035.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-workspace-protocol.js",
+        "bytes": 5887,
+        "sha256": "a849972113ca1f13f84dfe1677211127fbb0186a2e447bd0831fd95320cc8222",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/macos-workspace-session.js",
+      "overlay": "overlays/0036.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/macos-workspace-session.js",
+        "bytes": 9509,
+        "sha256": "2600afce3ffb625cc92c8d0b8c05b85e1360b906977917a34ade76a0c081d572",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/repair-on-touch.js",
+      "overlay": "overlays/0037.bin",
+      "base": {
+        "path": "tools/lib/repair-on-touch.js",
+        "bytes": 117437,
+        "sha256": "78b3ead75d38d0bd3a2b84b0f6f7a4bcac9bdf4089fe6f2e1a4f1b296b354b93",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/repair-on-touch.js",
+        "bytes": 118029,
+        "sha256": "19d43765f003f38c5718fc0ce333c14dfc2841df7078231b97d1c6f0fc18b43e",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/report-generation.js",
+      "overlay": "overlays/0038.bin",
+      "base": {
+        "path": "tools/lib/report-generation.js",
+        "bytes": 10545,
+        "sha256": "e607b305a04b6cef6a6fcc177482e95eebefde49919dbdbff5e6a3597245b30e",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/report-generation.js",
+        "bytes": 10852,
+        "sha256": "ea5ee819a1b5e7bb9114e123116658f1a43fa75e18b5a893bc265efa20c420c3",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-broker.m",
+      "overlay": "overlays/0039.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-broker.m",
+        "bytes": 242570,
+        "sha256": "dceae58e8514011fcbf756db1c357ee33fb263095a8a4831442d65fcfa521f93",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-broker.m",
+        "bytes": 281258,
+        "sha256": "d73b9a14737cb6199a729c034fbeac4dcdc9c748bdb67ce602bec98da8ab55d0",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-client.js",
+      "overlay": "overlays/0040.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-client.js",
+        "bytes": 14002,
+        "sha256": "a4c5e0c5a38d9b764ab9ba7254987ea56f35d2bf92a944efe69445053dd69302",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-client.js",
+        "bytes": 14023,
+        "sha256": "4b5c73e908a8a164d0ca979e19481c503c7ab416cc929ae66eda41c8c2e35da9",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-production.js",
+      "overlay": "overlays/0041.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-production.js",
+        "bytes": 32677,
+        "sha256": "d23a579ccfcfc1514036772d015f8ed06d37d172a4b75e0226540d6666270850",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-production.js",
+        "bytes": 35539,
+        "sha256": "8ede45d81dfc065541ba03501ff0e343446a46274ec4401bc52cf799f00a6f52",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-scope.js",
+      "overlay": "overlays/0042.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-scope.js",
+        "bytes": 21396,
+        "sha256": "33e14ec12c3e19c8b84857d0da78271ded3d750e1da1b4724c2181b8e0bd2f9b",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-scope.js",
+        "bytes": 22734,
+        "sha256": "a70b0e64181c6909613428537af845cd00b1b197cd32997a3aaff20bb47fa044",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-storage-guardian.js",
+      "overlay": "overlays/0043.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-storage-guardian.js",
+        "bytes": 12472,
+        "sha256": "6d5b49764e367d9c8e164419253a5c50ce7218107912910beceea160550bba22",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-storage-guardian.js",
+        "bytes": 16654,
+        "sha256": "8d239d6cc6c78bb23bc7f4a62cb859ff78a1daecded726d04541cbf7e85d6b58",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-darwin-stub.c",
+      "overlay": "overlays/0044.bin",
+      "base": {
+        "path": "tools/lib/verification-darwin-stub.c",
+        "bytes": 40130,
+        "sha256": "02de14cec5d1c71e4a36282a52183c2821a6ec11cbb47e07708df3d85be7fc23",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-darwin-stub.c",
+        "bytes": 41158,
+        "sha256": "b47a5ccd4d0836fc9e90adb64714352fe3827da5278428bd6cbc1af8350a4b1c",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-progress.js",
+      "overlay": "overlays/0045.bin",
+      "base": {
+        "path": "tools/lib/verification-progress.js",
+        "bytes": 6427,
+        "sha256": "a89acd5d8af7702de80c417533b99f34a56cefcc34e8ae2241c14bc5b2c68bee",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-progress.js",
+        "bytes": 6686,
+        "sha256": "b2c07e06ff531e8628510f06512f7346ee702242c9ab7f57a86212b3d3fabfa5",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/verification-watchdog.js",
+      "overlay": "overlays/0046.bin",
+      "base": {
+        "path": "tools/lib/verification-watchdog.js",
+        "bytes": 22444,
+        "sha256": "f981ed4e6ee8e6becafb18ea6fecd07b389d42e9b655da39ca083f3c2f4babbe",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/lib/verification-watchdog.js",
+        "bytes": 23164,
+        "sha256": "b563bfebb28dc0253a1ad885ac4b1c9b6157e9477e452f5aecd2e6eaf30e6e2d",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/lib/watch-maintenance-worker.js",
+      "overlay": "overlays/0047.bin",
+      "base": null,
+      "result": {
+        "path": "tools/lib/watch-maintenance-worker.js",
+        "bytes": 19120,
+        "sha256": "261cfdc96b9fe22fd29d5239f3b63dce9e121f9f88df2452782bb7622b0fe70f",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/self-test-repair-on-touch.js",
+      "overlay": "overlays/0048.bin",
+      "base": {
+        "path": "tools/self-test-repair-on-touch.js",
+        "bytes": 156375,
+        "sha256": "e59389fe1979cdfe866e0f800762d664f93c47259876e49fb800266c5439b334",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/self-test-repair-on-touch.js",
+        "bytes": 158072,
+        "sha256": "1cc13b361bbc3ef7d04beeacea189f4c3b7f5ca47a30d507090fa088bd7b9ce6",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/self-test-watch-runtime-safety.js",
+      "overlay": "overlays/0049.bin",
+      "base": {
+        "path": "tools/self-test-watch-runtime-safety.js",
+        "bytes": 11049,
+        "sha256": "3779831e013c8c23b80758ebb5b6e8bec33e6647ac27d8a89b9e966f5598abc6",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/self-test-watch-runtime-safety.js",
+        "bytes": 14674,
+        "sha256": "16cf9e679e9cb4eecd1017386d7f1dcf299010bbb5c6421068a914d0be62f591",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/update-system-files.js",
+      "overlay": "overlays/0050.bin",
+      "base": {
+        "path": "tools/update-system-files.js",
+        "bytes": 98652,
+        "sha256": "f17b8bc074343174b01087ff1347077a74d2abbd64a3fdfba866fea5d98ac00d",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/update-system-files.js",
+        "bytes": 98991,
+        "sha256": "c6518ef024deb8787fe504d0bc93c8b29a6a9e97de2bcc7afad8ec96d1110241",
+        "mode": "0644"
+      }
+    },
+    {
+      "path": "tools/watch-maintenance.js",
+      "overlay": "overlays/0051.bin",
+      "base": {
+        "path": "tools/watch-maintenance.js",
+        "bytes": 13988,
+        "sha256": "c32bf0d2e9e89681cc2a937934be104c374b6241bf620d98d0052375d2ebc215",
+        "mode": "0644"
+      },
+      "result": {
+        "path": "tools/watch-maintenance.js",
+        "bytes": 9195,
+        "sha256": "25e2dde7bcf18deece31de77eb9c612463e69361900bc42b4c947af1dca037f3",
+        "mode": "0644"
+      }
+    }
+  ],
+  "native_qualification": "PENDING",
+  "release_gate_qualified": false
+}

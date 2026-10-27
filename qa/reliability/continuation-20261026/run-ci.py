@@ -61,7 +61,9 @@ EXTRA_COHORT_COUNTS = {
     'macos-workspace-protocol': 9, 'macos-command-runner': 26,
     'macos-worker-envelope': 8, 'macos-native-authority': 3,
     'macos-boolean-wire': 3, 'repair-producer-dependency-closure': 8,
-    'macos-lock-preflight': 8, 'macos-custody': 1,
+    'macos-lock-preflight': 8, 'macos-custody': 2,
+    'macos-storage-guardian-contract': 6, 'runtime-install-completeness': 10,
+    'watchdog-progress-close': 3,
 }
 
 
@@ -108,7 +110,7 @@ def main():
     parser.add_argument('--platform', choices=['linux', 'win32', 'darwin'], required=True)
     parser.add_argument('--arch', choices=['x64', 'arm64'], required=True)
     parser.add_argument('--phase', choices=['diagnostic', 'full'], default='diagnostic')
-    parser.add_argument('--macos-cohort', choices=['combined', 'basic', 'failures', 'writable', 'physical'], default='combined')
+    parser.add_argument('--macos-cohort', choices=['combined', 'basic', 'failures', 'writable', 'writer-sandbox', 'physical'], default='combined')
     args = parser.parse_args()
     prepared = Path(args.prepared).resolve(strict=True)
     source = prepared / 'source/.knowledge'
@@ -251,7 +253,7 @@ def main():
             raise RuntimeError('Required additional cohort missing or unexpected')
         source_names = set(rows(manifest))
         for name, cohort in extra_cohorts.items():
-            platforms = {'darwin'} if name.startswith('macos-') else {'linux', 'win32', 'darwin'} if name == 'repair-producer-dependency-closure' else {'linux', 'win32'}
+            platforms = {'darwin'} if name.startswith('macos-') else {'linux', 'win32', 'darwin'} if name in {'repair-producer-dependency-closure', 'runtime-install-completeness', 'watchdog-progress-close'} else {'linux', 'win32'}
             kind = 'json-selftest' if name == 'watcher-runtime-safety' else 'tap'
             if cohort.get('count') != EXTRA_COHORT_COUNTS[name] or set(cohort.get('platforms', [])) != platforms or cohort.get('kind') != kind or \
                     not isinstance(cohort.get('files'), list) or len(cohort['files']) != 1 or not set(cohort['files']) <= source_names:
@@ -295,6 +297,12 @@ def main():
                     '--reference', QA / 'reference', '--evidence', location, '--expected-arch', arch], 900)
                 run('macos-writable-summary', [sys.executable, QA / 'controllers/macos-writable-summary.py', '--private', location,
                     '--public', public / 'macos-writable', '--source', source, '--controller-status', row.get('exit_code', 1), '--expected-arch', arch], 60)
+            if args.macos_cohort == 'writer-sandbox':
+                location = private / 'macos-writer-sandbox'
+                row, _ = run('macos-writer-sandbox', [sys.executable, QA / 'controllers/macos-writer-sandbox-lifecycle.py', '--source', source,
+                    '--reference', QA / 'reference', '--evidence', location, '--expected-arch', arch], 420)
+                run('macos-writer-sandbox-summary', [sys.executable, QA / 'controllers/macos-writer-sandbox-summary.py', '--private', location,
+                    '--public', public / 'macos-writer-sandbox', '--source', source, '--controller-status', row.get('exit_code', 1), '--expected-arch', arch], 60)
             if args.macos_cohort == 'physical' or args.macos_cohort == 'combined' and args.phase == 'full':
                 location = private / 'macos-physical'
                 row, _ = run('macos-physical', [sys.executable, QA / 'controllers/darwin-native-lifecycle.py', '--source', source,

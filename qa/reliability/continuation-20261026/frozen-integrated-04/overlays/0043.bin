@@ -1,0 +1,260 @@
+'use strict';
+
+// Fixed ordinary-UID storage child. The guardian's process exit is never the
+// storage writer's exit proof. S is admitted only after its exact native birth
+// reaches M; an unexpected G exit triggers an atomic-birth native stop of S.
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { EventEmitter } = require('node:events');
+const { spawn } = require('node:child_process');
+const signals = require('node:os').constants.signals;
+const { nativeEnv } = require('./verification-darwin-client');
+const PROTOCOL = 'knowledge-darwin-storage-guardian.v1';
+const HEX = /^[a-f0-9]{64}$/;
+const DECIMAL = /^(?:0|[1-9][0-9]{0,19})$/;
+const clock = () => process.hrtime.bigint();
+const error = code => Object.assign(new Error(code), { code });
+const identityKeys = ['pid', 'ruid', 'unique_id', 'parent_unique_id', 'start_sec', 'start_usec', 'pidversion'];
+function identity(value) {
+  return value && Object.keys(value).length === identityKeys.length && identityKeys.every(k => Object.hasOwn(value, k)) &&
+    Number.isSafeInteger(value.pid) && value.pid > 1 && value.pid <= 2147483647 &&
+    Number.isSafeInteger(value.ruid) && value.ruid > 0 && value.ruid <= 4294967295 &&
+    typeof value.unique_id === 'string' && DECIMAL.test(value.unique_id) && BigInt(value.unique_id) > 0n &&
+    typeof value.parent_unique_id === 'string' && DECIMAL.test(value.parent_unique_id) &&
+    Number.isSafeInteger(value.start_sec) && value.start_sec > 0 &&
+    Number.isSafeInteger(value.start_usec) && value.start_usec >= 0 && value.start_usec < 1000000 &&
+    Number.isSafeInteger(value.pidversion) && value.pidversion > 0 && value.pidversion <= 4294967295;
+}
+function sameBirth(a, b) { return identity(a) && identity(b) && identityKeys.every(key => a[key] === b[key]); }
+function signalName(value) { return Object.keys(signals).find(key => signals[key] === value) || null; }
+function createStorageChild({ config, source_sha256, deadline_ns, cleanup_ms, phase = 'work', macosWorkerRoot, beforeMacOSPermit, macosWritableRoot, beforeStoragePermit }) {
+  const started = clock();let deadline;
+  try { deadline = BigInt(deadline_ns); } catch { throw error('verification_darwin_storage_guardian_input'); }
+  if (!config || !path.isAbsolute(config.broker_path || '') || !HEX.test(source_sha256 || '') ||
+      !Number.isSafeInteger(cleanup_ms) || cleanup_ms < 1 || cleanup_ms > 3600000 ||
+      !['work', 'cleanup'].includes(phase) || deadline <= started) throw error('verification_darwin_storage_guardian_input');
+  if (macosWorkerRoot !== undefined && (typeof macosWorkerRoot !== 'string' || !path.isAbsolute(macosWorkerRoot) ||
+      path.normalize(macosWorkerRoot) !== macosWorkerRoot || macosWorkerRoot === '/')) throw error('command_macos_worker_root_invalid');
+  if (beforeMacOSPermit !== undefined && (macosWorkerRoot === undefined || typeof beforeMacOSPermit !== 'function')) {
+    throw error('command_macos_custody_callback_invalid');
+  }
+  if (beforeStoragePermit !== undefined && (macosWorkerRoot !== undefined || beforeMacOSPermit !== undefined ||
+      typeof beforeStoragePermit !== 'function')) throw error('verification_darwin_storage_custody_callback_invalid');
+  const beforePermit = beforeMacOSPermit || beforeStoragePermit;
+  if (macosWritableRoot !== undefined && (macosWorkerRoot === undefined || typeof macosWritableRoot !== 'string' ||
+      !path.isAbsolute(macosWritableRoot) || path.normalize(macosWritableRoot) !== macosWritableRoot || macosWritableRoot === '/')) {
+    throw error('command_macos_writable_root_invalid');
+  }
+  // Native code independently admits this fixed entrypoint only below an
+  // administrator-provisioned immutable package root, never a project script.
+  const workerPath = macosWorkerRoot === undefined ? path.join(__dirname, 'verification-darwin-store.js') :
+    path.join(macosWorkerRoot, 'tools/lib/macos-command-worker.js');
+  const nonce = crypto.randomBytes(32).toString('hex');
+  const args = ['--storage-guardian', process.execPath, workerPath,
+    String(process.pid), String(deadline), String(cleanup_ms), phase, nonce];
+  if (macosWritableRoot !== undefined) args.push(macosWritableRoot);
+  const guard = spawn(config.broker_path, args, { env: nativeEnv(),
+    detached: true, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'ipc', 'pipe'] });
+  const child = new EventEmitter();
+  let birth, guardBirth, terminal, protocolError = false, guardExited = false, guardCode, guardSignal;
+  let writerSandbox = null, writableRootSHA = null;
+  let ipcClosed = false, statusClosed = false, deliveredExit = false, stopped = false, cleanupPhase = phase === 'cleanup';
+  let nativeStop, tightenNativeStop, stopStarted = false, fallbackExit = false, readyResolve, readyReject, bytes = Buffer.alloc(0), records = 0;
+  const ready = new Promise((resolve, reject) => { readyResolve = resolve;readyReject = reject; });ready.catch(() => {});
+  const writeControl = data => new Promise((resolve, reject) => {
+    if (guardExited || guard.stdio[3].destroyed) { reject(error('verification_darwin_storage_guardian_closed'));return; }
+    guard.stdio[3].write(data, cause => cause ? reject(cause) : resolve());
+  });
+  function emitError(code, causeCode) {
+    const failure = error(code);
+    // Keep only a typed operation code for diagnosis, never the native reply,
+    // bearer token, arbitrary message or stack from a failed custody request.
+    if (typeof causeCode === 'string' && /^(?:[A-Z][A-Z0-9_]{1,127}|verification_[a-z0-9_]{1,100}|command_[a-z0-9_]{1,100})$/.test(causeCode)) {
+      failure.native_code = causeCode;
+    }
+    protocolError = true;readyReject(failure);child.emit('error', failure);
+  }
+  function acceptedTerminal() {
+    return !protocolError && terminal && sameBirth(terminal.child, birth) && terminal.child_reaped === true &&
+      typeof terminal.admitted === 'boolean' && typeof terminal.clock_healthy === 'boolean' && typeof terminal.stopped === 'boolean' &&
+      (terminal.exit_code === null || Number.isSafeInteger(terminal.exit_code) && terminal.exit_code >= 0 && terminal.exit_code <= 255) &&
+      (terminal.signal === null || Number.isSafeInteger(terminal.signal) && terminal.signal > 0 && terminal.signal <= 128) &&
+      (terminal.exit_code === null) !== (terminal.signal === null);
+  }
+  function observeCompletion() {
+    if (deliveredExit || !guardExited || !statusClosed || !ipcClosed || nativeStop) return;
+    if (guardCode === 0 && guardSignal === null && acceptedTerminal()) {
+      deliveredExit = true;
+      // A physical waitpid proof remains cleanup evidence after cancellation;
+      // normal acceptance additionally requires a healthy unstopped guardian.
+      const code = terminal.exit_code === 0 && (!terminal.clock_healthy || terminal.stopped) ? 1 : terminal.exit_code;
+      child.emit('exit', code, terminal.signal === null ? null : signalName(terminal.signal));
+    } else if (fallbackExit) {
+      deliveredExit = true;child.emit('exit', null, 'SIGKILL');
+    }
+  }
+  function stopKnownWriter() {
+    if (!birth || stopStarted || deliveredExit) return;
+    stopStarted = true;
+    let end = deadline;const observationNonce = crypto.randomBytes(32).toString('hex');
+    if (clock() >= end) return;
+    const target = birth;
+    const stopArgs = ['--stop-storage', String(process.pid), String(target.pid), String(target.ruid), target.unique_id,
+      String(target.start_sec), String(target.start_usec), String(target.pidversion), target.parent_unique_id,
+      String(end), observationNonce];
+    const helper = spawn(config.broker_path, stopArgs, { env: nativeEnv(), stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    nativeStop = helper;
+    let data = Buffer.alloc(0), exited = false, eof = false, invalid = false, code, signal;
+    let timeout;
+    const expire = () => {
+      invalid = true;
+      try { if (!exited) helper.kill('SIGKILL'); } catch {}
+      // A helper itself stuck in kernel I/O must not hold M's event loop
+      // through its output pipe after the shared cleanup epoch. This is
+      // abandonment with UNCONFIRMED writer state, never an exit proof.
+      try { helper.stdout.destroy(); } catch {}
+      try { helper.unref(); } catch {}
+    };
+    const arm = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(expire, Math.max(1, Math.min(2147483647, Math.ceil(Number(end - clock()) / 1e6))));
+    };
+    tightenNativeStop = next => {
+      if (typeof next === 'bigint' && next < end) { end = next;arm(); }
+    };
+    arm();
+    function finish() {
+      if (!exited || !eof) return;clearTimeout(timeout);
+      if (nativeStop === helper) { nativeStop = null;tightenNativeStop = null; }
+      if (!invalid && code === 0 && signal === null && clock() < end) {
+        try {
+          const reply = JSON.parse(data.toString('utf8'));
+          fallbackExit = reply.protocol === PROTOCOL && reply.event === 'observed' && reply.nonce === observationNonce &&
+            reply.source_sha256 === source_sha256 && reply.status === 'exited' && reply.clock_healthy === true && sameBirth(reply.child, target);
+        } catch {}
+      }
+      observeCompletion();
+    }
+    helper.stdout.on('data', part => { if (data.length + part.length > 4096) { invalid = true;helper.kill('SIGKILL'); }
+      else data = Buffer.concat([data, part]); });
+    helper.stdout.once('end', () => { eof = true;finish(); });
+    helper.stdout.once('error', () => { invalid = true; });
+    helper.once('exit', (value, why) => { exited = true;code = value;signal = why;finish(); });
+    helper.once('error', () => { invalid = true;if (!helper.pid) { exited = eof = true;finish(); } });
+  }
+  function requestStop() {
+    stopped = true;readyReject(error('verification_darwin_storage_guardian_stopped'));
+    if (!guardExited) {
+      writeControl('S\n').catch(() => {});
+      // The direct owned guardian may have been paused by an operator/test.
+      // SIGCONT lets its native latch/own-child wait loop finish; it does not
+      // establish writer exit by itself.
+      guard.kill('SIGCONT');
+    }
+    stopKnownWriter();return true;
+  }
+  function record(value) {
+    if (!value || value.protocol !== PROTOCOL || value.nonce !== nonce || value.source_sha256 !== source_sha256) {
+      throw error('verification_darwin_storage_guardian_protocol');
+    }
+    if (value.event === 'ready' && !birth && records === 1) {
+      if (!identity(value.child) || !identity(value.guardian) || value.guardian.pid !== guard.pid ||
+          value.child.pid === guard.pid || value.child.ruid !== process.getuid() || value.guardian.ruid !== process.getuid() ||
+          typeof value.observed_ns !== 'string' || !DECIMAL.test(value.observed_ns) ||
+          value.clock !== 'node_hrtime_continuous.v1' || value.deadline_ns !== String(deadline) ||
+          BigInt(value.observed_ns) < started || BigInt(value.observed_ns) > clock() || clock() >= deadline) {
+        throw error('verification_darwin_storage_guardian_birth');
+      }
+      if (macosWorkerRoot !== undefined) {
+        const expected = macosWritableRoot === undefined ? null : crypto.createHash('sha256').update(macosWritableRoot, 'utf8').digest('hex');
+        if (value.writer_sandbox !== (macosWritableRoot === undefined ? 'none' : 'workspace.v1') || value.writable_root_sha256 !== expected) {
+          throw error('command_macos_writer_sandbox_unconfirmed');
+        }
+        writerSandbox = value.writer_sandbox;writableRootSHA = value.writable_root_sha256;
+      }
+      birth = Object.freeze(value.child);guardBirth = Object.freeze(value.guardian);
+      if (stopped || guardExited) { stopKnownWriter();return; }
+      Promise.resolve().then(() => beforePermit?.(Object.freeze({ writer: birth, guardian: guardBirth }))).then(() => {
+        if (stopped || guardExited || clock() >= deadline) throw error('command_macos_custody_admission_closed');
+        return writeControl('P\n');
+      }).then(() => {
+        if (stopped || guardExited || clock() >= deadline) { requestStop();return; }
+        readyResolve();
+      }, cause => { emitError('verification_darwin_storage_guardian_permit', cause?.code);requestStop(); });
+      return;
+    }
+    if (value.event === 'closed' && !terminal && records === 2 && birth) { terminal = value;return; }
+    throw error('verification_darwin_storage_guardian_protocol');
+  }
+  guard.stdio[5].on('data', part => {
+    if (bytes.length + part.length > 8192) { emitError('verification_darwin_storage_guardian_protocol');requestStop();return; }
+    bytes = Buffer.concat([bytes, part]);
+    for (;;) {
+      const end = bytes.indexOf(10);if (end < 0) break;
+      const line = bytes.subarray(0, end);bytes = bytes.subarray(end + 1);records++;
+      try { record(JSON.parse(line.toString('utf8'))); }
+      catch { emitError('verification_darwin_storage_guardian_protocol');requestStop(); }
+    }
+  });
+  guard.stdio[5].once('end', () => {
+    statusClosed = true;if (bytes.length || records !== 2) protocolError = true;
+    observeCompletion();if (guardExited && !deliveredExit) stopKnownWriter();
+  });
+  guard.stdio[5].once('error', () => { protocolError = true;requestStop(); });
+  guard.stdio[3].on('error', () => { if (!guardExited && !stopped) { emitError('verification_darwin_storage_guardian_control');requestStop(); } });
+  guard.on('message', value => child.emit('message', value));
+  guard.once('disconnect', () => { ipcClosed = true;child.emit('disconnect');observeCompletion(); });
+  guard.once('exit', (code, signal) => {
+    guardExited = true;guardCode = code;guardSignal = signal;readyReject(error('verification_darwin_storage_guardian_exited'));
+    // Guardian loss revokes work immediately. Waiting for the stopped writer's
+    // IPC EOF before notifying the owner can leave unrelated private-UID work
+    // admitted while the fallback birth-signaling helper is unavailable.
+    // This error is NOT writer-exit proof; the exact fallback observation is
+    // still required before a claim or lock can be released.
+    if (!stopped && (code !== 0 || signal !== null)) child.emit('error', error('verification_darwin_storage_guardian_lost'));
+    observeCompletion();if (!deliveredExit) stopKnownWriter();
+  });
+  guard.once('error', () => { if (!guard.pid) { guardExited = ipcClosed = statusClosed = true; }
+    emitError('verification_darwin_storage_guardian_spawn');requestStop(); });
+  Object.defineProperties(child, {
+    pid: { get: () => birth?.pid || guard.pid },
+    connected: { get: () => guard.connected && !ipcClosed },
+    stdio: { value: guard.stdio },
+    nativeReady: { value: ready },
+  });
+  child.send = (value, callback = () => {}) => {
+    ready.then(async () => {
+      if (stopped || guardExited || clock() >= deadline) throw error('verification_darwin_storage_guardian_stopped');
+      if (value.op === 'cleanup_epoch') {
+        let end;try { end = BigInt(value.deadline_ns); } catch { throw error('verification_clock_invalid'); }
+        const now = clock();
+        if (cleanupPhase || end <= now || end - now > BigInt(cleanup_ms) * 1000000n) throw error('verification_clock_invalid');
+        await writeControl('C ' + end + '\n');cleanupPhase = true;deadline = end;
+      }
+      if (!guard.connected || stopped) throw error('verification_darwin_storage_guardian_stopped');
+      guard.send(value, callback);
+    }).catch(callback);return true;
+  };
+  child.kill = () => requestStop();
+  child.stopWithin = end => {
+    if (typeof end !== 'bigint') return requestStop();
+    const now = clock();
+    if (!cleanupPhase && end > now && end - now <= BigInt(cleanup_ms) * 1000000n) {
+      cleanupPhase = true;deadline = end;
+      if (!guardExited) writeControl('C ' + end + '\n').catch(() => {});
+    }
+    // Guardian loss can start the fallback before the owner latches cleanup.
+    // Propagate that same shortened deadline to the already-running helper.
+    if (end <= now && end < deadline) deadline = end;
+    tightenNativeStop?.(end);
+    return requestStop();
+  };
+  child.disconnect = () => { requestStop();if (guard.connected) guard.disconnect(); };
+  child.unref = () => { guard.unref();nativeStop?.unref(); };
+  child.storageSnapshot = () => ({ guardian_pid: guard.pid || null, guardian_exit_observed: guardExited,
+    writer_birth_bound: !!birth, writer_exit_observed: deliveredExit, method: fallbackExit ? 'atomic_birth_exit_observed' :
+      acceptedTerminal() ? 'guardian_waitpid' : null, guardian_protocol_error: protocolError,
+    ...(macosWorkerRoot === undefined ? {} : { writer_sandbox: writerSandbox, writable_root_sha256: writableRootSHA }) });
+  return child;
+}
+module.exports = { createStorageChild, PROTOCOL };

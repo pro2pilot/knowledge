@@ -1,0 +1,133 @@
+'use strict';
+
+// The exact production decoder and FD predicate, compiled on the current host.
+// These tests do not claim macOS sandbox/ACL qualification; native CI does that.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const cp = require('node:child_process');
+const source = fs.readFileSync(path.join(__dirname, '../tools/lib/verification-darwin-stub.c'), 'utf8');
+const compiler = process.env.CC || 'cc';
+const compilerReady = cp.spawnSync(compiler, ['--version']).status === 0;
+function section(from, to) {
+  const start = source.indexOf(from), end = source.indexOf(to, start);
+  assert.ok(start >= 0 && end > start, `native section ${from}`);return source.slice(start, end);
+}
+function compile(root, text) {
+  const file = path.join(root, 'authority.c'), binary = path.join(root, 'authority');fs.writeFileSync(file, text);
+  const out = cp.spawnSync(compiler, ['-std=c11', '-Wall', '-Wextra', file, '-o', binary], { encoding: 'utf8', timeout: 15000 });
+  assert.equal(out.status, 0, out.stderr || out.error?.message);return binary;
+}
+const includes = `#define _GNU_SOURCE 1
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/file.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+#define K_UID_FIRST 1000000000u
+#define K_UID_LAST 1900000000u
+#define K_MAX_CLEANUP_MS 600000u
+${section('struct KOwnerBirth {', 'static uint64_t now_ms(')}
+`;
+function wire({ writable = true, gid = 2000000001, uid = 1000000007, owner = 501, mode = 0o770, cwd = '.', extra = false } = {}) {
+  const parts = [];
+  const u32 = n => { const bytes = Buffer.alloc(4);bytes.writeUInt32BE(n);parts.push(bytes); };
+  const u64 = n => { const bytes = Buffer.alloc(8);bytes.writeBigUInt64BE(BigInt(n));parts.push(bytes); };
+  const str = value => { const bytes = Buffer.from(value);u32(bytes.length);parts.push(bytes); };
+  u32(writable ? 0x4b565333 : 0x4b565332);u32(uid);if (writable) u32(gid);u32(1);u32(1);
+  for (const n of [1000000, 1000, uid - 1000000000 + 1, 1, 2, 1, 3, 1, 4]) u64(n);
+  if (writable) { u64(1);u64(5);u32(owner);u32(mode); }
+  for (const [pid, identity] of [[10, 101], [11, 102]]) { u32(pid);u32(501);u64(identity);u64(200);u64(0); }
+  for (const value of ['a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64), 'd'.repeat(64), 'e'.repeat(64), cwd,
+    '(version 1) (deny default)', '/protected/node', 'PATH=/usr/bin:/bin']) str(value);
+  if (extra) parts.push(Buffer.from([0]));return Buffer.concat(parts);
+}
+
+test('production KVS3 decoder separates fixed workspace GID from never-reused private RUID', { skip: !compilerReady }, () => {
+  const root = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'macos-wire-test-'));
+  try {
+    const binary = compile(root, includes + section('static bool hex64(', 'static bool fresh(') +
+      section('static bool canonical(', '/* A bounded read must reject') + section('static bool u32(', 'static bool read_config(') + `
+int main(void){unsigned char bytes[4096];size_t n=fread(bytes,1,sizeof(bytes),stdin);struct Config c={.wire=bytes,.length=n};
+ if(!decode(&c))return 64;printf("%u %u %u\\n",(unsigned)c.uid,(unsigned)c.gid,c.writable?1u:0u);return 0;}
+`);
+    const cases = [
+      [{}, 0, '1000000007 2000000001 1'],
+      [{ writable: false }, 0, '1000000007 1000000007 0'],
+      [{ gid: 501 }, 64], [{ gid: 1000000007 }, 64], [{ gid: 1999999999 }, 64],
+      [{ gid: 2100000000 }, 64], [{ owner: 502 }, 64], [{ owner: 0 }, 64],
+      [{ mode: 0o2770 }, 64], [{ mode: 0o777 }, 64], [{ cwd: '../escape' }, 64], [{ extra: true }, 64]
+    ];
+    for (const [input, status, stdout] of cases) {
+      const out = cp.spawnSync(binary, [], { input: wire(input), encoding: 'utf8', timeout: 3000 });
+      assert.equal(out.status, status, JSON.stringify({ input, stderr: out.stderr }));
+      if (stdout) assert.equal(out.stdout.trim(), stdout);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('production KVS3 FD predicate binds real host inodes and modes with explicitly modeled privileged credential fields',
+  { skip: !compilerReady }, () => {
+    const root = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'macos-fd-test-'));
+    try {
+      const binary = compile(root, includes + `
+/* No privilege is requested by this host-portable predicate test. Every FD,
+ * device, inode, permission bit, link count and lock observation is real.
+ * Only the privileged numeric owner/group fields are mapped from this test's
+ * actual owner/group to the zero-valued fixture identities. A mismatched real
+ * owner/group is mapped to an invalid value, never accepted as the fixture.
+ * The separately executed native lifecycle tests provision actual RUID/GID. */
+static gid_t fixture_group;
+static int modeled_credentials_fstat(int fd,struct stat *value){
+ int rc=fstat(fd,value);if(rc==0){value->st_uid=value->st_uid==getuid()?0:(uid_t)-1;
+ value->st_gid=value->st_gid==fixture_group?0:(gid_t)-1;}return rc;}
+#define fstat modeled_credentials_fstat
+` + section('static bool bound_fds(', 'static bool private_credentials(') + `
+#undef fstat
+static void check(bool ok){if(!ok)exit(1);}
+int main(void){
+ if(mkdir("staging",0700)||mkdir("scratch",0700)||mkdir("project",0770)||mkdir("replacement",0770))return 2;
+ int lock=open("admission",O_CREAT|O_EXCL|O_RDWR,0600),stage=open("staging",O_RDONLY|O_DIRECTORY),
+ scratch=open("scratch",O_RDONLY|O_DIRECTORY),project=open("project",O_RDONLY|O_DIRECTORY),replacement=open("replacement",O_RDONLY|O_DIRECTORY);
+ if(lock<0||stage<0||scratch<0||project<0||replacement<0)return 2;
+ /* UID/GID credentials are modeled; inode/mode/FD observations are real. */
+ if(fchmod(project,0770))return 2;
+ struct stat l,s,t,p;if(fstat(lock,&l)||fstat(stage,&s)||fstat(scratch,&t)||fstat(project,&p))return 2;
+ fixture_group=s.st_gid;
+ if(l.st_uid!=getuid()||s.st_uid!=getuid()||t.st_uid!=getuid()||p.st_uid!=getuid()
+   ||l.st_gid!=fixture_group||t.st_gid!=fixture_group||p.st_gid!=fixture_group)return 2;
+ struct Config c={.uid=0,.gid=0,.writable=true,.writable_owner=0,.writable_mode=0770,
+ .lock_device=l.st_dev,.lock_inode=l.st_ino,.workspace_device=s.st_dev,.workspace_inode=s.st_ino,
+ .scratch_device=t.st_dev,.scratch_inode=t.st_ino,.writable_device=p.st_dev,.writable_inode=p.st_ino};
+ dup2(lock,13);dup2(stage,14);dup2(scratch,15);dup2(project,16);check(bound_fds(&c));
+ close(16);check(!bound_fds(&c));dup2(replacement,16);check(!bound_fds(&c));dup2(project,16);
+ c.writable_owner++;check(!bound_fds(&c));c.writable_owner--;
+ c.writable_inode++;check(!bound_fds(&c));c.writable_inode--;
+ c.gid++;check(!bound_fds(&c));c.gid--;
+ fchmod(project,02770);check(!bound_fds(&c));fchmod(project,0770);check(bound_fds(&c));
+ puts("PASS eight exact inode/credential checks; actual host FDs, privileged credential fields modeled, not macOS qualification");return 0;}
+`);
+      const out = cp.spawnSync(binary, [], { cwd: root, encoding: 'utf8', timeout: 3000 });
+      assert.equal(out.status, 0, out.stderr || out.error?.message);assert.match(out.stdout, /^PASS eight/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
+test('writable sandbox grants only pinned literal exec and data operations, never project mode or ACL mutation', () => {
+  const broker = fs.readFileSync(path.join(__dirname, '../tools/lib/verification-darwin-broker.m'), 'utf8');
+  const start = broker.indexOf('static NSString *macosWritableProfile(');
+  const profile = broker.slice(start, broker.indexOf('static NSString *entrySandboxProfile(', start));
+  assert.match(profile, /\(allow process-exec %@\)/);
+  assert.doesNotMatch(profile, /\(allow process-exec[^\n]*subpath/);
+  assert.match(profile, /file-write-data file-write-create file-write-unlink file-write-times/);
+  assert.match(profile, /descriptor\[@"scratch_path"\]/);
+  assert.doesNotMatch(profile, /allow file-write-(?:acl|mode|owner|setugid|xattr)/);
+});
