@@ -278,36 +278,65 @@ test('candidate deadline expiring while finish waits for the short mutex release
 });
 
 
-// Deliver real cancellation at observable facade boundaries. The subprocess
-// wrapper records actual spawnSync calls and otherwise invokes the OS unchanged.
-function facadeBarrier(f,{at,cancel=false,expire=false}){
+// These barriers belong to the owned supervisor, after native invocation
+// admission. The public facade now crosses a process boundary, so patching
+// its caller's control module cannot inject cancellation into that worker.
+// Stub only the already-tested native admission/preflight here; the durable
+// control ledger and the watchdog's actual child-handle wait remain real.
+// Public native cancellation is covered in reliability-kve-invocation-public.
+function ownedControlBarrier(f,{at,cancel=false,expire=false}){
  const supervisorPath=path.join(source,'tools/lib/verification-supervisor.js'),oldCache=require.cache[supervisorPath],begin=control.beginAttempt,update=control.updateAttempt,spawnSync=cp.spawnSync;
- const spawned=[],started=process.hrtime.bigint(),timeoutMs=1500;let owner;
- const barrier=()=>{if(cancel)control.requestCancel(f.context,{attempt_id:owner.attempt_id,generation:owner.generation});if(expire)while(process.hrtime.bigint()<started+BigInt(timeoutMs+5)*1000000n){}};
+ const invocation=require('../tools/lib/verification-invocation'),admit=invocation.admitWorkerInvocation;
+ const linux=process.platform==='linux'?require('../tools/lib/verification-linux-namespace'):null,capability=linux?.containmentCapability;
+ const spawned=[],started=process.hrtime.bigint(),timeoutMs=1500;let owner,barrierHits=0,admissions=0;
+ const barrier=()=>{barrierHits++;if(cancel)control.requestCancel(f.context,{attempt_id:owner.attempt_id,generation:owner.generation});if(expire)while(process.hrtime.bigint()<started+BigInt(timeoutMs+5)*1000000n){}};
  try{
+  invocation.admitWorkerInvocation=()=>{admissions++;return undefined;};
+  if(linux)linux.containmentCapability=()=>({status:'requires_runtime_setup'});
   control.beginAttempt=(context,options)=>{const result=begin(context,options);owner=result.owner;if(at==='claimed')barrier();return result;};
   control.updateAttempt=(context,o,event)=>{const result=update(context,o,event);if(at==='intent'&&event.type==='spawn_intent'&&event.role==='watchdog')barrier();return result;};
   cp.spawnSync=(command,args,options)=>{const child=spawnSync(command,args,options);spawned.push({command,args,pid:child.pid,status:child.status,signal:child.signal});return child;};
   delete require.cache[supervisorPath];const supervisor=require(supervisorPath);let error;
-  try{supervisor.runSupervised({stateRoot:f.root,repoRoot:f.root,tests:[{id:'not-run'}],verificationPolicy:{work_budget_ms:timeoutMs,no_progress_ms:0,cleanup_budget_ms:1000}},timeoutMs,started);}catch(e){error=e;}
+  try{supervisor.__owned.runSupervised({stateRoot:f.root,repoRoot:f.root,tests:[{id:'not-run'}],verificationPolicy:{work_budget_ms:timeoutMs,no_progress_ms:0,cleanup_budget_ms:1000}},timeoutMs,started);}catch(e){error=e;}
+  assert.equal(admissions,1,'The owned supervisor must reach the isolated admission boundary exactly once');
+  assert.equal(barrierHits,1,'The requested durable boundary must actually execute; a caller-side patch is insufficient. Observed: '+String(error?.code)+': '+String(error?.message));
   return {error,spawned,status:control.readStatus(f.context)};
- }finally{control.beginAttempt=begin;control.updateAttempt=update;cp.spawnSync=spawnSync;if(oldCache)require.cache[supervisorPath]=oldCache;else delete require.cache[supervisorPath];}
+ }finally{invocation.admitWorkerInvocation=admit;if(linux)linux.containmentCapability=capability;control.beginAttempt=begin;control.updateAttempt=update;cp.spawnSync=spawnSync;if(oldCache)require.cache[supervisorPath]=oldCache;else delete require.cache[supervisorPath];}
 }
 
-test('facade observes cancellation after durable claim before it issues any process intent or syscall',{skip:process.platform!=='win32'},t=>{
- const f=fixture(t),r=facadeBarrier(f,{at:'claimed',cancel:true});assert.equal(r.error?.code,'verification_cancelled');assert.deepEqual(r.spawned,[]);assert.equal(r.status.attempt.terminal.outcome,'cancelled');assert.deepEqual(r.status.attempt.processes,[]);assert.equal(r.status.attempt.terminal.ack_sha256,null);
+test('owned supervisor observes cancellation after durable claim before any inner process intent or syscall',{skip:!['win32','linux'].includes(process.platform)},t=>{
+ const f=fixture(t),r=ownedControlBarrier(f,{at:'claimed',cancel:true});assert.equal(r.error?.code,'verification_cancelled');assert.deepEqual(r.spawned,[]);assert.equal(r.status.attempt.terminal.outcome,'cancelled');assert.deepEqual(r.status.attempt.processes,[]);assert.equal(r.status.attempt.terminal.ack_sha256,null);
 });
 
-test('facade timeout after persisted intent retracts it only before its OS spawn syscall',{skip:process.platform!=='win32'},t=>{
- const f=fixture(t),r=facadeBarrier(f,{at:'intent',expire:true});assert.equal(r.error?.code,'verification_timeout');assert.deepEqual(r.spawned,[]);assert.equal(r.status.attempt.terminal.outcome,'timed_out');assert.deepEqual(r.status.attempt.processes,[]);assert.equal(r.status.attempt.terminal.ack_sha256,null);
+test('owned supervisor timeout after persisted intent retracts it only before its OS spawn syscall',{skip:!['win32','linux'].includes(process.platform)},t=>{
+ const f=fixture(t),r=ownedControlBarrier(f,{at:'intent',expire:true});assert.equal(r.error?.code,'verification_timeout');assert.deepEqual(r.spawned,[]);assert.equal(r.status.attempt.terminal.outcome,'timed_out');assert.deepEqual(r.status.attempt.processes,[]);assert.equal(r.status.attempt.terminal.ack_sha256,null);
 });
 
-test('facade cancellation after intent cannot start authority and recovers only the actually exited watchdog',{skip:process.platform!=='win32'},t=>{
- const f=fixture(t),r=facadeBarrier(f,{at:'intent',cancel:true});assert.equal(r.error?.code,'verification_cancelled');assert.equal(r.spawned.length,1);assert(r.spawned[0].pid>0);assert.equal(r.status.attempt.terminal.outcome,'cancelled');assert.equal(r.status.attempt.terminal.ack_sha256,null);assert.equal(r.status.attempt.processes.length,1);assert.equal(r.status.attempt.processes[0].role,'watchdog');assert.equal(r.status.attempt.processes[0].pid,r.spawned[0].pid);assert.equal(r.status.attempt.processes[0].exit_observed,true);
+test('owned supervisor cancellation after intent starts no authority and recovers its actually exited watchdog',{skip:!['win32','linux'].includes(process.platform)},t=>{
+ const f=fixture(t),r=ownedControlBarrier(f,{at:'intent',cancel:true});assert.equal(r.error?.code,'verification_cancelled',r.error?.stack);assert.equal(r.spawned.length,1);assert(r.spawned[0].pid>0);assert.equal(r.status.attempt.terminal.outcome,'cancelled');assert.equal(r.status.attempt.terminal.ack_sha256,null);assert.equal(r.status.attempt.processes.length,1);assert.equal(r.status.attempt.processes[0].role,'watchdog');assert.equal(r.status.attempt.processes[0].pid,r.spawned[0].pid);assert.equal(r.status.attempt.processes[0].exit_observed,true);
 });
 
-test('facade preserves accepted cancellation when pre-spawn transport deadline also expires',{skip:process.platform!=='win32'},t=>{
- const f=fixture(t),r=facadeBarrier(f,{at:'intent',cancel:true,expire:true});assert.deepEqual(r.spawned,[]);assert.equal(r.status.attempt.terminal.outcome,'cancelled');assert.equal(r.status.attempt.terminal.ack_sha256,null);assert.equal(r.error?.code,'verification_cancelled');
+test('owned supervisor preserves accepted cancellation when pre-spawn transport deadline also expires',{skip:!['win32','linux'].includes(process.platform)},t=>{
+ const f=fixture(t),r=ownedControlBarrier(f,{at:'intent',cancel:true,expire:true});assert.deepEqual(r.spawned,[]);assert.equal(r.status.attempt.terminal.outcome,'cancelled');assert.equal(r.status.attempt.terminal.ack_sha256,null);assert.equal(r.error?.code,'verification_cancelled');
+});
+
+test('public facade delegates before project storage and maps cancelled native delivery without admitting an ACK',{skip:!['win32','linux'].includes(process.platform)},t=>{
+ const f=fixture(t),runner=require('../tools/lib/command-runner'),original=runner.runOwnedOperationSync,begin=control.beginAttempt;
+ const supervisor=require('../tools/lib/verification-supervisor'),started=process.hrtime.bigint(),calls=[];
+ const request={stateRoot:f.root,repoRoot:f.root,tests:[{id:'not-run'}],verificationPolicy:{work_budget_ms:1500,no_progress_ms:0,cleanup_budget_ms:1000}};
+ try{
+  control.beginAttempt=()=>{assert.fail('Public caller must not claim project storage outside the native invocation');};
+  runner.runOwnedOperationSync=(operation,payload,options)=>{calls.push({operation,payload,options});throw Object.assign(new Error('controlled native cancellation'),{code:'command_cancelled',cleanup:{status:'completed'}});};
+  assert.throws(()=>supervisor.runSupervised(request,1500,started),error=>{
+   assert.equal(error.code,'verification_cancelled');assert.equal(error.primary_error,'command_cancelled');
+   assert.equal(error.delivery_teardown.status,'completed');assert.equal(error.result_visibility,'ack_not_delivered');return true;
+  });
+  assert.equal(calls.length,1);assert.equal(calls[0].operation,'verification-run');
+  assert.equal(calls[0].payload.started_ns,String(started));assert.equal(calls[0].payload.timeout_ms,1500);
+  assert.equal(calls[0].options.absoluteWorkDeadlineNs,String(started+1500000000n));
+  assert.deepEqual(calls[0].options.budgets,{workMs:1500,setupMs:1500,cleanupMs:1000,progressMs:0});
+  assert.deepEqual(fs.readdirSync(f.root),[]);
+ }finally{runner.runOwnedOperationSync=original;control.beginAttempt=begin;}
 });
 
 

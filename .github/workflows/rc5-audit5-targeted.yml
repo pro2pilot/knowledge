@@ -1,0 +1,60 @@
+name: RC5 audit5 targeted Linux and Windows recheck
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit5-targeted.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit5-targeted-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Preserve exact source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Recheck corrected fixtures and actual native lifecycle
+        run: python qa/reliability/audit5/run_matrix.py --source source/.knowledge --pins qa/reliability/audit5/SOURCE_PINS.json --out native-audit
+      - name: Preserve exact evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit5-targeted-${{ matrix.os }}-${{ matrix.arch }}
+          path: native-audit/public/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3

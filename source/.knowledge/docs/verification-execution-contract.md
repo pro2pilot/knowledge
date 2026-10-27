@@ -6,6 +6,13 @@ This contract supersedes the earlier millisecond caller-return criterion for
 millisecond. Cancellation and work-budget expiry start stopping and cleanup.
 A completed response can therefore arrive after the work deadline.
 
+Current source revision: `independent-audit.20261027.reliability.5`. Shared
+recovery identity, takeover and cleanup observations consume the remaining
+original cleanup interval; a late valid observation cannot authorize recovery
+completion. This does not promise a hard return deadline for blocked filesystem
+I/O. Fresh source qualification is separate from this behavioral contract; see
+[the audit5 checkpoint and open gates](audit-3.4.4-rc5.md).
+
 ## Timing profiles
 
 Defaults are in `verification-policy.json`. A verification request may select
@@ -238,6 +245,10 @@ The hosted Ubuntu 24.04 ARM64 runner refused nested PID namespace setup with
 `EPERM` under its active policy; that safe refusal does not qualify a process
 scope. No host policy was changed.
 
+The bounded Linux component fault mini-matrix is not full production fault
+qualification. It does not supply the missing system-service/KVE/ACK/nested/
+durable-recovery integration or prove arbitrary disk/kernel I/O fault behavior.
+
 The current unpublished RC5 source includes a production isolated-copy
 verification path, disabled by default even if a broker is ready. Explicit opt-in
 requires `native_execution.darwin.enabled=true`, `mode="isolated_copy"`, configured
@@ -246,7 +257,7 @@ broker and reserved private UID provisioning are separate tasks. Writable
 Flow/Team operations require a separately admin-provisioned workspace; they are
 not enabled by isolated-copy verification. A missing or unhealthy configured
 broker refuses before work. Scoped historical macOS evidence does not complete
-fresh `.4` qualification, verify stock-SIP behavior on a user's Mac, or certify
+fresh `.5` qualification, verify stock-SIP behavior on a user's Mac, or certify
 the final installed ZIP. Installed/post-ZIP and release-gate acceptance remain
 separate checks. Linux results do not certify macOS or Windows. The historical
 creator of the second ownerless lock remains unknown.
@@ -257,10 +268,11 @@ Kernel basis: [Linux PID namespaces](https://man7.org/linux/man-pages/man7/pid_n
 
 This is an unpublished audit candidate. Focused test results and their exact
 source hashes belong in its handoff. They are not a full release-gate result.
-Fresh targeted current-source physical testing on Windows x64 / Node 22.17.1
+The preceding reliability.4 scoped physical testing on Windows x64 / Node 22.17.1
 passed 61 selected TAP cases and 20 runtime-safety checks. The reducer correction
-reinterpreted saved TAP output without rerunning the physical tests. The targeted
-Team result passed 7 physical cases and all 8 shipping steps; its Doctor score is
-86/100 `usable_with_warnings` with two medium warnings. Neither is full artifact
-qualification. Stock-SIP behavior remains unverified, and the historic second
+reinterpreted saved TAP output without rerunning the physical tests. The preceding
+reliability.4 Team result passed 7 physical cases and all 8 shipping steps; its Doctor score is
+86/100 `usable_with_warnings` with two medium warnings. Neither qualifies the
+changed reliability.5 runtime or the full installed artifact. The new audit5
+matrix has separate source pins; no successful outcome is asserted here. Stock-SIP behavior remains unverified, and the historic second
 ownerless-lock cause is unknown.

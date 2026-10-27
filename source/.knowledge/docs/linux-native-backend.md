@@ -126,6 +126,19 @@ Direct pidfd evidence and historical finality inference are explicitly distingui
 
 ## Verification and limits
 
+This page's current source revision is
+`independent-audit.20261027.reliability.5`. Earlier physical results apply only
+to their pinned historical source. The fresh audit5 matrix is in progress at
+this documentation checkpoint; see [audit status](audit-3.4.4-rc5.md). No final
+passing outcome for the new source is asserted here.
+
+The accepted separate native system broker with isolated project import,
+protected Node authority, KVE/ACK, nested ownership and durable restart recovery
+is **not implemented or production-qualified**. The reliability.5 component
+fault mini-matrix does not close those integration requirements or the full
+production fault matrix. Its held private pipes do not simulate a hung disk or
+kernel D-state. Separate QA actors/receipts are not shipping production APIs.
+
 Run `node tools/self-test-linux-namespace.js` on an actually supported Linux
 host. An unavailable capability returns `BLOCKED` and a nonzero exit code, not
 PASS. The physical suite covers pre-permit work denial, native IPC/birth
@@ -137,12 +150,18 @@ live recovery, post-controller-crash recovery, and boot/namespace mismatch. The
 nested-descendant fixture invokes `/usr/bin/unshare` for its synthetic child
 namespace; this is a self-test prerequisite, not a runtime backend dependency.
 
-A separate fixed-native-actor system-service experiment reported
+A historical reliability.4 fixed-native-actor system-service experiment reported
 [`PASS_SCOPED_QA` in run 40548260744](https://github.com/pro2pilot/knowledge/actions/runs/40548260744):
 21 named QA check groups passed, alongside six socket-parser checks, six memory/FD
 denials each for C and W, and a four-attempt UID lifecycle. It did not execute
 Node commands in isolated copies or integrate with this KVE verification backend;
 the result explicitly leaves production-backend and release qualification false.
+
+The later reliability.4 Node component [run
+40566572410](https://github.com/pro2pilot/knowledge/actions/runs/40566572410)
+accepted its readonly import/authority/worker slice after two retained failed
+attempts. That result also remains bound to the earlier source; it did not
+implement or qualify the production service or its full fault matrix.
 
 The old-birth test uses an explicitly synthetic historical birth against a real current process. It does not claim to force kernel PID-number recycling. A stopped-keeper fault uses a deliberately short test-only budget; it does not change production budget defaults. Kernel D-state is handled fail-closed but is not manufactured by dangerous host-I/O fault injection. Linux x64 physical evidence does not certify other architectures, Windows, macOS, or all distributions.
 

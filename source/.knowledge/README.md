@@ -145,17 +145,19 @@ The startup allowance is 60 s; the caller-ready window is 90 s. The default
 observation budget is `5 × setup + work + cleanup + debounce + 1 s` (227.5 s at
 the default 1.5 s debounce). `KNOWLEDGE_SMOKE_WATCH_MS` remains an exact explicit
 override. This budget is for observing the smoke run, not a hard I/O latency
-limit. Recent Windows startup observations were 11.5–22.1 s, sync about 22.7 s,
-and full smoke about 46.8 s; these are measurements, not guarantees. Fresh
-targeted current-source physical testing on Windows x64 / Node 22.17.1
+limit. Historical reliability.4 Windows startup observations were 11.5–22.1 s, sync about 22.7 s,
+and full smoke about 46.8 s; these are measurements, not guarantees. The preceding
+reliability.4 scoped physical testing on Windows x64 / Node 22.17.1
 passed 61 selected TAP cases plus 20 runtime-safety checks (81 selected checks
-total). This is scoped evidence, not full release qualification; fresh ARM64 and
-final installed-ZIP qualification remain pending.
+total). Those results apply to the preceding pinned source, not the changed
+reliability.5 runtime. The new audit5 matrix is separate; no passing outcome is
+asserted here. Final installed-ZIP qualification remains pending.
 
-The targeted Team run passed 7 physical cases and all 8 shipping steps. Its Doctor
+The preceding reliability.4 targeted Team run passed 7 physical cases and all 8
+shipping steps. Its Doctor
 result is 86/100 `usable_with_warnings`, with two genuine medium warnings:
 `suspect_module` and `low_confidence_module`; the score does not promote either
-module to trusted. This hosted scoped result is not stock-macOS/SIP qualification.
+module to trusted. This hosted scoped result does not qualify reliability.5 or stock-macOS/SIP.
 The historical second ownerless-lock cause remains unknown.
 
 The RC3 audit corrects Doctor ownership and queue publication, invalid readiness

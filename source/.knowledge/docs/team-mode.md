@@ -1,7 +1,7 @@
 # Team mode — 3.4.4 RC5
 
 Ветка: Knowledge 3.4.4 RC5, аудит
-`independent-audit.20261027.reliability.4`. Точные source/package pins для
+`independent-audit.20261027.reliability.5`. Точные source/package pins для
 собранного кандидата фиксируются после новой сборки и qualification; прежние
 675-file baseline hashes не идентифицируют текущий кандидат. Исходная проектная
 спецификация 3.2.4 сохранена в архиве входных материалов.
@@ -22,22 +22,29 @@
   отсутствует; crash в стадии подготовки не оставляет ownerless public mutex.
   Реализация есть в `tools/lib/contained-lock-manager.js`; это не заменяет
   platform-specific physical qualification.
-- Targeted Team run прошёл 7 physical cases и все 8 shipping steps. Doctor
+- Предшествующий reliability.4 targeted Team run прошёл 7 physical cases и все
+  8 shipping steps. Doctor
   сообщил 86/100 `usable_with_warnings` с двумя подлинными medium warnings:
   `suspect_module` и `low_confidence_module`; это не повышает доверие к модулям.
-  Hosted result ограничен этой выборкой и не квалифицирует stock macOS/SIP.
-- Свежий targeted current-source physical run на Windows x64 / Node 22.17.1
+  Hosted result ограничен старым source snapshot; он не квалифицирует изменённый
+  reliability.5 runtime или stock macOS/SIP.
+- Предшествующий reliability.4 scoped physical run на Windows x64 / Node 22.17.1
   прошёл 61 selected TAP cases и 20 runtime-safety checks. Reducer correction
   переинтерпретировал сохранённый TAP и не повторял физические тесты. Это не
-  ARM64 qualification и не full release gate.
+  qualification нового reliability.5, ARM64 или full release gate.
 - Для restricted Linux hosts принято направление отдельного system broker с
   isolated copy, но production implementation и qualification ещё отсутствуют.
   Hosted Ubuntu 24.04 ARM64 отказал в nested PID namespace с `EPERM`; host policy
   не меняли.
 - Причина исторического второго ownerless lock остаётся **UNKNOWN**.
 
-Все результаты относятся к точному source snapshot. Итоговый установленный ZIP
-ещё ожидает полной runtime qualification.
+Все результаты относятся к точному source snapshot. В момент подготовки этой
+документации новая audit5 matrix
+[run 40576756772](https://github.com/pro2pilot/knowledge/actions/runs/40576756772)
+ещё выполняется; итоговый PASS здесь не заявлен. Linux component fault
+mini-matrix не равна полной production fault qualification и не реализует
+production broker. Итоговый установленный ZIP ещё ожидает полной runtime
+qualification. Итоговые результаты и точные pins находятся в отдельном handoff.
 
 ## Область действия
 

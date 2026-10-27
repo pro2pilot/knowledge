@@ -72,6 +72,11 @@ static int pidfd_matches_identity(int fd, const struct identity *v) { (void)fd; 
 static char boot_id[] = "fixture-boot";
 static const char *mode;
 static int dir_calls, visibility_calls;
+/* This standalone observer never calls prepare_report and owns no process
+ * tree. Its production report_printf path therefore delegates to vdprintf.
+ * Keep the excerpt's plain output equivalent without importing keeper state;
+ * actual nonblocking keeper reports have their separate full-source test. */
+#define report_printf dprintf
 static int setup_observer(void) { return 0; }
 static int process_dir(int pid) {
   (void)pid; dir_calls++;

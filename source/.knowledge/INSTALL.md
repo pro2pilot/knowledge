@@ -160,11 +160,13 @@ requires separate administrator provisioning. This unpublished audit candidate
 has no release certification. Identify the exact ZIP and scoped test results by
 SHA-256 in its accompanying handoff.
 
-Fresh targeted current-source physical testing on Windows x64 / Node 22.17.1
+The preceding reliability.4 scoped physical testing on Windows x64 / Node 22.17.1
 passed 61 selected TAP cases and 20 runtime-safety checks. The reducer correction
 reinterpreted the saved TAP output without rerunning those physical tests; this
-scoped result is not a full release gate. The targeted Team
+scoped result does not qualify the changed reliability.5 runtime or a full release
+gate. The preceding reliability.4 targeted Team
 run passed 7 physical cases and all 8 shipping steps. Its Doctor result is
 86/100 `usable_with_warnings`, with medium `suspect_module` and
 `low_confidence_module` warnings. Neither result qualifies the final installed
-ZIP, stock-SIP Macs or fresh Windows ARM64.
+ZIP, stock-SIP Macs or fresh Windows ARM64. The new audit5 matrix is separate;
+its final outcome is not asserted in this installation guide.

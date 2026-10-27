@@ -710,14 +710,16 @@ missing finalization is incomplete, not successful. See the
 Linux native execution requires a successful namespace capability probe. macOS
 execution stays disabled unless a request explicitly enables the isolated-copy
 mode and supplies broker configuration; a missing broker refuses before work.
-The targeted hosted Team run passed 7 physical cases, including its scoped
+The preceding reliability.4 targeted hosted Team run passed 7 physical cases, including its scoped
 ownership/restart observations, and all 8 shipping steps. Doctor reported 86/100
 `usable_with_warnings`, including the medium `suspect_module` and
 `low_confidence_module` warnings; this does not promote modules to trusted. The
-fresh targeted current-source physical Windows x64 / Node 22.17.1 run passed 61
+preceding reliability.4 scoped physical Windows x64 / Node 22.17.1 run passed 61
 selected TAP cases plus 20 runtime-safety checks. The reducer correction
 reinterpreted saved TAP output; it did not rerun the physical tests. This is
-scoped evidence, not full release qualification. The accepted Linux
+historical scoped evidence; it does not qualify the changed reliability.5 runtime.
+The audit5 matrix has separate source pins and no successful outcome is asserted
+here. The accepted Linux
 system-broker/isolated-copy direction is not implemented or qualified; the
 hosted Ubuntu 24.04 ARM64 nested namespace probe returned `EPERM`. This
 unpublished audit candidate has no release certification.

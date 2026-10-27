@@ -179,6 +179,9 @@ def main():
             run('windows-physical-lifecycle', [node, '--test', '--test-reporter=tap', '--test-concurrency=1',
                 source / 'tests/windows-job-lifecycle.test.js',
                 source / 'tests/verification-native-recovery-windows.test.js'], 240, tap=True)
+            run('windows-public-cancellation', [node, '--test', '--test-reporter=tap',
+                '--test-name-pattern=cancellation of a blocked first claim',
+                source / 'tests/reliability-kve-invocation-public.test.js'], 150, tap=True)
         record['binaries'] = {p.relative_to(public).as_posix(): sha(p) for p in sorted(dest.iterdir()) if p.is_file()}
         # Source was not replaced while build/test actors were running.
         for name, digest in pins['files'].items():

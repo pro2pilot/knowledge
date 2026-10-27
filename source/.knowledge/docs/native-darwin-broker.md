@@ -1,7 +1,7 @@
 # macOS native verification broker
 
 > Current status for unpublished `3.4.4 RC5`, audit revision
-> `independent-audit.20261027.reliability.4`. Normal production isolated-copy
+> `independent-audit.20261027.reliability.5`. Normal production isolated-copy
 > verification is disabled by default, even if the broker is ready. A request must
 > explicitly set `native_execution.darwin.enabled=true` and
 > `mode="isolated_copy"`, with broker paths and copy limits. The broker is

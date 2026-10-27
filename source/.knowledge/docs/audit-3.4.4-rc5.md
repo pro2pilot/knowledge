@@ -2,8 +2,31 @@
 
 This page describes the current unpublished candidate. Package version remains
 `3.4.4`, candidate status remains `RC5`, and audit revision is
-`independent-audit.20261027.reliability.4`. This candidate is not published, has
+`independent-audit.20261027.reliability.5`. This candidate is not published, has
 not passed the full release gate, and is not certified for general release.
+
+## Reliability.5 checkpoint
+
+This source changes Linux keeper report transport and the shared Linux/Windows/
+macOS recovery deadline handling. Previous physical PASS records therefore do
+not qualify the changed runtime. The fresh [audit5 matrix, run
+40576756772](https://github.com/pro2pilot/knowledge/actions/runs/40576756772), is
+in progress at this documentation checkpoint. No final passing outcome is
+asserted here; its final report must identify the exact tested source, native
+artifacts, skipped or blocked checks and any later source changes.
+
+The preceding reliability.4 audit source contained 682 files, SOURCE SHA-256
+`7f47ec76ecf8ea10ff32931939d83d080d95f24528eb578459e6651b77942693`, with QA HEAD
+`0299aeadc58a5c116a9a1e1e0f193cde24787662`. The 81 Windows selected checks and
+seven Team physical cases/eight shipping steps below belong to that earlier
+handoff and its exact source bindings. They are retained as historical evidence.
+
+The Linux production system service remains **unimplemented and unqualified**.
+The new component fault mini-matrix is bounded QA work; it is not the complete
+production crash/cancellation/recovery matrix. A private-pipe stall does not
+prove behavior under a hung disk or kernel D-state. Component receipts do not
+establish production KVE/ACK, nested authority or durable restart recovery.
+Stock-SIP macOS and final installed-ZIP acceptance remain open.
 
 ## Historical evidence baseline
 
@@ -16,14 +39,14 @@ Scoped workflow evidence is available from [CI06](https://github.com/pro2pilot/k
 [QA07](https://github.com/pro2pilot/knowledge/actions/runs/40464641016), and
 [QA08](https://github.com/pro2pilot/knowledge/actions/runs/40465272797). Each
 result applies only to that pinned historical source and test cohort. These
-receipts do not qualify the current `.4` source; historical failures remain
+receipts do not qualify the current `.5` source; historical failures remain
 preserved and a later scoped pass does not erase them.
 
 The prior diagnostic build was named
 `NOT-QUALIFIED-knowledge-v3.4.4.zip` (SHA-256
 `5ea2cd56e2bad85fc68b2b144af8c5264837bd5b02664fbeba398966738a5f7a`). It is a
-baseline archive, not the current `.4` candidate or a release asset. Its digest
-does not identify the new package. The exact `.4` source/package pins will be
+baseline archive, not the current `.5` candidate or a release asset. Its digest
+does not identify the new package. The exact `.5` source/package pins will be
 recorded after the docs-integrated candidate is rebuilt and verified. Complete
 post-ZIP runtime qualification has not run; `release_gate_qualified=false` and
 `release_ready=false`.
@@ -31,17 +54,17 @@ post-ZIP runtime qualification has not run; `release_gate_qualified=false` and
 ## Platform state
 
 - **Windows x64:** historical CI06 continuation passed on its pinned baseline.
-  A fresh targeted current-source physical run on Windows x64 / Node 22.17.1
+  The preceding reliability.4 scoped physical run on Windows x64 / Node 22.17.1
   passed 61 selected TAP cases plus 20 runtime-safety checks (81 selected checks
   across eight groups). The evidence correction only reinterpreted saved TAP; it
   did not rerun the physical tests. The original reducer marked the final holder
   group failed because it expected two skipped baseline tests; the saved TAP has
-  the exact eight expected passes and no skips. This does not qualify ARM64 or
-  the final installed ZIP.
+  the exact eight expected passes and no skips. This does not qualify the changed
+  reliability.5 runtime, ARM64 or the final installed ZIP.
 - **Windows ARM64:** historical CI06 continuation passed on its pinned baseline.
-  No fresh ARM64 qualification for `.4` is recorded here. Qualification of the
+  No fresh ARM64 qualification for `.5` is recorded here. Qualification of the
   final installed ZIP is still pending; historical workflow receipts above do
-  not qualify `.4`.
+  not qualify `.5`.
   The Windows watcher smoke profile is setup 30 s, work 60 s, cleanup 15 s;
   startup allowance 60 s and caller-ready window 90 s. The default observation
   budget is `5 × setup + work + cleanup + debounce + 1 s` (227.5 s at the default
@@ -58,7 +81,7 @@ post-ZIP runtime qualification has not run; `release_gate_qualified=false` and
   These measurements do not close installed-ZIP qualification and do not assert
   an I/O upper bound.
 - **Linux x64:** historical pinned QA08 continuation passed on its named source
-  snapshot; it is not current `.4` qualification.
+  snapshot; it is not current `.5` qualification.
 - **Linux ARM64:** the hosted Ubuntu 24.04 runner denied the required nested PID
   namespace with `EPERM` under its active AppArmor policy. The policy was not
   weakened. A separate system broker with isolated-copy execution is the accepted
@@ -74,17 +97,17 @@ post-ZIP runtime qualification has not run; `release_gate_qualified=false` and
   provisioned workspace access and are not enabled by isolated-copy verification.
   Historical CI06/QA07/QA08 have distinct scoped basic, failure, physical,
   writable and sandbox results; they do not establish fresh full qualification
-  for `.4` or all supported hosts. Physical runs were on GitHub-hosted machines.
+  for `.5` or all supported hosts. Physical runs were on GitHub-hosted machines.
   Stock-SIP behavior on a user's own Mac has not been verified.
 
 ## Team and historical uncertainty
 
-The targeted macOS Team run passed seven physical cases and all eight shipping
+The preceding reliability.4 targeted macOS Team run passed seven physical cases and all eight shipping
 steps. The Doctor result was 86/100 `usable_with_warnings`; two genuine medium
 warnings were `suspect_module` and `low_confidence_module`. They do not promote
 either module to trusted. The public projection and acceptance report are the
 available evidence; the private Doctor raw report was not loaded in this review.
-This scoped result is not stock-macOS/SIP qualification.
+This scoped result does not qualify reliability.5 or stock-macOS/SIP.
 
 The historical second ownerless-lock cause remains **UNKNOWN**. Current replayed
 or controlled mechanisms do not identify the original historical writer. Unknown
@@ -96,18 +119,24 @@ automatically deleted or adopted.
 1. Complete fresh, source-bound qualification for the exact release candidate,
    including macOS platform requirements and a permitted Linux ARM64 host with the
    needed namespaces.
-2. Preserve the current-source Windows core/native watcher PASS evidence, then
-   complete qualification of the final installed ZIP without changing the
-   documented budgets.
-3. Rebuild the docs-integrated `.4` candidate and record its new source/package
-   pins; the 675-file/5ea2 baseline pins above are historical inputs.
-4. Check its exact archive name, `.knowledge/` root, versions and public
-   documents, then run the full release gate and complete post-ZIP runtime
-   qualification.
+2. Implement and qualify the Linux system service with protected installation,
+   isolated project import, separate authority/worker identities, KVE/ACK,
+   nested ownership and durable recovery. Passing QA components are insufficient.
+3. Complete the required production fault matrix, including controller/keeper
+   death during drain, stalled import/result, late result after stop and a
+   surviving descendant after the primary worker exits. Retain earlier failures.
+4. Preserve reliability.4 Windows/Team evidence as historical, rebuild all six
+   native targets against the intended final source and record fresh results.
+5. Build the docs-integrated `.5` installable candidate only after its engineering
+   prerequisites are met; bind its exact name, `.knowledge/` root, versions and
+   public-document parity. Source handoff ZIPs are not installable candidates.
+6. Pass release preflight and exact installed-ZIP checks before the full release
+   gate. Record each result against that same artifact; later packaged changes
+   require a new binding and the affected checks again.
 
 The earlier operational audit and its timeout/lock discussion are preserved in
 [the historical 2026-10-19 audit](historical/audit-3.4.4-rc5-operational-20261019.md).
-Its statements describe that source snapshot, not revision `.4`.
+Its statements describe that source snapshot, not revision `.5`.
 
 Do not transfer scoped PASS results to different bytes, label the candidate as
 released, or infer a performance guarantee from a smoke observation budget.
