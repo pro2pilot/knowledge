@@ -1,0 +1,96 @@
+name: RC5 audit5 one ZIP installed runtime smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit5-installed.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit5-installed-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: audit5-native-*
+          path: native-input
+          run-id: 40576756772
+          github-token: ${{ github.token }}
+      - name: Package pinned source and verified CI native pairs once
+        run: python3 qa/reliability/audit5/run_installed.py pack --source source/.knowledge --pins qa/reliability/audit5/SOURCE_PINS.json --native-input native-input --out packed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit5-exact-installed-zip
+          path: |
+            packed/public/**
+            packed/RESULT.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  installed:
+    needs: pack
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit5-exact-installed-zip
+          path: downloaded-package
+      - name: Extract identical ZIP and execute installed native and shipped self-tests
+        run: python qa/reliability/audit5/run_installed.py smoke --package downloaded-package/public --arch ${{ matrix.arch }} --out installed-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit5-installed-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            installed-smoke/RESULT.json
+            installed-smoke/*.stdout.json
+            installed-smoke/*.stderr.txt
+          if-no-files-found: error
+          retention-days: 3
