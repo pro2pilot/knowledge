@@ -44,7 +44,16 @@ def execute(name, argv, cwd, out, steps, timeout=45):
     stdout = out / (name + '.stdout.json')
     stderr = out / (name + '.stderr.txt')
     timed_out = False
-    env = dict(os.environ, CI='1', KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH='1')
+    # Shipped lock fixtures intentionally require physical paths. Hosted Windows
+    # TEMP may use a short-name alias; use an owned canonical fixture parent,
+    # as run_matrix does, without relaxing any shipping containment check.
+    temp = out / 'tmp'
+    temp.mkdir(exist_ok=True)
+    temp = temp.resolve(strict=True)
+    inherited_temp = os.environ.get('TEMP', os.environ.get('TMP', os.environ.get('TMPDIR', '')))
+    env = dict(os.environ, CI='1', KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH='1',
+               TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp),
+               KNOWLEDGE_AUDIT5_INHERITED_TEMP=inherited_temp)
     with stdout.open('wb') as a, stderr.open('wb') as b:
         child = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                  stdout=a, stderr=b, start_new_session=(os.name != 'nt'))
@@ -153,6 +162,16 @@ def pack(args, out, steps, report):
 NATIVE_JS = r"""
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const root=process.cwd(),target=process.platform+'-'+process.arch;
+const fixtureParent=require('node:os').tmpdir();
+const physical=fs.realpathSync.native(fixtureParent);
+const samePath=(a,b)=>process.platform==='win32'?a.toLowerCase()===b.toLowerCase():a===b;
+assert(samePath(physical,fixtureParent),'fixture parent must be a canonical physical path');
+const previous=process.env.KNOWLEDGE_AUDIT5_INHERITED_TEMP||null;
+let inheritedPhysical=null,inheritedError=null;
+try{if(previous)inheritedPhysical=fs.realpathSync.native(previous);}catch(error){inheritedError=error.code;}
+const fixture_parent={path:fixtureParent,physical_path:physical,inherited_temp:previous,
+ inherited_physical_path:inheritedPhysical,inherited_error:inheritedError,
+ inherited_is_alias:previous&&inheritedPhysical?!samePath(previous,inheritedPhysical):null};
 assert.equal(process.versions.node,'22.17.1');
 const checks=[];
 for(const name of ['lock-publication',...(process.platform==='win32'?['command-windows-job']:[])]){
@@ -168,7 +187,7 @@ if(process.platform==='linux'){
  assert.equal(helper.platform,'linux');assert.equal(helper.architecture,process.arch);
  checks.push({name:'linux-packaged-helper-admission',source_sha256:helper.source_sha256,binary_sha256:helper.binary_sha256});
 }
-console.log(JSON.stringify({status:'pass',platform:process.platform,arch:process.arch,node:process.version,checks}));
+console.log(JSON.stringify({status:'pass',platform:process.platform,arch:process.arch,node:process.version,fixture_parent,checks}));
 """
 
 def smoke(args, out, steps, report):
@@ -179,6 +198,8 @@ def smoke(args, out, steps, report):
     need(sha(zip_path) == provenance['artifact_sha256'], 'ZIP SHA256 mismatch')
     need(sha(package / 'PACKAGE_CONTENTS.json') == provenance['package_contents_sha256'], 'entry manifest hash mismatch')
     need(sha(package / 'SOURCE_PINS.json') == provenance['source_pins_sha256'], 'pins hash mismatch')
+    report.update(artifact_name=zip_path.name, artifact_sha256=sha(zip_path),
+                  artifact_bytes=zip_path.stat().st_size, source_pins_sha256=provenance['source_pins_sha256'])
     contents = json.loads((package / 'PACKAGE_CONTENTS.json').read_text(encoding='utf8'))
     extracted = out / 'fresh-install'
     extracted.mkdir()

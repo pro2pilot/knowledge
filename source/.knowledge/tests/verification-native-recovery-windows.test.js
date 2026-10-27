@@ -81,7 +81,7 @@ async function ownedTree(t) {
         const idle=new Promise(r=>worker.once('message',r));
         job=b.createWindowsJob(worker,()=>{},180000);await job.ready;await idle;
         const ids=job.identities;
-        for(const [i,role]of ['controller','worker','keeper'].entries())c.updateAttempt(context,owner,{type:'spawn_observed',spawn_id:i+1,pid:ids[role].pid,os_creation_time:ids[role].os_creation_time,executable_sha256:crypto.createHash('sha256').update(fs.readFileSync(role==='keeper'?process.env.SystemRoot+'/System32/WindowsPowerShell/v1.0/powershell.exe':process.execPath)).digest('hex')});
+        for(const [i,role]of ['controller','worker','keeper'].entries())c.updateAttempt(context,owner,{type:'spawn_observed',spawn_id:i+1,pid:ids[role].pid,os_creation_time:ids[role].os_creation_time,executable_sha256:crypto.createHash('sha256').update(fs.readFileSync(role==='keeper'?b.selectPowerShell().executable:process.execPath)).digest('hex')});
         c.updateAttempt(context,owner,{type:'containment_bound',descriptor:job.descriptor,spawn_ids:[1,2,3]});
         c.assertResourceAvailable(context,owner);
         const started=new Promise(r=>worker.once('message',r));worker.send('permit');const observed=await started;
@@ -143,6 +143,77 @@ async function settled(f, result, outcome = 'failed') {
   assert.equal(fs.readFileSync(f.marker, 'utf8'), content, 'detached descendant stopped writing');
   f.state('state-terminal');
 }
+
+test('Windows recovery JSON preserves exact 100 ns birth strings on selected PowerShell and Core fallback', options, () => {
+  const shell = require(jobPath).selectPowerShell();
+  const birth = '2026-10-27T08:42:13.1234567Z';
+  const input = { identity: { os_creation_time: birth, pid: 123 },
+    Type: 'literal', Properties: { Value: birth },
+    arrays: [[], [birth], [[birth]], [birth, null, 1, true, false, {}, []]] };
+  // Load the actual parser functions through the PowerShell AST. This runs the
+  // Core fallback even when the installed shell has the newer DateKind option.
+  const script = `
+    $ErrorActionPreference='Stop'
+    $tokens=$null; $errors=$null
+    $source=[IO.File]::ReadAllText($env:KNOWLEDGE_RECOVERY_PS1)
+    $ast=[System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)
+    if($errors.Count -ne 0){throw 'source_parse_error'}
+    $names=@('ConvertRecoveryJsonToken','ReadRecoveryCoreJson','ReadRecoveryJson')
+    $functions=@($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $names -contains $n.Name},$true))
+    if($functions.Count -ne 3){throw 'parser_functions_missing'}
+    foreach($function in $functions){. ([scriptblock]::Create($function.Extent.Text))}
+    $raw=[Console]::In.ReadToEnd()
+    $ordinary=Microsoft.PowerShell.Utility\\ConvertFrom-Json -InputObject $raw
+    $answer=@{shell_version=[string]$PSVersionTable.PSVersion;edition=[string]$PSVersionTable.PSEdition;
+      original_parser_birth_type=$ordinary.identity.os_creation_time.GetType().FullName;
+      selected=(ReadRecoveryJson $raw)}
+    if($PSVersionTable.PSEdition -eq 'Core'){$answer.core_fallback=ReadRecoveryCoreJson $raw}
+    [Console]::Out.WriteLine(($answer | ConvertTo-Json -Compress -Depth 12))
+  `;
+  const response = cp.spawnSync(shell.executable, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8', input: JSON.stringify(input), timeout: 30000, maxBuffer: 65536, windowsHide: true,
+    env: { ...process.env, KNOWLEDGE_RECOVERY_PS1: backendPath.replace(/\.js$/, '.ps1') }
+  });
+  assert.ifError(response.error); assert.equal(response.status, 0, response.stderr);
+  const observed = JSON.parse(response.stdout);
+  assert.deepEqual(observed.selected, input);
+  if (observed.edition === 'Core') assert.deepEqual(observed.core_fallback, input);
+  console.log(JSON.stringify({ shell_version: observed.shell_version, edition: observed.edition,
+    original_parser_birth_type: observed.original_parser_birth_type,
+    parser_branches_checked: observed.edition === 'Core' ? 2 : 1 }));
+});
+
+test('Windows live and terminated exact identities survive JSON and a one-tick mismatch cannot impersonate the live process', options, async t => {
+  const identity = backend.currentProcessIdentity();
+  assert.match(identity.os_creation_time, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{7}Z$/);
+  assert.equal(backend.verifyProcessExit(identity).status, 'active');
+  const wrong = { ...identity, os_creation_time: identity.os_creation_time.replace(/(\d)Z$/, digit =>
+    (digit[0] === '9' ? '8' : String(Number(digit[0]) + 1)) + 'Z') };
+  assert.notEqual(wrong.os_creation_time, identity.os_creation_time);
+  assert.equal(backend.verifyProcessExit(wrong).status, 'exited');
+  assert.equal(backend.verifyProcessExit(identity).status, 'active');
+  const code = `const b=require(${JSON.stringify(backendPath)});process.send(b.currentProcessIdentity());setInterval(()=>{},1000);`;
+  const child = cp.spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true });
+  let stderr = '';
+  child.stderr.on('data', data => { stderr = (stderr + data).slice(-65536); });
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await waitExit(child);
+  });
+  const childIdentity = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error('identity_child_start_timeout:' + stderr)); }, 30000);
+    const onExit = () => { cleanup(); reject(new Error('identity_child_exited:' + stderr)); };
+    const onError = error => { cleanup(); reject(error); };
+    const onMessage = value => { cleanup(); resolve(value); };
+    const cleanup = () => { clearTimeout(timer); child.off('exit', onExit); child.off('error', onError); child.off('message', onMessage); };
+    child.once('exit', onExit); child.once('error', onError); child.once('message', onMessage);
+  });
+  assert.equal(childIdentity.pid, child.pid);
+  assert.equal(backend.verifyProcessExit(childIdentity).status, 'active');
+  child.kill('SIGKILL'); await waitExit(child);
+  assert.equal(backend.verifyProcessExit(childIdentity).status, 'exited');
+  assert.equal(backend.verifyProcessExit(identity).status, 'active');
+});
 
 test('Windows real observer, live named Job recovery, detached descendant and replay', options, async t => {
   const f = await ownedTree(t), identity = backend.currentProcessIdentity();

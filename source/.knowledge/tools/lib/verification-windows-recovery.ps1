@@ -65,6 +65,56 @@ function Emit($value) {
   [Console]::Out.WriteLine(($value | ConvertTo-Json -Compress -Depth 12))
   [Console]::Out.Flush()
 }
+# Process births are opaque, exact 100 ns identity strings. PowerShell 6+
+# normally turns ISO JSON strings into DateTime, whose string cast is culture
+# dependent and loses the original representation. Never infer an exit from
+# that parser conversion. Keep strings unchanged on every supported shell.
+function ConvertRecoveryJsonToken($token) {
+  switch ([string]$token.get_Type()) {
+    'Object' {
+      $object = @{}
+      foreach ($property in $token.Properties()) {
+        $object[$property.Name] = ConvertRecoveryJsonToken $property.Value
+      }
+      return $object
+    }
+    'Array' {
+      $items = New-Object 'System.Collections.Generic.List[object]'
+      foreach ($item in $token.Children()) {
+        $items.Add((ConvertRecoveryJsonToken $item))
+      }
+      return ,$items.ToArray()
+    }
+    'Null' { return $null }
+    'String' { return [string]$token.Value }
+    'Integer' { return $token.Value }
+    'Float' { return $token.Value }
+    'Boolean' { return $token.Value }
+    default { throw 'recovery_json_type_invalid' }
+  }
+}
+function ReadRecoveryCoreJson([string]$json) {
+  # PowerShell 6 through 7.4 have no DateKind option. Load the same Json.NET
+  # assembly used by their cmdlet, disable date coercion, and unwrap tokens
+  # to plain objects so later ConvertTo-Json cannot rewrite their values.
+  $null = Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject '{}'
+  $reader = New-Object Newtonsoft.Json.JsonTextReader ([IO.StringReader]::new($json))
+  $reader.DateParseHandling = [Newtonsoft.Json.DateParseHandling]::None
+  $reader.MaxDepth = 64
+  try {
+    $token = [Newtonsoft.Json.Linq.JToken]::ReadFrom($reader)
+    if ($reader.Read()) { throw 'recovery_json_trailing_data' }
+    return ConvertRecoveryJsonToken $token
+  } finally { $reader.Close() }
+}
+function ReadRecoveryJson([string]$json) {
+  $converter = Get-Command -Name Microsoft.PowerShell.Utility\ConvertFrom-Json -CommandType Cmdlet
+  if ($converter.Parameters.ContainsKey('DateKind')) {
+    return Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $json -DateKind String -Depth 64
+  }
+  if ($PSVersionTable.PSEdition -eq 'Core') { return ReadRecoveryCoreJson $json }
+  return Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $json
+}
 function OpenExact($identity, [bool]$MayTerminate) {
   if ($null -eq $identity -or [long]$identity.pid -le 0 -or [string]::IsNullOrEmpty([string]$identity.os_creation_time)) { throw 'recovery_identity_invalid' }
   $access = [uint32]0x101000 # QUERY_LIMITED_INFORMATION | SYNCHRONIZE
@@ -104,7 +154,7 @@ function StopExact($opened) {
 $job = [IntPtr]::Zero
 $opened = @()
 try {
-  $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
+  $request = ReadRecoveryJson ([Console]::In.ReadToEnd())
   if ($request.action -eq 'identity') {
     $handle = [KnowledgeNativeRecovery]::OpenProcess(0x101000, $false, [uint32]$RecovererPid)
     if ($handle -eq [IntPtr]::Zero) { throw 'recovery_owner_identity_unavailable' }
