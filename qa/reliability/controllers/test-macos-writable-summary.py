@@ -105,6 +105,9 @@ class ProjectionTests(unittest.TestCase):
         team=rows[-1];team.update(initial_controller_exit_code=-9,controller_exit_code=0,terminal={'type':'result','ok':True,'value':out,'cleanup':report['cleanup']},
             quality_status='failed',overall_status='failed')
         team['observations'].update({key:True for key in m.TEAM_FACTS});team['observations'].update(manual_owner_repair=False,fresh_team_steps_executed=8)
+        team['observations']['fixture_ancestor_read_control']={key:True for key in (
+            'exact_root_owned_inode','search_only_read_denied','readable_read_confirmed','write_permissions_unchanged','original_mode_restored')}
+        team['observations']['fixture_ancestor_read_control'].update(original_mode=0o711,case_mode=0o755)
         self.write_team_proof()
         (self.private/'macos-team-recovery-caller.cjs').write_text(m.fixture.TEAM_CALLER)
         self.write('TEAM_RECOVERY_INPUTS.json',{'team_caller_sha256':m.sha(m.fixture.TEAM_CALLER.encode()),'updates_disabled':True,
@@ -128,6 +131,14 @@ class ProjectionTests(unittest.TestCase):
             row['observations']['fifo_reader']=copy.deepcopy(original);row['observations']['fifo_reader'][key]=value
             self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE',key)
         row['observations']['fifo_reader']=original
+    def test_team_fixture_read_control_requires_exact_identity_and_restoration(self):
+        row=self.raw['cases'][-1];original=copy.deepcopy(row['observations']['fixture_ancestor_read_control'])
+        for key in original:
+            for value in (None,False,1):
+                row['observations']['fixture_ancestor_read_control']=copy.deepcopy(original)
+                row['observations']['fixture_ancestor_read_control'][key]=value
+                self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE',key)
+        row['observations']['fixture_ancestor_read_control']=original
     def test_every_missing_or_nonboolean_cleanup_fact_rejected(self):
         for index in range(len(m.CASES)):
             for key in ('exact_actor_exits','independent_uid_zero','typed_native_closure','automatic_native_cleanup','outside_canary_unchanged','external_recovery_requested','acceptance_after_cancel'):

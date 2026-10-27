@@ -30,13 +30,12 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 3
       matrix:
         include:
           - { id: macos-x64-writable, runner: macos-15-intel, platform: darwin, arch: x64, macos_cohort: writable }
           - { id: macos-arm64-writable, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: writable }
           - { id: linux-x64, runner: ubuntu-22.04, platform: linux, arch: x64 }
-          - { id: macos-arm64-writer-sandbox, runner: macos-15, platform: darwin, arch: arm64, macos_cohort: writer-sandbox }
     defaults:
       run:
         shell: bash

@@ -111,7 +111,9 @@ test('original caller crash before active publication permits external exact rec
   // idempotence never substitutes for exact closure or permits an acceptance.
   assert(['failed','already_terminal'].includes(result.status),JSON.stringify(result));assert.equal(result.ack_released,false);
   const ended=result.attempt;assert.equal(ended.attempt_id,before.attempt_id);assert.equal(ended.generation,before.generation);
-  assert.deepEqual(ended.invocation,before.invocation);assert.equal(ended.phase,'terminal');assert.equal(ended.claimed,false);
+  // The administration child returns JSON; readStatus uses inert null-prototype
+  // records. Compare their full durable JSON values, including every field.
+  assert.equal(JSON.stringify(ended.invocation),JSON.stringify(before.invocation));assert.equal(ended.phase,'terminal');assert.equal(ended.claimed,false);
   assert.equal(ended.terminal.outcome,'failed');assert.equal(ended.terminal.ack_sha256,null);assert.equal(ended.cleanup.status,'confirmed');
   const transcript=ended.cleanup.invocation_transcript;assert(transcript);
   const hash=value=>require('crypto').createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -120,7 +122,7 @@ test('original caller crash before active publication permits external exact rec
   assert.equal(transcript.payload_sha256,hash(transcript.payload));
   const proof=transcript.payload.native_return;assert.equal(proof.status,'completed');assert.equal(proof.active_processes,0);
   assert.equal(proof.method,before.invocation.scope.backend);assert.equal(proof.scope_sha256,before.invocation.scope_sha256);
-  assert.deepEqual(f.control.readStatus(f.context).attempt,ended,'Returned recovery must match the persisted exact terminal attempt');
+  assert.equal(JSON.stringify(f.control.readStatus(f.context).attempt),JSON.stringify(ended),'Returned recovery must match the persisted exact terminal attempt');
   const next=f.launch();await until(()=>next.closed,55000,'A successor must close after exact external recovery');
   assert.equal(next.result?.status,'passed',JSON.stringify({result:next.result,stderr:next.stderr}));assert.equal(next.result.acceptances.length,1);
   assert.notEqual(f.control.readStatus(f.context).attempt.generation,before.generation);

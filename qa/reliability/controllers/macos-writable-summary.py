@@ -88,6 +88,7 @@ def diagnostics(terminal, catalog):
         'exit':child.get('exit') if type(child.get('exit')) is int and -255<=child['exit']<=255 else None,
         'signal':child.get('signal') if child.get('signal') in ('SIGKILL','SIGTERM','SIGABRT','SIGSEGV') else None}
     result['step_exit'] = detail.get('step_exit') if type(detail.get('step_exit')) is int and -255 <= detail['step_exit'] <= 255 else None
+    result['native_errno'] = detail.get('native_errno') if type(detail.get('native_errno')) is int and 0 <= detail['native_errno'] <= 4095 else None
     return result
 
 
@@ -244,6 +245,11 @@ def case_projection(row, catalog=None):
             facts['all_three_exact_kills_delivered'] = o.get('both_guardians_and_controller_exact_kill_delivered') is True
     elif name == 'team_flow_controller_death_retry':
         facts.update({key:o.get(key) is True for key in TEAM_FACTS})
+        ancestor = obj(o.get('fixture_ancestor_read_control'))
+        facts['exact_readable_fixture_ancestor_restored'] = all(ancestor.get(key) is True for key in (
+            'exact_root_owned_inode','search_only_read_denied','readable_read_confirmed','write_permissions_unchanged','original_mode_restored')) and \
+            type(ancestor.get('original_mode')) is int and ancestor['original_mode'] == 0o711 and \
+            type(ancestor.get('case_mode')) is int and ancestor['case_mode'] == 0o755
         facts.update(no_manual_owner_repair=o.get('manual_owner_repair') is False,
             original_controller_killed=type(row.get('initial_controller_exit_code')) is int and row['initial_controller_exit_code']==-9,
             fresh_public_run_returned=t.get('ok') is True and type(rc) is int and rc==0,
@@ -258,6 +264,7 @@ def case_projection(row, catalog=None):
         'facts': facts, 'elapsed_ms': elapsed, 'controller_exit_code': rc if type(rc) is int and -255 <= rc <= 255 else None,
         'error_code': code if isinstance(code, str) and code in (catalog[0] if catalog else SAFE_ERRORS) else None,
         'diagnostic': diagnostic, 'fifo_observation': fifo_diagnostic if name in ('state_writer_fifo_read_cancel', 'team_flow_controller_death_retry') else None,
+        'fixture_ancestor_modes': {'original':'0711','team_case':'0755','write_permissions_changed':False} if name==CASES[-1] and facts.get('exact_readable_fixture_ancestor_restored') is True else None,
         'quality_status': row.get('quality_status') if name==CASES[-1] and row.get('quality_status') in ('ok','failed') else None,
         'overall_status': row.get('overall_status') if name==CASES[-1] and row.get('overall_status') in ('ok','failed') else None}
 

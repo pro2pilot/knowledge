@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -139,10 +140,11 @@ const fs=require('node:fs'),path=require('node:path');const q=JSON.parse(fs.read
 let stage='team_context_prepare';
 function diagnostic(error){
  const code=value=>typeof value==='string'&&/^(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]{1,98}|EACCES|EPERM|ENOENT)$/.test(value)?value:null;
- const frames=[],pattern=/\b(macos-command-runner|macos-workspace-session|verification-darwin-session|verification-darwin-client|macos-command-worker|macos-worker-envelope|flow|evaluation-harness)\.js:(\d+):(\d+)/g;
+ const frames=[],pattern=/\b(macos-command-runner|macos-workspace-session|verification-darwin-session|verification-darwin-client|macos-command-worker|macos-worker-envelope|contained-lock-manager|lock-publication|team-store|flow|evaluation-harness)\.js:(\d+):(\d+)/g;
  for(const match of String(error.stack||'').matchAll(pattern)){if(frames.length===8)break;frames.push({file:match[1]+'.js',line:Number(match[2]),column:Number(match[3])});}
  return {stage,code:code(error.code),error_name:['Error','TypeError','RangeError','SyntaxError','AssertionError'].includes(error.name)?error.name:null,
-  native_error_code:code(error.native_code||error.reply?.error||error.native_error||error.cause?.code),frames};
+  native_error_code:code(error.native_code||error.reply?.error||error.native_error||error.cause?.code),
+  native_errno:Number.isSafeInteger(error.native_error)&&error.native_error>=0&&error.native_error<=4095?error.native_error:null,frames};
 }
 try{
 Object.assign(process.env,{KNOWLEDGE_DISABLE_GIT_DISCOVERY:'1',KNOWLEDGE_FLOW_NO_OPEN:'1',CI:'true',
@@ -367,10 +369,49 @@ def run_cases(runner, base, info, directory):
             if name == 'state_writer_fifo_read_cancel' and runner.public_completed:
                 config_file.unlink();saved_config.rename(config_file)
             if process is not None and process.poll() is not None: runner.active_monitor = None
-    run_team_case(runner, base, info, fixture, birth, send, entries, parse)
+    run_team_case(runner, base, info, fixture, birth, send, entries, parse, helpers)
 
 
-def run_team_case(runner, base, info, fixture, birth, send, entries, parse):
+def run_team_case(runner, base, info, fixture, birth, send, entries, parse, helpers):
+    # Native Team lock publication opens every ancestor as a read descriptor.
+    # The disposable custody parent starts search-only; grant only read bits
+    # on this exact root-owned fixture inode for this case, then restore it.
+    current = runner.fixture.lstat()
+    runner.check(stat.S_ISDIR(current.st_mode) and current.st_uid == 0 and stat.S_IMODE(current.st_mode) == 0o711 and
+        current.st_dev == runner.fixture_identity['dev'] and current.st_ino == runner.fixture_identity['ino'],
+        'macos_team_fixture_ancestor_identity')
+    denied = False
+    try:
+        fd = os.open(runner.fixture, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        os.close(fd)
+    except PermissionError as error:
+        denied = error.errno == 13
+    runner.check(denied, 'macos_team_fixture_read_control_not_denied')
+    change = ('import os,stat,json,sys;p=sys.argv[1];e=json.loads(sys.argv[2]);old,new=map(int,sys.argv[3:]);'
+        'fd=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);s=os.fstat(fd);'
+        'assert stat.S_ISDIR(s.st_mode) and s.st_uid==0 and s.st_dev==e["dev"] and s.st_ino==e["ino"] and stat.S_IMODE(s.st_mode)==old;'
+        'os.fchmod(fd,new);s=os.fstat(fd);assert stat.S_IMODE(s.st_mode)==new and not s.st_mode&0o022;os.close(fd)')
+    runner.root('macos-team-readable-fixture-ancestor', sys.executable, '-c', change,
+        str(runner.fixture), json.dumps(runner.fixture_identity), str(0o711), str(0o755))
+    try:
+        fd = os.open(runner.fixture, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            opened = os.fstat(fd)
+            runner.check(opened.st_dev == current.st_dev and opened.st_ino == current.st_ino and opened.st_uid == 0 and
+                stat.S_IMODE(opened.st_mode) == 0o755, 'macos_team_fixture_read_control_identity')
+        finally:
+            os.close(fd)
+        run_team_case_readable(runner, base, info, fixture, birth, send, entries, parse, helpers)
+    finally:
+        runner.root('macos-team-restore-fixture-ancestor', sys.executable, '-c', change,
+            str(runner.fixture), json.dumps(runner.fixture_identity), str(0o755), str(0o711))
+        if runner.case_results and runner.case_results[-1]['name'] == CASES[-1]:
+            runner.case_results[-1]['observations']['fixture_ancestor_read_control'] = {
+                'exact_root_owned_inode':True,'search_only_read_denied':True,'readable_read_confirmed':True,
+                'write_permissions_unchanged':True,'original_mode_restored':True,'original_mode':0o711,'case_mode':0o755}
+
+
+def run_team_case_readable(runner, base, info, fixture, birth, send, entries, parse, helpers):
     """Real abandoned Team lock -> automatic native closure -> public restart.
 
     Restart intentionally does not forge --retry-of for an incomplete run.

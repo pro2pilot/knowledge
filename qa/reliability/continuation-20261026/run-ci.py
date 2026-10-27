@@ -284,7 +284,7 @@ def main():
                 # its original test, remains byte-identical. The native controller
                 # binds both fixture hashes and records the external derivation.
                 native_command.extend(['--public-invocation-fixture', Path(__file__).with_name('public-invocation-idempotence.test.js'),
-                    '--public-invocation-fixture-sha256', '63c30e48a615e79eaa88e7f232bed5af36fcc0936f71802f819232b9911df522'])
+                    '--public-invocation-fixture-sha256', '28f52adea79b9f2693c2510b5e43e08c00ec2b5b7f47b95f95929595515e4e12'])
             run('native-runtime', native_command, 1200)
             copy_public(qa_out / 'public', public / 'native-runtime')
             runtime_source = qa_out / 'scratch/.knowledge'
