@@ -198,28 +198,39 @@ test('the imported source is readable, read-only, and worker descendants stay sc
   const readyPath = path.join(scratch, 'descendant-ready.json');
   const code = `const fs=require('node:fs');const ready=${JSON.stringify(readyPath)};const marker=${JSON.stringify(marker)};` +
     `fs.writeFileSync(ready,JSON.stringify({pid:process.pid,uid:process.getuid(),version:process.version}),{flag:'wx'});` +
-    `let tick=0;setInterval(()=>fs.appendFileSync(marker,String(++tick)+'\\n'),20);`;
+    `let tick=0;setInterval(()=>fs.appendFileSync(marker,String(++tick)+'\\\\n'),20);`;
   const child = spawn(process.execPath, ['-e', code], { detached: true, stdio: 'ignore',
     env: { PATH: '/runtime', LD_LIBRARY_PATH: '/runtime/lib', HOME: scratch, TMPDIR: scratch,
       KNOWLEDGE_SLICE_SCRATCH: scratch } });
   await new Promise((resolve, reject) => {
-    child.once('error', reject);
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    child.once('error', fail);
     const deadline = Date.now() + 5000;
     const inspect = () => {
+      if (settled) return;
       try {
         const ready = JSON.parse(fs.readFileSync(readyPath, 'utf8'));
         const ticks = fs.readFileSync(marker, 'utf8').trim().split('\\n').filter(Boolean);
         if (ready.pid === child.pid && ready.uid === 1000010301 && ready.version === 'v22.17.1' && ticks.length >= 2) {
+          settled = true;
           resolve();
           return;
         }
       } catch (_) {}
       if (Date.now() >= deadline) {
-        reject(new Error('detached writer readiness/tick proof timed out'));
+        fail(new Error('detached writer readiness/tick proof timed out'));
         return;
       }
       setTimeout(inspect, 10);
     };
+    child.once('exit', (code, signal) => {
+      if (!settled) fail(new Error('detached writer exited before readiness (code=' + code + ', signal=' + signal + ')'));
+    });
     child.once('spawn', inspect);
   });
   child.unref();
