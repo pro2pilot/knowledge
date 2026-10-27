@@ -13,11 +13,22 @@ function snapshot(){
  return {uid:process.getuid(),gid:process.getgid(),profile:profile==='unconfined'?'unconfined':profile.startsWith('unprivileged_userns')?'unprivileged_userns':'other',
   status:raw.split('\n').filter(s=>/^(Cap(Inh|Prm|Eff|Bnd|Amb)|NoNewPrivs|Seccomp):\s+[a-f0-9]+$/.test(s))};
 }
+function rootAccess(){
+ const observed={};
+ for(const [kind,flags] of [['read',fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW],
+  ['path',0x200000|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW]]){
+  let fd;
+  try{fd=fs.openSync('/',flags);observed[kind]={opened:true,is_directory:fs.fstatSync(fd).isDirectory()};}
+  catch(e){observed[kind]={opened:false,errno:e.errno,code:['EACCES','EPERM','EINVAL'].includes(e.code)?e.code:'unclassified'};}
+  finally{if(fd!==undefined)fs.closeSync(fd);}
+ }
+ return observed;
+}
 function probe(){
  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'knowledge-boundary-probe-')));
  const version=path.join(root,'locks/v1'),release=path.join(version,'.release');
  const stage='publish-team-flow-01234567-89ab-4cde-8fed-0123456789ab.lock';
- const result={snapshot:snapshot(),filesystem_type_hex:fs.statfsSync(root).type.toString(16)};
+ const result={snapshot:snapshot(),root_access:rootAccess(),filesystem_type_hex:fs.statfsSync(root).type.toString(16)};
  let lease;
  try {
   fs.mkdirSync(path.join(release,stage),{recursive:true});

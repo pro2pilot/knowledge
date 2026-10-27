@@ -137,12 +137,24 @@ static int open_directory(int parent, const char *name, struct stat *identity) {
 }
 static int root_directory(const char *name, struct stat *identity) {
   if (name[0] != '/') { errno = EINVAL; return -1; }
-  int fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW); if (fd < 0) return -1;
+  /* Ancestors supply only anchored identities and relative lookup, never
+     directory contents. O_PATH avoids requesting read access to search-only
+     ancestors (and to / under restricted user-namespace profiles). The owned
+     lock directories below still use O_RDONLY: they require real fsync. */
+#if defined(__linux__)
+  const int flags = O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW;
+#else
+  const int flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW;
+#endif
+  int fd = open("/", flags); if (fd < 0) return -1;
   char *copy = strdup(name + 1), *state = NULL; if (!copy) { close(fd); errno = ENOMEM; return -1; }
   char *part = strtok_r(copy, "/", &state);
   while (part) {
     if (!strcmp(part, ".") || !strcmp(part, "..")) { free(copy); close(fd); errno = EINVAL; return -1; }
-    struct stat next_identity; int next = open_directory(fd, part, &next_identity), error = errno;
+    struct stat next_identity; int next = openat(fd, part, flags), error = errno;
+    if (next >= 0 && (fstat(next, &next_identity) || !S_ISDIR(next_identity.st_mode))) {
+      error = errno ? errno : ENOTDIR; close(next); next = -1;
+    }
     close(fd); if (next < 0) { free(copy); errno = error; return -1; } fd = next;
     part = strtok_r(NULL, "/", &state);
   }

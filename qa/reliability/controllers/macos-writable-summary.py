@@ -43,6 +43,27 @@ TEAM_FACTS = ('public_team_main_async', 'abandoned_lock_published', 'old_lock_sc
     'new_team_lock_released', 'fresh_team_cleanup_completed', 'restart_not_retry_of', 'actual_state_writer_fifo_fd_observed')
 DOCTOR_STEPS = ('sync-tracked.js --scan', 'build-wiki-graph.js', 'lint-wiki.js', 'external-memory-status.js',
     'build-routing-bundle.js', 'build-search-index.js', 'scan-secrets.js', 'doctor.js')
+TEAM_STEP_STATUSES = {'pass', 'fail'}
+SEMANTIC_FAILURE_STATUSES = {'blocked', 'degraded', 'error', 'fail', 'failed', 'broken', 'needs_repair',
+    'runtime_error', 'storage_unavailable', 'unhealthy', 'unexpected_failure'}
+TEAM_RESULT_STATUSES = {'ok', 'pass', 'passed', 'failed', 'fail', 'error', 'blocked', 'unknown',
+    'broken', 'degraded', 'needs_repair', 'runtime_error', 'storage_unavailable', 'unhealthy', 'unexpected_failure'}
+SEMANTIC_ERROR_PATTERNS = (
+    (re.compile(r'^\$[^\r\n]{0,240} must be an object$'), 'json_not_object'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.expected_failure was not confirmed$'), 'expected_failure_not_confirmed'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.expected_nonzero_exit requires an integer nonzero exit_code$'), 'expected_exit_contract_failed'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.ok is false$'), 'ok_false'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.success is false$'), 'success_false'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.process_success is false$'), 'process_success_false'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.semantic_pass is false$'), 'semantic_pass_false'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.exit_code is -?[0-9]+$'), 'nonzero_exit_code'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.exit is -?[0-9]+$'), 'nonzero_exit'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.status is (?:' + '|'.join(sorted(SEMANTIC_FAILURE_STATUSES)) + r')$'), 'failure_status'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.semantic_outcome is (?:' + '|'.join(sorted(SEMANTIC_FAILURE_STATUSES)) + r')$'), 'failure_semantic_outcome'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.failures contains [1-9][0-9]{0,8} item\(s\)$'), 'failures_present'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.(?:unexpected_failure_count|unexpected_failed_count|unexpected_semantic_failure_count|critical_failed_count) is [1-9][0-9]{0,8}$'), 'positive_failure_counter'),
+    (re.compile(r'^\$[^\r\n]{0,240}\.stdout contains invalid JSON: .{0,500}$'), 'embedded_json_invalid'),
+)
 
 
 def diagnostic_catalog(source, source_rows):
@@ -137,7 +158,21 @@ def team_proof_valid(private, row, source, binaries):
                 obj(row.get('terminal')).get('value') != out or obj(row.get('terminal')).get('cleanup') != report.get('cleanup'): return False
         steps = out.get('steps')
         if type(out.get('steps_total')) is not int or out['steps_total'] != 8 or not isinstance(steps,list) or \
-                [obj(step).get('command') for step in steps] != list(DOCTOR_STEPS): return False
+                [obj(step).get('command') for step in steps] != list(DOCTOR_STEPS) or \
+                any(type(obj(step).get('success')) is not bool or obj(step).get('status') != ('pass' if obj(step)['success'] else 'fail') or \
+                    not isinstance(obj(step).get('semantic_errors'), list) or len(obj(step)['semantic_errors']) > 4096 or \
+                    any(not isinstance(error, str) or len(error) > 4096 for error in obj(step)['semantic_errors']) or \
+                    (obj(step).get('json_status') is not None and (not isinstance(obj(step)['json_status'], str) or len(obj(step)['json_status']) > 128)) for step in steps) or \
+                type(out.get('steps_ok')) is not int or out['steps_ok'] != sum(obj(step)['success'] is True for step in steps) or \
+                out.get('checks_status') != ('ok' if out['steps_ok'] == out['steps_total'] else 'failed') or \
+                out.get('overall_status') != ('ok' if out['checks_status'] == 'ok' and out.get('flow_log_status') == 'written' else 'failed'): return False
+        expected_final = 'ok' if out['overall_status'] == 'ok' and out.get('flow_log_status') == 'written' and \
+            obj(final.get('release')).get('status') in ('released', 'not_requested') else 'failed'
+        if final.get('final_status') != expected_final: return False
+        if any((obj(step).get('exit') is not None and (type(obj(step)['exit']) is not int or not -255 <= obj(step)['exit'] <= 255)) or
+               (obj(step)['success'] is True and (obj(step)['exit'] != 0 or obj(step)['semantic_errors'] or
+                   (isinstance(obj(step).get('json_status'), str) and obj(step)['json_status'].lower() in SEMANTIC_FAILURE_STATUSES)))
+               for step in steps): return False
         events = p.get('team_events')
         if not isinstance(events,list): return False
         acquired = [obj(value) for value in events if obj(value).get('type') == 'lock_acquired' and obj(value).get('lock') == 'flow']
@@ -161,6 +196,53 @@ def team_proof_valid(private, row, source, binaries):
                     value.get('binary_sha256') != binaries[0]['broker_sha256'] or value.get('stub_binary_sha256') != binaries[0]['stub_sha256']: return False
         return True
     except (OSError, KeyError, TypeError, ValueError, IndexError): return False
+
+
+def team_steps_projection(value):
+    """Project only the eight proof-bound Team pipeline step outcomes."""
+    steps = value.get('steps') if isinstance(value, dict) else None
+    if not isinstance(steps, list) or len(steps) != len(DOCTOR_STEPS):
+        return []
+    projected = []
+    for expected, raw in zip(DOCTOR_STEPS, steps):
+        raw = obj(raw)
+        if raw.get('command') != expected:
+            return []
+        semantic = raw.get('semantic_errors')
+        summary = raw.get('summary')
+        categories = sorted({category for error in semantic if isinstance(error, str) and len(error) <= 1024
+            for pattern, category in SEMANTIC_ERROR_PATTERNS if pattern.fullmatch(error)}) if isinstance(semantic, list) and len(semantic) <= 1024 else []
+        quality = None
+        if expected in ('lint-wiki.js', 'doctor.js'):
+            quality = quality_status_projection(summary)
+        projected.append({
+            'command': expected,
+            'exit_code': raw.get('exit') if type(raw.get('exit')) is int and -255 <= raw['exit'] <= 255 else None,
+            'execution_status': raw.get('status') if raw.get('status') in TEAM_STEP_STATUSES else 'unknown',
+            'success': raw.get('success') if type(raw.get('success')) is bool else None,
+            'verification_status': raw.get('json_status') if raw.get('json_status') in TEAM_RESULT_STATUSES else None,
+            'semantic_error_count': len(semantic) if isinstance(semantic, list) and len(semantic) <= 1024 else None,
+            'semantic_error_categories': categories,
+            'semantic_errors_sha256': sha(canonical(semantic)) if isinstance(semantic, list) and len(semantic) <= 1024 else None,
+            'quality_summary': quality,
+            'summary_sha256': sha(summary.encode('utf-8')) if isinstance(summary, str) else None,
+            'step_sha256': sha(canonical(raw)),
+        })
+    return projected
+
+
+def quality_status_projection(summary):
+    """Extract only the fixed Doctor/secret-scan summary grammar."""
+    if not isinstance(summary, str) or len(summary) > 128:
+        return None
+    match = re.fullmatch(r'(0|[1-9][0-9]{0,2}|-) /100 (ok|pass|passed|failed|fail|blocked|degraded|error|unknown)', summary)
+    if not match:
+        return None
+    score_text, status = match.groups()
+    score = int(score_text) if score_text != '-' and int(score_text) <= 100 else None
+    if score_text != '-' and score is None:
+        return None
+    return {'score': score, 'status': status}
 
 
 def package_valid(private, source, source_rows, special, addon, arch):
@@ -330,6 +412,7 @@ def build(private, source, rc, arch):
         if projected['name']==CASES[-1]:
             verified=bool(native and exact_source and team_proof_valid(private,obj(row),source,binaries))
             projected['facts']['exact_team_recovery_proof_verified']=verified
+            projected['team_steps'] = team_steps_projection(obj(obj(obj(row).get('terminal')).get('value'))) if verified else []
             if not verified: projected['status']='FAIL_OR_INCOMPLETE'
     passed = type(rc) is int and rc == 0 and raw.get('status') == 'PASS_PHYSICAL_MACOS_WRITABLE' and raw.get('case_set') == 'writable' and \
         raw.get('architecture') == arch and raw.get('source_unchanged') is True and raw.get('cleanup_confirmed') is True and \

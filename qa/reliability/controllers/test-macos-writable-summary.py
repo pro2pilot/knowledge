@@ -16,7 +16,7 @@ class ProjectionTests(unittest.TestCase):
         for name in ('tools/lib/verification-darwin-broker.m', 'tools/lib/verification-darwin-stub.c', 'tools/native/lock-publication.c', 'tools/example.js',
                      'docs/external-memory.md', 'docs/external-memory/claude-mem-bridge.md'):
             file = self.source/name;file.parent.mkdir(parents=True, exist_ok=True);file.write_bytes(name.encode())
-        (self.source/'config.yaml').write_text('updates:\n  enabled: true\n')
+        (self.source/'config.yaml').write_bytes(b'updates:\n  enabled: true\n')
         (self.source/'tools/example.js').write_text("throw fail('command_exact_static_failure');\n")
         self.source_rows = [{'path': file.relative_to(self.source.parent).as_posix(), 'bytes': file.stat().st_size,
             'sha256': m.sha(file.read_bytes()), 'executable': False} for file in sorted(self.source.rglob('*')) if file.is_file()]
@@ -30,7 +30,7 @@ class ProjectionTests(unittest.TestCase):
         stage = self.private/'macos-package-stage'
         for row in self.source_rows:
             name = row['path'].removeprefix('.knowledge/');file = stage/name;file.parent.mkdir(parents=True, exist_ok=True);file.write_bytes((self.source/name).read_bytes())
-        (stage/'tools/macos-qa-step.js').write_text(m.fixture.LEAF)
+        (stage/'tools/macos-qa-step.js').write_bytes(m.fixture.LEAF.encode())
         native = stage/'tools/lib/native/darwin-x64';native.mkdir(parents=True)
         (native/'lock-publication.node').write_bytes(b'addon');(native/'lock-publication.manifest.json').write_bytes(m.canonical(addon))
         members = [{'path': file.relative_to(stage).as_posix(), 'bytes': file.stat().st_size, 'sha256': m.sha(file.read_bytes())}
@@ -42,7 +42,7 @@ class ProjectionTests(unittest.TestCase):
             'package_derivation': 'exact runtime copy plus fixed QA leaf and compiled source-bound addon'}
         code = next(ast.literal_eval(node.value) for node in ast.walk(ast.parse((HERE/'macos-writable-lifecycle.py').read_text()))
             if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'batch_code' for t in node.targets))
-        (self.private/'macos-exact-signal-batch.c').write_text(code);(self.private/'macos-exact-signal-batch').write_bytes(b'batch')
+        (self.private/'macos-exact-signal-batch.c').write_bytes(code.encode());(self.private/'macos-exact-signal-batch').write_bytes(b'batch')
         self.write('MACOS_SIGNAL_BATCH_INPUTS.json', {'source_sha256': m.sha(code.encode()), 'binary_sha256': m.sha(b'batch'),
             'included_exact_signal_source_sha256': m.sha((HERE/'darwin-test-signal.c').read_bytes())})
         rows = []
@@ -91,8 +91,14 @@ class ProjectionTests(unittest.TestCase):
             'execution_scope':{'schema_version':'knowledge-command-scope-binding.v1','backend':'macos_uid_guardian','sha256':m.sha(scope_text.encode())}}).decode()
         starts=[{'schema_version':'knowledge-team-flow-start.v2','run_id':'TFR-'+str(i)*32,'repo_id':'repo','workspace_id':'work','state_root':'state',
             'flow':'doctor','retry_of':None,'content_sha256':str(i)*64} for i in (1,2)]
-        out={**starts[1],'checks_status':'failed','overall_status':'failed','team_release':{'status':'released'},'steps_total':8,
-            'steps':[{'command':name} for name in m.DOCTOR_STEPS]}
+        team_steps=[{'command':name,'exit':0 if index < 7 else 1,'success':index < 7,
+            'status':'pass' if index < 7 else 'fail','json_status':'ok' if index < 7 else 'failed',
+            'semantic_errors':[] if index < 7 else ['$.status is failed'],
+            'duration_ms':100+index,
+            'summary':'39 /100 failed' if name == 'doctor.js' else ''}
+            for index,name in enumerate(m.DOCTOR_STEPS)]
+        out={**starts[1],'checks_status':'failed','overall_status':'failed','flow_log_status':'written',
+            'team_release':{'status':'released'},'steps_total':8,'steps_ok':7,'steps':team_steps}
         out.update({key:{'status':'completed'} for key in ('ownership','command_cleanup','command_authority_cleanup')})
         report={'value':out,'scope':scopes[1],'cleanup':{'status':'completed'}}
         final={**starts[1],'schema_version':'knowledge-team-flow-finalization.v2','start_sha256':starts[1]['content_sha256'],
@@ -109,7 +115,7 @@ class ProjectionTests(unittest.TestCase):
             'exact_root_owned_inode','search_only_read_denied','readable_read_confirmed','write_permissions_unchanged','original_mode_restored')}
         team['observations']['fixture_ancestor_read_control'].update(original_mode=0o711,case_mode=0o755)
         self.write_team_proof()
-        (self.private/'macos-team-recovery-caller.cjs').write_text(m.fixture.TEAM_CALLER)
+        (self.private/'macos-team-recovery-caller.cjs').write_bytes(m.fixture.TEAM_CALLER.encode())
         self.write('TEAM_RECOVERY_INPUTS.json',{'team_caller_sha256':m.sha(m.fixture.TEAM_CALLER.encode()),'updates_disabled':True,
             'expected_shipping_doctor_steps':8,'original_config_sha256':m.sha((self.source/'config.yaml').read_bytes()),
             'configured_config_sha256':m.sha(b'updates:\n  enabled: false\n')})
@@ -211,6 +217,52 @@ class ProjectionTests(unittest.TestCase):
         result=self.project();self.assertEqual(result['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
         self.assertEqual(result['cases'][-1]['quality_status'],'failed')
         self.assertTrue(result['cases'][-1]['facts']['exact_team_recovery_proof_verified'])
+        steps=result['cases'][-1]['team_steps']
+        self.assertEqual([step['command'] for step in steps],list(m.DOCTOR_STEPS))
+        self.assertEqual(steps[-1]['execution_status'],'fail')
+        self.assertEqual(steps[-1]['verification_status'],'failed')
+        self.assertEqual(steps[-1]['semantic_error_count'],1)
+        self.assertEqual(steps[-1]['semantic_error_categories'],['failure_status'])
+        self.assertEqual(steps[-1]['quality_summary'],{'score':39,'status':'failed'})
+        self.assertTrue(m.HEX.fullmatch(steps[-1]['semantic_errors_sha256']))
+    def test_team_step_projection_digests_hostile_raw_details_and_allowlists_enums(self):
+        secret='/Users/private/team-token-'+('a1b2c3d4'*8)
+        raw=self.team_proof['retry_report']['value']['steps'][-1]
+        raw.update(summary=secret,semantic_errors=[secret],json_status=secret,unexpected_error_code=secret)
+        self.write_team_proof()
+        result=self.project();public=json.dumps(result)
+        step=result['cases'][-1]['team_steps'][-1]
+        self.assertNotIn(secret,public)
+        self.assertIsNone(step['verification_status'])
+        self.assertEqual(step['execution_status'],'fail')
+        self.assertEqual(step['semantic_error_count'],1)
+        self.assertEqual(step['semantic_error_categories'],[])
+        self.assertIsNone(step['quality_summary'])
+        self.assertTrue(m.HEX.fullmatch(step['semantic_errors_sha256']))
+        self.assertTrue(m.HEX.fullmatch(step['summary_sha256']))
+
+    def test_team_proof_rejects_final_status_conflicting_with_failed_flow(self):
+        self.team_proof['new_final']['final_status']='ok'
+        self.write_team_proof()
+        self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE')
+
+    def test_team_proof_rejects_successful_step_with_nonzero_exit(self):
+        out=self.team_proof['retry_report']['value'];step=out['steps'][-1]
+        step.update(exit=1,success=True,status='pass',json_status='ok',semantic_errors=[],summary='39 /100 ok')
+        out.update(steps_ok=8,checks_status='ok',overall_status='ok')
+        self.team_proof['new_final']['final_status']='ok'
+        self.team_proof['new_final']['checks_status']='ok'
+        team=self.raw['cases'][-1]
+        team['terminal']['value']=copy.deepcopy(out);team['quality_status']='ok';team['overall_status']='ok'
+        self.write_team_proof()
+        self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE')
+
+    def test_team_proof_rejects_success_with_failed_verification_and_semantic_errors(self):
+        out=self.team_proof['retry_report']['value'];step=out['steps'][0]
+        step.update(exit=0,success=True,status='pass',json_status='failed',semantic_errors=['$.status is failed'])
+        self.raw['cases'][-1]['terminal']['value']=copy.deepcopy(out)
+        self.write_team_proof()
+        self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE')
     def test_actual_native_binary_readback_and_static_error_catalog(self):
         row=self.raw['cases'][0];row['terminal']['code']='command_exact_static_failure'
         row['terminal']['diagnostic']={'code':'command_exact_static_failure','native_error_code':'CAP_'+('a'*64),

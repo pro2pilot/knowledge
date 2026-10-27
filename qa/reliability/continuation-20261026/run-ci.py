@@ -56,6 +56,7 @@ QUERY_CASES = [
     'probe wrapper preserves the helper lifecycle budget and passes both native timing limits',
 ]
 EXTRA_COHORT_COUNTS = {
+    'linux-lock-ancestors': 3, 'linux-lock-publication': 11,
     'watcher-attempt-ownership': 30, 'watcher-control': 17,
     'watcher-native': 3, 'watcher-runtime-safety': 20,
     'watcher-startup': 6, 'watcher-smoke-deadline': 2,
@@ -69,6 +70,7 @@ EXTRA_COHORT_COUNTS = {
     'failed-command-observation': 3,
 }
 WATCHER_TARGET_COHORTS = {
+    'linux-lock-ancestors', 'linux-lock-publication',
     'watcher-attempt-ownership', 'watcher-control', 'watcher-native', 'watcher-runtime-safety',
     'watcher-startup', 'watcher-smoke-deadline',
 }

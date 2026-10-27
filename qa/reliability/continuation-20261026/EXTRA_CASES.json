@@ -1,6 +1,34 @@
 {
   "schema_version": "knowledge-continuation-extra-cases.v1",
   "cohorts": {
+    "linux-lock-ancestors": {
+      "kind": "tap",
+      "files": ["tests/reliability-lock-search-ancestors.test.js"],
+      "platforms": ["linux"], "timeout_seconds": 60, "count": 3,
+      "cases": [
+        "Linux atomic publication needs search but no read permission on an ancestor",
+        "Linux search anchors still refuse an ancestor without search permission",
+        "Linux search anchors refuse a symbolic ancestor even when its target is valid"
+      ]
+    },
+    "linux-lock-publication": {
+      "kind": "tap",
+      "files": ["tests/reliability-lock-publication.test.js"],
+      "platforms": ["linux"], "timeout_seconds": 60, "count": 11,
+      "cases": [
+        "native prebuilt is pinned to current source, host and N-API 8",
+        "one native operation publishes the complete prepared directory",
+        "native refuses a hardlinked prepared owner inode without publishing it",
+        "native refuses an oversized prepared owner before allocating or publishing",
+        "native no-replace preserves an existing empty-directory",
+        "native no-replace preserves an existing nonempty-directory",
+        "native no-replace preserves an existing file",
+        "a substituted private parent cannot publish outside the anchored layout",
+        "a substituted private stage cannot publish a foreign directory",
+        "native refuses path traversal rather than resolving it",
+        "an exhausted native admission budget retains the complete private stage"
+      ]
+    },
     "failed-command-observation": {
       "kind": "tap",
       "files": [
