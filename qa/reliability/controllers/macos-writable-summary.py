@@ -88,6 +88,21 @@ def diagnostics(terminal, catalog):
         'exit':child.get('exit') if type(child.get('exit')) is int and -255<=child['exit']<=255 else None,
         'signal':child.get('signal') if child.get('signal') in ('SIGKILL','SIGTERM','SIGABRT','SIGSEGV') else None}
     result['step_exit'] = detail.get('step_exit') if type(detail.get('step_exit')) is int and -255 <= detail['step_exit'] <= 255 else None
+    native=obj(detail.get('native_command'));flags={};bindings={}
+    for key in ('ok','proof_current','guardian_reaped','permit_observed','timed_out','stop_latched','admission_closed','capability_qualified','command_cleanup_confirmed','kernel_membership_zero'):
+        flag=obj(obj(native.get('flags')).get(key));kind=flag.get('type');value=flag.get('value')
+        flags[key]={'type':kind if kind in ('boolean','number','string','object','undefined') else None,
+            'value':value if type(value) is bool or type(value) is int and value in (0,1) else None}
+    for key in ('attempt','descriptor','epoch','ordinal','command_hash','writer_generation','source_sha256','transport_header_sha256','installation_id','allocation_seq','allocation_sha256','host_id','boot_id'):
+        value=obj(native.get('bindings')).get(key);bindings[key]=value if type(value) is bool else None
+    numbers={key:native.get(key) if type(native.get(key)) is int and 0<=native[key]<=maximum else None for key,maximum in (('exit_code',255),('signal',128),('credential_errno',65535),('stderr_bytes',67108864))}
+    observed=native.get('credential_observation')
+    observed=observed if isinstance(observed,list) and len(observed)==11 and all(type(v) is bool or type(v) is int and -1<=v<=65535 for v in observed) else None
+    result['native_command']={**numbers,'flags':flags,'bindings':bindings,
+        'schema_valid':native.get('schema_valid') if type(native.get('schema_valid')) is bool else None,
+        'guardian_protocol_valid':native.get('guardian_protocol_valid') if type(native.get('guardian_protocol_valid')) is bool else None,
+        'credential_stage':native.get('credential_stage') if native.get('credential_stage') in ('setgroups','setgid','setuid') else None,
+        'credential_observation':observed}
     return result
 
 
@@ -309,7 +324,7 @@ def build(private, source, rc, arch):
             verified=bool(native and exact_source and team_proof_valid(private,obj(row),source,binaries))
             projected['facts']['exact_team_recovery_proof_verified']=verified
             if not verified: projected['status']='FAIL_OR_INCOMPLETE'
-    passed = type(rc) is int and rc == 0 and raw.get('status') == 'PASS_PHYSICAL_MACOS_WRITABLE' and raw.get('case_set') == 'writable' and \
+    passed = special.get('rpc_diagnostic_only') is not True and type(rc) is int and rc == 0 and raw.get('status') == 'PASS_PHYSICAL_MACOS_WRITABLE' and raw.get('case_set') == 'writable' and \
         raw.get('architecture') == arch and raw.get('source_unchanged') is True and raw.get('cleanup_confirmed') is True and \
         exact_cases and exact_source and exact_fixture and native and all(row['status'] == 'PASS_PHYSICAL_MACOS_WRITABLE' for row in cases)
     failure = raw.get('failure') if isinstance(raw.get('failure'), str) else ''
@@ -327,7 +342,7 @@ def build(private, source, rc, arch):
             body = file.read_bytes()
             stages.append({'stage': match[1], 'stderr_bytes': len(body), 'stderr_sha256': sha(body)})
     return {'schema': 'knowledge-macos-writable-public.v2', 'status': 'PASS_PHYSICAL_MACOS_WRITABLE' if passed else 'FAIL_OR_INCOMPLETE',
-        'controller_exit_code': rc, 'expected_architecture': arch, 'source_unchanged': raw.get('source_unchanged') is True,
+        'diagnostic_only':special.get('rpc_diagnostic_only') is True, 'controller_exit_code': rc, 'expected_architecture': arch, 'source_unchanged': raw.get('source_unchanged') is True,
         'cleanup_confirmed': raw.get('cleanup_confirmed') is True, 'exact_case_inventory_verified': bool(exact_cases),
         'exact_source_inventory_verified': bool(exact_source), 'exact_fixture_verified': bool(exact_fixture), 'native_bindings_verified': bool(native),
         'fixture_checks': fixture_checks,
