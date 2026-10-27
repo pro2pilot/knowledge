@@ -7,6 +7,7 @@ Raw descriptors, paths and process identities stay in private evidence.
 """
 import hashlib
 import importlib.util
+import errno
 import json
 import os
 from pathlib import Path
@@ -41,6 +42,9 @@ def observe_fifo_reader(runner, helpers, identity, target, name):
 
 MAX_TEAM_DOCTOR_REPORT_BYTES = 2 * 1024 * 1024
 TEAM_DOCTOR_REPORT_STATUSES = {'healthy', 'usable_with_warnings', 'structurally_broken'}
+TEAM_DOCTOR_CAPTURE_STAGES = {'start_record', 'team_root', 'state_root', 'flow_state_root', 'maintenance_dir',
+    'report_path', 'report_read', 'report_json', 'report_shape', 'flow_binding', 'private_retention'}
+TEAM_DOCTOR_ERRNOS = {'EPERM', 'ENOENT', 'EACCES', 'ELOOP', 'ENOTDIR', 'EIO', 'ESTALE', 'EMFILE', 'ENFILE', 'EINTR', 'EBADF', 'EAGAIN', 'ENOMEM'}
 
 
 def bounded_stream_read(stream, maximum):
@@ -101,37 +105,56 @@ def capture_team_doctor_report(runner, base, evidence, team_root, start, flow_va
     report was the exact parsed object consumed by Flow.
     """
     unavailable = {'status': 'unavailable', 'reason_code': 'report_missing',
-        'bytes': None, 'sha256': None, 'binding': 'none', 'causal_proof': False}
+        'bytes': None, 'sha256': None, 'binding': 'none', 'causal_proof': False,
+        'diagnostic_stage': 'start_record', 'exception_type': None, 'errno_name': None, 'shape_reason': None}
+    stage = 'start_record'
+
+    def reject(reason, shape):
+        unavailable.update(reason_code=reason, diagnostic_stage=stage, shape_reason=shape)
+        return unavailable
+
     try:
         relative = Path(start.get('state_root', ''))
         if not relative.parts or relative.is_absolute() or any(part in ('', '.', '..') for part in relative.parts):
-            unavailable['reason_code'] = 'state_root_invalid';return unavailable
+            return reject('state_root_invalid', 'relative_state_root_invalid')
+        stage = 'team_root'
         root = Path(team_root).resolve(strict=True)
         state_candidate = root / relative
         if not no_symlink_components(root, state_candidate):
-            unavailable['reason_code'] = 'state_root_mismatch';return unavailable
+            stage = 'state_root'
+            return reject('state_root_mismatch', 'state_root_not_contained')
         state = state_candidate.resolve(strict=True)
+        stage = 'flow_state_root'
         if not state.is_relative_to(root) or Path(flow_value.get('state_root', '')).resolve(strict=True) != state:
-            unavailable['reason_code'] = 'state_root_mismatch';return unavailable
+            return reject('state_root_mismatch', 'flow_state_root_mismatch')
+        stage = 'maintenance_dir'
         maintenance = state / 'maintenance'
         maintenance_stat = maintenance.lstat()
         if not stat.S_ISDIR(maintenance_stat.st_mode) or stat.S_ISLNK(maintenance_stat.st_mode):
-            unavailable['reason_code'] = 'report_not_unique_regular';return unavailable
+            return reject('report_not_unique_regular', 'maintenance_not_directory')
+        stage = 'report_path'
         report_path = maintenance / 'quality_report.json'
         if not report_path.resolve(strict=True).is_relative_to(state) or not no_symlink_components(state, report_path):
-            unavailable['reason_code'] = 'report_not_unique_regular';return unavailable
+            return reject('report_not_unique_regular', 'report_path_not_contained')
+        stage = 'report_read'
         try: body = read_bounded_regular_file(report_path, MAX_TEAM_DOCTOR_REPORT_BYTES)
         except ValueError as error:
             unavailable['reason_code'] = 'report_size_out_of_bounds' if str(error) == 'file_size_out_of_bounds' else 'report_changed_during_read'
+            unavailable.update(diagnostic_stage=stage,
+                shape_reason='report_size_out_of_bounds' if str(error) == 'file_size_out_of_bounds' else 'report_read_rejected')
             return unavailable
+        stage = 'report_json'
         report = json.loads(body)
         if not isinstance(report, dict):
-            unavailable['reason_code'] = 'report_shape_invalid';return unavailable
+            stage = 'report_shape'
+            return reject('report_shape_invalid', 'report_top_level_not_object')
         score, status = report.get('quality_score'), report.get('status')
         generated = report.get('generated_at')
         started = flow_value.get('started_at');duration = flow_value.get('duration_total_ms')
         if not isinstance(generated, str) or not generated.endswith('Z') or not isinstance(started, str) or not started.endswith('Z'):
-            unavailable['reason_code'] = 'report_flow_summary_mismatch';return unavailable
+            stage = 'flow_binding'
+            return reject('report_flow_summary_mismatch', 'timestamp_missing_or_invalid')
+        stage = 'flow_binding'
         timestamp = __import__('datetime').datetime.fromisoformat(generated.replace('Z', '+00:00')).timestamp()
         flow_begin = __import__('datetime').datetime.fromisoformat(started.replace('Z', '+00:00')).timestamp()
         if (report.get('mode') != 'team' or type(score) is not int or not 0 <= score <= 100 or
@@ -141,14 +164,23 @@ def capture_team_doctor_report(runner, base, evidence, team_root, start, flow_va
                 not isinstance(flow_value.get('steps'), list) or len(flow_value['steps']) != 8 or
                 flow_value['steps'][-1].get('command') != 'doctor.js' or
                 flow_value['steps'][-1].get('summary') != f'{score} /100 {status}'):
-            unavailable['reason_code'] = 'report_flow_summary_mismatch';return unavailable
+            return reject('report_flow_summary_mismatch', 'doctor_report_flow_summary_mismatch')
+        stage = 'private_retention'
         destination = evidence / 'TEAM_DOCTOR_REPORT.private.json'
         base.private_file(destination, body)
         return {'status': 'captured', 'reason_code': None, 'bytes': len(body),
             'sha256': base.sha_bytes(body), 'binding': 'flow_time_window_and_step_summary_match',
-            'generated_at': generated, 'causal_proof': False}
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            'generated_at': generated, 'causal_proof': False, 'diagnostic_stage': None,
+            'exception_type': None, 'errno_name': None, 'shape_reason': None}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
         unavailable['reason_code'] = 'report_unreadable'
+        unavailable['diagnostic_stage'] = stage if stage in TEAM_DOCTOR_CAPTURE_STAGES else 'start_record'
+        unavailable['exception_type'] = ('json_decode' if isinstance(error, json.JSONDecodeError) else
+            'os_error' if isinstance(error, OSError) else 'value_error' if isinstance(error, ValueError) else
+            'type_error' if isinstance(error, TypeError) else 'key_error' if isinstance(error, KeyError) else 'attribute_error')
+        code = errno.errorcode.get(error.errno) if isinstance(error, OSError) and type(error.errno) is int else None
+        unavailable['errno_name'] = code if code in TEAM_DOCTOR_ERRNOS else None
+        unavailable['shape_reason'] = 'invalid_json_document' if isinstance(error, json.JSONDecodeError) else None
         return unavailable
 
 LEAF = r"""'use strict';

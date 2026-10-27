@@ -133,7 +133,8 @@ class ProjectionTests(unittest.TestCase):
         self.doctor_report_bytes=m.canonical(self.doctor_report)
         self.doctor_report_diag={'status':'captured','reason_code':None,'bytes':len(self.doctor_report_bytes),
             'sha256':m.sha(self.doctor_report_bytes),'binding':'flow_time_window_and_step_summary_match',
-            'generated_at':self.doctor_report['generated_at'],'causal_proof':False}
+            'generated_at':self.doctor_report['generated_at'],'causal_proof':False,
+            'diagnostic_stage':None,'exception_type':None,'errno_name':None,'shape_reason':None}
         (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
         self.team_proof={'old_owner_text':owner_text,'old_scope_text':scope_text,'quarantined_owner_text':owner_text,'quarantined_scope_text':scope_text,
             'old_start':starts[0],'new_start':starts[1],'new_final':final,'old_final_exists':False,'lock_absent':True,
@@ -188,6 +189,50 @@ class ProjectionTests(unittest.TestCase):
             {**flow,'steps':self.team_proof['retry_report']['value']['steps']})
         self.assertEqual(diagnostic['reason_code'],'report_size_out_of_bounds')
         self.assertFalse((self.private/'TEAM_DOCTOR_REPORT.private.json').exists())
+        (state/'maintenance/quality_report.json').unlink()
+        diagnostic=lifecycle.capture_team_doctor_report(None,PrivateEvidenceWriter,self.private,team_root,start,
+            {**flow,'steps':self.team_proof['retry_report']['value']['steps']})
+        self.assertEqual(diagnostic['status'],'unavailable')
+        self.assertEqual(diagnostic['reason_code'],'report_unreadable')
+        self.assertEqual(diagnostic['diagnostic_stage'],'report_path')
+        self.assertEqual(diagnostic['exception_type'],'os_error')
+        self.assertEqual(diagnostic['errno_name'],'ENOENT')
+        self.assertIsNone(diagnostic['shape_reason'])
+        self.assertNotIn(str(team_root),json.dumps(diagnostic))
+    def test_capture_json_shape_failure_has_bounded_typed_reason(self):
+        team_root=self.base/'team';state_rel=Path('repos/repo/workspaces/work/state')
+        state=team_root/state_rel;(state/'maintenance').mkdir(parents=True)
+        report_path=state/'maintenance/quality_report.json';report_path.write_bytes(b'{invalid')
+        diagnostic=lifecycle.capture_team_doctor_report(None,PrivateEvidenceWriter,self.private,team_root,
+            self.team_proof['new_start'],{**self.team_proof['retry_report']['value'],'state_root':str(state)})
+        self.assertEqual(diagnostic['reason_code'],'report_unreadable')
+        self.assertEqual(diagnostic['diagnostic_stage'],'report_json')
+        self.assertEqual(diagnostic['exception_type'],'json_decode')
+        self.assertIsNone(diagnostic['errno_name'])
+        self.assertEqual(diagnostic['shape_reason'],'invalid_json_document')
+        self.assertNotIn('{invalid',json.dumps(diagnostic))
+    def test_public_doctor_diagnostic_preserves_only_allowlisted_capture_stage(self):
+        self.team_proof['team_doctor_report']={**self.team_proof['team_doctor_report'],'status':'unavailable',
+            'reason_code':'report_unreadable','bytes':None,'sha256':None,'binding':'none','generated_at':None,
+            'diagnostic_stage':'report_path','exception_type':'os_error','errno_name':'ENOENT',
+            'shape_reason':'report_path_not_contained'}
+        result=m.doctor_report_projection(self.private,self.team_proof,self.source,self.source_rows)
+        self.assertEqual(result['status'],'unavailable')
+        self.assertEqual(result['diagnostic_stage'],'report_path')
+        self.assertEqual(result['exception_type'],'os_error')
+        self.assertEqual(result['errno_name'],'ENOENT')
+        self.assertEqual(result['shape_reason'],'report_path_not_contained')
+        hostile={**self.team_proof,'team_doctor_report':{**self.team_proof['team_doctor_report'],
+            'diagnostic_stage':'/Users/private/path','exception_type':'secret-'+('a'*64),
+            'errno_name':'secret-'+('b'*64),'shape_reason':'private message '+('c'*64)}}
+        sanitized=m.doctor_report_projection(self.private,hostile,self.source,self.source_rows)
+        self.assertEqual(sanitized['diagnostic_stage'],'capture_metadata')
+        self.assertIsNone(sanitized['exception_type'])
+        self.assertIsNone(sanitized['errno_name'])
+        self.assertIsNone(sanitized['shape_reason'])
+        public=json.dumps(sanitized)
+        self.assertNotIn('/Users/private/path',public)
+        self.assertNotIn('secret-',public)
     def test_positive_exact_derived_inventory(self):
         self.assertEqual(self.project()['status'],'PASS_PHYSICAL_MACOS_WRITABLE')
     def test_fifo_observer_requires_current_birth_exact_inode_and_read_descriptor(self):
@@ -335,6 +380,23 @@ class ProjectionTests(unittest.TestCase):
         self.assertTrue(m.HEX.fullmatch(diag['required_artifact_unknown_digest']))
         self.assertEqual(diag['lock_safety']['unknown_count'],1)
         self.assertTrue(m.HEX.fullmatch(diag['lock_safety']['unknown_digest']))
+
+    def test_doctor_projection_json_failure_exports_stage_not_raw_exception(self):
+        self.doctor_report_bytes=b'{private invalid report bytes'
+        self.doctor_report_diag.update(bytes=len(self.doctor_report_bytes),sha256=m.sha(self.doctor_report_bytes))
+        self.team_proof['team_doctor_report']=copy.deepcopy(self.doctor_report_diag)
+        (self.private/'TEAM_DOCTOR_REPORT.private.json').write_bytes(self.doctor_report_bytes)
+        self.write_team_proof()
+        result=self.project()
+        doctor=result['cases'][-1]['team_steps'][-1]['doctor_report_diagnostic']
+        public=json.dumps(doctor)
+        self.assertEqual(doctor['status'],'unavailable')
+        self.assertEqual(doctor['reason_code'],'report_unreadable')
+        self.assertEqual(doctor['diagnostic_stage'],'private_report_json')
+        self.assertEqual(doctor['exception_type'],'json_decode')
+        self.assertEqual(doctor['shape_reason'],'invalid_json_document')
+        self.assertNotIn('{private invalid report bytes',public)
+        self.assertNotIn('Expecting property name',public)
 
     def test_missing_doctor_report_does_not_replace_or_invalidate_physical_proof(self):
         (self.private/'TEAM_DOCTOR_REPORT.private.json').unlink()

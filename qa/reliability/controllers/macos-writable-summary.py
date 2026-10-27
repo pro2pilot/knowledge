@@ -52,6 +52,20 @@ TEAM_RESULT_STATUSES = {'ok', 'pass', 'passed', 'failed', 'fail', 'error', 'bloc
 TEAM_DOCTOR_REPORT_STATUSES = {'healthy', 'usable_with_warnings', 'structurally_broken'}
 TEAM_DIAGNOSTIC_REASONS = {'report_missing', 'state_root_invalid', 'state_root_mismatch', 'report_not_unique_regular',
     'report_size_out_of_bounds', 'report_changed_during_read', 'report_shape_invalid', 'report_flow_summary_mismatch', 'report_unreadable'}
+TEAM_DOCTOR_CAPTURE_STAGES = {'start_record', 'team_root', 'state_root', 'flow_state_root', 'maintenance_dir',
+    'report_path', 'report_read', 'report_json', 'report_shape', 'flow_binding', 'private_retention'}
+TEAM_DOCTOR_PROJECTION_STAGES = {'capture_metadata', 'private_root', 'private_report_path', 'private_report_read',
+    'private_report_digest', 'private_report_json', 'report_header', 'flow_time_window', 'doctor_source_catalog',
+    'doctor_check_list', 'doctor_check_row', 'doctor_issue_list', 'doctor_lock_safety', 'doctor_semantics', 'projection_exception'}
+TEAM_DOCTOR_EXCEPTION_TYPES = {'json_decode', 'os_error', 'value_error', 'type_error', 'key_error', 'attribute_error', 'index_error'}
+TEAM_DOCTOR_ERRNOS = {'EPERM', 'ENOENT', 'EACCES', 'ELOOP', 'ENOTDIR', 'EIO', 'ESTALE', 'EMFILE', 'ENFILE', 'EINTR', 'EBADF', 'EAGAIN', 'ENOMEM'}
+TEAM_DOCTOR_SHAPE_REASONS = {'relative_state_root_invalid', 'state_root_not_contained', 'flow_state_root_mismatch',
+    'maintenance_not_directory', 'report_path_not_contained', 'report_size_out_of_bounds', 'report_read_rejected',
+    'report_top_level_not_object', 'timestamp_missing_or_invalid', 'doctor_report_flow_summary_mismatch',
+    'invalid_json_document', 'capture_metadata_invalid', 'private_root_invalid', 'private_report_path_invalid',
+    'private_report_read_rejected', 'private_report_integrity_mismatch', 'doctor_report_header_invalid',
+    'flow_time_window_mismatch', 'doctor_catalog_invalid', 'doctor_check_list_invalid', 'doctor_check_id_or_status_unknown',
+    'doctor_issue_list_invalid', 'doctor_lock_safety_invalid', 'doctor_semantic_errors_invalid', 'projection_exception'}
 MAX_TEAM_DOCTOR_REPORT_BYTES = 2 * 1024 * 1024
 MAX_TEAM_DOCTOR_CHECKS = 4096
 DOCTOR_CHECK_STATUSES = {'pass', 'warn', 'fail'}
@@ -134,11 +148,17 @@ def team_proof_valid(private, row, source, binaries):
             if doctor_diag.get('binding') != 'flow_time_window_and_step_summary_match' or \
                     not isinstance(doctor_diag.get('generated_at'), str) or type(doctor_diag.get('bytes')) is not int or \
                     not 1 <= doctor_diag['bytes'] <= MAX_TEAM_DOCTOR_REPORT_BYTES or not digest(doctor_diag.get('sha256')) or \
-                    doctor_diag.get('reason_code') is not None: return False
+                    doctor_diag.get('reason_code') is not None or doctor_diag.get('diagnostic_stage') is not None or \
+                    doctor_diag.get('exception_type') is not None or doctor_diag.get('errno_name') is not None or \
+                    doctor_diag.get('shape_reason') is not None: return False
         elif doctor_diag.get('status') == 'unavailable':
             if doctor_diag.get('reason_code') not in TEAM_DIAGNOSTIC_REASONS or doctor_diag.get('binding') != 'none' or \
                     doctor_diag.get('bytes') is not None or doctor_diag.get('sha256') is not None or \
-                    doctor_diag.get('generated_at') is not None: return False
+                    doctor_diag.get('generated_at') is not None or \
+                    doctor_diag.get('diagnostic_stage') not in TEAM_DOCTOR_CAPTURE_STAGES or \
+                    doctor_diag.get('exception_type') not in TEAM_DOCTOR_EXCEPTION_TYPES | {None} or \
+                    doctor_diag.get('errno_name') not in TEAM_DOCTOR_ERRNOS | {None} or \
+                    doctor_diag.get('shape_reason') not in TEAM_DOCTOR_SHAPE_REASONS | {None}: return False
         else: return False
         caller = private/'macos-team-recovery-caller.cjs'
         if inputs.get('team_caller_sha256') != sha(fixture.TEAM_CALLER.encode()) or caller.is_symlink() or caller.read_bytes() != fixture.TEAM_CALLER.encode() or \
@@ -256,56 +276,98 @@ def doctor_source_catalog(source, source_rows):
 def doctor_report_projection(private, proof, source, source_rows):
     """Export only source-bound Doctor check ids, status enums, score and hashes."""
     unavailable = {'status': 'unavailable', 'reason_code': None, 'report_sha256': None, 'report_bytes': None,
-        'report_status': None, 'score': None, 'checks': [], 'semantic_error_locations': [], 'causal_proof': False}
+        'report_status': None, 'score': None, 'checks': [], 'semantic_error_locations': [], 'causal_proof': False,
+        'diagnostic_stage': 'capture_metadata', 'exception_type': None, 'errno_name': None, 'shape_reason': None}
+    stage = 'capture_metadata'
+
+    def reject(shape):
+        unavailable.update(reason_code='report_unreadable', diagnostic_stage=stage,
+            shape_reason=shape if shape in TEAM_DOCTOR_SHAPE_REASONS else 'projection_exception')
+        return unavailable
+
+    def record_exception(error):
+        unavailable['diagnostic_stage'] = stage if stage in TEAM_DOCTOR_PROJECTION_STAGES else 'projection_exception'
+        unavailable['exception_type'] = ('json_decode' if isinstance(error, json.JSONDecodeError) else
+            'os_error' if isinstance(error, OSError) else 'value_error' if isinstance(error, ValueError) else
+            'type_error' if isinstance(error, TypeError) else 'key_error' if isinstance(error, KeyError) else
+            'index_error' if isinstance(error, IndexError) else 'attribute_error')
+        code = __import__('errno').errorcode.get(error.errno) if isinstance(error, OSError) and type(error.errno) is int else None
+        unavailable['errno_name'] = code if code in TEAM_DOCTOR_ERRNOS else None
+        unavailable['shape_reason'] = 'invalid_json_document' if isinstance(error, json.JSONDecodeError) else 'projection_exception'
+        unavailable['reason_code'] = 'report_unreadable'
+        return unavailable
+
     diag = obj(obj(proof).get('team_doctor_report'))
     if diag.get('status') == 'unavailable':
         unavailable['reason_code'] = diag.get('reason_code') if diag.get('reason_code') in TEAM_DIAGNOSTIC_REASONS else 'report_unreadable'
+        capture_stage = diag.get('diagnostic_stage')
+        unavailable['diagnostic_stage'] = capture_stage if capture_stage in TEAM_DOCTOR_CAPTURE_STAGES else 'capture_metadata'
+        unavailable['exception_type'] = diag.get('exception_type') if diag.get('exception_type') in TEAM_DOCTOR_EXCEPTION_TYPES else None
+        unavailable['errno_name'] = diag.get('errno_name') if diag.get('errno_name') in TEAM_DOCTOR_ERRNOS else None
+        unavailable['shape_reason'] = diag.get('shape_reason') if diag.get('shape_reason') in TEAM_DOCTOR_SHAPE_REASONS else None
         return unavailable
     if diag.get('status') != 'captured' or diag.get('causal_proof') is not False or \
             diag.get('binding') != 'flow_time_window_and_step_summary_match':
-        unavailable['reason_code'] = 'report_unreadable';return unavailable
+        return reject('capture_metadata_invalid')
+    stage = 'private_root'
     try: private = Path(private).resolve(strict=True)
-    except OSError:
-        unavailable['reason_code'] = 'report_unreadable';return unavailable
+    except OSError as error:
+        return record_exception(error)
     path = private/'TEAM_DOCTOR_REPORT.private.json'
+    stage = 'private_report_path'
     try:
         if not fixture.no_symlink_components(private,path):
-            unavailable['reason_code'] = 'report_unreadable';return unavailable
+            return reject('private_report_path_invalid')
+        stage = 'private_report_read'
         body = fixture.read_bounded_regular_file(path,MAX_TEAM_DOCTOR_REPORT_BYTES)
+    except OSError as error:
+        return record_exception(error)
+    except ValueError:
+        return reject('private_report_read_rejected')
+    try:
+        stage = 'private_report_digest'
         if len(body) != diag.get('bytes') or sha(body) != diag.get('sha256'):
-            unavailable['reason_code'] = 'report_unreadable';return unavailable
-        report = json.loads(body)
+            return reject('private_report_integrity_mismatch')
+        stage = 'private_report_json'
+        try:
+            report = json.loads(body)
+        except (ValueError, TypeError) as error:
+            return record_exception(error)
+        stage = 'report_header'
         if not isinstance(report, dict) or report.get('mode') != 'team' or \
                 type(report.get('quality_score')) is not int or not 0 <= report['quality_score'] <= 100 or \
                 report.get('status') not in TEAM_DOCTOR_REPORT_STATUSES or report.get('generated_at') != diag.get('generated_at'):
-            unavailable['reason_code'] = 'report_unreadable';return unavailable
+            return reject('doctor_report_header_invalid')
         flow = obj(obj(obj(proof).get('retry_report')).get('value'))
         flow_steps = flow.get('steps');started = flow.get('started_at');duration = flow.get('duration_total_ms')
         generated = report.get('generated_at')
+        stage = 'flow_time_window'
         try:
             if not isinstance(generated, str) or not generated.endswith('Z') or not isinstance(started, str) or not started.endswith('Z'):
                 raise ValueError('timestamp_format_invalid')
             generated_ts = __import__('datetime').datetime.fromisoformat(generated.replace('Z', '+00:00')).timestamp()
             started_ts = __import__('datetime').datetime.fromisoformat(started.replace('Z', '+00:00')).timestamp()
         except (AttributeError, TypeError, ValueError):
-            unavailable['reason_code'] = 'report_unreadable';return unavailable
+            return reject('flow_time_window_mismatch')
         if type(duration) is not int or not 0 <= duration <= 30*60*1000 or generated_ts < started_ts or \
                 generated_ts > started_ts + duration/1000 + 5 or not isinstance(flow_steps, list) or len(flow_steps) != 8 or \
                 obj(flow_steps[-1]).get('command') != 'doctor.js' or \
                 obj(flow_steps[-1]).get('summary') != f"{report['quality_score']} /100 {report['status']}":
-            unavailable['reason_code'] = 'report_unreadable';return unavailable
+            return reject('flow_time_window_mismatch')
+        stage = 'doctor_source_catalog'
         checks, catalog = report.get('checks'), doctor_source_catalog(source, source_rows)
         if not isinstance(checks, list) or len(checks) > MAX_TEAM_DOCTOR_CHECKS or not catalog or not catalog['checks']:
-            unavailable['reason_code'] = 'report_unreadable';return unavailable
+            return reject('doctor_catalog_invalid' if not catalog or not catalog.get('checks') else 'doctor_check_list_invalid')
         projected = {}
         required_artifacts = []
         unknown_artifacts = []
         unknown_issues = []
         unknown_locks = []
+        stage = 'doctor_check_row'
         for item in checks:
             item = obj(item);check_id, status = item.get('check'), item.get('status')
             if check_id not in catalog['checks'] or status not in DOCTOR_CHECK_STATUSES:
-                unavailable['reason_code'] = 'report_unreadable';return unavailable
+                return reject('doctor_check_id_or_status_unknown')
             prior = projected.get(check_id)
             rank = {'pass': 0, 'warn': 1, 'fail': 2}
             if prior is None or rank[status] > rank[prior]: projected[check_id] = status
@@ -322,9 +384,10 @@ def doctor_report_projection(private, proof, source, source_rows):
                     unknown_artifacts.append({'index':len(required_artifacts),'status':status})
                 else:
                     required_artifacts.append({'path':'.knowledge/'+relative,'status':status})
+        stage = 'doctor_issue_list'
         issue_rows = report.get('issues')
         if not isinstance(issue_rows,list) or len(issue_rows)>MAX_TEAM_DOCTOR_CHECKS:
-            unavailable['reason_code']='report_unreadable';return unavailable
+            return reject('doctor_issue_list_invalid')
         issue_counts = {}
         for issue in issue_rows:
             issue = obj(issue);code,severity = issue.get('code'),issue.get('severity')
@@ -333,10 +396,11 @@ def doctor_report_projection(private, proof, source, source_rows):
             else:
                 unknown_issues.append({'code':code if isinstance(code,str) else '',
                     'severity':severity if isinstance(severity,str) else ''})
+        stage = 'doctor_lock_safety'
         lock_safety = obj(report.get('lock_safety'));lock_status=lock_safety.get('status')
         lock_findings = lock_safety.get('findings')
         if lock_status not in DOCTOR_LOCK_STATUSES or not isinstance(lock_findings,list) or len(lock_findings)>MAX_TEAM_DOCTOR_CHECKS:
-            unavailable['reason_code']='report_unreadable';return unavailable
+            return reject('doctor_lock_safety_invalid')
         safe_lock_findings={}
         for finding in lock_findings:
             finding=obj(finding);code=finding.get('code');reason=finding.get('reason')
@@ -346,6 +410,7 @@ def doctor_report_projection(private, proof, source, source_rows):
             else:
                 unknown_locks.append({'code':code if isinstance(code,str) else '',
                     'reason':reason if isinstance(reason,str) else ''})
+        stage = 'doctor_semantics'
         issue_unknown_digest = sha(canonical(unknown_issues)) if unknown_issues else None
         artifact_unknown_digest = sha(canonical(unknown_artifacts)) if unknown_artifacts else None
         lock_unknown_digest = sha(canonical(unknown_locks)) if unknown_locks else None
@@ -376,9 +441,10 @@ def doctor_report_projection(private, proof, source, source_rows):
                 'findings':[{'code':code,'reason':reason,'count':safe_lock_findings[(code,reason)]}
                     for code,reason in sorted(safe_lock_findings,key=lambda value:(value[0],value[1] or ''))],
                 'unknown_count':len(unknown_locks),'unknown_digest':lock_unknown_digest},
-            'semantic_error_locations': locations[:32], 'causal_proof': False}
-    except (OSError, ValueError, TypeError, KeyError, IndexError):
-        unavailable['reason_code'] = 'report_unreadable';return unavailable
+            'semantic_error_locations': locations[:32], 'causal_proof': False,
+            'diagnostic_stage': None, 'exception_type': None, 'errno_name': None, 'shape_reason': None}
+    except (OSError, ValueError, TypeError, KeyError, IndexError) as error:
+        return record_exception(error)
 
 
 def team_steps_projection(value, doctor_diagnostic=None):
