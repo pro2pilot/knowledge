@@ -1,0 +1,73 @@
+name: RC5 targeted Linux ARM64 diagnostics
+
+on:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths:
+      - .github/workflows/rc5-targeted-diagnostics.yml
+      - qa/reliability/continuation-20261026/freeze-source.py
+      - qa/reliability/continuation-20261026/run-ci.py
+      - qa/reliability/linux-final-01/native_qa.py
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Run only the selected bounded platform cohort
+        required: true
+        type: choice
+        options:
+          - linux-arm64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-targeted-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  targeted-diagnostic:
+    if: ${{ github.event_name == 'push' || inputs.target == 'linux-arm64' }}
+    name: ${{ matrix.id }} scoped diagnostics
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - { id: linux-arm64, runner: ubuntu-24.04-arm, suite: linux-arm64-nested-watchers, platform: linux, arch: arm64, macos_cohort: combined }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Freeze this checkout's product source and bind the manifest
+        run: python qa/reliability/continuation-20261026/freeze-source.py --source source/.knowledge --out continuation-source
+      - name: Build native artifacts and run the selected diagnostic cohort
+        run: >-
+          python qa/reliability/continuation-20261026/run-ci.py
+          --prepared continuation-source
+          --out continuation-evidence
+          --platform '${{ matrix.platform }}'
+          --arch '${{ matrix.arch }}'
+          --phase diagnostic
+          --macos-cohort '${{ matrix.macos_cohort }}'
+          --suite '${{ matrix.suite }}'
+      - name: Retain public summaries only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc5-targeted-${{ matrix.id }}-${{ github.sha }}
+          path: continuation-evidence/public/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3

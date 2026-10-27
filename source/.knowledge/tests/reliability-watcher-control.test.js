@@ -18,7 +18,8 @@ function controller(run) {
     trace.push({ type: 'run', name, payload, options, index });
     return run({ channel, index, trace, payload, options, ready() {
       channel.connected = true;channel.emit('connected');
-      channel.emit('message', { type: 'ready', controller_pid: process.pid, watcher_id: 'model-' + index });
+      channel.emit('message', { type: 'ready', controller_pid: process.pid, worker_pid: process.pid + 1,
+        watcher_id: `model-${index}-${process.pid}-${payload.epoch_id}`, epoch_id: payload.epoch_id, attempt_id: 'a'.repeat(32) });
     } });
   } };
   const channels = { async createServer() {
@@ -29,6 +30,7 @@ function controller(run) {
   } };
   const module = { exports: {} };
   const load = name => name === './lib/command-runner' ? runner : name === './lib/command-holder-channel' ? channels :
+    name === './lib/watch-intervals' ? require('../tools/lib/watch-intervals') :
     name === './lib/path-context' ? { parseCliArgs } : require(name);
   vm.runInNewContext(fs.readFileSync(sourceFile, 'utf8'), {
     require: load, module, exports: module.exports, process: proc, console, Buffer, AbortController,
@@ -198,6 +200,7 @@ function modeledWorker(runCommand, options = {}) {
     env: { KNOWLEDGE_WATCH_DEBOUNCE_MS: '1', KNOWLEDGE_WATCH_HEARTBEAT_MS: '60000' } };
   const module = { exports: {} };
   const load = name => name === 'fs' ? modelFs : name === './command-runner' ? modelRunner :
+    name === './watch-intervals' ? require('../tools/lib/watch-intervals') :
     name === './command-holder-channel' ? { createClient: () => control } :
     name === './json-store' ? { getAgentId: () => 'model-agent', ensurePhysicalRoot() {}, ensureContainedDir() {} } :
     name === './path-context' ? { parseCliArgs, resolveKnowledgeContext: () => roots, contextEnv: () => ({}) } :

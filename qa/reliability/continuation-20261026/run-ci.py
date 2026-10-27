@@ -58,6 +58,7 @@ QUERY_CASES = [
 EXTRA_COHORT_COUNTS = {
     'watcher-attempt-ownership': 30, 'watcher-control': 17,
     'watcher-native': 3, 'watcher-runtime-safety': 20,
+    'watcher-startup': 6, 'watcher-smoke-deadline': 2,
     'macos-workspace-protocol': 9, 'macos-command-runner': 26,
     'macos-worker-envelope': 8, 'macos-native-authority': 3,
     'macos-boolean-wire': 4, 'repair-producer-dependency-closure': 8,
@@ -66,6 +67,10 @@ EXTRA_COHORT_COUNTS = {
     'watchdog-progress-close': 3,
     'windows-powershell-selection': 6,
     'failed-command-observation': 3,
+}
+WATCHER_TARGET_COHORTS = {
+    'watcher-attempt-ownership', 'watcher-control', 'watcher-native', 'watcher-runtime-safety',
+    'watcher-startup', 'watcher-smoke-deadline',
 }
 
 
@@ -113,7 +118,10 @@ def main():
     parser.add_argument('--arch', choices=['x64', 'arm64'], required=True)
     parser.add_argument('--phase', choices=['diagnostic', 'full'], default='diagnostic')
     parser.add_argument('--macos-cohort', choices=['combined', 'basic', 'failures', 'writable', 'writer-sandbox', 'physical'], default='combined')
+    parser.add_argument('--suite', choices=['full', 'linux-arm64-nested-watchers'], default='full')
     args = parser.parse_args()
+    if args.suite == 'linux-arm64-nested-watchers' and (args.platform, args.arch) != ('linux', 'arm64'):
+        parser.error('--suite linux-arm64-nested-watchers requires --platform linux --arch arm64')
     prepared = Path(args.prepared).resolve(strict=True)
     source = prepared / 'source/.knowledge'
     manifest = json.loads(bounded(prepared / 'SOURCE_MANIFEST.json'))
@@ -129,13 +137,15 @@ def main():
     for key in list(env):
         if key.startswith('KNOWLEDGE_'):
             env.pop(key)
-    started = time.monotonic();overall_end = started + 1500
+    started = time.monotonic();overall_end = started + (1700 if args.suite != 'full' else 1500)
     result = {'schema_version': 'knowledge-continuation-ci.v1', 'status': 'RUNNING', 'phase': args.phase,
         'platform': args.platform, 'architecture': args.arch, 'commit': os.environ.get('GITHUB_SHA'),
         'source_zip_sha256': manifest['archive_sha256'], 'source_manifest_sha256': sha(bounded(prepared / 'SOURCE_MANIFEST.json')),
         'source_file_count': manifest['file_count'], 'controller_sha256': sha(bounded(__file__)), 'steps': [],
-        'release_gate_qualified': False, 'macos_cohort': args.macos_cohort,
-        'scope': 'Exact frozen continuation cohort. Native execution, modeled predicates, writable administrative workspace capability, and full release qualification are distinct claims.'}
+        'release_gate_qualified': False, 'macos_cohort': args.macos_cohort, 'suite': args.suite,
+        'selected_cohorts': [],
+        'scope': ('Targeted diagnostic cohort. This result is not a full continuation or release qualification.' if args.suite != 'full' else
+            'Exact frozen continuation cohort. Native execution, modeled predicates, writable administrative workspace capability, and full release qualification are distinct claims.')}
     def save():
         (public / 'RESULT.json').write_bytes(encoded(result))
     save()
@@ -273,19 +283,23 @@ def main():
             policy = json.loads(bounded(origin / 'EXPECTED_CASES.json'))
             if args.platform == 'linux':
                 shutil.copyfile(origin / 'nested_tap.py', controller / 'nested_tap.py')
+            if args.platform == 'linux' and args.suite == 'full':
                 paths = policy['nested_required_paths']['linux_runtime']
                 if any([name] in paths for name in EXTRA_LINUX): raise RuntimeError('Duplicate continuation test policy')
                 paths.extend([[name] for name in EXTRA_LINUX])
             write_new(controller / 'EXPECTED_CASES.json', encoded(policy))
             qa_out = private / 'native-qa'
             native_command = [sys.executable, controller / 'native_qa.py', '--archive', prepared / 'SOURCE.zip', '--manifest', prepared / 'SOURCE_MANIFEST.json', '--out', qa_out]
-            if args.platform == 'linux':
+            if args.suite == 'linux-arm64-nested-watchers':
+                native_command.extend(['--suite', 'linux-nested-diagnostic'])
+            if args.platform == 'linux' and args.suite == 'full':
                 # Explicit supplemental QA fixture: the frozen source, including
                 # its original test, remains byte-identical. The native controller
                 # binds both fixture hashes and records the external derivation.
                 native_command.extend(['--public-invocation-fixture', Path(__file__).with_name('public-invocation-idempotence.test.js'),
                     '--public-invocation-fixture-sha256', '28f52adea79b9f2693c2510b5e43e08c00ec2b5b7f47b95f95929595515e4e12'])
             run('native-runtime', native_command, 1200)
+            result['selected_cohorts'].append('linux-native-runtime')
             copy_public(qa_out / 'public', public / 'native-runtime')
             runtime_source = qa_out / 'scratch/.knowledge'
             if not unchanged(runtime_source, manifest): raise RuntimeError('Native cohort source changed')
@@ -293,7 +307,8 @@ def main():
             native = private / 'native-build'
             build_row, _ = run('native-build', [sys.executable, QA / 'compile_native.py', '--source', source, '--pins', prepared / 'SOURCE_PINS.json', '--out', native], 240)
             arch = 'x86_64' if args.arch == 'x64' else 'arm64'
-            case_sets = ('failures', 'basic') if args.macos_cohort == 'combined' else (args.macos_cohort,) if args.macos_cohort in ('basic', 'failures') else ()
+            case_sets = ('failures', 'basic') if args.macos_cohort == 'combined' else \
+                (args.macos_cohort,) if args.macos_cohort in ('basic', 'failures') else ()
             for cases in case_sets:
                 location = private / ('macos-production-' + cases)
                 row, _ = run('macos-production-' + cases, [sys.executable, QA / 'controllers/darwin-production-lifecycle.py', '--source', source,
@@ -304,6 +319,7 @@ def main():
                 location = private / 'macos-writable'
                 row, _ = run('macos-writable', [sys.executable, QA / 'controllers/macos-writable-lifecycle.py', '--source', source,
                     '--reference', QA / 'reference', '--evidence', location, '--expected-arch', arch], 900)
+                result['selected_cohorts'].append('macos-writable-team-recovery')
                 run('macos-writable-summary', [sys.executable, QA / 'controllers/macos-writable-summary.py', '--private', location,
                     '--public', public / 'macos-writable', '--source', source, '--controller-status', row.get('exit_code', 1), '--expected-arch', arch], 60)
             if args.macos_cohort == 'writer-sandbox':
@@ -335,11 +351,15 @@ def main():
                     if name in ('lock-publication.node', 'lock-publication.manifest.json'):
                         write_new(destination / name, body)
                 write_new(export / 'BUILD.json', receipt_bytes)
-            tap('macos-client-query', source, ['tests/reliability-darwin-scope-query.test.js', 'tests/verification-darwin-client.test.js'], QUERY_CASES)
-        tap('report-generation', runtime_source, ['tests/report-generation.test.js'], REPORT_CASES, 180)
+            if args.suite == 'full':
+                tap('macos-client-query', source, ['tests/reliability-darwin-scope-query.test.js', 'tests/verification-darwin-client.test.js'], QUERY_CASES)
+        if args.suite == 'full':
+            tap('report-generation', runtime_source, ['tests/report-generation.test.js'], REPORT_CASES, 180)
         for name, cohort in extra_cohorts.items():
-            if args.platform in cohort['platforms']:
+            selected = args.suite == 'full' or (args.suite == 'linux-arm64-nested-watchers' and name in WATCHER_TARGET_COHORTS)
+            if selected and args.platform in cohort['platforms']:
                 extra_gate(name, cohort, runtime_source)
+                result['selected_cohorts'].append(name)
         result['source_after_unchanged'] = unchanged(source, manifest)
         result['runtime_source_after_unchanged'] = unchanged(runtime_source, manifest)
     except BaseException as error:
@@ -357,13 +377,14 @@ def main():
             result['source_readback_failure_type'] = type(error).__name__
             result['source_after_unchanged'] = result['runtime_source_after_unchanged'] = False
         result['elapsed_seconds'] = time.monotonic() - started
-        result['status'] = 'PASS_SCOPED_CONTINUATION' if result['steps'] and all(row['status'] == 'PASS' for row in result['steps']) and result.get('source_after_unchanged') and result.get('runtime_source_after_unchanged') and not result.get('failure_type') else 'FAIL_OR_INCOMPLETE'
+        all_pass = result['steps'] and all(row['status'] == 'PASS' for row in result['steps']) and result.get('source_after_unchanged') and result.get('runtime_source_after_unchanged') and not result.get('failure_type')
+        result['status'] = ('PASS_SCOPED_CONTINUATION' if args.suite == 'full' else 'PASS_SCOPED_TARGET') if all_pass else 'FAIL_OR_INCOMPLETE'
         save()
         inventory = {file.relative_to(public).as_posix(): {'bytes': file.stat().st_size, 'sha256': sha(bounded(file))} for file in sorted(public.rglob('*')) if file.is_file()}
         (public / 'SHA256SUMS.json').write_bytes(encoded(inventory))
         print(json.dumps({'status': result['status'], 'source_zip_sha256': result['source_zip_sha256'], 'platform': args.platform,
-            'architecture': args.arch, 'phase': args.phase, 'release_gate_qualified': False}))
-    return 0 if result['status'] == 'PASS_SCOPED_CONTINUATION' else 1
+            'architecture': args.arch, 'phase': args.phase, 'suite': args.suite, 'release_gate_qualified': False}))
+    return 0 if result['status'] in {'PASS_SCOPED_CONTINUATION', 'PASS_SCOPED_TARGET'} else 1
 
 
 if __name__ == '__main__':

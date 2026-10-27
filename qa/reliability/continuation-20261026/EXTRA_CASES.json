@@ -2,8 +2,17 @@
   "schema_version": "knowledge-continuation-extra-cases.v1",
   "cohorts": {
     "failed-command-observation": {
-      "kind": "tap", "files": ["tests/reliability-macos-failed-observation.test.js"], "platforms": ["linux", "win32", "darwin"],
-      "timeout_seconds": 90, "count": 3,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-failed-observation.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 3,
       "cases": [
         "failed command observation persists while strict readers and finalization reject acceptance",
         "failed observation validation retains exact schema runtime privacy and content checks",
@@ -11,8 +20,15 @@
       ]
     },
     "windows-powershell-selection": {
-      "kind": "tap", "files": ["tests/reliability-windows-powershell-selection.test.js"], "platforms": ["win32"],
-      "timeout_seconds": 90, "count": 6,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-windows-powershell-selection.test.js"
+      ],
+      "platforms": [
+        "win32"
+      ],
+      "timeout_seconds": 90,
+      "count": 6,
       "cases": [
         "Windows ARM selects only the stable native installed PowerShell image and pins its exact bytes",
         "Windows x64 keeps the existing system PowerShell path without probing a replacement",
@@ -23,8 +39,17 @@
       ]
     },
     "watchdog-progress-close": {
-      "kind": "tap", "files": ["tests/reliability-watchdog-progress-close.test.js"], "platforms": ["linux", "win32", "darwin"],
-      "timeout_seconds": 90, "count": 3,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-watchdog-progress-close.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 3,
       "cases": [
         "watchdog withholds terminal envelope until outer lifecycle graceful finish completes",
         "watchdog refuses candidate on outer lifecycle finish failure while preserving native cleanup proof",
@@ -32,8 +57,15 @@
       ]
     },
     "macos-storage-guardian-contract": {
-      "kind": "tap", "files": ["tests/reliability-darwin-storage-guardian-contract.test.js"], "platforms": ["darwin"],
-      "timeout_seconds": 90, "count": 6,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-darwin-storage-guardian-contract.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 6,
       "cases": [
         "fixed storage stays behind native P until independent root custody acknowledges exact births",
         "failed root custody never permits storage and never claims physical writer exit",
@@ -44,8 +76,17 @@
       ]
     },
     "runtime-install-completeness": {
-      "kind": "tap", "files": ["tests/reliability-runtime-install-completeness.test.js"], "platforms": ["linux", "win32", "darwin"],
-      "timeout_seconds": 180, "count": 11,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-runtime-install-completeness.test.js"
+      ],
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "timeout_seconds": 180,
+      "count": 11,
       "cases": [
         "new runtime modules enter the package and installer plan with exact source hashes",
         "manifestless and reduced-manifest installer paths retain every new runtime requirement",
@@ -61,8 +102,15 @@
       ]
     },
     "macos-lock-preflight": {
-      "kind": "tap", "files": ["tests/reliability-macos-lock-preflight.test.js"], "platforms": ["darwin"],
-      "timeout_seconds": 90, "count": 8,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-lock-preflight.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 8,
       "cases": [
         "absent Team lock discovery returns null without creating any storage",
         "preflight returns immutable token-free exact scope without changing owner or native state",
@@ -75,8 +123,15 @@
       ]
     },
     "macos-custody": {
-      "kind": "tap", "files": ["tests/reliability-macos-custody.test.js"], "platforms": ["darwin"],
-      "timeout_seconds": 90, "count": 2,
+      "kind": "tap",
+      "files": [
+        "tests/reliability-macos-custody.test.js"
+      ],
+      "platforms": [
+        "darwin"
+      ],
+      "timeout_seconds": 90,
+      "count": 2,
       "cases": [
         "independent custody survives planned command retirement and kills double-fault writers without storage",
         "fixed writer exit fallback preserves birth across exec and signals only the fresh audit-token version"
@@ -183,7 +238,7 @@
         "linux",
         "win32"
       ],
-      "timeout_seconds": 180,
+      "timeout_seconds": 420,
       "count": 20,
       "cases": [
         "real watcher detects its probe and completes actual sync-tracked command",
@@ -345,6 +400,42 @@
         "removing Windows native snapshot validation cannot retain the approved dynamic load exception",
         "the trusted generated-producer no-git guard remains mandatory"
       ]
+    },
+    "watcher-startup": {
+      "files": [
+        "tests/reliability-watcher-startup.test.js"
+      ],
+      "cases": [
+        "smoke rejects a foreign attempt even when the OS reused its controller PID",
+        "probe completion is one immutable attempt record, independent of unrelated global fields or wall clock rollback",
+        "startup, useful work and cleanup retain distinct conservative bounded allowances",
+        "private endpoint setup timeout closes a pending listener and rejects late activation",
+        "user cancellation interrupts pending private endpoint setup before any worker exists",
+        "setup timeout closes unauthenticated pending peers and safely consumes late listen errors"
+      ],
+      "count": 6,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "kind": "tap",
+      "timeout_seconds": 30
+    },
+    "watcher-smoke-deadline": {
+      "files": [
+        "tests/reliability-watcher-smoke-deadline.test.js"
+      ],
+      "cases": [
+        "smoke refuses matching readiness observed by a synchronous read after its absolute deadline",
+        "smoke refuses matching successful receipt observed by a synchronous read after its absolute deadline"
+      ],
+      "count": 2,
+      "platforms": [
+        "linux",
+        "win32"
+      ],
+      "kind": "tap",
+      "timeout_seconds": 30
     }
   }
 }

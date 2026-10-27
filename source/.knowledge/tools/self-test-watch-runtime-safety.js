@@ -8,6 +8,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 const { systemVersion } = require('./lib/system-version');
+const { smokeLimits } = require('./watch-smoke');
+const phaseLimits = smokeLimits({}, { budgets: { workMs: 60000, setupMs: 30000, cleanupMs: 15000 }, debounceMs: 80 });
 
 const systemRoot = path.resolve(__dirname, '..');
 const checks = [];
@@ -27,8 +29,8 @@ function envFor(repo, installed, stateRoot, extra = {}) {
     ...process.env, KNOWLEDGE_SYSTEM_ROOT: installed, KNOWLEDGE_TARGET_ROOT: repo,
     KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT: path.join(repo, '.knowledge'), KNOWLEDGE_STATE_ROOT: stateRoot,
     KNOWLEDGE_WATCH_DEBOUNCE_MS: '80', KNOWLEDGE_WATCH_HEARTBEAT_MS: '100',
-    KNOWLEDGE_WORK_TIMEOUT_MS: '15000', KNOWLEDGE_SETUP_TIMEOUT_MS: '10000', KNOWLEDGE_CLEANUP_TIMEOUT_MS: '5000',
-    KNOWLEDGE_SMOKE_WATCH_MS: '15000', KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH: '1', KNOWLEDGE_FLOW_NO_OPEN: '1',
+    KNOWLEDGE_WORK_TIMEOUT_MS: String(phaseLimits.command.workMs), KNOWLEDGE_SETUP_TIMEOUT_MS: String(phaseLimits.command.setupMs), KNOWLEDGE_CLEANUP_TIMEOUT_MS: String(phaseLimits.command.cleanupMs),
+    KNOWLEDGE_SMOKE_WATCH_MS: String(phaseLimits.watchMs), KNOWLEDGE_UPDATE_DISABLE_ON_LAUNCH: '1', KNOWLEDGE_FLOW_NO_OPEN: '1',
     ...extra
   };
 }
@@ -37,7 +39,7 @@ async function stop(child) {
   if (child.exitCode !== null || child.signalCode !== null) { await child.fixtureClosed;return; }
   if (child.connected) child.send({ type: 'knowledge:watch-stop' }, () => {});
   else child.kill('SIGTERM');
-  try { await waitFor(() => child.exitCode !== null || child.signalCode !== null, 'watcher termination', 12000);await child.fixtureClosed; }
+  try { await waitFor(() => child.exitCode !== null || child.signalCode !== null, 'watcher termination', phaseLimits.cleanupMs + 3000);await child.fixtureClosed; }
   catch (error) { child.kill('SIGKILL'); throw error; }
 }
 async function ready(child, file, diagnostics) {
@@ -45,7 +47,7 @@ async function ready(child, file, diagnostics) {
     if (child.exitCode !== null) throw new Error(`Watcher exited ${child.exitCode}: ${diagnostics()}`);
     const status = read(file);
     return Object.values(status?.active_watchers || {}).some(row => row.pid === child.pid && row.running === true);
-  }, 'watcher readiness');
+  }, 'watcher readiness', phaseLimits.readyMs);
 }
 function noProbeFiles(repo) { return !fs.readdirSync(repo).some(name => name.startsWith('knowledge-smoke-probe-')); }
 function copySystem(destination) {
@@ -78,7 +80,7 @@ async function main() {
     write(path.join(realRepo, 'smoke-probe.txt'), 'USER CONTENT MUST SURVIVE\n');
     write(path.join(realRepo, 'src/probe.js'), 'module.exports = true;\n');
     const actualSmoke = spawnSync(process.execPath, [path.join(realSystem, 'tools/watch-smoke.js')], {
-      cwd: realRepo, env: envFor(realRepo, realSystem, realSystem), encoding: 'utf8', timeout: 25000
+      cwd: realRepo, env: envFor(realRepo, realSystem, realSystem), encoding: 'utf8', timeout: phaseLimits.outerMs
     });
     check('real watcher detects its probe and completes actual sync-tracked command', () => assert.equal(actualSmoke.status, 0, `${actualSmoke.stdout}\n${actualSmoke.stderr}`));
     const smokeReport = JSON.parse(actualSmoke.stdout);
@@ -106,7 +108,7 @@ watcher.main([]).then(value=>done({ok:value.status!=='failed',value}),error=>don
     write(path.join(repo, 'smoke-probe.txt'), 'PRESERVE ON FAILURE\n');
     const sync = path.join(installed, 'tools/sync-tracked.js');
     write(sync, 'process.exit(7);\n');
-    const failedSmoke = spawnSync(process.execPath, [path.join(installed, 'tools/watch-smoke.js')], { cwd: repo, env: envFor(repo, installed, state), encoding: 'utf8', timeout: 15000 });
+    const failedSmoke = spawnSync(process.execPath, [path.join(installed, 'tools/watch-smoke.js')], { cwd: repo, env: envFor(repo, installed, state), encoding: 'utf8', timeout: phaseLimits.outerMs });
     check('smoke propagates real sync failure instead of reporting PASS', () => { assert.notEqual(failedSmoke.status, 0); assert(failedSmoke.stderr.includes('Watcher sync failed')); assert(!failedSmoke.stdout.includes('"status": "pass"')); });
     check('failed smoke cleans up child and temporary probe', () => { assert(noProbeFiles(repo)); assert.equal(read(path.join(state, 'maintenance/automation_status.json')).watcher_running, false); });
     check('failed smoke preserves unrelated file content', () => assert.equal(fs.readFileSync(path.join(repo, 'smoke-probe.txt'), 'utf8'), 'PRESERVE ON FAILURE\n'));
@@ -145,7 +147,7 @@ watcher.main([]).then(value=>done({ok:value.status!=='failed',value}),error=>don
     await new Promise(resolve => setTimeout(resolve, 350));
     check('custom stateRoot heartbeat does not trigger a sync feedback loop', () => assert(!fs.existsSync(childPid)));
     write(path.join(repo, 'source-change.txt'), 'trigger owned sync\n');
-    await waitFor(() => read(childPid), 'sync child launch');
+    await waitFor(() => read(childPid), 'sync child launch', phaseLimits.readyMs);
     await waitFor(() => fs.existsSync(childTrace), 'actual admitted sync progress');
     await stop(child);
     check('graceful watcher stop waits for owned active sync child to terminate', () => {
@@ -162,7 +164,7 @@ watcher.main([]).then(value=>done({ok:value.status!=='failed',value}),error=>don
 
     const faultState = path.join(repo, 'watch-fault-state');
     instrumentPrivateWorker("require('fs').watch=()=>{const e=new Error('fixture watch denied');e.code='EACCES';throw e;};");
-    const denied = spawnSync(process.execPath, [entry], { cwd: repo, env: envFor(repo, installed, faultState), encoding: 'utf8', timeout: 12000 });
+    const denied = spawnSync(process.execPath, [entry], { cwd: repo, env: envFor(repo, installed, faultState), encoding: 'utf8', timeout: phaseLimits.readyMs + phaseLimits.cleanupMs + 4000 });
     check('unavailable native and fallback watchers fail closed', () => { assert.equal(denied.status, 1); assert(denied.stderr.includes('fixture watch denied')); });
     check('watch-start failure confirms native drain and preserves its primary refusal', () => { const receipt=JSON.parse(denied.stdout);assert.equal(receipt.ok,false);const value=assertNativeStop(receipt);assert.equal(value.error.code,'EACCES'); });
     check('watch-start failure does not leave false healthy running state', () => { const s=read(path.join(faultState,'maintenance/automation_status.json'));assert.equal(s.watcher_running,false);assert.equal(s.automation_health,'degraded_watcher_error'); });
@@ -173,8 +175,8 @@ watcher.main([]).then(value=>done({ok:value.status!=='failed',value}),error=>don
       const result = spawnSync(process.execPath, [path.join(installed, 'tools', script), '--help'], { cwd: repo, env: envFor(repo, installed, path.join(root,'help-state')), encoding: 'utf8', timeout: 3000 });
       check(`${script} help exits without starting or writing a watcher`, () => { assert.equal(result.status,0);assert(result.stdout.includes('Usage:'));assert.equal(fs.existsSync(path.join(root,'help-state')),before); });
     }
-    const invalid = spawnSync(process.execPath,[path.join(installed,'tools/watch-maintenance.js')],{cwd:repo,env:envFor(repo,installed,path.join(root,'invalid-state'),{KNOWLEDGE_WATCH_DEBOUNCE_MS:'NaN'}),encoding:'utf8',timeout:3000});
-    check('invalid watch timing is rejected before state writes',()=>{assert.notEqual(invalid.status,0);assert(!fs.existsSync(path.join(root,'invalid-state')));});
+    const invalid = spawnSync(process.execPath,[path.join(installed,'tools/watch-maintenance.js')],{cwd:repo,env:envFor(repo,installed,path.join(root,'invalid-state'),{KNOWLEDGE_WATCH_DEBOUNCE_MS:'NaN'}),encoding:'utf8',timeout:phaseLimits.readyMs + phaseLimits.cleanupMs + 4000});
+    check('invalid watch timing is rejected before state writes',()=>{assert.equal(invalid.error,undefined);assert.equal(invalid.status,1);assert.match(invalid.stderr,/debounceMs must be a positive timer interval/);assert(!fs.existsSync(path.join(root,'invalid-state')));});
     console.log(JSON.stringify({schema_version:systemVersion(),status:'pass',checks_total:checks.length,checks},null,2));
   } finally { await stop(child); fs.rmSync(root,{recursive:true,force:true}); }
 }

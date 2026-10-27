@@ -8,6 +8,7 @@ const channelAPI = require('./command-holder-channel');
 const { getAgentId, ensurePhysicalRoot, ensureContainedDir } = require('./json-store');
 const { parseCliArgs, resolveKnowledgeContext, contextEnv } = require('./path-context');
 const { createWatcherStateStore, updateAutomationStatus: updateSharedAutomationStatus } = require('./watcher-state-store');
+const watchIntervals = require('./watch-intervals');
 
 module.exports = async function runWatcher(payload, runtime) {
   if (!payload || !Array.isArray(payload.argv) || payload.argv.some(value => typeof value !== 'string' || value.includes('\0')) ||
@@ -32,12 +33,7 @@ const watcherId = `${agentId}-${payload.controller_pid}-${payload.epoch_id}`.rep
 const watcherState = createWatcherStateStore({ stateRoot: knowledgeRoot, watcherId });
 const startedAt = nowIso();
 const watchedRoots = ['.'];
-const debounceMs = Number(process.env.KNOWLEDGE_WATCH_DEBOUNCE_MS || 1500);
-const watcherStaleMs = Number(process.env.KNOWLEDGE_WATCHER_STALE_MS || 120000);
-const heartbeatMs = Number(process.env.KNOWLEDGE_WATCH_HEARTBEAT_MS || 30000);
-for (const [name, value] of Object.entries({ debounceMs, watcherStaleMs, heartbeatMs })) {
-  if (!Number.isInteger(value) || value <= 0 || value > 2147483647) throw new Error(`${name} must be a positive timer interval`);
-}
+const { debounceMs, watcherStaleMs, heartbeatMs } = watchIntervals(process.env);
 const ignoredSegments = ['.git', 'node_modules', '.claude', '.agents', '.opencode', '.vercel', '.knowledge', '.knowledge', '.next', '.turbo', '.cache', '.pytest_cache', '.mypy_cache', '.venv', 'venv', 'dist', 'build', 'coverage', 'target', 'bin', 'obj', 'dist-release', 'dist-installer', 'dist-release-fresh', 'runtime-seed', 'comfy_models', 'comfy_input', 'comfy_output', 'comfy_custom_nodes'];
 
 const touched = new Set();
@@ -94,6 +90,7 @@ function updateAutomationStatus(extra = {}, stopping = false) {
     }
     activeWatchers[watcherId] = {
       attempt_id: watcherState.attemptId,
+      epoch_id: payload.epoch_id,
       agent_id: agentId,
       pid: payload.controller_pid,
       worker_pid: process.pid,
@@ -109,6 +106,7 @@ function updateAutomationStatus(extra = {}, stopping = false) {
       concurrent_safe: true,
       hooks_installed: current.hooks_installed ?? false,
       watcher_supported: true,
+      watcher_status_basis: 'last_observed_worker_report',
       watcher_running: Object.values(activeWatchers).some((watcher) => watcher.running && !isWatcherStale(watcher)),
       watcher_last_seen_at: nowIso(),
       last_trigger_source: current.last_trigger_source || 'watcher',
@@ -182,10 +180,16 @@ function triggerSync(fullScan = false) {
     }
     if (shuttingDown) return result;
     const success = result.status === 0 && !result.signal && !result.error;
+    const finishedAt = nowIso();
     updateAutomationStatus({
       last_trigger_source: 'watcher', last_watch_changed_files: changed, last_watch_sync_watcher_id: watcherId,
+      last_watch_sync_attempt_id: watcherState.attemptId,
+      last_watch_sync_result: { schema_version: 'knowledge-watch-sync.v1', watcher_id: watcherId,
+        attempt_id: watcherState.attemptId, epoch_id: payload.epoch_id, changed_files: changed,
+        finished_at: finishedAt, ok: success, exit_code: result.status, signal: result.signal || null,
+        error_code: result.error?.code || null, cleanup: result.cleanup },
       ...(success ? { last_auto_maintenance_at: nowIso() } : {}),
-      last_sync_finished_at: nowIso(), last_sync_exit_code: result.status,
+      last_sync_finished_at: finishedAt, last_sync_exit_code: result.status,
       last_sync_signal: result.signal || null,
       last_sync_error: result.error?.message || (result.signal ? 'sync terminated by ' + result.signal : result.status !== 0 ? 'sync exited ' + result.status : null),
       automation_health: success ? 'healthy' : 'degraded_watcher_sync_error', last_agent_id: agentId,
@@ -352,7 +356,8 @@ try {
   for (const root of watchedRoots) watchRoot(root);
   if (watchers.length === 0) throw new Error('No source directories could be watched.');
   updateAutomationStatus({ started_at: startedAt, last_trigger_source: 'watcher_start' });
-  await send({ type: 'ready', watcher_id: watcherId, controller_pid: payload.controller_pid });
+  await send({ type: 'ready', watcher_id: watcherId, controller_pid: payload.controller_pid,
+    worker_pid: process.pid, epoch_id: payload.epoch_id, attempt_id: watcherState.attemptId });
   if (payload.resume_scan === true && !shuttingDown) triggerSync(true);
   heartbeat = setInterval(() => {
     if (!shuttingDown) {

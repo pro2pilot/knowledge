@@ -47,7 +47,7 @@ function attach(out, socket, authenticate) {
   socket.once('error', () => end('read_error'));
   socket.once('close', () => end('closed'));
 }
-async function createServer() {
+async function createServer(options = {}) {
   const out = channel(), token = crypto.randomBytes(32).toString('hex');
   const sockets = new Set();
   out.server = net.createServer(socket => {
@@ -55,9 +55,35 @@ async function createServer() {
     sockets.add(socket); socket.once('close', () => sockets.delete(socket));
     attach(out, socket, value => Object.keys(value).sort().join(',') === 'token,type' && value.type === 'hello' && value.token === token);
   });
-  await new Promise((resolve, reject) => { out.server.once('error', reject); out.server.listen(0, '127.0.0.1', resolve); });
-  out.server.on('error', () => out.emit('disconnect', 'server_error'));
   const close = out.close; out.close = () => { for (const socket of sockets) socket.destroy(); close(); };
+  // Keep an error consumer after cancellation as a late OS callback can arrive
+  // after the bounded setup promise rejected. Pending peers also close here.
+  out.server.on('error', () => out.emit('disconnect', 'server_error'));
+  await new Promise((resolve, reject) => {
+    let settled = false, timer;
+    const finish = error => {
+      if (settled) return; settled = true; clearTimeout(timer);
+      options.signal?.removeEventListener('abort', abort);
+      out.server.removeListener('error', failed);
+      if (error) { out.close();reject(error); } else resolve();
+    };
+    const failed = error => finish(error);
+    const abort = () => finish(Object.assign(new Error('holder_channel_setup_cancelled'), { code: 'holder_channel_setup_cancelled' }));
+    out.server.once('error', failed);
+    options.signal?.addEventListener('abort', abort, { once: true });
+    if (options.signal?.aborted) { abort();return; }
+    if (options.timeoutMs !== undefined) {
+      if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > 2147483647) {
+        finish(Object.assign(new Error('holder_channel_setup_budget_invalid'), { code: 'holder_channel_setup_budget_invalid' }));return;
+      }
+      timer = setTimeout(() => finish(Object.assign(new Error('holder_channel_setup_timeout'), { code: 'holder_channel_setup_timeout' })), options.timeoutMs);
+    }
+    out.server.listen(0, '127.0.0.1', () => {
+      // A late listen callback must not resurrect a cancelled private endpoint.
+      if (settled) { out.close();return; }
+      finish();
+    });
+  });
   out.arguments = ['--holder-channel', String(out.server.address().port), token];
   return out;
 }

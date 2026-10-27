@@ -7,12 +7,25 @@ const crypto = require('crypto');
 const runner = require('./lib/command-runner');
 const channels = require('./lib/command-holder-channel');
 const { parseCliArgs } = require('./lib/path-context');
+const watchIntervals = require('./lib/watch-intervals');
 const fail = (code, message, details = {}) => Object.assign(new Error(message || code), { code, ...details });
 const clock = () => process.hrtime.bigint();
 const milliseconds = value => BigInt(value) * 1000000n;
 const MAX_TIMER = 2147483647;
 
+function readyIdentity(message, controllerPid, epoch) {
+  if (!message || message.type !== 'ready' || message.controller_pid !== controllerPid ||
+      !/^[a-f0-9]{16}$/.test(epoch || '') || message.epoch_id !== epoch ||
+      !/^[a-f0-9]{32}$/.test(message.attempt_id || '') ||
+      typeof message.watcher_id !== 'string' || message.watcher_id.length > 256 ||
+      !message.watcher_id.endsWith(`-${controllerPid}-${epoch}`) ||
+      !Number.isSafeInteger(message.worker_pid) || message.worker_pid < 1) return null;
+  return { controller_pid: controllerPid, epoch_id: epoch, watcher_id: message.watcher_id,
+    attempt_id: message.attempt_id, worker_pid: message.worker_pid };
+}
+
 function watchPolicy(flags, options = {}) {
+  watchIntervals(process.env);
   const command = runner.budgets(options.budgets || runner.cliBudgets(flags));
   // A permit may spend one setup allowance publishing its pre-start state.
   // The subsequently admitted native command keeps its OWN original setup,
@@ -25,10 +38,19 @@ function watchPolicy(flags, options = {}) {
   const epochMs = input === undefined ? Math.max(86400000, commandAllowance * 2 + 1000) : Number(input);
   if (!Number.isSafeInteger(epochMs) || epochMs <= commandAllowance + 1000 ||
       epochMs + command.setupMs + command.cleanupMs > MAX_TIMER) throw fail('watcher_epoch_budget_invalid');
-  return { command, commandAllowance, epochMs };
+  const startupInput = options.startupMs ?? flags.watchStartupMs ?? process.env.KNOWLEDGE_WATCH_STARTUP_MS;
+  if (startupInput !== undefined && typeof startupInput !== 'number' &&
+      (typeof startupInput !== 'string' || !/^\d+$/.test(startupInput))) throw fail('watcher_startup_budget_invalid');
+  // Native admission and project subscription/publication are distinct stages.
+  // One absolute controller deadline covers both; progress never extends it.
+  const startupMs = startupInput === undefined ? command.setupMs * 2 : Number(startupInput);
+  if (!Number.isSafeInteger(startupMs) || startupMs < 1 || startupMs + command.cleanupMs > MAX_TIMER ||
+      startupMs > command.setupMs + epochMs) throw fail('watcher_startup_budget_invalid');
+  return { command, commandAllowance, epochMs, startupMs };
 }
 
 async function main(argv = process.argv.slice(2), options = {}) {
+  const invokedAt = clock();
   const parsed = parseCliArgs(argv);
   if (parsed.flags.help) return { status: 'help' };
   const policy = watchPolicy(parsed.flags, options);
@@ -43,19 +65,32 @@ async function main(argv = process.argv.slice(2), options = {}) {
   if (options.signal?.aborted) stop('cancelled');
   try {
     while (!stopRequested) {
-      const control = await channels.createServer();
+      const started = epochs === 0 ? invokedAt : clock();
+      const startupEnd = started + milliseconds(policy.startupMs);
       const abort = new AbortController();
-      const epoch = crypto.randomBytes(8).toString('hex'), started = clock();
+      activeStop = () => abort.abort();
+      let control;
+      try {
+        control = await channels.createServer({ signal: abort.signal,
+          timeoutMs: Math.max(1, Math.ceil(Number(startupEnd - clock()) / 1000000)) });
+      } catch (error) {
+        const code = error.code === 'holder_channel_setup_timeout' ? 'watcher_startup_budget_exceeded' : error.code;
+        throw fail(code || 'watcher_control_setup_failed', error.message, {
+          completed_epochs: epochs, stop_reason: stopReason,
+          cleanup: { status: 'completed', method: 'no_scope_admitted', active_processes: 0, output_closed: true }
+        });
+      }
+      const epoch = crypto.randomBytes(8).toString('hex');
       const workEnd = started + milliseconds(policy.command.setupMs + policy.epochMs);
       const rolloverAt = workEnd - milliseconds(policy.commandAllowance + 1000);
       let ready = false, closing = false, ended = false, requested = null, lastPermit = 0, cleanupSignal;
-      let rolloverTimer, forceTimer, channelFailure;
+      let rolloverTimer, forceTimer, startupTimer, channelFailure, startupFailure, identity;
       const send = value => control.send(value, error => {
         if (error && !ended) { channelFailure ||= fail('watcher_control_closed', error.message);abort.abort(); }
       });
       const requestStop = mode => {
         if (ended || requested === 'cancelled' || requested === mode) return;
-        requested = mode;closing = true;clearTimeout(rolloverTimer);
+        requested = mode;closing = true;clearTimeout(rolloverTimer);clearTimeout(startupTimer);
         if (mode === 'cancelled') {
           if (!ready || !cleanupSignal) { abort.abort();return; }
           // The graceful stop and forced native teardown consume ONE cleanup
@@ -68,17 +103,27 @@ async function main(argv = process.argv.slice(2), options = {}) {
         else if (mode === 'cancelled') abort.abort();
       };
       activeStop = requestStop;
+      const expireStartup = () => {
+        if (ready || ended || closing || stopRequested) return;
+        startupFailure ||= fail('watcher_startup_budget_exceeded', 'Watcher startup exceeded its configured budget');
+        requestStop('cancelled');
+      };
+      startupTimer = setTimeout(expireStartup, Math.max(1, Number(startupEnd - clock()) / 1000000));
       control.on('connected', () => { if (requested) send({ type: 'stop', mode: requested }); });
       control.on('disconnect', () => {
         if (!ended && !closing) { channelFailure ||= fail('watcher_control_closed');abort.abort(); }
       });
       control.on('message', message => {
-        if (message?.type === 'ready' && !ready && message.controller_pid === process.pid && typeof message.watcher_id === 'string') {
-          ready = true;
+        if (message?.type === 'ready' && !ready) {
+          const candidate = readyIdentity(message, process.pid, epoch);
+          if (!candidate) { channelFailure ||= fail('watcher_ready_identity_invalid');abort.abort();return; }
+          if (closing || stopRequested || ended) return;
+          if (clock() >= startupEnd) { expireStartup();return; }
+          ready = true;identity = candidate;clearTimeout(startupTimer);
           if (stopRequested) requestStop('cancelled');
           else if (clock() >= rolloverAt) requestStop('rollover');
           else rolloverTimer = setTimeout(() => requestStop('rollover'), Math.max(1, Number(rolloverAt - clock()) / 1000000));
-          try { options.onReady?.({ epoch, watcher_id: message.watcher_id }); }
+          try { options.onReady?.({ epoch, ...identity }); }
           catch (error) { channelFailure ||= fail('watcher_ready_callback_failed', error.message);abort.abort(); }
           return;
         }
@@ -96,6 +141,7 @@ async function main(argv = process.argv.slice(2), options = {}) {
         channelFailure ||= fail('watcher_control_invalid');abort.abort();
       });
       try {
+        if (clock() >= startupEnd) expireStartup();
         if (stopRequested) requestStop('cancelled');
         const result = await runner.runOwnedOperation('watch-main', {
           argv, controller_pid: process.pid, epoch_id: epoch, control: control.arguments,
@@ -107,7 +153,7 @@ async function main(argv = process.argv.slice(2), options = {}) {
           subscribeLifecycle(receive) { cleanupSignal = receive;return () => { cleanupSignal = null; }; }
         });
         ended = true;
-        if (channelFailure) throw channelFailure;
+        if (channelFailure || startupFailure) throw Object.assign(channelFailure || startupFailure, { cleanup: result.cleanup });
         if (result.cleanup?.status !== 'completed' || result.value?.durable_stop_confirmed !== true ||
             !['stopped', 'rolled_over'].includes(result.value?.status)) {
           throw fail(result.value?.error?.code || 'watcher_stop_unconfirmed',
@@ -116,22 +162,23 @@ async function main(argv = process.argv.slice(2), options = {}) {
         }
         epochs++;
         if (stopRequested) return { ...result.value, status: stopReason === 'parent_disconnected' ? 'failed' : 'stopped',
-          stop_reason: stopReason, completed_epochs: epochs, cleanup: result.cleanup };
+          stop_reason: stopReason, completed_epochs: epochs, cleanup: result.cleanup, readiness: identity };
         if (result.value.status !== 'rolled_over') throw fail('watcher_unexpected_stop', undefined, { cleanup: result.cleanup });
       } catch (error) {
         ended = true;
-        const failure = channelFailure || error;
+        const failure = channelFailure || startupFailure || error;
         if (failure !== error && error.cleanup) failure.cleanup = error.cleanup;
         failure.completed_epochs = epochs;failure.stop_reason = stopReason;
         throw failure;
       } finally {
-        ended = true;clearTimeout(rolloverTimer);clearTimeout(forceTimer);
+        ended = true;clearTimeout(rolloverTimer);clearTimeout(forceTimer);clearTimeout(startupTimer);
         control.close();activeStop = null;
       }
     }
     return { status: 'stopped', completed_epochs: epochs, stop_reason: stopReason, durable_stop_confirmed: true,
       cleanup: { status: 'completed', method: 'no_scope_admitted' } };
   } finally {
+    activeStop = null;
     process.removeListener('SIGINT', onSignal);process.removeListener('SIGTERM', onSignal);
     process.removeListener('message', onMessage);process.removeListener('disconnect', onDisconnect);
     options.signal?.removeEventListener('abort', onSignal);
@@ -139,14 +186,19 @@ async function main(argv = process.argv.slice(2), options = {}) {
 }
 
 if (require.main === module) {
-  main().then(value => {
-    if (value.status === 'help') console.log('Usage: node .knowledge/tools/watch-maintenance.js [--target-root PATH] [--state-root PATH] [--system-root PATH] [--project-knowledge-root PATH] [--watch-epoch-ms MS]');
+  const notify = value => { if (process.connected) process.send(value, () => {}); };
+  main(process.argv.slice(2), { onReady(identity) { notify({ type: 'knowledge:watch-ready', ...identity }); } }).then(value => {
+    if (value.status === 'help') console.log('Usage: node .knowledge/tools/watch-maintenance.js [--target-root PATH] [--state-root PATH] [--system-root PATH] [--project-knowledge-root PATH] [--watch-epoch-ms MS] [--watch-startup-ms MS]');
+    notify({ type: 'knowledge:watch-terminal', status: value.status, readiness: value.readiness,
+      cleanup: value.cleanup, durable_stop_confirmed: value.durable_stop_confirmed });
     if (value.status === 'failed') process.exitCode = 1;
   }, error => {
+    notify({ type: 'knowledge:watch-terminal', status: 'failed', code: error.code,
+      cleanup: error.cleanup, durable_stop_confirmed: false });
     console.error('Watcher failed: ' + error.message);
     console.error(JSON.stringify({ code: error.code || 'watcher_failed', cleanup: error.cleanup || { status: 'unconfirmed' },
       durable_stop_confirmed: false, completed_epochs: error.completed_epochs || 0 }));
     process.exitCode = 1;
   });
 }
-module.exports = { main, watchPolicy };
+module.exports = { main, watchPolicy, readyIdentity };

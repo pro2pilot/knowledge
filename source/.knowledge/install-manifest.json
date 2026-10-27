@@ -41,6 +41,7 @@
     "tools/lib/agent-task-workflow.js"
   ],
   "required_system_files": [
+    "tools/lib/watch-intervals.js",
     "tools/lib/verification-linux-namespace.js",
     "tools/lib/verification-linux-namespace.c",
     "tools/lib/verification-recovery.js",
