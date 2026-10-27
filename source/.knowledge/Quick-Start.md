@@ -4,7 +4,7 @@
 > for installation outside candidate testing.
 
 > Unpublished candidate, audit revision
-> **`independent-audit.20261027.reliability.4`**: native verification and the native
+> **`independent-audit.20261027.reliability.5`**: native verification and the native
 > verification phase of `agent-task finish` require native prerequisites on Linux.
 > macOS is disabled by default, even with a ready broker. Explicitly set
 > `native_execution.darwin.enabled=true`, `mode="isolated_copy"`, broker paths

@@ -2,11 +2,6 @@ name: Linux ARM64 Node service-slice component QA
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/rc5-blocker-fixes-20261027
-    paths:
-      - .github/workflows/rc5-linux-node-slice.yml
 
 permissions:
   contents: read
@@ -54,9 +49,10 @@ jobs:
             run_id="$(python3 - "$receipt_file" <<'PY'
           import json, pathlib, re, sys
           value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-          expected = {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256"}
+          expected = {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256", "fault_mode"}
           if set(value) != expected or value.get("status") != "PREPARED_COMPONENT_QA" or \
              value.get("architecture") != "aarch64" or value.get("node_version") != "v22.17.1" or \
+             type(value.get("fault_mode")) is not int or value["fault_mode"] != 0 or \
              not re.fullmatch(r"[a-f0-9]{32}", value.get("run_id", "")):
               raise SystemExit("prepare receipt did not match the fixed schema")
           for key in ("node_sha256", "native_sha256", "input_sha256"):
@@ -158,127 +154,13 @@ jobs:
           [[ -n "$PUBLIC_DIR" && -d "$PUBLIC_DIR" && ! -L "$PUBLIC_DIR" ]] || exit 0
           public="$PUBLIC_DIR"
           [[ -d "$public" && ! -L "$public" ]] || exit 0
-          python3 - "$public" "$RUN_OUTCOME" "$RUN_ID" "$SOURCE_REVISION" "$ACTION_RUN_ID" "$ACTION_RUN_ATTEMPT" <<'PY'
-          import hashlib, json, os, pathlib, re, sys, tempfile
-          directory = pathlib.Path(sys.argv[1])
-          outcome, run_id, revision, action_run, attempt = sys.argv[2:]
-          result_path = directory / "RESULT.json"
-          native_path = directory / "NATIVE.json"
-          receipt_path = directory / "prepare-receipt.json"
-          record = {
-              "schema_version": "knowledge-linux-service-slice-acceptance.v1",
-              "status": "REJECTED",
-              "decision_scope": "single component QA only; not production, KVE, release, or public RPC qualification",
-              "source_revision": revision,
-              "workflow_run_id": action_run,
-              "workflow_run_attempt": attempt,
-              "run_id": run_id,
-              "controller_step_outcome": outcome,
-              "prepare_receipt_sha256": None,
-              "result_sha256": None,
-              "native_sha256": None,
-              "source_pins": None,
-              "reason": "result_or_native_evidence_missing",
-          }
-          def bounded_file(path, limit):
-              try:
-                  named = path.lstat()
-                  if not path.is_file() or path.is_symlink() or named.st_nlink != 1 or named.st_size > limit:
-                      return None
-                  with path.open("rb") as stream:
-                      body = stream.read(limit + 1)
-                  if len(body) != named.st_size or len(body) > limit:
-                      return None
-                  return body
-              except OSError:
-                  return None
-          receipt = None
-          receipt_bytes = bounded_file(receipt_path, 64 * 1024)
-          if receipt_bytes is not None:
-              record["prepare_receipt_sha256"] = hashlib.sha256(receipt_bytes).hexdigest()
-              try:
-                  receipt = json.loads(receipt_bytes.decode("utf-8"))
-              except (UnicodeError, json.JSONDecodeError):
-                  receipt = None
-          result_bytes = bounded_file(result_path, 64 * 1024)
-          if result_bytes is not None:
-              record["result_sha256"] = hashlib.sha256(result_bytes).hexdigest()
-              try:
-                  result = json.loads(result_bytes.decode("utf-8"))
-              except (UnicodeError, json.JSONDecodeError):
-                  result = None
-              native_bytes = bounded_file(native_path, 160 * 1024)
-              if native_bytes is not None:
-                  record["native_sha256"] = hashlib.sha256(native_bytes).hexdigest()
-                  try:
-                      native = json.loads(native_bytes.decode("utf-8"))
-                  except (UnicodeError, json.JSONDecodeError):
-                      native = None
-              else:
-                  native = None
-              if isinstance(result, dict) and isinstance(native, dict) and isinstance(receipt, dict):
-                  waits = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status")
-                  tap = result.get("tap_inventory") or {}
-                  receipt_ok = (isinstance(receipt, dict) and
-                      set(receipt) == {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256"} and
-                      receipt.get("status") == "PREPARED_COMPONENT_QA" and receipt.get("run_id") == run_id and
-                      receipt.get("architecture") == "aarch64" and receipt.get("node_version") == "v22.17.1")
-                  pins = {key: receipt.get(key) for key in ("node_sha256", "native_sha256", "input_sha256")}
-                  pin_ok = all(isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value) for value in pins.values()) and \
-                      result.get("node_sha256") == pins["node_sha256"] and result.get("native_sha256") == pins["native_sha256"] and \
-                      result.get("input_sha256") == pins["input_sha256"]
-                  native_ok = (isinstance(native, dict) and native.get("status") == "WORK_CLOSED" and
-                      native.get("observer_ack_required") is True and
-                      native.get("production_admission") is False and
-                      native.get("release_gate_qualified") is False and
-                      all(native.get(key) is True for key in (
-                          "cleanup_confirmed", "importer_namespace_drained", "importer_detached_writer_ready",
-                          "source_readonly", "authority_readback", "cgroup_empty", "output_eof")) and
-                      native.get("phase") == 4 and native.get("stop_reason") == 4 and
-                      all(type(native.get(key)) is int and native[key] == 0 for key in waits))
-                  tap_ok = (isinstance(tap, dict) and tap.get("status") == "PASS" and tap.get("tests") == 1 and
-                      tap.get("pass") == 1 and tap.get("fail") == 0 and tap.get("skipped") == 0)
-                  source_hashes_ok = all(isinstance(result.get(key), str) and
-                      re.fullmatch(r"[a-f0-9]{64}", result.get(key, "")) for key in
-                      ("native_argv_sha256", "importer_sha256", "authority_sha256"))
-                  native_summary = result.get("native") if isinstance(result, dict) else None
-                  result_ok = (result.get("status") == "CANDIDATE_COMPONENT_QA" and
-                      result.get("verification_requires") == "controller_exit_zero_and_separate_acceptance_record" and
-                      result.get("run_id") == run_id and
-                      result.get("production_admission") is False and
-                      result.get("release_gate_qualified") is False and
-                      result.get("native_proof_sha256") == record["native_sha256"] and
-                      source_hashes_ok and isinstance(native_summary, dict) and
-                      native_summary.get("status") == native.get("status") and
-                      result.get("observer_acknowledged") is True and
-                      result.get("systemd_unit_observed_before_ack") is True and
-                      result.get("systemd_run_child_reap_confirmed") is True and
-                      result.get("host_cleanup_confirmed") is True and not result.get("reasons") and tap_ok)
-                  record["source_pins"] = {**pins, "native_argv_sha256": result.get("native_argv_sha256") if isinstance(result, dict) else None,
-                                            "importer_sha256": result.get("importer_sha256") if isinstance(result, dict) else None,
-                                            "authority_sha256": result.get("authority_sha256") if isinstance(result, dict) else None}
-                  if outcome == "success" and receipt_ok and pin_ok and native_ok and result_ok:
-                      record["status"] = "ACCEPTED_COMPONENT_QA"
-                      record["reason"] = None
-                  elif outcome != "success":
-                      record["reason"] = "controller_step_not_successful"
-                  else:
-                      record["reason"] = "candidate_evidence_contract_failed"
-          body = (json.dumps(record, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-          fd, temporary = tempfile.mkstemp(prefix=".ACCEPTANCE.json.", suffix=".tmp", dir=directory)
-          try:
-              with os.fdopen(fd, "wb") as stream:
-                  stream.write(body)
-                  stream.flush()
-                  os.fsync(stream.fileno())
-              os.chmod(temporary, 0o644)
-              os.replace(temporary, directory / "ACCEPTANCE.json")
-          finally:
-              try:
-                  os.unlink(temporary)
-              except FileNotFoundError:
-                  pass
-          PY
+          controller_exit=1
+          if [[ "$RUN_OUTCOME" == 'success' ]]; then controller_exit=0; fi
+          python3 -B qa/reliability/linux-service-slice-27/acceptance.py \
+            --public-dir "$public" --controller-exit "$controller_exit" \
+            --controller-step-outcome "$RUN_OUTCOME" --run-id "$RUN_ID" \
+            --source-revision "$SOURCE_REVISION" --workflow-run-id "$ACTION_RUN_ID" \
+            --workflow-run-attempt "$ACTION_RUN_ATTEMPT"
       - name: Require accepted evidence when the controller step succeeds
         if: always() && steps.run-component.outcome == 'success'
         env:

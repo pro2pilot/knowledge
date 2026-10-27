@@ -8,7 +8,7 @@
 > release at [GitHub Releases](https://github.com/pro2pilot/knowledge/releases/latest).
 
 > This unpublished candidate uses audit revision
-> **`independent-audit.20261027.reliability.4`**. Windows Jobs, Linux PID
+> **`independent-audit.20261027.reliability.5`**. Windows Jobs, Linux PID
 > namespaces, and an opt-in macOS production verification path are present in the
 > source. Darwin verification remains disabled by default even if a broker is
 > ready: the request must explicitly set `native_execution.darwin.enabled=true`

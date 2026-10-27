@@ -23,8 +23,15 @@ function native(request, cleanupMs = 30000) {
   if(answer.status==='unconfirmed' || result.status!==0) fail(/^[a-z0-9_]{1,128}$/.test(answer.code||'')?answer.code:'verification_native_recovery_failed');
   return answer;
 }
-function currentProcessIdentity() {return native({action:'identity'}).identity;}
-function verifyProcessExit(identity) {return native({action:'verify_exit',identity:copyInertData(identity)});}
+function identityObservation(request, timeoutMs) {
+  const started=process.hrtime.bigint();
+  if(!Number.isSafeInteger(timeoutMs) || timeoutMs<1 || timeoutMs>600000) fail('verification_profile_invalid');
+  const result=native(request,timeoutMs);
+  if(Number(process.hrtime.bigint()-started)/1e6>=timeoutMs) fail('verification_recovery_budget_exceeded');
+  return result;
+}
+function currentProcessIdentity({timeoutMs=30000}={}) {return identityObservation({action:'identity'},timeoutMs).identity;}
+function verifyProcessExit(identity,{timeoutMs=30000}={}) {return identityObservation({action:'verify_exit',identity:copyInertData(identity)},timeoutMs);}
 function queryScopeClosure(descriptor, { timeoutMs = 5000 } = {}) {
   try {
     descriptor = copyInertData(descriptor);

@@ -12,6 +12,7 @@
 #include <poll.h>
 #include <sched.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,6 +44,34 @@ static int observer_stage;
 /* Legacy stat observations remain distinct. New run/identity-link commands
  * select this provider explicitly; EACCES never changes provider implicitly. */
 static int namespace_link_provider;
+
+/* Native custody must never wait for its controller to drain a report. The
+ * controller channel is a pipe/socket, and its nonblocking failure is latched
+ * until the owned init has been stopped. Partial JSON is deliberately a failed
+ * transcript; retrying it after a deadline must not create a successful one. */
+static int report_fd = -1, report_failed;
+static int prepare_report(int fd) {
+  struct stat state;
+  int flags = fcntl(fd, F_GETFL);
+  if (flags < 0 || fstat(fd, &state) || (!S_ISFIFO(state.st_mode) && !S_ISSOCK(state.st_mode)) ||
+      fcntl(fd, F_SETFL, flags | O_NONBLOCK)) return -1;
+  report_fd = fd; report_failed = 0; return 0;
+}
+static int report_printf(int fd, const char *format, ...) {
+  va_list arguments; va_start(arguments, format);
+  if (fd != report_fd) { int result = vdprintf(fd, format, arguments); va_end(arguments); return result; }
+  if (report_failed) { va_end(arguments); errno = EPIPE; return -1; }
+  char text[4096]; int size = vsnprintf(text, sizeof(text), format, arguments); va_end(arguments);
+  if (size < 0 || (size_t)size >= sizeof(text)) { report_failed = 1; errno = EOVERFLOW; return -1; }
+  size_t sent = 0; unsigned interrupted = 0;
+  while (sent < (size_t)size) {
+    ssize_t written = write(fd, text + sent, (size_t)size - sent);
+    if (written < 0 && errno == EINTR && ++interrupted < 8) continue;
+    if (written <= 0) { report_failed = 1; return -1; }
+    sent += (size_t)written;
+  }
+  return size;
+}
 
 static long long now_ms(void) {
   static long long previous = -1; struct timespec t;
@@ -345,18 +374,18 @@ static int setup_observer(void) {
   return 0;
 }
 static void print_namespace(int fd, unsigned long long dev, unsigned long long ino) {
-  if (namespace_link_provider) dprintf(fd, "{\"provider\":\"%s\",\"ino\":\"%llu\"}", PID_NAMESPACE_LINK_PROVIDER, ino);
-  else dprintf(fd, "{\"dev\":\"%llu\",\"ino\":\"%llu\"}", dev, ino);
+  if (namespace_link_provider) report_printf(fd, "{\"provider\":\"%s\",\"ino\":\"%llu\"}", PID_NAMESPACE_LINK_PROVIDER, ino);
+  else report_printf(fd, "{\"dev\":\"%llu\",\"ino\":\"%llu\"}", dev, ino);
 }
 static void print_identity(int fd, const struct identity *i) {
   time_t sec = (time_t)(i->born_ms / 1000); struct tm t; char iso[40]; gmtime_r(&sec, &t); strftime(iso, sizeof(iso), "%Y-%m-%dT%H:%M:%S", &t);
-  dprintf(fd, "{\"pid\":%d,\"proc_pid\":%d,\"start_ticks\":\"%llu\",\"os_creation_time\":\"%s.%03lluZ\",\"namespace_pid\":%d,\"pid_namespace\":", i->pid, i->proc_pid, i->ticks, iso, i->born_ms % 1000, i->ns_pid);
+  report_printf(fd, "{\"pid\":%d,\"proc_pid\":%d,\"start_ticks\":\"%llu\",\"os_creation_time\":\"%s.%03lluZ\",\"namespace_pid\":%d,\"pid_namespace\":", i->pid, i->proc_pid, i->ticks, iso, i->born_ms % 1000, i->ns_pid);
   print_namespace(fd, i->ns_dev, i->ns_ino);
-  dprintf(fd, ",\"executable\":{\"dev\":\"%llu\",\"ino\":\"%llu\"},\"proc_pid_chain\":[", i->exe_dev, i->exe_ino);
-  for (int j = 0; j < i->depth; j++) dprintf(fd, "%s%d", j ? "," : "", i->pid_chain[j]);
-  dprintf(fd, "]}");
+  report_printf(fd, ",\"executable\":{\"dev\":\"%llu\",\"ino\":\"%llu\"},\"proc_pid_chain\":[", i->exe_dev, i->exe_ino);
+  for (int j = 0; j < i->depth; j++) report_printf(fd, "%s%d", j ? "," : "", i->pid_chain[j]);
+  report_printf(fd, "]}");
 }
-static void print_error(int fd, const char *code) { dprintf(fd, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"%s\",\"errno\":%d,\"observer_stage\":%d}\n", PROTOCOL, code, errno, observer_stage); }
+static void print_error(int fd, const char *code) { report_printf(fd, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"%s\",\"errno\":%d,\"observer_stage\":%d}\n", PROTOCOL, code, errno, observer_stage); }
 static int send_event(int fd, int kind, int pid, int value) { struct event e = {kind, pid, value}; return write_all(fd, &e, sizeof(e)); }
 static int close_above_five(void) {
 #ifdef SYS_close_range
@@ -431,6 +460,9 @@ static int parent_proc_pid(void) { char buf[MAX_TEXT]; int d = process_dir(self_
 
 static int run_keeper(char **command, int lifetime, int probe, int trusted_authority) {
   int out = probe ? 1 : 4; pid_t controller = getppid();
+  /* Do not diagnose through an unsupported descriptor: even before custody,
+   * that fallback could block on a regular file or a stalled device. */
+  if (prepare_report(out)) return 1;
   observer_stage = 1;
   if (prctl(PR_SET_PDEATHSIG, SIGKILL)) { print_error(out, "namespace_observer_unavailable"); return 1; }
   long long began = now_ms();
@@ -455,6 +487,7 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
   char input[128]; size_t used = 0;
   struct identity init_identity, worker_identity;
   for (;;) {
+    if (report_failed) { failed = closing = 1; (void)pidfd_kill(initfd); }
     long long current = now_ms();
     if (current < 0) { (void)pidfd_kill(initfd); print_error(out, "native_clock_unavailable"); return 1; }
     long long remaining = deadline - current;
@@ -464,7 +497,7 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
       long long final_time = now_ms();
       if (final_time < 0) { print_error(out, "native_clock_unavailable"); return 1; }
       if (final_time >= deadline) { print_error(out, "namespace_cleanup_timeout"); return 1; }
-      if (closing && !failed) { dprintf(out, "{\"protocol\":\"%s\",\"status\":\"closed\",\"active_processes\":0,\"init_exit_observed\":true,\"init_reaped\":true}\n", PROTOCOL); return 0; }
+      if (closing && !failed) { report_printf(out, "{\"protocol\":\"%s\",\"status\":\"closed\",\"active_processes\":0,\"init_exit_observed\":true,\"init_reaped\":true}\n", PROTOCOL); return report_failed ? 1 : 0; }
       print_error(out, "namespace_init_exited_unexpectedly"); return 1;
     }
     struct pollfd p[3] = {{a.events[0], POLLIN, 0}, {probe ? -1 : 4, POLLIN, 0}, {permitted && !started ? a.execerr[0] : -1, POLLIN, 0}};
@@ -481,9 +514,9 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
         if (write_map(host_init, "gid_map", map) || write_all(a.commands[1], "M", 1)) { print_error(out, "namespace_gid_mapping_failed"); failed = closing = 1; (void)pidfd_kill(initfd); continue; }
       } else if (e.kind == 'R') ready = 1;
       else if (e.kind == 'W') host_worker = e.pid;
-      else if (e.kind == 'X') { if (!closing) dprintf(out, "{\"protocol\":\"%s\",\"status\":\"worker_exit\",\"wait_status\":%d}\n", PROTOCOL, e.value); }
+      else if (e.kind == 'X') { if (!closing) report_printf(out, "{\"protocol\":\"%s\",\"status\":\"worker_exit\",\"wait_status\":%d}\n", PROTOCOL, e.value); }
       else {
-        if (e.kind == 'E') dprintf(out, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"namespace_child_setup_failed\",\"errno\":%d,\"setup_stage\":%d}\n", PROTOCOL, e.value, e.pid);
+        if (e.kind == 'E') report_printf(out, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"namespace_child_setup_failed\",\"errno\":%d,\"setup_stage\":%d}\n", PROTOCOL, e.value, e.pid);
         else print_error(out, "namespace_child_setup_failed");
         failed = closing = 1; (void)pidfd_kill(initfd);
       }
@@ -494,19 +527,23 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
       if (before_ready < 0) { (void)pidfd_kill(initfd); print_error(out, "native_clock_unavailable"); return 1; }
       if (before_ready >= deadline) { (void)pidfd_kill(initfd); print_error(out, "namespace_cleanup_timeout"); return 1; }
       emitted = 1;
-      dprintf(out, "{\"protocol\":\"%s\",\"status\":\"ready\",\"boot_id\":\"%s\",\"procfs_dev\":\"%llu\",\"observer_pid_namespace\":", PROTOCOL, boot_id, procdev);
+      report_printf(out, "{\"protocol\":\"%s\",\"status\":\"ready\",\"boot_id\":\"%s\",\"procfs_dev\":\"%llu\",\"observer_pid_namespace\":", PROTOCOL, boot_id, procdev);
       print_namespace(out, observer_dev, observer_ino);
-      dprintf(out, ",\"namespace_identity_provider\":\"%s\",\"procfs_mode\":\"inherited_ancestor_view\",\"capability_profile\":\"%s\",\"no_new_privileges\":true,\"identities\":{\"controller\":", PID_NAMESPACE_LINK_PROVIDER, trusted_authority ? (getuid() == 0 ? "authority_setfcap" : "authority_none") : "worker_none");
-      print_identity(out, &controller_identity); dprintf(out, ",\"keeper\":"); print_identity(out, &keeper_identity); dprintf(out, ",\"init\":"); print_identity(out, &init_identity); dprintf(out, ",\"worker\":"); print_identity(out, &worker_identity); dprintf(out, "}}\n");
+      report_printf(out, ",\"namespace_identity_provider\":\"%s\",\"procfs_mode\":\"inherited_ancestor_view\",\"capability_profile\":\"%s\",\"no_new_privileges\":true,\"identities\":{\"controller\":", PID_NAMESPACE_LINK_PROVIDER, trusted_authority ? (getuid() == 0 ? "authority_setfcap" : "authority_none") : "worker_none");
+      print_identity(out, &controller_identity); report_printf(out, ",\"keeper\":"); print_identity(out, &keeper_identity); report_printf(out, ",\"init\":"); print_identity(out, &init_identity); report_printf(out, ",\"worker\":"); print_identity(out, &worker_identity); report_printf(out, "}}\n");
       if (probe) { closing = 1; (void)pidfd_kill(initfd); }
     }
     if (p[2].revents & (POLLIN | POLLHUP)) {
       int exec_errno = 0; ssize_t n = read(a.execerr[0], &exec_errno, sizeof(exec_errno)); started = 1; close(a.execerr[0]);
-      if (n == 0 && !closing) dprintf(out, "{\"protocol\":\"%s\",\"status\":\"started\"}\n", PROTOCOL);
+      if (n == 0 && !closing) report_printf(out, "{\"protocol\":\"%s\",\"status\":\"started\"}\n", PROTOCOL);
       else if (!closing) { errno = exec_errno; print_error(out, "namespace_worker_exec_failed"); failed = closing = 1; (void)pidfd_kill(initfd); }
     }
+    /* Keep consuming a caller's close budget even after report failure.
+     * closing denies permits; a close command may still shorten cleanup. */
+    if (report_failed) { failed = closing = 1; (void)pidfd_kill(initfd); }
     if (p[1].revents & (POLLIN | POLLHUP | POLLERR)) {
       ssize_t n = read(4, input + used, sizeof(input) - 1 - used);
+      if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
       if (n <= 0) { closing = 1; (void)pidfd_kill(initfd); continue; }
       used += (size_t)n; input[used] = 0; char *nl;
       while ((nl = strchr(input, '\n'))) {
@@ -544,7 +581,7 @@ static int observe(int argc, char **argv, int stop) {
     if (errno == ENOENT || errno == ESRCH) {
       /* Both interfaces may be restricted. Never turn hidden proc entries
        * plus a policy-generated pidfd ESRCH into a confirmed old-birth exit. */
-      if (!absent_birth_confirmed(pid, proc_pid)) { dprintf(1, "{\"status\":\"exited\",\"method\":\"linux_boot_birth_absent\",\"process_reaped\":false,\"release_inferred\":true}\n"); return 0; }
+      if (!absent_birth_confirmed(pid, proc_pid)) { report_printf(1, "{\"status\":\"exited\",\"method\":\"linux_boot_birth_absent\",\"process_reaped\":false,\"release_inferred\":true}\n"); return 0; }
       print_error(1, "native_proc_visibility_unconfirmed"); return 1;
     }
     print_error(1, "native_identity_denied"); return 1;
@@ -552,12 +589,12 @@ static int observe(int argc, char **argv, int stop) {
   struct identity first, second;
   if (identity_at(d, proc_pid, &first)) { close(d); print_error(1, "native_identity_unconfirmed"); return 1; }
   if (namespace_link_provider && first.ticks == values[5] && first.pid != pid) { close(d); print_error(1, "native_observer_translation_unconfirmed"); return 1; }
-  if (first.pid != pid || first.ticks != values[5]) { close(d); dprintf(1, "{\"status\":\"exited\",\"method\":\"linux_boot_birth_replaced\",\"process_reaped\":false,\"release_inferred\":true}\n"); return 0; }
+  if (first.pid != pid || first.ticks != values[5]) { close(d); report_printf(1, "{\"status\":\"exited\",\"method\":\"linux_boot_birth_replaced\",\"process_reaped\":false,\"release_inferred\":true}\n"); return 0; }
   if (((first.state != 'Z' && first.state != 'X') && (first.ns_dev != values[6] || first.ns_ino != values[7])) || first.ns_pid != ns_pid) { close(d); print_error(1, "native_namespace_mismatch"); return 1; }
   int fd = pidfd_open_local(pid); if (fd < 0) { close(d); print_error(1, "native_pidfd_unavailable"); return 1; }
   if (namespace_link_provider && pidfd_matches_identity(fd, &first)) { close(d); close(fd); print_error(1, "native_pidfd_identity_unconfirmed"); return 1; }
   if (identity_at(d, proc_pid, &second) || second.pid != first.pid || second.ticks != first.ticks || second.ns_ino != first.ns_ino || second.ns_dev != first.ns_dev) { close(d); close(fd); print_error(1, "native_identity_raced"); return 1; } close(d);
-  if (!exited_fd(fd) && !stop) { close(fd); dprintf(1, "{\"status\":\"active\"}\n"); return 0; }
+  if (!exited_fd(fd) && !stop) { close(fd); report_printf(1, "{\"status\":\"active\"}\n"); return 0; }
   if (!exited_fd(fd) && pidfd_kill(fd) && errno != ESRCH) { close(fd); print_error(1, "native_stop_denied"); return 1; }
   long long began = now_ms();
   if (began < 0 || began > LLONG_MAX - timeout) { close(fd); print_error(1, "native_clock_unavailable"); return 1; }
@@ -573,7 +610,7 @@ static int observe(int argc, char **argv, int stop) {
   if (final_time < 0) { close(fd); print_error(1, "native_clock_unavailable"); return 1; }
   if (final_time >= deadline) { close(fd); print_error(1, "native_exit_timeout"); return 1; }
   struct pollfd final = {fd, POLLIN, 0}; (void)poll(&final, 1, 0); close(fd);
-  dprintf(1, "{\"status\":\"exited\",\"method\":\"linux_pidfd_exit\",\"process_reaped\":%s}\n", final.revents & POLLHUP ? "true" : "false"); return 0;
+  report_printf(1, "{\"status\":\"exited\",\"method\":\"linux_pidfd_exit\",\"process_reaped\":%s}\n", final.revents & POLLHUP ? "true" : "false"); return 0;
 }
 /* Versioned link operations do not accept or synthesize a namespace device.
  * The unused zero slots below are an internal adapter to the unchanged exact
@@ -609,10 +646,10 @@ int main(int argc, char **argv) {
     namespace_link_provider = !strcmp(argv[1], "--identity-link");
     if (setup_observer()) { print_error(1, "native_observer_unavailable"); return 1; }
     struct identity i; if (identity(parent_proc_pid(), &i)) { print_error(1, "native_identity_unavailable"); return 1; }
-    dprintf(1, "{\"backend\":\"linux_pid_namespace\",\"boot_id\":\"%s\",\"observer_pid_namespace\":", boot_id);
+    report_printf(1, "{\"backend\":\"linux_pid_namespace\",\"boot_id\":\"%s\",\"observer_pid_namespace\":", boot_id);
     print_namespace(1, observer_dev, observer_ino);
-    if (namespace_link_provider) dprintf(1, ",\"namespace_identity_provider\":\"%s\"", PID_NAMESPACE_LINK_PROVIDER);
-    dprintf(1, ",\"procfs_dev\":\"%llu\",\"identity\":", procdev); print_identity(1, &i); dprintf(1, "}\n"); return 0;
+    if (namespace_link_provider) report_printf(1, ",\"namespace_identity_provider\":\"%s\"", PID_NAMESPACE_LINK_PROVIDER);
+    report_printf(1, ",\"procfs_dev\":\"%llu\",\"identity\":", procdev); print_identity(1, &i); report_printf(1, "}\n"); return 0;
   }
   if (argc >= 2 && (!strcmp(argv[1], "--observe") || !strcmp(argv[1], "--stop"))) return observe(argc, argv, !strcmp(argv[1], "--stop"));
   if (argc >= 2 && (!strcmp(argv[1], "--observe-link") || !strcmp(argv[1], "--stop-link"))) return observe_link(argc, argv, !strcmp(argv[1], "--stop-link"));

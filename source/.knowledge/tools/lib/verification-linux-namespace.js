@@ -325,16 +325,29 @@ function runIdentityOperation(mode, context, identity, timeoutMs, suppliedHelper
     return record;
   } catch { return { status: 'unconfirmed', code: 'native_observation_invalid' }; }
 }
-function currentProcessIdentity() {
+function currentProcessIdentity({ timeoutMs = 15000 } = {}) {
+  const started = clock();
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) throw failure('native_identity_invalid');
   const helper = prepareHelper();
-  const result = spawnSync(helper.executable, ['--identity-link'], { encoding: 'utf8', timeout: 15000, maxBuffer: 65536, env: nativeEnv() });
+  const remaining = Math.floor(timeoutMs - elapsed(started));
+  if (remaining < 1) throw failure('native_identity_timeout');
+  const result = spawnSync(helper.executable, ['--identity-link'], { encoding: 'utf8', timeout: remaining, maxBuffer: 65536, env: nativeEnv() });
+  if (elapsed(started) >= timeoutMs) throw failure('native_identity_timeout');
   if (result.error || result.status !== 0) throw failure('native_identity_unavailable');
   const rows = parseLines(result.stdout); if (rows.length !== 1 || !validIdentity(rows[0].identity) || rows[0].identity.pid !== process.pid ||
     rows[0].namespace_identity_provider !== NAMESPACE_PROVIDER || !sameNamespaceIdentity(rows[0].observer_pid_namespace, rows[0].identity.pid_namespace)) throw failure('native_identity_invalid');
   return rows[0];
 }
-function verifyProcessExit(value) {
-  try { return runIdentityOperation('--observe', value, value.identity || value, 5000); } catch (e) { return { status: 'unconfirmed', code: e.code || 'native_observer_unavailable' }; }
+function verifyProcessExit(value, { timeoutMs = 5000 } = {}) {
+  const started = clock();
+  try {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) throw failure('native_identity_invalid');
+    const helper = prepareHelper(), remaining = Math.floor(timeoutMs - elapsed(started));
+    if (remaining < 1) throw failure('native_identity_timeout');
+    const result = runIdentityOperation('--observe', value, value.identity || value, remaining, helper);
+    if (elapsed(started) >= timeoutMs) throw failure('native_identity_timeout');
+    return result;
+  } catch (e) { return { status: 'unconfirmed', code: e.code || 'native_observer_unavailable' }; }
 }
 function queryCommandScope(descriptor, lineage, { timeoutMs = 5000 } = {}) {
   const unconfirmed = code => ({ status: 'unconfirmed', method: 'linux_pid_namespace', code });

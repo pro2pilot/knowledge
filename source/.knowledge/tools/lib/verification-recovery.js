@@ -72,12 +72,17 @@ function bindProof(attempt,nativeProof) {
   return result;
 }
 function createNativeRecovery(attempt, options={}) {
+  const started=process.hrtime.bigint();
+  const profileMs=attempt.profile.cleanup_budget_ms;
+  requireThat(Number.isSafeInteger(profileMs) && profileMs>0,'verification_profile_invalid');
+  const deadline=started+BigInt(profileMs)*1000000n;
   const backend=backendFor(attempt);
   const darwin=attempt.containment.backend==='darwin_private_ruid';
   const remaining=()=>{
-    const value=options.remainingMs ? Math.floor(options.remainingMs()) : attempt.profile.cleanup_budget_ms;
-    requireThat(Number.isSafeInteger(value) && value>0,'verification_recovery_budget_exceeded');
-    return Math.min(600000,value);
+    const local=Math.floor(Number(deadline-process.hrtime.bigint())/1e6);
+    const value=options.remainingMs ? Math.floor(options.remainingMs()) : local;
+    requireThat(Number.isSafeInteger(value) && value>0 && local>0,'verification_recovery_budget_exceeded');
+    return Math.min(600000,value,local);
   };
   requireThat(typeof backend.currentProcessIdentity==='function' && typeof backend.verifyProcessExit==='function' &&
     typeof backend.recoverContainer==='function','verification_native_recovery_unavailable');
@@ -86,16 +91,22 @@ function createNativeRecovery(attempt, options={}) {
     requireThat(snapshot.attempt_id===attempt.attempt_id && snapshot.generation===attempt.generation &&
       snapshot.containment?.descriptor_sha256===attempt.containment.descriptor_sha256,'verification_attempt_mismatch');
     const native=backend.recoverContainer(copyInertData(snapshot.containment.descriptor),
-      {cleanup_timeout_ms:darwin?remaining():snapshot.profile.cleanup_budget_ms,cleanup_receipt:copyInertData(snapshot.containment.cleanup_receipt)});
-    if(darwin)remaining();
+      {cleanup_timeout_ms:remaining(),cleanup_receipt:copyInertData(snapshot.containment.cleanup_receipt)});
+    // Native startup, observation and teardown share the original epoch on
+    // every platform. A late valid observation remains diagnostic-only.
+    remaining();
     if(native?.status!=='completed') fail(typeof native?.code==='string' && /^[a-z0-9_]{1,128}$/.test(native.code)?native.code:'verification_cleanup_unconfirmed');
-    return bindProof(snapshot,native);
+    const proof=bindProof(snapshot,native);remaining();return proof;
   };
+  const identityBudget={timeoutMs:Math.min(darwin?5000:process.platform==='win32'?30000:15000,remaining())};
   adapter.owner_identity=copyInertData(darwin?backend.currentProcessIdentity(attempt.containment.descriptor,
-    {timeoutMs:Math.min(5000,remaining())}):backend.currentProcessIdentity());
+    identityBudget):backend.currentProcessIdentity(identityBudget));
+  remaining();
   adapter.verify_recoverer_exit=identity=>{
+    const identityBudget={timeoutMs:Math.min(!darwin && process.platform==='win32'?30000:5000,remaining())};
     const observed=copyInertData(darwin?backend.verifyProcessExit(attempt.containment.descriptor,copyInertData(identity),
-      {timeoutMs:Math.min(5000,remaining())}):backend.verifyProcessExit(copyInertData(identity)));
+      identityBudget):backend.verifyProcessExit(copyInertData(identity),identityBudget));
+    remaining();
     if(observed.status!=='exited') return {status:observed.status==='active'?'active':'unconfirmed'};
     return {status:'exited',owner_identity_sha256:hash(JSON.stringify(identity)),evidence_sha256:hash(JSON.stringify(observed))};
   };

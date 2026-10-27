@@ -10,7 +10,7 @@ manifest and results. An audit source snapshot is not an installable release.
 Never substitute GitHub source downloads for a release asset.
 
 This unpublished candidate uses audit revision
-`independent-audit.20261027.reliability.4`. The preceding frozen POSIX/recovery runtime is a different artifact;
+`independent-audit.20261027.reliability.5`. The preceding frozen POSIX/recovery runtime is a different artifact;
 its results do not qualify this source. Version-only update checks do not
 distinguish RC5 derivatives. Linux requires native prerequisites. macOS
 verification is disabled by default, even when its broker is ready. Opt in per

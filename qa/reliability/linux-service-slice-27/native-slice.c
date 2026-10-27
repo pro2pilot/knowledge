@@ -35,7 +35,26 @@
 #define STACK_BYTES (1024 * 1024)
 #define INPUT_CAP (2 * 1024 * 1024)
 #define OUTPUT_CAP 65536
+#if defined(__aarch64__)
+#define SLICE_LOADER_DIR "lib"
+#define SLICE_LOADER_NAME "ld-linux-aarch64.so.1"
+#elif defined(__x86_64__)
+#define SLICE_LOADER_DIR "lib64"
+#define SLICE_LOADER_NAME "ld-linux-x86-64.so.2"
+#else
+#error Unsupported component architecture
+#endif
+#define SLICE_FAULT_NONE 0
+#define SLICE_FAULT_IMPORT_RECEIPT_HELD 1
+#define SLICE_FAULT_RESULT_HELD 2
+#ifndef SLICE_FAULT_MODE
+#define SLICE_FAULT_MODE SLICE_FAULT_NONE
+#endif
+#if SLICE_FAULT_MODE < SLICE_FAULT_NONE || SLICE_FAULT_MODE > SLICE_FAULT_RESULT_HELD
+#error Unknown fixed component fault mode
+#endif
 struct work_result { int phase, importer_drained, importer_detached_writer, readonly, authority_readback, worker_status, authority_status, importer_wait_status;
+  int fault_reached;
   char importer_report[257];
   char manifest[65], directories[65]; unsigned files, bytes; };
 struct keeper_result { int kind, init, init_status, init_reaped, cgroup_empty, cleanup_confirmed, reason;
@@ -78,6 +97,22 @@ static int write_all(int fd,const void *body,size_t length) {
   const unsigned char *p=body;
   while(length) { ssize_t n=write(fd,p,length); if(n<0&&errno==EINTR)continue; if(n<=0)return -1; p+=n;length-=(size_t)n; }
   return 0;
+}
+static void hold_fault_pipe(int report,struct work_result *result) {
+  /* Build-time QA only. The actor blocks on a real private pipe after its
+   * recorded milestone. No filesystem stall or kernel D-state is claimed.
+   * The independent keeper retains its original work and cleanup deadlines. */
+  int held[2];if(pipe2(held,O_CLOEXEC))_exit(186);
+  result->fault_reached=1;
+  if(write_all(report,result,sizeof(*result)))_exit(187);
+  char byte;
+  for(;;){ssize_t count=read(held[0],&byte,1);if(count<0&&errno==EINTR)continue;_exit(188);}
+}
+static int grant_setup_permit(int gate,int ownerfd,int permitted,long long started,long long setup_end) {
+  if(cancelled)return 1;
+  if(dead(ownerfd))return 2;
+  if(now_ms()>=setup_end||now_ms()>=started+WORK_MS)return 3;
+  return permitted&&write_all(gate,"G",1)==0?0:5;
 }
 static int close_except(const int *keep,size_t count) {
   int sorted[12]; if(count>12)return -1;
@@ -129,17 +164,17 @@ static int opaque_input(void) {
 static int layout(void) {
   if(mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL)||
      make_dir(SLICE_ROOT "/workroot",0,0,0755)||make_dir(SLICE_ROOT "/workroot/runtime",0,0,0755)||
-     make_dir(SLICE_ROOT "/workroot/lib",0,0,0755)||make_dir(SLICE_ROOT "/workroot/proc",0,0,0555)||
+     make_dir(SLICE_ROOT "/workroot/" SLICE_LOADER_DIR,0,0,0755)||make_dir(SLICE_ROOT "/workroot/proc",0,0,0555)||
      make_dir(SLICE_ROOT "/workroot/dev",0,0,0755)||
      make_dir(SLICE_ROOT "/workroot/source",SLICE_A_UID,SLICE_W_UID,0750)||
      make_dir(SLICE_ROOT "/workroot/state",SLICE_A_UID,SLICE_A_UID,0700)||
      make_dir(SLICE_ROOT "/workroot/scratch",SLICE_W_UID,SLICE_W_UID,0700)||
      make_dir(SLICE_ROOT "/workroot/tmp",SLICE_W_UID,SLICE_W_UID,0700))return -1;
-  int loader=open(SLICE_ROOT "/workroot/lib/ld-linux-aarch64.so.1",O_CREAT|O_EXCL|O_WRONLY|O_CLOEXEC,0555);
+  int loader=open(SLICE_ROOT "/workroot/" SLICE_LOADER_DIR "/" SLICE_LOADER_NAME,O_CREAT|O_EXCL|O_WRONLY|O_CLOEXEC,0555);
   int nullfile=open(SLICE_ROOT "/workroot/dev/null",O_CREAT|O_EXCL|O_WRONLY|O_CLOEXEC,0666);
   if(loader<0||nullfile<0)return -1;close(loader);close(nullfile);
   if(bind_readonly(SLICE_ROOT "/runtime",SLICE_ROOT "/workroot/runtime")||
-     bind_readonly(SLICE_ROOT "/runtime/loader",SLICE_ROOT "/workroot/lib/ld-linux-aarch64.so.1")||
+     bind_readonly(SLICE_ROOT "/runtime/loader",SLICE_ROOT "/workroot/" SLICE_LOADER_DIR "/" SLICE_LOADER_NAME)||
      mount("/dev/null",SLICE_ROOT "/workroot/dev/null",NULL,MS_BIND,NULL)||
      mount("proc",SLICE_ROOT "/workroot/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL)||
      chroot(SLICE_ROOT "/workroot")||chdir("/"))return -1;
@@ -157,7 +192,7 @@ static void node_exec(const char *entry,int importer,int input,int receipt,int o
   char *env[]={"PATH=/runtime","LD_LIBRARY_PATH=/runtime/lib","LANG=C","LC_ALL=C","HOME=/state","TMPDIR=/state",NULL};
   execve(args[0],args,env);_exit(125);
 }
-struct importer_args { int input,receipt,gate,alias_gate; };
+struct importer_args { int input,receipt,gate,alias_gate,fault_report; };
 static int importer_failure(int receipt,int code,int detail) {
   char line[80];int size=snprintf(line,sizeof(line),"KSE2 native_stage %d detail %d\n",code,detail);
   if(size>0&&(size_t)size<sizeof(line))(void)write_all(receipt,line,(size_t)size);
@@ -179,7 +214,7 @@ static int detached_import_writer(int alias_gate) {
     if(setsid()<0||write_all(ready_pipe[1],"W",1))_exit(184);close(ready_pipe[1]);
     /* The outer init releases this only after reaping the importer namespace.
      * A real leak would retain the read end; no timing/scheduler guess is used. */
-    char permit;if(read(alias_gate,&permit,1)==1&&permit=='X')(void)pwrite(file,"mutated\n",8,0);
+    char permit;if(read(alias_gate,&permit,1)==1&&permit=='X'&&pwrite(file,"mutated\n",8,0)!=8)_exit(185);
     for(;;)pause();
   }
   close(ready_pipe[1]);char ready_byte;ssize_t count=read(ready_pipe[0],&ready_byte,1);close(ready_pipe[0]);
@@ -188,8 +223,8 @@ static int detached_import_writer(int alias_gate) {
 }
 static int importer_namespace(void *pointer) {
   struct importer_args *args=pointer;
-  int keep[]={args->input,args->receipt,args->gate,args->alias_gate};
-  if(close_except(keep,4)||getpid()!=1||prctl(PR_SET_PDEATHSIG,SIGKILL)||getppid()!=0)return importer_failure(args->receipt,130,errno);
+  int keep[]={args->input,args->receipt,args->gate,args->alias_gate,args->fault_report};
+  if(close_except(keep,5)||getpid()!=1||prctl(PR_SET_PDEATHSIG,SIGKILL)||getppid()!=0)return importer_failure(args->receipt,130,errno);
   char permit;if(read(args->gate,&permit,1)!=1||permit!='I')return importer_failure(args->receipt,131,errno);close(args->gate);
   /* QA regression: layout already made the outer mount namespace private.
    * After chroot, '/' is an ordinary directory, not a mount root. Repeating
@@ -207,6 +242,11 @@ static int importer_namespace(void *pointer) {
   close(args->input);close(nullfd);
   int status=0;while(waitpid(child,&status,0)<0){if(errno!=EINTR)return 135;}
   if(!WIFEXITED(status)||WEXITSTATUS(status)!=0)return importer_failure(args->receipt,136,status);
+  if(SLICE_FAULT_MODE==SLICE_FAULT_IMPORT_RECEIPT_HELD){
+    struct work_result reached={.phase=2,.worker_status=-1,.authority_status=-1,.importer_wait_status=status};
+    hold_fault_pipe(args->fault_report,&reached);
+  }
+  close(args->fault_report);
   if(detached_import_writer(args->alias_gate))return importer_failure(args->receipt,138,errno);
   close(args->alias_gate);
   const char probe[]="KSD1 writable_alias_ready\n";
@@ -224,10 +264,10 @@ static int line_read(int fd,char *line,size_t cap) {
   return -1;
 }
 static int hex64(const char *s) { if(strlen(s)!=64)return 0;for(int i=0;i<64;i++)if(!((s[i]>='0'&&s[i]<='9')||(s[i]>='a'&&s[i]<='f')))return 0;return 1; }
-static int importer_phase(int input,struct work_result *result) {
+static int importer_phase(int input,struct work_result *result,int fault_report) {
   int report[2],gate[2],alias_gate[2];if(pipe2(report,O_CLOEXEC)||pipe2(gate,O_CLOEXEC)||pipe2(alias_gate,O_CLOEXEC))return -1;
   char *stack=malloc(STACK_BYTES);if(!stack)return -1;
-  struct importer_args args={input,report[1],gate[0],alias_gate[0]};
+  struct importer_args args={input,report[1],gate[0],alias_gate[0],fault_report};
   pid_t init=clone(importer_namespace,stack+STACK_BYTES,CLONE_NEWPID|CLONE_NEWNS|SIGCHLD,&args);
   if(init<0)return -1;close(report[1]);close(gate[0]);close(alias_gate[0]);
   int held=pidfd(init);if(held<0){close(gate[1]);return -1;}
@@ -253,7 +293,7 @@ static void worker_exec(int output) {
   char *env[]={"PATH=/runtime","LD_LIBRARY_PATH=/runtime/lib","LANG=C","LC_ALL=C","HOME=/scratch","TMPDIR=/scratch","KNOWLEDGE_SLICE_SCRATCH=/scratch",NULL};
   execve(args[0],args,env);_exit(142);
 }
-static int execute_phase(struct work_result *result,int output) {
+static int execute_phase(struct work_result *result,int output,int fault_report) {
   if(bind_readonly("/source","/source"))return -1;result->readonly=1;
   int control[2],ready_pipe[2];if(pipe2(control,O_CLOEXEC)||pipe2(ready_pipe,O_CLOEXEC))return -1;
   int nullfd=open("/dev/null",O_RDWR|O_CLOEXEC);if(nullfd<0)return -1;
@@ -266,7 +306,10 @@ static int execute_phase(struct work_result *result,int output) {
      strcmp(manifest,result->manifest)||strcmp(directories,result->directories)||files!=result->files||bytes!=result->bytes)return -1;
   result->authority_readback=1;
   pid_t worker=fork();if(worker<0)return -1;if(!worker)worker_exec(output);close(output);
-  if(exact_reap(worker,&result->worker_status)||write_all(control[1],"STOP\n",5))return -1;close(control[1]);
+  if(exact_reap(worker,&result->worker_status))return -1;
+  if(SLICE_FAULT_MODE==SLICE_FAULT_RESULT_HELD&&WIFEXITED(result->worker_status)&&WEXITSTATUS(result->worker_status)==0)
+    hold_fault_pipe(fault_report,result);
+  if(write_all(control[1],"STOP\n",5))return -1;close(control[1]);
   if(exact_reap(authority,&result->authority_status))return -1;
   return WIFEXITED(result->worker_status)&&WEXITSTATUS(result->worker_status)==0&&
     WIFEXITED(result->authority_status)&&WEXITSTATUS(result->authority_status)==0?0:-1;
@@ -279,7 +322,7 @@ static int work_init(void *pointer) {
   if(cg<0||write_all(cg,"0",1))return 152;close(cg);
   struct work_result result={.phase=1,.worker_status=-1,.authority_status=-1,.importer_wait_status=-1};
   int input=opaque_input(),ok=0;
-  if(input>=0&&layout()==0){result.phase=2;if(importer_phase(input,&result)==0){result.phase=3;if(execute_phase(&result,a->output)==0){result.phase=4;ok=1;}}}
+  if(input>=0&&layout()==0){result.phase=2;if(importer_phase(input,&result,a->report)==0){result.phase=3;if(execute_phase(&result,a->output,a->report)==0){result.phase=4;ok=1;}}}
   (void)write_all(a->report,&result,sizeof(result));close(a->report);
   return ok?0:153;
 }
@@ -336,15 +379,19 @@ static void keeper(int channel,int ownerfd,int output,long long started) {
   struct keeper_result result={.kind=1,.init=init,.init_status=-1};
   if(send_birth(channel,&result,held)){close(gate[1]);_exit(166);}
   int permitted=0;long long setup_end=started+5000;
-  while(now_ms()<setup_end&&!dead(ownerfd)){
+  while(now_ms()<setup_end&&!dead(ownerfd)&&!cancelled){
     struct pollfd p={channel,POLLIN,0};if(poll(&p,1,20)<0&&errno!=EINTR)break;
     if(p.revents&POLLIN){char byte[2];if(recv(channel,byte,sizeof(byte),MSG_DONTWAIT)==1&&byte[0]=='G')permitted=1;break;}
     if(p.revents&(POLLHUP|POLLERR))break;
   }
-  if(permitted&&write_all(gate[1],"G",1)==0)result.reason=0;else result.reason=5;close(gate[1]);
+  /* poll/read can return after the budget or owner boundary. Recheck at the
+   * actual permit; a received byte does not grant a fresh setup window. */
+  result.reason=grant_setup_permit(gate[1],ownerfd,permitted,started,setup_end);
+  close(gate[1]);
   while(!result.reason){
     struct pollfd p={channel,POLLIN,0};if(poll(&p,1,20)<0&&errno!=EINTR){result.reason=5;break;}
-    if(dead(ownerfd)||(p.revents&(POLLHUP|POLLERR)))result.reason=2;
+    if(cancelled)result.reason=1;
+    if(!result.reason&&(dead(ownerfd)||(p.revents&(POLLHUP|POLLERR))))result.reason=2;
     if(!result.reason&&(p.revents&POLLIN)){char byte[2];ssize_t n=recv(channel,byte,sizeof(byte),MSG_DONTWAIT);result.reason=n==1&&byte[0]=='S'?1:5;}
     if(!result.reason&&now_ms()>=started+WORK_MS)result.reason=3;
     if(!result.reason&&dead(held))result.reason=4;
@@ -378,7 +425,11 @@ int main(int argc,char **argv) {
     if(cancelled||overflow){(void)send(channel[0],"S",1,MSG_NOSIGNAL|MSG_DONTWAIT);cancelled=2;}
     struct keeper_result message;ssize_t n;int received=-1;
     while((n=receive_keeper(channel[0],&message,&received))>0){
-      if(message.kind==1&&initfd<0&&!have_final){initfd=received;received=-1;(void)send(channel[0],"G",1,MSG_NOSIGNAL|MSG_DONTWAIT);}
+      if(message.kind==1&&initfd<0&&!have_final){
+        initfd=received;received=-1;
+        const char *reply=cancelled||overflow||protocol_bad||now_ms()>=started+5000?"S":"G";
+        (void)send(channel[0],reply,1,MSG_NOSIGNAL|MSG_DONTWAIT);
+      }
       else if(message.kind==2&&initfd>=0&&!have_final){final=message;have_final=1;}
       else protocol_bad=1;
       if(received>=0)close(received);
@@ -395,15 +446,15 @@ int main(int argc,char **argv) {
   int closed=have_final&&final.cleanup_confirmed&&keeper_reaped&&WIFEXITED(keeper_status)&&WEXITSTATUS(keeper_status)==0&&
     initfd>=0&&dead(initfd)&&eof&&cgroup_empty();
   if(!closed){if(initfd>=0&&!dead(initfd))(void)kill_exact(initfd);if(!dead(keeperfd))(void)kill_exact(keeperfd);}
-  int pass=closed&&!cancelled&&!overflow&&!protocol_bad&&final.reason==4&&WIFEXITED(final.init_status)&&WEXITSTATUS(final.init_status)==0&&
+  int pass=SLICE_FAULT_MODE==SLICE_FAULT_NONE&&closed&&!cancelled&&!overflow&&!protocol_bad&&final.reason==4&&WIFEXITED(final.init_status)&&WEXITSTATUS(final.init_status)==0&&
     final.work.phase==4&&final.work.importer_drained&&final.work.importer_detached_writer&&final.work.readonly&&final.work.authority_readback;
   struct stat observer_identity;int observer=pass?observation_gate(&observer_identity):-1;if(pass&&observer<0)pass=0;
-  printf("{\"status\":\"%s\",\"production_admission\":false,\"release_gate_qualified\":false,\"component\":\"readonly_node_namespace\",\"observer_ack_required\":true,"
+  printf("{\"status\":\"%s\",\"production_admission\":false,\"release_gate_qualified\":false,\"component\":\"readonly_node_namespace\",\"observer_ack_required\":true,\"fault_mode\":%d,\"fault_reached\":%s,"
     "\"cleanup_confirmed\":%s,\"importer_namespace_drained\":%s,\"importer_detached_writer_ready\":%s,\"source_readonly\":%s,\"authority_readback\":%s,\"phase\":%d,"
     "\"work_ms\":%lld,\"cleanup_ms\":%lld,\"proof_emitted_ms\":%lld,\"stop_reason\":%d,\"init_wait_status\":%d,\"keeper_wait_status\":%d,"
     "\"worker_wait_status\":%d,\"authority_wait_status\":%d,\"importer_wait_status\":%d,\"cgroup_empty\":%s,\"output_eof\":%s,\"output_bytes\":%zu,"
     "\"input_manifest_sha256\":\"%s\",\"directories_sha256\":\"%s\",\"output_hex\":\"",
-    pass?"WORK_CLOSED":"FAIL",closed?"true":"false",final.work.importer_drained?"true":"false",final.work.importer_detached_writer?"true":"false",final.work.readonly?"true":"false",
+    pass?"WORK_CLOSED":"FAIL",SLICE_FAULT_MODE,final.work.fault_reached?"true":"false",closed?"true":"false",final.work.importer_drained?"true":"false",final.work.importer_detached_writer?"true":"false",final.work.readonly?"true":"false",
     final.work.authority_readback?"true":"false",final.work.phase,final.work_ms,final.cleanup_ms,now_ms()-started,final.reason,
     final.init_status,keeper_status,final.work.worker_status,final.work.authority_status,final.work.importer_wait_status,final.cgroup_empty?"true":"false",eof?"true":"false",used,
     final.work.manifest,final.work.directories);

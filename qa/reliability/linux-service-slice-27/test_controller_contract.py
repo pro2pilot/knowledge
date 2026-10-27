@@ -30,6 +30,7 @@ class ControllerPureContractTests(unittest.TestCase):
 
     def valid_native(self):
         return {
+            "fault_mode": 0, "fault_reached": False, "work_ms": 1, "cleanup_ms": 1, "proof_emitted_ms": 2,
             "status": "WORK_CLOSED", "observer_ack_required": True,
             "cleanup_confirmed": True, "importer_namespace_drained": True,
             "importer_detached_writer_ready": True, "source_readonly": True,

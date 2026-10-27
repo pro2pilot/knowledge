@@ -49,9 +49,9 @@ static int model_clock(clockid_t which,struct timespec *out) {
   if(fault("millisecond-overflow")){out->tv_sec=LLONG_MAX/1000;out->tv_nsec=999000000;return 0;}
   return clock_gettime(which,out);
 }
-static int model_dprintf(int fd,const char *format,...) {
-  va_list values;va_start(values,format);int result=vdprintf(fd,format,values);va_end(values);
-  if(strstr(format,"\"status\":\"ready\""))ready_emitted=1;
+static ssize_t model_write(int fd,const void *buffer,size_t size) {
+  ssize_t result=write(fd,buffer,size);
+  if(result>0&&memmem(buffer,(size_t)result,"\"status\":\"ready\"",16))ready_emitted=1;
   return result;
 }
 static ssize_t model_read(int fd,void *buffer,size_t size) {
@@ -69,7 +69,7 @@ static int observed_clone(int (*fn)(void *),void *stack,int flags,void *argument
   dprintf(2,"TEST_CLONE_CALLED\n");return clone(fn,stack,flags,argument);
 }
 #define clock_gettime model_clock
-#define dprintf model_dprintf
+#define write model_write
 #define read model_read
 #define poll model_poll
 #define clone observed_clone

@@ -99,7 +99,8 @@ class Cleanup(unittest.TestCase):
         tap=('TAP version 13\n# Subtest: '+c.EXPECTED_TEST_NAME+'\nok 1 - '+c.EXPECTED_TEST_NAME+
             "\n  ---\n  duration_ms: 1\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1\n").encode()
         value={'status':'WORK_CLOSED','production_admission':False,'release_gate_qualified':False,'observer_ack_required':True,
-            'component':'readonly_node_namespace','phase':4,'work_ms':1,'cleanup_ms':1,'proof_emitted_ms':1,'stop_reason':4,
+            'fault_mode':0,'fault_reached':False,
+            'component':'readonly_node_namespace','phase':4,'work_ms':1,'cleanup_ms':1,'proof_emitted_ms':2,'stop_reason':4,
             'output_bytes':len(tap),'output_hex':tap.hex(),'input_manifest_sha256':'a'*64,'directories_sha256':'b'*64,
             'importer_report_hex':('KSM1 chroot_root_not_mountpoint EINVAL\nKSI1 '+'a'*64+' '+'b'*64+' 2 7\nKSD1 writable_alias_ready\n').encode().hex()}
         value.update({k:True for k in ['cleanup_confirmed','importer_namespace_drained','importer_detached_writer_ready','source_readonly','authority_readback','cgroup_empty','output_eof']})

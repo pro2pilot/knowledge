@@ -110,6 +110,7 @@ test('rejects unsupported modes, entry overflow, file overflow, and bad aggregat
 
 test('imports into fresh POSIX roots with read-only source ownership and a generated private receipt', t => {
   if (process.platform === 'win32') return t.skip('Windows does not provide the POSIX owner/group/mode contract');
+  if (process.getuid() === 0) return t.skip('Physical importer QA requires a non-root authority; root is not qualification');
   assert.notEqual(process.getuid(), 0, 'real import test must run as a non-root QA authority');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-slice-'));
   const sourceDir = path.join(parent, 'source');
@@ -156,6 +157,7 @@ test('imports into fresh POSIX roots with read-only source ownership and a gener
 
 test('refuses a nonempty source root and symlinked source path before creating imported entries', t => {
   if (process.platform === 'win32') return t.skip('Windows does not provide the POSIX owner/group/mode contract');
+  if (process.getuid() === 0) return t.skip('Physical importer QA requires a non-root authority; root is not qualification');
   assert.notEqual(process.getuid(), 0, 'real import test must run as a non-root QA authority');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'knowledge-slice-'));
   const sourceDir = path.join(parent, 'source');

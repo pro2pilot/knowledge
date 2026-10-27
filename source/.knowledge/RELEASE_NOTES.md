@@ -2,7 +2,11 @@
 
 ## v3.4.4 RC5 — Reliability continuation (unpublished candidate)
 
-Audit revision: `independent-audit.20261027.reliability.4`. Package version remains `3.4.4`, candidate status
+Reliability.5 adds bounded Linux native report transport, original-epoch recovery budgets,
+and separately qualified Linux component fault checks. The production Linux service,
+installed-candidate acceptance and stock-SIP macOS acceptance remain open.
+
+Audit revision: `independent-audit.20261027.reliability.5`. Package version remains `3.4.4`, candidate status
 remains `RC5`. This is not a published release and has not passed the full release
 gate.
 

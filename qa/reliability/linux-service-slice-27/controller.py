@@ -19,8 +19,10 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import selectors
 import signal
 import stat
+import struct
 import subprocess
 import sys
 import time
@@ -30,7 +32,8 @@ import uuid
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
 OLD_QA_HELPER = REPO_ROOT / "qa/reliability/linux-admin-service-27/native_boundary_qa.py"
-NODE_PATH = Path("/opt/hostedtoolcache/node/22.17.1/arm64/bin/node")
+HOST_ARCH = {"aarch64": "arm64", "arm64": "arm64", "x86_64": "x64", "amd64": "x64"}.get(platform.machine().lower())
+NODE_PATH = Path(f"/opt/hostedtoolcache/node/22.17.1/{HOST_ARCH or 'unsupported'}/bin/node")
 CC_PATH = Path("/usr/bin/cc")
 READELF_PATH = Path("/usr/bin/readelf")
 LDD_PATH = Path("/usr/bin/ldd")
@@ -50,6 +53,9 @@ MAX_TREE_BYTES = 512 * 1024 * 1024
 MAX_RUNTIME_BYTES = 512 * 1024 * 1024
 ROOT_STAGE_TIMEOUT = 135
 UNIT_STOP_TIMEOUT = 25
+WORK_BUDGET_MS = 30000
+CLEANUP_BUDGET_MS = 10000
+FAULT_PROFILES = {"none": 0, "import-receipt-held": 1, "result-held": 2}
 CLAIM_PATH = Path(f"/run/knowledge-slice-uid-reservation-{AUTHORITY_UID}-{WORKER_UID}")
 NODE_VERSION = "v22.17.1"
 EXPECTED_INPUT_TEXT = "component-slice-input-v1\n"
@@ -73,6 +79,40 @@ def require(condition: bool, code: str, message: str) -> None:
 
 def sha256(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
+
+
+def strict_json(body: bytes | str):
+    """Reject ambiguous protocol bytes before any custody or success decision."""
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON member")
+            value[key] = item
+        return value
+    def finite(_value):
+        raise ValueError("nonfinite JSON number")
+    text = body.decode("utf-8", "strict") if isinstance(body, bytes) else body
+    return json.loads(text, object_pairs_hook=unique, parse_constant=finite)
+
+
+def architecture_profile() -> tuple[str, int, str]:
+    require(HOST_ARCH in {"arm64", "x64"}, "architecture_unsupported", "Only fixed Linux ARM64 and x64 profiles are supported")
+    return (("aarch64", 183, "/lib/ld-linux-aarch64.so.1") if HOST_ARCH == "arm64" else
+            ("x86_64", 62, "/lib64/ld-linux-x86-64.so.2"))
+
+
+def elf_static_native(data: bytes) -> bool:
+    _, machine, _ = architecture_profile()
+    if len(data) < 64 or data[:6] != b"\x7fELF\x02\x01":
+        return False
+    e_type, observed_machine = struct.unpack_from("<HH", data, 16)
+    phoff = struct.unpack_from("<Q", data, 32)[0]
+    phentsize, phnum = struct.unpack_from("<HH", data, 54)
+    if e_type != 2 or observed_machine != machine or phentsize < 56 or not 1 <= phnum <= 128 or phoff + phentsize * phnum > len(data):
+        return False
+    types = [struct.unpack_from("<I", data, phoff + i * phentsize)[0] for i in range(phnum)]
+    return 1 in types and 2 not in types and 3 not in types
 
 
 def load_old_helpers():
@@ -119,19 +159,101 @@ def physical_read(path: Path, maximum: int, expected_uid: int | None = None) -> 
         os.close(fd)
 
 
+def bounded_process(argv: list[str], timeout: int, maximum: int, cwd: Path, env: dict[str, str]) -> tuple[int, bytes, bytes, float]:
+    """Stream a fixed tool under an anchored private process session.
+
+    The leader is observed with WNOWAIT until group termination, so a reused
+    PID/group can never be signalled. This is preparation/admin scaffolding;
+    arbitrary worker trees require the native namespace/cgroup boundary.
+    """
+    started = time.monotonic()
+    deadline = started + timeout
+    process = None
+    selector = selectors.DefaultSelector()
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    problem = None
+    stop_sent = False
+    cleanup_end = None
+    leader_exited = False
+    reaped = False
+
+    def stop_group():
+        nonlocal stop_sent, cleanup_end
+        if process is None or reaped or stop_sent:
+            return
+        # The unreaped direct leader anchors this newly created session ID.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        stop_sent = True
+        cleanup_end = time.monotonic() + 3
+
+    try:
+        process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, shell=False, env=env, start_new_session=True, close_fds=True)
+        for label, stream in (("stdout", process.stdout), ("stderr", process.stderr)):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, label)
+        while True:
+            # Never use poll()/wait() here: those would release the PID anchor.
+            state = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            leader_exited = state is not None
+            now = time.monotonic()
+            if now >= deadline and problem is None:
+                problem = "prepare_command_timeout"
+            if leader_exited or problem is not None:
+                stop_group()
+            if leader_exited and not selector.get_map():
+                break
+            if cleanup_end is not None and now >= cleanup_end:
+                problem = "prepare_command_cleanup_unconfirmed"
+                break
+            for event, _ in selector.select(0.025):
+                try:
+                    block = os.read(event.fd, 65536)
+                except BlockingIOError:
+                    continue
+                if not block:
+                    selector.unregister(event.fileobj)
+                    continue
+                target = buffers[event.data]
+                available = maximum + 1 - len(target)
+                if available > 0:
+                    target.extend(block[:available])
+                if len(target) > maximum and problem is None:
+                    problem = "prepare_command_output_limit"
+                    stop_group()
+        stop_group()
+        try:
+            return_code = process.wait(timeout=3)
+            reaped = process.returncode is not None
+        except subprocess.TimeoutExpired:
+            problem = "prepare_command_cleanup_unconfirmed"
+        require(reaped, "prepare_command_cleanup_unconfirmed", "Fixed-tool leader could not be reaped")
+        require(problem is None, problem or "prepare_command_failed", "Fixed tool exceeded its output/time or cleanup contract")
+        return return_code, bytes(buffers["stdout"]), bytes(buffers["stderr"]), time.monotonic() - started
+    finally:
+        if process is not None and not reaped:
+            stop_group()
+            try:
+                process.wait(timeout=3)
+                reaped = process.returncode is not None
+            except subprocess.TimeoutExpired:
+                pass
+        selector.close()
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
+        if process is not None and not reaped:
+            raise SliceFailure("prepare_command_cleanup_unconfirmed", "Fixed-tool direct-child custody is still unresolved")
+
+
 def command(argv: list[str], timeout: int, maximum: int, cwd: Path, env: dict[str, str]) -> tuple[int, bytes, bytes, float]:
     require(argv and argv[0] in {str(CC_PATH), str(READELF_PATH), str(LDD_PATH), str(NODE_PATH)},
             "command_not_allowlisted", "Prepare command is outside the fixed tool allowlist")
-    started = time.monotonic()
-    try:
-        result = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, timeout=timeout, check=False, shell=False, env=env)
-    except subprocess.TimeoutExpired as exc:
-        raise SliceFailure("prepare_command_timeout", f"Bounded prepare command timed out: {Path(argv[0]).name}") from exc
-    elapsed = time.monotonic() - started
-    require(len(result.stdout) <= maximum and len(result.stderr) <= maximum,
-            "prepare_command_output_limit", f"Prepare command output exceeded its cap: {Path(argv[0]).name}")
-    return result.returncode, result.stdout, result.stderr, elapsed
+    return bounded_process(argv, timeout, maximum, cwd, env)
 
 
 def write_new_file(path: Path, body: bytes, mode: int, uid: int | None = None, gid: int | None = None) -> os.stat_result:
@@ -266,10 +388,12 @@ def physical_source_dir() -> Path:
     return sources
 
 
-def run_prepare() -> int:
+def run_prepare(fault: str = "none") -> int:
+    require(fault in FAULT_PROFILES, "fault_profile_invalid", "Only fixed component fault profiles are supported")
+    fault_mode = FAULT_PROFILES[fault]
     require(os.getuid() == RUNNER_UID and os.geteuid() == RUNNER_UID,
             "prepare_identity", "Prepare must run as the ordinary Ubuntu Actions caller UID 1001")
-    require(platform.machine().lower() in {"aarch64", "arm64"}, "prepare_arch", "Prepare is restricted to ARM64")
+    architecture, elf_machine, expected_loader = architecture_profile()
     global NODE_PATH, CC_PATH, READELF_PATH, LDD_PATH
     requested = {"node": NODE_PATH, "cc": CC_PATH, "readelf": READELF_PATH, "ldd": LDD_PATH}
     resolved = {}
@@ -334,26 +458,23 @@ def run_prepare() -> int:
                      "-Werror=implicit-function-declaration", "-Werror=return-type",
                      f'-DSLICE_ROOT="{slice_root}"', f'-DSLICE_CGROUP="{work_cgroup}"',
                      f"-DSLICE_A_UID={AUTHORITY_UID}", f"-DSLICE_W_UID={WORKER_UID}",
+                     f"-DSLICE_FAULT_MODE={fault_mode}",
                      str(inputs / "native-slice.c"), "-o", str(scratch / "native-slice")]
     compile_stdout = artifacts / "compile.stdout.bin"
     compile_stderr = artifacts / "compile.stderr.bin"
-    started = time.monotonic()
-    proc = subprocess.run(compiler_argv, cwd=scratch, stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=150,
-                          check=False, shell=False, env=env)
-    elapsed = time.monotonic() - started
-    require(len(proc.stdout) <= MAX_COMMAND_OUTPUT and len(proc.stderr) <= MAX_COMMAND_OUTPUT,
-            "compiler_output_limit", "Compiler output exceeded the bounded prepare cap")
+    code, out, err, elapsed = command(compiler_argv, 45, MAX_COMMAND_OUTPUT, scratch, env)
+    proc = subprocess.CompletedProcess(compiler_argv, code, out, err)
     write_new_file(compile_stdout, proc.stdout, 0o600)
     write_new_file(compile_stderr, proc.stderr, 0o600)
     require(proc.returncode == 0, "compile_failed", "Static native component compile failed; private logs retained")
     native_stat, native_body = physical_read(scratch / "native-slice", 16 * 1024 * 1024, RUNNER_UID)
-    require(helpers.elf_static_arm64(native_body) and not (native_stat.st_mode & (stat.S_ISUID | stat.S_ISGID)),
-            "native_binary_invalid", "Prepared native component is not a static ARM64 ELF")
+    require(elf_static_native(native_body) and not (native_stat.st_mode & (stat.S_ISUID | stat.S_ISGID)),
+            "native_binary_invalid", "Prepared native component is not the exact host-profile static ELF")
 
     readelf_status, readelf_out, readelf_err, readelf_elapsed = command(
         [str(READELF_PATH), "-hW", str(NODE_PATH)], 15, MAX_COMMAND_OUTPUT, source_dir, env)
-    require(readelf_status == 0 and b"AArch64" in readelf_out, "node_elf_arch", "Pinned Node binary is not AArch64")
+    require(readelf_status == 0 and len(node_body) >= 20 and node_body[:6] == b"\x7fELF\x02\x01" and
+            struct.unpack_from("<H", node_body, 18)[0] == elf_machine, "node_elf_arch", "Pinned Node binary differs from the fixed host architecture")
     ph_status, ph_out, ph_err, ph_elapsed = command(
         [str(READELF_PATH), "-lW", str(NODE_PATH)], 15, MAX_COMMAND_OUTPUT, source_dir, env)
     require(ph_status == 0, "node_readelf_failed", "Cannot inspect the pinned Node ELF program headers")
@@ -361,7 +482,7 @@ def run_prepare() -> int:
     require(match is not None, "node_interpreter_missing", "Node ELF interpreter was not reported")
     requested_loader = os.fsdecode(match.group(1))
     interp_path = Path(os.path.realpath(requested_loader))
-    require(requested_loader == "/lib/ld-linux-aarch64.so.1" and
+    require(requested_loader == expected_loader and
             str(interp_path).startswith(("/lib/", "/usr/lib/")),
             "node_interpreter_unexpected", "Node uses an unsupported ARM64 loader path")
     ldd_status, ldd_out, ldd_err, ldd_elapsed = command(
@@ -373,7 +494,7 @@ def run_prepare() -> int:
         row = re.match(r"^\s*([A-Za-z0-9._+\-]+)\s+=>\s+(/\S+)\s+\(", line)
         if not row:
             if ("linux-vdso" in line or "statically linked" in line or
-                    re.fullmatch(r"\s*/lib/ld-linux-aarch64\.so\.1\s+\(0x[0-9a-fA-F]+\)\s*", line)):
+                    re.fullmatch(r"\s*" + re.escape(expected_loader) + r"\s+\(0x[0-9a-fA-F]+\)\s*", line)):
                 continue
             if line.strip():
                 raise SliceFailure("ldd_output_unrecognized", "ldd emitted an unrecognized dependency record")
@@ -410,7 +531,8 @@ def run_prepare() -> int:
         write_new_file(artifacts / name, body, 0o600)
     fixtures = [{"path": item["path"], "bytes": item["bytes"], "mode": item["mode"], "sha256": item["sha256"]}
                 for item in blob_value["files"]]
-    plan = {"schema_version": SCHEMA, "run_id": token, "architecture": "aarch64", "runner_uid": RUNNER_UID,
+    plan = {"schema_version": SCHEMA, "run_id": token, "architecture": architecture, "runner_uid": RUNNER_UID,
+            "fault_mode": fault_mode,
             "authority_uid": AUTHORITY_UID, "worker_uid": WORKER_UID, "slice_root": slice_root,
             "unit": unit, "service_cgroup": service_cgroup, "work_cgroup": work_cgroup,
             "node": {"path": str(NODE_PATH), "version": NODE_VERSION, "sha256": sha256(node_body), "bytes": len(node_body)},
@@ -429,7 +551,8 @@ def run_prepare() -> int:
     plan_body = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     require(len(plan_body) <= MAX_PLAN_BYTES, "plan_limit", "Prepared plan exceeds its fixed bound")
     write_new_file(scratch / "plan.json", plan_body, 0o600)
-    print(json.dumps({"status": "PREPARED_COMPONENT_QA", "run_id": token, "architecture": "aarch64",
+    print(json.dumps({"status": "PREPARED_COMPONENT_QA", "run_id": token, "architecture": architecture,
+                      "fault_mode": fault_mode,
                       "node_version": NODE_VERSION, "node_sha256": plan["node"]["sha256"],
                       "native_sha256": plan["native_binary"]["sha256"], "input_sha256": plan["blob"]["sha256"]},
                      sort_keys=True))
@@ -484,19 +607,22 @@ def exact_scratch(run_id: str) -> Path:
 
 
 def load_plan(scratch: Path, helpers) -> tuple[dict, bytes, Path]:
+    architecture, _, expected_loader = architecture_profile()
     plan_st, plan_raw = physical_read(scratch / "plan.json", MAX_PLAN_BYTES, RUNNER_UID)
     require((plan_st.st_mode & 0o7777) == 0o600, "plan_permissions", "Prepared plan must remain caller-private")
     try:
-        plan = json.loads(plan_raw.decode("utf-8", "strict"))
-    except (UnicodeError, json.JSONDecodeError) as exc:
+        plan = strict_json(plan_raw)
+    except (UnicodeError, ValueError) as exc:
         raise SliceFailure("plan_invalid", "Prepared plan JSON is invalid") from exc
     required = {"schema_version", "run_id", "architecture", "runner_uid", "authority_uid", "worker_uid", "slice_root",
                 "unit", "service_cgroup", "work_cgroup", "node", "loader", "dependencies", "component_sources",
-                "native_binary", "blob", "tap_inventory", "prepare_private"}
+                "native_binary", "blob", "tap_inventory", "prepare_private", "fault_mode"}
     require(set(plan) == required and plan["schema_version"] == SCHEMA and plan["run_id"] == scratch.name.removeprefix("knowledge-slice-prep-") and
-            plan["architecture"] == "aarch64" and plan["runner_uid"] == RUNNER_UID and
+            plan["architecture"] == architecture and plan["runner_uid"] == RUNNER_UID and
             plan["authority_uid"] == AUTHORITY_UID and plan["worker_uid"] == WORKER_UID,
             "plan_contract", "Prepared plan fields or fixed identities do not match")
+    require(type(plan["fault_mode"]) is int and plan["fault_mode"] in FAULT_PROFILES.values(),
+            "plan_fault_profile", "Prepared fault profile is not a fixed native mode")
     unit = "knowledge-slice-" + plan["run_id"]
     root = "/var/lib/" + unit
     service_cgroup = "/sys/fs/cgroup/system.slice/" + unit + ".service"
@@ -523,7 +649,7 @@ def load_plan(scratch: Path, helpers) -> tuple[dict, bytes, Path]:
                 os.path.realpath(source) == str(source), "dependency_path_invalid", "Dependency source is outside fixed system paths")
     loader = plan["loader"]
     require(set(loader) == {"path", "requested_path", "sha256", "bytes"} and
-            loader["requested_path"] == "/lib/ld-linux-aarch64.so.1" and
+            loader["requested_path"] == expected_loader and
             loader["path"].startswith(("/lib/", "/usr/lib/")) and os.path.realpath(loader["path"]) == loader["path"],
             "loader_plan_invalid", "ELF loader path is outside fixed ARM64 roots")
     require(re.fullmatch(r"[0-9a-f]{64}", loader["sha256"] or "") is not None and
@@ -549,7 +675,7 @@ def load_plan(scratch: Path, helpers) -> tuple[dict, bytes, Path]:
     native = plan["native_binary"]
     native_st, native_body = physical_read(scratch / "native-slice", 16 * 1024 * 1024, RUNNER_UID)
     require(native["path"] == "native-slice" and len(native_body) == native["bytes"] and
-            sha256(native_body) == native["sha256"] and helpers.elf_static_arm64(native_body) and
+            sha256(native_body) == native["sha256"] and elf_static_native(native_body) and
             not (native_st.st_mode & (stat.S_ISUID | stat.S_ISGID)),
             "native_binary_changed", "Prepared static native bytes failed their bound hash/ELF check")
     blob_st, blob_body = physical_read(scratch / "blobinput.json", MAX_INPUT_BYTES, RUNNER_UID)
@@ -661,15 +787,47 @@ def tap_inventory(output: bytes) -> dict | None:
 def component_acceptance(return_code: int, value: dict, observer_acknowledged: bool,
                          child_reaped: bool, tap: dict | None) -> bool:
     wait_statuses = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status")
-    return (return_code == 0 and value.get("status") == "WORK_CLOSED" and
-            value.get("observer_ack_required") is True and observer_acknowledged and child_reaped and
+    return (type(return_code) is int and return_code == 0 and value.get("status") == "WORK_CLOSED" and
+            type(value.get("fault_mode")) is int and value["fault_mode"] == 0 and value.get("fault_reached") is False and
+            value.get("observer_ack_required") is True and observer_acknowledged is True and child_reaped is True and
             all(value.get(name) is True for name in (
                 "cleanup_confirmed", "importer_namespace_drained", "importer_detached_writer_ready",
                 "source_readonly", "authority_readback", "cgroup_empty", "output_eof")) and
             value.get("phase") == 4 and value.get("stop_reason") == 4 and
+            type(value.get("work_ms")) is int and 0 <= value["work_ms"] < WORK_BUDGET_MS and
+            type(value.get("cleanup_ms")) is int and 0 <= value["cleanup_ms"] <= CLEANUP_BUDGET_MS and
+            type(value.get("proof_emitted_ms")) is int and
+            value["work_ms"] + value["cleanup_ms"] <= value["proof_emitted_ms"] <= WORK_BUDGET_MS + CLEANUP_BUDGET_MS + 2000 and
             all(value.get(name) == 0 and type(value.get(name)) is int for name in wait_statuses) and
             tap is not None and tap.get("tests") == 1 and tap.get("pass") == 1 and
             tap.get("fail") == 0 and tap.get("skipped") == 0)
+
+
+def fault_acceptance(return_code: int, value: dict, mode: int, observer_acknowledged: bool,
+                     child_reaped: bool, tap: dict | None) -> bool:
+    """A successful fault experiment requires a failed work result plus exact closure."""
+    if not (type(mode) is int and mode in {1, 2} and type(return_code) is int and return_code == 1 and
+            type(value.get("fault_mode")) is int and value["fault_mode"] == mode and value.get("fault_reached") is True and
+            value.get("status") == "FAIL" and value.get("production_admission") is False and
+            value.get("release_gate_qualified") is False and value.get("observer_ack_required") is True and
+            observer_acknowledged is False and child_reaped is True and value.get("stop_reason") == 3 and
+            all(value.get(name) is True for name in ("cleanup_confirmed", "cgroup_empty", "output_eof")) and
+            type(value.get("work_ms")) is int and WORK_BUDGET_MS <= value["work_ms"] <= WORK_BUDGET_MS + 2000 and
+            type(value.get("cleanup_ms")) is int and 0 <= value["cleanup_ms"] <= CLEANUP_BUDGET_MS and
+            type(value.get("proof_emitted_ms")) is int and
+            value["work_ms"] + value["cleanup_ms"] <= value["proof_emitted_ms"] <= WORK_BUDGET_MS + CLEANUP_BUDGET_MS + 2000 and
+            all(type(value.get(name)) is int for name in ("phase", "init_wait_status", "keeper_wait_status", "importer_wait_status", "worker_wait_status", "authority_wait_status")) and
+            value["init_wait_status"] == signal.SIGKILL and value["keeper_wait_status"] == 0 and
+            value["importer_wait_status"] == 0 and value["authority_wait_status"] == -1):
+        return False
+    if mode == 1:
+        return (value["phase"] == 2 and value["worker_wait_status"] == -1 and value.get("output_bytes") == 0 and
+                value.get("input_manifest_sha256") == "" and value.get("directories_sha256") == "" and
+                value.get("importer_report_hex") == "" and
+                all(value.get(name) is False for name in ("importer_namespace_drained", "importer_detached_writer_ready", "source_readonly", "authority_readback")) and tap is None)
+    return (value["phase"] == 3 and value["worker_wait_status"] == 0 and
+            all(value.get(name) is True for name in ("importer_namespace_drained", "importer_detached_writer_ready", "source_readonly", "authority_readback")) and
+            tap is not None and tap.get("tests") == 1 and tap.get("pass") == 1 and tap.get("fail") == 0 and tap.get("skipped") == 0)
 
 
 def bounded_native_failure(body: bytes | None) -> bool:
@@ -677,8 +835,8 @@ def bounded_native_failure(body: bytes | None) -> bool:
     if not isinstance(body, bytes) or not body.endswith(b"\n") or body.count(b"\n") != 1 or len(body) > MAX_NATIVE_JSON:
         return False
     try:
-        value = json.loads(body.decode("utf-8", "strict"))
-    except (UnicodeError, json.JSONDecodeError):
+        value = strict_json(body)
+    except (UnicodeError, ValueError):
         return False
     return isinstance(value, dict) and value.get("status") == "FAIL"
 
@@ -751,7 +909,7 @@ class RootRun:
     def __init__(self, run_id: str):
         require(os.geteuid() == 0 and os.environ.get("SUDO_UID") == str(RUNNER_UID),
                 "root_identity", "Root phase requires the fixed sudo caller UID 1001")
-        require(platform.machine().lower() in {"aarch64", "arm64"}, "root_arch", "Root phase is restricted to ARM64")
+        architecture_profile()
         self.helpers = load_old_helpers()
         self.scratch = exact_scratch(run_id)
         self.plan, self.blob, self.scratch = load_plan(self.scratch, self.helpers)
@@ -765,7 +923,8 @@ class RootRun:
         self.result = {"schema_version": "knowledge-linux-service-component-result.v1", "status": "FAIL",
                        "run_id": self.run_id, "production_admission": False, "release_gate_qualified": False,
                        "scope": "closed component experiment only; not production, KVE, release, or public RPC qualification",
-                       "platform": "linux-arm64", "node_version": NODE_VERSION,
+                       "platform": f"linux-{HOST_ARCH}", "node_version": NODE_VERSION,
+                       "fault_mode": self.plan["fault_mode"],
                        "node_sha256": self.plan["node"]["sha256"], "native_sha256": self.plan["native_binary"]["sha256"],
                        "importer_sha256": self.plan["component_sources"]["importer.js"]["sha256"],
                        "authority_sha256": self.plan["component_sources"]["authority.js"]["sha256"],
@@ -926,17 +1085,22 @@ class RootRun:
         return values
 
     def observe_native_and_ack(self, body: bytes) -> None:
+        deadline = min(getattr(self, "native_observation_deadline", time.monotonic() + 30), time.monotonic() + 30)
+        def timely():
+            require(time.monotonic() < deadline, "observer_deadline_expired", "Late observer work cannot acknowledge a stopped attempt")
+        timely()
         require(body.endswith(b"\n") and body.count(b"\n") == 1 and len(body) <= MAX_NATIVE_JSON,
                 "observer_native_shape", "Pre-ACK native proof is not one complete bounded JSON line")
         try:
-            value = json.loads(body.decode("utf-8", "strict"))
-        except (UnicodeError, json.JSONDecodeError) as exc:
+            value = strict_json(body)
+        except (UnicodeError, ValueError) as exc:
             raise SliceFailure("observer_native_invalid", "Pre-ACK native proof is not valid JSON") from exc
         require(not bounded_native_failure(body), "native_reported_failure", "Native reported failure before observer ACK")
         require(isinstance(value, dict) and value.get("status") == "WORK_CLOSED" and
                 value.get("observer_ack_required") is True and value.get("cgroup_empty") is True,
                 "observer_native_not_ready", "Native has not reported closed work and a required observer ACK")
         unit = self.inspect_unit()
+        timely()
         expected = "/system.slice/" + self.unit + ".service"
         require(unit.get("ControlGroup") == expected and unit.get("Delegate") == "yes" and
                 unit.get("KillMode") == "control-group" and unit.get("Type") == "exec" and
@@ -946,6 +1110,7 @@ class RootRun:
         # The work group must still be observed while native init is held for
         # the external ACK. Its post-exit removal is not this evidence.
         self.verify_cgroup_contract(unit)
+        timely()
         self.observed_unit = dict(unit)
         self.result["systemd_unit_observed_before_ack"] = True
         fifo = self.install_root / "observer.fifo"
@@ -962,13 +1127,16 @@ class RootRun:
                     (opened.st_dev, opened.st_ino, opened.st_mode, opened.st_nlink, opened.st_uid, opened.st_gid) == identity and
                     (after.st_dev, after.st_ino, after.st_mode, after.st_nlink, after.st_uid, after.st_gid) == identity,
                     "observer_fifo_raced", "Observer FIFO identity changed during no-follow open")
+            timely()
             require(os.write(fd, b"A") == 1, "observer_ack_write", "Could not write the exact one-byte observer ACK")
+            timely()
         finally:
             os.close(fd)
         self.observer_acknowledged = True
         self.result["observer_acknowledged"] = True
 
     def run_native(self) -> tuple[int, bytes, bytes]:
+        fault_mode = getattr(self, "plan", {}).get("fault_mode", 0)
         private_root = self.private / "native"
         private_root.mkdir(mode=0o700, parents=True, exist_ok=False)
         stdout_path, stderr_path = private_root / "stdout.bin", private_root / "stderr.bin"
@@ -988,8 +1156,10 @@ class RootRun:
         process = None
         pidfd = None
         start = time.monotonic()
+        self.native_observation_deadline = start + ROOT_STAGE_TIMEOUT
         timed_out = False
         output_limited = False
+        next_unit_observation = start + 0.1
         try:
             process = subprocess.Popen(native_command, cwd="/", stdin=subprocess.DEVNULL, stdout=stdout_fd, stderr=stderr_fd,
                 close_fds=True, shell=False, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"})
@@ -1013,9 +1183,28 @@ class RootRun:
                     output_limited = True
                     break
                 size = os.fstat(stdout_fd).st_size
+                if fault_mode and self.observed_unit is None and time.monotonic() >= next_unit_observation:
+                    unit = self.inspect_unit()
+                    expected = "/system.slice/" + self.unit + ".service"
+                    active = unit.get("ActiveState") == "active"
+                    pending = (unit.get("LoadState") == "not-found" or
+                               (unit.get("LoadState") == "loaded" and unit.get("ActiveState") in {"activating", "inactive"}))
+                    require(active or (pending and time.monotonic() < start + 5),
+                            "fault_unit_startup", "Fault service did not become active within its fixed startup interval")
+                    next_unit_observation = time.monotonic() + 0.2
+                    require(not active or (unit.get("ControlGroup") == expected and unit.get("Delegate") == "yes" and
+                            unit.get("KillMode") == "control-group" and unit.get("Type") == "exec" and
+                            unit.get("RuntimeMaxUSec") not in {None, "0", "infinity"} and
+                            unit.get("TimeoutStopUSec") not in {None, "0", "infinity"}),
+                            "fault_unit_contract", "Fault experiment did not bind its live fixed systemd envelope")
+                    require(time.monotonic() < self.native_observation_deadline,
+                            "observer_deadline_expired", "Fault observation arrived after its original deadline")
+                    if active:
+                        self.observed_unit = dict(unit)
+                        self.result["systemd_unit_observed_before_fault"] = True
                 if size and not self.observer_acknowledged:
                     live = os.pread(stdout_fd, min(size, MAX_NATIVE_JSON + 1), 0)
-                    if live.endswith(b"\n"):
+                    if live.endswith(b"\n") and fault_mode == 0:
                         self.observe_native_and_ack(live)
                 time.sleep(0.025)
             if timed_out or output_limited:
@@ -1070,8 +1259,8 @@ class RootRun:
                 write_new_file(self.private / "native-stdout.raw.json", raw, 0o600)
                 if raw.endswith(b"\n") and raw.count(b"\n") == 1:
                     try:
-                        json.loads(raw.decode("utf-8", "strict"))
-                    except (UnicodeError, json.JSONDecodeError):
+                        strict_json(raw)
+                    except (UnicodeError, ValueError):
                         pass
                     else:
                         self.native_json_body = raw
@@ -1079,9 +1268,10 @@ class RootRun:
             except Exception:
                 self.result["native_stdout_capture"] = "unavailable_or_over_limit_private_original_retained"
         require(self.native_child_reaped, "systemd_run_reap_unconfirmed", "Exact systemd-run child exit remains unconfirmed")
-        if not self.observer_acknowledged and bounded_native_failure(self.native_json_body):
+        if fault_mode == 0 and not self.observer_acknowledged and bounded_native_failure(self.native_json_body):
             raise SliceFailure("native_reported_failure", "Native reported failure without an observer ACK")
-        require(self.observer_acknowledged, "observer_ack_missing", "Native observer did not complete its root ACK exchange")
+        require(self.observer_acknowledged or fault_mode in {1, 2},
+                "observer_ack_missing", "Native observer did not complete its root ACK exchange")
         require(not timed_out, "systemd_run_timeout", "Component service exceeded bounded outer wait")
         require(not output_limited, "systemd_run_output_limit", "Native or systemd output exceeded bounded storage")
         out_st, out = physical_read(stdout_path, MAX_NATIVE_JSON)
@@ -1093,12 +1283,12 @@ class RootRun:
         require(stdout.endswith(b"\n") and stdout.count(b"\n") == 1 and len(stdout) <= MAX_NATIVE_JSON,
                 "native_output_shape", "Native must emit exactly one bounded JSON line")
         try:
-            value = json.loads(stdout.decode("utf-8", "strict"))
-        except (UnicodeError, json.JSONDecodeError) as exc:
+            value = strict_json(stdout)
+        except (UnicodeError, ValueError) as exc:
             raise SliceFailure("native_output_invalid", "Native JSON output is invalid") from exc
         self.native_json_body = stdout
         self.result["native_proof_sha256"] = sha256(stdout)
-        fields = {"status", "production_admission", "release_gate_qualified", "observer_ack_required", "component", "cleanup_confirmed",
+        fields = {"status", "production_admission", "release_gate_qualified", "observer_ack_required", "component", "cleanup_confirmed", "fault_mode", "fault_reached",
                   "importer_namespace_drained", "importer_detached_writer_ready", "source_readonly", "authority_readback", "phase", "work_ms",
                   "cleanup_ms", "proof_emitted_ms", "stop_reason", "init_wait_status", "keeper_wait_status",
                   "worker_wait_status", "authority_wait_status", "importer_wait_status", "importer_report_hex", "cgroup_empty", "output_eof", "output_bytes",
@@ -1107,6 +1297,8 @@ class RootRun:
                 value["production_admission"] is False and value["release_gate_qualified"] is False and
                 value["observer_ack_required"] is True and value["component"] == "readonly_node_namespace",
                 "native_output_contract", "Native output violated component-only contract")
+        require(type(value["fault_mode"]) is int and value["fault_mode"] == self.plan.get("fault_mode", 0) and
+                type(value["fault_reached"]) is bool, "native_fault_profile", "Native result does not bind the prepared fault profile")
         bools = ("cleanup_confirmed", "importer_namespace_drained", "importer_detached_writer_ready",
                  "source_readonly", "authority_readback", "cgroup_empty", "output_eof")
         require(all(type(value[name]) is bool for name in bools), "native_output_types", "Native output boolean fields are invalid")
@@ -1118,17 +1310,18 @@ class RootRun:
         require(isinstance(value["importer_report_hex"], str) and
                 re.fullmatch(r"(?:[0-9a-f]{2}){0,257}", value["importer_report_hex"]) is not None,
                 "native_importer_report_invalid", "Native importer receipt is not bounded hexadecimal bytes")
-        if value["status"] == "WORK_CLOSED":
+        if value["status"] == "WORK_CLOSED" or value["fault_mode"] == 2:
             expected_import = ("KSM1 chroot_root_not_mountpoint EINVAL\n"
                 f"KSI1 {self.plan['blob']['manifest_sha256']} {self.plan['blob']['directories_sha256']} "
                 f"{self.plan['blob']['files']} {self.plan['blob']['total_bytes']}\n"
                 "KSD1 writable_alias_ready\n").encode("ascii")
             require(bytes.fromhex(value["importer_report_hex"]) == expected_import,
                     "native_importer_report_mismatch", "Importer regression/readback receipt did not match the exact prepared input")
-        require(value["output_bytes"] <= MAX_WORKER_OUTPUT and re.fullmatch(r"[0-9a-f]{64}", value["input_manifest_sha256"]) and
-                re.fullmatch(r"[0-9a-f]{64}", value["directories_sha256"]) and
-                value["input_manifest_sha256"] == self.plan["blob"]["manifest_sha256"] and
-                value["directories_sha256"] == self.plan["blob"]["directories_sha256"],
+        no_import_receipt = value["fault_mode"] == 1 and value["status"] == "FAIL"
+        require(value["output_bytes"] <= MAX_WORKER_OUTPUT and
+                ((no_import_receipt and value["input_manifest_sha256"] == "" and value["directories_sha256"] == "") or
+                 (value["input_manifest_sha256"] == self.plan["blob"]["manifest_sha256"] and
+                  value["directories_sha256"] == self.plan["blob"]["directories_sha256"])),
                 "native_output_digest", "Native result digests or output length are invalid")
         require(isinstance(value["output_hex"], str) and len(value["output_hex"]) == value["output_bytes"] * 2 and
                 re.fullmatch(r"(?:[0-9a-f]{2})*", value["output_hex"]) is not None,
@@ -1137,14 +1330,17 @@ class RootRun:
         write_new_file(self.private / "worker-output.bin", decoded, 0o600)
         value["worker_output_sha256"] = sha256(decoded)
         tap = tap_inventory(decoded)
-        if tap is None:
+        if tap is None and not no_import_receipt:
             self.record_failure("tap_inventory_mismatch")
             self.result["tap_inventory"] = {"node_version": NODE_VERSION, "expected_names": [EXPECTED_TEST_NAME],
                                              "status": "FAIL", "tests": None, "pass": None, "fail": None, "skipped": None}
-        else:
+        elif tap is not None:
             self.result["tap_inventory"] = {**tap, "status": "PASS"}
-        passed = component_acceptance(return_code, value, self.observer_acknowledged,
-                                      self.native_child_reaped, tap)
+        else:
+            self.result["tap_inventory"] = {"status": "NOT_RUN_EXPECTED_IMPORT_STALL", "tests": 0, "pass": 0}
+        passed = (fault_acceptance(return_code, value, self.plan["fault_mode"], self.observer_acknowledged, self.native_child_reaped, tap)
+                  if self.plan.get("fault_mode", 0) else
+                  component_acceptance(return_code, value, self.observer_acknowledged, self.native_child_reaped, tap))
         if not passed:
             self.record_failure("native_component_contract_failed")
         return value
@@ -1269,6 +1465,9 @@ class RootRun:
         if public_result.get("status") == "PASS_COMPONENT_QA":
             public_result["status"] = "CANDIDATE_COMPONENT_QA"
             public_result["verification_requires"] = "controller_exit_zero_and_separate_acceptance_record"
+        elif public_result.get("status") == "PASS_FAULT_QA":
+            public_result["status"] = "CANDIDATE_FAULT_QA"
+            public_result["verification_requires"] = "controller_exit_zero_and_separate_acceptance_record"
         body = json.dumps(public_result, sort_keys=True, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
         try:
             require(len(body) <= 64 * 1024, "public_result_limit", "Sanitized public result exceeded its output bound")
@@ -1387,22 +1586,26 @@ class RootRun:
             expected_unit_control = "/system.slice/" + self.unit + ".service"
             try:
                 return_code, stdout, stderr = self.run_native()
+                self.result["native_return_code"] = return_code
+                self.result["observer_acknowledged"] = self.observer_acknowledged
                 write_new_file(self.private / "systemd-run.stderr.bin", stderr, 0o600)
                 native = self.parse_native(return_code, stdout)
                 self.native_result = native
                 self.result["native"] = {key: value for key, value in native.items() if key != "output_hex"}
                 unit = self.observed_unit
-                require(unit is not None and self.observer_acknowledged and self.native_child_reaped,
+                require(unit is not None and (self.observer_acknowledged if not self.plan["fault_mode"] else
+                        self.result.get("systemd_unit_observed_before_fault") is True) and self.native_child_reaped,
                         "observer_or_child_unconfirmed", "Required pre-exit observer and exact child custody were not confirmed")
                 require(unit.get("ControlGroup") == expected_unit_control and unit.get("Delegate") == "yes" and
                         unit.get("KillMode") == "control-group" and unit.get("Type") == "exec" and
                         unit.get("RuntimeMaxUSec") not in {None, "0", "infinity"} and
                         unit.get("TimeoutStopUSec") not in {None, "0", "infinity"},
                         "systemd_unit_contract", "Systemd unit did not retain the fixed delegation and lifetime properties")
-                if return_code != 0 or native["status"] != "WORK_CLOSED" or self.result["reasons"]:
+                fault = self.plan["fault_mode"] != 0
+                if return_code != (1 if fault else 0) or native["status"] != ("FAIL" if fault else "WORK_CLOSED") or self.result["reasons"]:
                     self.record_failure("component_result_not_pass")
                 else:
-                    self.result["status"] = "PASS_COMPONENT_QA"
+                    self.result["status"] = "PASS_FAULT_QA" if fault else "PASS_COMPONENT_QA"
             except Exception as exc:
                 self.record_failure(exc.code if isinstance(exc, SliceFailure) else "component_controller_error")
                 self.result["status"] = "FAIL"
@@ -1417,7 +1620,7 @@ class RootRun:
             released = self.release_claim()
             if not released:
                 self.record_failure("uid_reservation_preserved")
-            if self.result["status"] == "PASS_COMPONENT_QA" and (
+            if self.result["status"] in {"PASS_COMPONENT_QA", "PASS_FAULT_QA"} and (
                     not self.result["host_cleanup_confirmed"] or not released):
                 self.result["status"] = "FAIL"
             try:
@@ -1432,18 +1635,19 @@ class RootRun:
                 self.record_failure("private_result_write_failed")
                 self.result["status"] = "FAIL"
             self.write_public()
-        return 0 if self.result["status"] == "PASS_COMPONENT_QA" else 1
+        return 0 if self.result["status"] in {"PASS_COMPONENT_QA", "PASS_FAULT_QA"} else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="phase", required=True)
-    sub.add_parser("prepare", help="compile and pin the fixed component inputs as ordinary UID 1001")
+    prepare = sub.add_parser("prepare", help="compile and pin fixed component inputs as ordinary UID 1001")
+    prepare.add_argument("--fault", choices=tuple(FAULT_PROFILES), default="none")
     run = sub.add_parser("run", help="install and run one fixed component experiment as the root controller")
     run.add_argument("--run-id", required=True)
     args = parser.parse_args(argv)
     if args.phase == "prepare":
-        return run_prepare()
+        return run_prepare(args.fault)
     try:
         return RootRun(args.run_id).run()
     except SliceFailure as exc:

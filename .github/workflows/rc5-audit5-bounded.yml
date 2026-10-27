@@ -1,0 +1,102 @@
+name: RC5 audit5 bounded native and fault checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit5-bounded.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit5-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - name: Preserve exact source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Build current native code and run scoped contracts
+        run: python qa/reliability/audit5/run_matrix.py --source source/.knowledge --pins qa/reliability/audit5/SOURCE_PINS.json --out native-audit
+      - name: Preserve exact build and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit5-native-${{ matrix.os }}-${{ matrix.arch }}
+          path: native-audit/public/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  linux-faults:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04-arm
+            arch: arm64
+          - os: ubuntu-24.04
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Native pipe, importer and controller regressions
+        run: |
+          node --test --test-reporter=tap qa/reliability/linux-service-slice-27/importer.test.js
+          python -B -m unittest discover -s qa/reliability/linux-service-slice-27 -p 'test_*.py'
+      - name: Execute fixed component and physical pipe stalls
+        run: python qa/reliability/audit5/run_faults.py --out fault-audit
+      - name: Preserve component fault receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit5-linux-component-faults-${{ matrix.arch }}
+          path: fault-audit/**
+          if-no-files-found: error
+          retention-days: 3
