@@ -35,7 +35,8 @@
 #define STACK_BYTES (1024 * 1024)
 #define INPUT_CAP (2 * 1024 * 1024)
 #define OUTPUT_CAP 65536
-struct work_result { int phase, importer_drained, importer_detached_writer, readonly, authority_readback, worker_status, authority_status;
+struct work_result { int phase, importer_drained, importer_detached_writer, readonly, authority_readback, worker_status, authority_status, importer_wait_status;
+  char importer_report[257];
   char manifest[65], directories[65]; unsigned files, bytes; };
 struct keeper_result { int kind, init, init_status, init_reaped, cgroup_empty, cleanup_confirmed, reason;
   long long work_ms, cleanup_ms, completed_ms; struct work_result work; };
@@ -157,6 +158,11 @@ static void node_exec(const char *entry,int importer,int input,int receipt,int o
   execve(args[0],args,env);_exit(125);
 }
 struct importer_args { int input,receipt,gate,alias_gate; };
+static int importer_failure(int receipt,int code,int detail) {
+  char line[80];int size=snprintf(line,sizeof(line),"KSE2 native_stage %d detail %d\n",code,detail);
+  if(size>0&&(size_t)size<sizeof(line))(void)write_all(receipt,line,(size_t)size);
+  return code;
+}
 static int detached_import_writer(int alias_gate) {
   /* Fixed QA injection: a grandchild retains a writable source FD, removes
    * its parent-death signal, and creates a new session. Reaping only Node I
@@ -183,16 +189,25 @@ static int detached_import_writer(int alias_gate) {
 static int importer_namespace(void *pointer) {
   struct importer_args *args=pointer;
   int keep[]={args->input,args->receipt,args->gate,args->alias_gate};
-  if(close_except(keep,4)||getpid()!=1||prctl(PR_SET_PDEATHSIG,SIGKILL)||getppid()!=0)return 130;
-  char permit;if(read(args->gate,&permit,1)!=1||permit!='I')return 131;close(args->gate);
-  if(mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL)||umount2("/proc",MNT_DETACH)||
-      mount("proc","/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))return 132;
+  if(close_except(keep,4)||getpid()!=1||prctl(PR_SET_PDEATHSIG,SIGKILL)||getppid()!=0)return importer_failure(args->receipt,130,errno);
+  char permit;if(read(args->gate,&permit,1)!=1||permit!='I')return importer_failure(args->receipt,131,errno);close(args->gate);
+  /* QA regression: layout already made the outer mount namespace private.
+   * After chroot, '/' is an ordinary directory, not a mount root. Repeating
+   * the propagation operation here was invalid. Prove that exact old call
+   * is rejected, then inherit the private layout through CLONE_NEWNS. */
+  errno=0;int legacy=mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL),legacy_errno=errno;
+  if(legacy!=-1||legacy_errno!=EINVAL)return importer_failure(args->receipt,139,legacy_errno);
+  const char mount_probe[]="KSM1 chroot_root_not_mountpoint EINVAL\n";
+  if(write_all(args->receipt,mount_probe,sizeof(mount_probe)-1))return importer_failure(args->receipt,139,errno);
+  if(umount2("/proc",MNT_DETACH)||
+      mount("proc","/proc","proc",MS_NOSUID|MS_NODEV|MS_NOEXEC,NULL))return importer_failure(args->receipt,132,errno);
   int nullfd=open("/dev/null",O_RDWR|O_CLOEXEC);if(nullfd<0)return 133;
   pid_t child=fork();if(child<0)return 134;
   if(!child)node_exec("/runtime/importer.js",1,args->input,args->receipt,nullfd);
   close(args->input);close(nullfd);
   int status=0;while(waitpid(child,&status,0)<0){if(errno!=EINTR)return 135;}
-  if(!WIFEXITED(status)||WEXITSTATUS(status)!=0||detached_import_writer(args->alias_gate))return 136;
+  if(!WIFEXITED(status)||WEXITSTATUS(status)!=0)return importer_failure(args->receipt,136,status);
+  if(detached_import_writer(args->alias_gate))return importer_failure(args->receipt,138,errno);
   close(args->alias_gate);
   const char probe[]="KSD1 writable_alias_ready\n";
   if(write_all(args->receipt,probe,sizeof(probe)-1))return 137;close(args->receipt);
@@ -217,12 +232,15 @@ static int importer_phase(int input,struct work_result *result) {
   if(init<0)return -1;close(report[1]);close(gate[0]);close(alias_gate[0]);
   int held=pidfd(init);if(held<0){close(gate[1]);return -1;}
   if(write_all(gate[1],"I",1)){close(gate[1]);return -1;}close(gate[1]);
-  int status;if(exact_reap(init,&status)||!dead(held)||!WIFEXITED(status)||WEXITSTATUS(status)!=0)return -1;
+  int status;if(exact_reap(init,&status))return -1;
+  result->importer_wait_status=status;
+  char line[257]={0};int size=line_read(report[0],line,sizeof(line));close(report[0]);
+  memcpy(result->importer_report,line,sizeof(line));
+  if(!dead(held)||!WIFEXITED(status)||WEXITSTATUS(status)!=0)return -1;
   errno=0;ssize_t released=write(alias_gate[1],"X",1);int alias_closed=released==-1&&errno==EPIPE;close(alias_gate[1]);
   if(!alias_closed)return -1;
   close(held);free(stack);close(input);result->importer_drained=1;
-  char line[257];int size=line_read(report[0],line,sizeof(line));close(report[0]);
-  int used=0;if(size<1||sscanf(line,"KSI1 %64[0-9a-f] %64[0-9a-f] %u %u\n%n",result->manifest,result->directories,&result->files,&result->bytes,&used)!=4||
+  int used=0;if(size<1||sscanf(line,"KSM1 chroot_root_not_mountpoint EINVAL\nKSI1 %64[0-9a-f] %64[0-9a-f] %u %u\n%n",result->manifest,result->directories,&result->files,&result->bytes,&used)!=4||
     used<1||used>=size||strcmp(line+used,"KSD1 writable_alias_ready\n")||!hex64(result->manifest)||!hex64(result->directories)||result->files>128||result->bytes>1048576)return -1;
   result->importer_detached_writer=1;
   return 0;
@@ -259,7 +277,7 @@ static int work_init(void *pointer) {
   char gate;if(read(a->gate,&gate,1)!=1||gate!='G')return 151;close(a->gate);close(a->keeperfd);
   int cg=open(SLICE_CGROUP "/cgroup.procs",O_WRONLY|O_CLOEXEC|O_NOFOLLOW);
   if(cg<0||write_all(cg,"0",1))return 152;close(cg);
-  struct work_result result={.phase=1,.worker_status=-1,.authority_status=-1};
+  struct work_result result={.phase=1,.worker_status=-1,.authority_status=-1,.importer_wait_status=-1};
   int input=opaque_input(),ok=0;
   if(input>=0&&layout()==0){result.phase=2;if(importer_phase(input,&result)==0){result.phase=3;if(execute_phase(&result,a->output)==0){result.phase=4;ok=1;}}}
   (void)write_all(a->report,&result,sizeof(result));close(a->report);
@@ -383,13 +401,15 @@ int main(int argc,char **argv) {
   printf("{\"status\":\"%s\",\"production_admission\":false,\"release_gate_qualified\":false,\"component\":\"readonly_node_namespace\",\"observer_ack_required\":true,"
     "\"cleanup_confirmed\":%s,\"importer_namespace_drained\":%s,\"importer_detached_writer_ready\":%s,\"source_readonly\":%s,\"authority_readback\":%s,\"phase\":%d,"
     "\"work_ms\":%lld,\"cleanup_ms\":%lld,\"proof_emitted_ms\":%lld,\"stop_reason\":%d,\"init_wait_status\":%d,\"keeper_wait_status\":%d,"
-    "\"worker_wait_status\":%d,\"authority_wait_status\":%d,\"cgroup_empty\":%s,\"output_eof\":%s,\"output_bytes\":%zu,"
+    "\"worker_wait_status\":%d,\"authority_wait_status\":%d,\"importer_wait_status\":%d,\"cgroup_empty\":%s,\"output_eof\":%s,\"output_bytes\":%zu,"
     "\"input_manifest_sha256\":\"%s\",\"directories_sha256\":\"%s\",\"output_hex\":\"",
     pass?"WORK_CLOSED":"FAIL",closed?"true":"false",final.work.importer_drained?"true":"false",final.work.importer_detached_writer?"true":"false",final.work.readonly?"true":"false",
     final.work.authority_readback?"true":"false",final.work.phase,final.work_ms,final.cleanup_ms,now_ms()-started,final.reason,
-    final.init_status,keeper_status,final.work.worker_status,final.work.authority_status,final.cgroup_empty?"true":"false",eof?"true":"false",used,
+    final.init_status,keeper_status,final.work.worker_status,final.work.authority_status,final.work.importer_wait_status,final.cgroup_empty?"true":"false",eof?"true":"false",used,
     final.work.manifest,final.work.directories);
-  for(size_t i=0;i<used;i++)printf("%02x",bytes[i]);puts("\"}");
+  for(size_t i=0;i<used;i++)printf("%02x",bytes[i]);printf("\",\"importer_report_hex\":\"");
+  for(size_t i=0;i<strnlen(final.work.importer_report,sizeof(final.work.importer_report));i++)printf("%02x",(unsigned char)final.work.importer_report[i]);
+  puts("\"}");
   if(fflush(stdout))pass=0;
   if(observer>=0&&!observe_and_remove(observer,&observer_identity))pass=0;
   if(initfd>=0)close(initfd);close(keeperfd);close(channel[0]);close(output[0]);return pass?0:1;

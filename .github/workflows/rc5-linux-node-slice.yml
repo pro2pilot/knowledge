@@ -217,7 +217,7 @@ jobs:
               else:
                   native = None
               if isinstance(result, dict) and isinstance(native, dict) and isinstance(receipt, dict):
-                  waits = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status")
+                  waits = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status")
                   tap = result.get("tap_inventory") or {}
                   receipt_ok = (isinstance(receipt, dict) and
                       set(receipt) == {"status", "run_id", "architecture", "node_version", "node_sha256", "native_sha256", "input_sha256"} and

@@ -649,7 +649,7 @@ def tap_inventory(output: bytes) -> dict | None:
 
 def component_acceptance(return_code: int, value: dict, observer_acknowledged: bool,
                          child_reaped: bool, tap: dict | None) -> bool:
-    wait_statuses = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status")
+    wait_statuses = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status")
     return (return_code == 0 and value.get("status") == "WORK_CLOSED" and
             value.get("observer_ack_required") is True and observer_acknowledged and child_reaped and
             all(value.get(name) is True for name in (
@@ -659,6 +659,17 @@ def component_acceptance(return_code: int, value: dict, observer_acknowledged: b
             all(value.get(name) == 0 and type(value.get(name)) is int for name in wait_statuses) and
             tap is not None and tap.get("tests") == 1 and tap.get("pass") == 1 and
             tap.get("fail") == 0 and tap.get("skipped") == 0)
+
+
+def bounded_native_failure(body: bytes | None) -> bool:
+    """Diagnostic classification only: this can never admit a successful run."""
+    if not isinstance(body, bytes) or not body.endswith(b"\n") or body.count(b"\n") != 1 or len(body) > MAX_NATIVE_JSON:
+        return False
+    try:
+        value = json.loads(body.decode("utf-8", "strict"))
+    except (UnicodeError, json.JSONDecodeError):
+        return False
+    return isinstance(value, dict) and value.get("status") == "FAIL"
 
 
 def decode_mount_field(value: str) -> str:
@@ -910,6 +921,7 @@ class RootRun:
             value = json.loads(body.decode("utf-8", "strict"))
         except (UnicodeError, json.JSONDecodeError) as exc:
             raise SliceFailure("observer_native_invalid", "Pre-ACK native proof is not valid JSON") from exc
+        require(not bounded_native_failure(body), "native_reported_failure", "Native reported failure before observer ACK")
         require(isinstance(value, dict) and value.get("status") == "WORK_CLOSED" and
                 value.get("observer_ack_required") is True and value.get("cgroup_empty") is True,
                 "observer_native_not_ready", "Native has not reported closed work and a required observer ACK")
@@ -1056,6 +1068,8 @@ class RootRun:
             except Exception:
                 self.result["native_stdout_capture"] = "unavailable_or_over_limit_private_original_retained"
         require(self.native_child_reaped, "systemd_run_reap_unconfirmed", "Exact systemd-run child exit remains unconfirmed")
+        if not self.observer_acknowledged and bounded_native_failure(self.native_json_body):
+            raise SliceFailure("native_reported_failure", "Native reported failure without an observer ACK")
         require(self.observer_acknowledged, "observer_ack_missing", "Native observer did not complete its root ACK exchange")
         require(not timed_out, "systemd_run_timeout", "Component service exceeded bounded outer wait")
         require(not output_limited, "systemd_run_output_limit", "Native or systemd output exceeded bounded storage")
@@ -1076,7 +1090,7 @@ class RootRun:
         fields = {"status", "production_admission", "release_gate_qualified", "observer_ack_required", "component", "cleanup_confirmed",
                   "importer_namespace_drained", "importer_detached_writer_ready", "source_readonly", "authority_readback", "phase", "work_ms",
                   "cleanup_ms", "proof_emitted_ms", "stop_reason", "init_wait_status", "keeper_wait_status",
-                  "worker_wait_status", "authority_wait_status", "cgroup_empty", "output_eof", "output_bytes",
+                  "worker_wait_status", "authority_wait_status", "importer_wait_status", "importer_report_hex", "cgroup_empty", "output_eof", "output_bytes",
                   "input_manifest_sha256", "directories_sha256", "output_hex"}
         require(isinstance(value, dict) and set(value) == fields and value["status"] in {"WORK_CLOSED", "FAIL"} and
                 value["production_admission"] is False and value["release_gate_qualified"] is False and
@@ -1086,10 +1100,20 @@ class RootRun:
                  "source_readonly", "authority_readback", "cgroup_empty", "output_eof")
         require(all(type(value[name]) is bool for name in bools), "native_output_types", "Native output boolean fields are invalid")
         nonnegative_ints = ("phase", "work_ms", "cleanup_ms", "proof_emitted_ms", "stop_reason", "output_bytes")
-        wait_statuses = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status")
+        wait_statuses = ("init_wait_status", "keeper_wait_status", "worker_wait_status", "authority_wait_status", "importer_wait_status")
         require(all(type(value[name]) is int and value[name] >= 0 for name in nonnegative_ints) and
                 all(type(value[name]) is int and value[name] >= -1 for name in wait_statuses),
                 "native_output_types", "Native output integer fields are invalid")
+        require(isinstance(value["importer_report_hex"], str) and
+                re.fullmatch(r"(?:[0-9a-f]{2}){0,257}", value["importer_report_hex"]) is not None,
+                "native_importer_report_invalid", "Native importer receipt is not bounded hexadecimal bytes")
+        if value["status"] == "WORK_CLOSED":
+            expected_import = ("KSM1 chroot_root_not_mountpoint EINVAL\n"
+                f"KSI1 {self.plan['blob']['manifest_sha256']} {self.plan['blob']['directories_sha256']} "
+                f"{self.plan['blob']['files']} {self.plan['blob']['total_bytes']}\n"
+                "KSD1 writable_alias_ready\n").encode("ascii")
+            require(bytes.fromhex(value["importer_report_hex"]) == expected_import,
+                    "native_importer_report_mismatch", "Importer regression/readback receipt did not match the exact prepared input")
         require(value["output_bytes"] <= MAX_WORKER_OUTPUT and re.fullmatch(r"[0-9a-f]{64}", value["input_manifest_sha256"]) and
                 re.fullmatch(r"[0-9a-f]{64}", value["directories_sha256"]) and
                 value["input_manifest_sha256"] == self.plan["blob"]["manifest_sha256"] and
@@ -1147,21 +1171,50 @@ class RootRun:
         try:
             self.admin("systemctl-stop-owned-component", ["systemctl", "stop", self.unit], UNIT_STOP_TIMEOUT, {0, 5})
             values = self.inspect_unit()
-            if values.get("LoadState") == "not-found":
-                if self.service_cgroup.exists():
-                    events = self.helpers.read_cgroup_events(self.service_cgroup)
-                    if events.get("populated") != 0:
-                        return False
-                self.unit_confirmed = True
-                return True
             expected = "/system.slice/" + self.unit + ".service"
-            if values.get("LoadState") != "loaded" or values.get("ControlGroup") != expected or \
-                    values.get("ActiveState") not in {"inactive", "failed"} or values.get("MainPID") not in {"0", ""}:
+            # Bounded facts only; do not expose foreign cgroup paths/live PIDs.
+            self.result["final_unit_state"] = {
+                "LoadState": values.get("LoadState") if values.get("LoadState") in {"loaded", "not-found"} else "unexpected",
+                "ActiveState": values.get("ActiveState") if values.get("ActiveState") in {"inactive", "failed", ""} else "unexpected",
+                "MainPID": values.get("MainPID") if values.get("MainPID") in {"0", ""} else "nonzero_or_invalid",
+                "ControlGroup": values.get("ControlGroup") if values.get("ControlGroup") in {expected, ""} else "foreign_or_invalid",
+            }
+            if values.get("ControlGroup") not in {expected, ""}:
                 return False
-            if self.service_cgroup.exists() and self.helpers.read_cgroup_events(self.service_cgroup).get("populated") != 0:
+            if values.get("LoadState") == "loaded":
+                if values.get("ActiveState") not in {"inactive", "failed"} or values.get("MainPID") != "0":
+                    return False
+            elif values.get("LoadState") == "not-found":
+                if values.get("ActiveState") not in {"inactive", "failed", ""} or values.get("MainPID") not in {"0", ""}:
+                    return False
+            else:
                 return False
-            if self.work_cgroup.exists() and self.helpers.read_cgroup_events(self.work_cgroup).get("populated") != 0:
-                return False
+            observations = self.result["final_expected_cgroups"] = {}
+            for label, group in (("service", self.service_cgroup), ("work", self.work_cgroup)):
+                try:
+                    identity = group.lstat()
+                except FileNotFoundError:
+                    observations[label] = "absent"
+                    continue
+                if not stat.S_ISDIR(identity.st_mode) or stat.S_ISLNK(identity.st_mode) or identity.st_uid != 0:
+                    observations[label] = "unsafe"
+                    return False
+                try:
+                    events = self.helpers.read_cgroup_events(group)
+                except FileNotFoundError:
+                    # GC is accepted only when the expected directory itself
+                    # is independently gone, not merely its events file.
+                    try:
+                        group.lstat()
+                    except FileNotFoundError:
+                        observations[label] = "absent_after_gc"
+                        continue
+                    observations[label] = "unconfirmed"
+                    return False
+                if type(events.get("populated")) is not int or events["populated"] != 0:
+                    observations[label] = "populated_or_invalid"
+                    return False
+                observations[label] = "empty"
             self.unit_confirmed = True
             return True
         except Exception:
@@ -1189,7 +1242,7 @@ class RootRun:
             return True
         if self.root_identity is None:
             return False
-        if not self.unit_confirmed or not self.native_child_reaped:
+        if not self.unit_confirmed or not self.native_child_reaped or self.helpers.OWNED_HELPERS or self.helpers.HELPER_UNCONFIRMED:
             return False
         try:
             remove_owned_tree(self.install_root, self.root_identity, {0, RUNNER_UID, AUTHORITY_UID, WORKER_UID})

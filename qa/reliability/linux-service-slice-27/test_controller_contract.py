@@ -37,6 +37,7 @@ class ControllerPureContractTests(unittest.TestCase):
             "phase": 4, "stop_reason": 4, "init_wait_status": 0,
             "keeper_wait_status": 0, "worker_wait_status": 0,
             "authority_wait_status": 0,
+            "importer_wait_status": 0,
         }
 
     def test_node_tap_diagnostic_and_inventory_are_accepted(self):
