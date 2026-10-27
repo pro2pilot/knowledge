@@ -72,7 +72,7 @@ else if(mode==='first'||mode==='hold'){
 CALLER = r"""'use strict';
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const q=JSON.parse(fs.readFileSync(0,'utf8')),abort=new AbortController();
-let stage='caller_bootstrap',lastStep=null,lastNative=null;
+let stage='caller_bootstrap',lastStep=null;
 function diagnostic(error){
  let descendant=null;for(const line of String(lastStep?.stderr||'').split('\n')){try{const value=JSON.parse(line);if(value.qa_descendant_failure===true){descendant=value;break;}}catch{}}
  const code=value=>typeof value==='string'&&/^(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]{1,98}|EACCES|EPERM|ENOENT)$/.test(value)?value:null;
@@ -80,7 +80,7 @@ function diagnostic(error){
  for(const match of String(error.stack||'').matchAll(pattern)){if(frames.length===8)break;frames.push({file:match[1]+'.js',line:Number(match[2]),column:Number(match[3])});}
  return {stage,code:code(error.code),error_name:['Error','TypeError','RangeError','SyntaxError','AssertionError'].includes(error.name)?error.name:null,
   native_error_code:code(error.native_code||error.reply?.error||error.native_error||error.cause?.code),frames,
-  step_failure_code:code(lastStep?.failure_code),step_exit:Number.isInteger(lastStep?.exit)?lastStep.exit:null,descendant,native_command:lastNative};
+  step_failure_code:code(lastStep?.failure_code),step_exit:Number.isInteger(lastStep?.exit)?lastStep.exit:null,descendant};
 }
 process.on('SIGTERM',()=>abort.abort());
 Object.assign(process.env,{KNOWLEDGE_MACOS_WORKSPACE_ID:q.workspace_id,KNOWLEDGE_MACOS_BROKER_PATH:q.binary,
@@ -93,35 +93,6 @@ const context={mode:'repo',systemRoot:q.source,targetRoot:q.project,projectKnowl
  branch:null,headSha:null,isGitWorktree:false,git:{},warnings:[]};
 const options={signal:abort.signal,budgets:{setupMs:30000,workMs:60000,cleanupMs:30000,progressMs:0},
  macosWorkspace:{workspace_id:q.workspace_id,broker_path:q.binary,broker_socket:q.socket}};
-// QA DIAGNOSTIC ONLY: observe the unchanged RPC arguments/reply and forward
-// every original callback. No native result or acceptance predicate is altered.
-const observedTransport=require(path.join(q.source,'tools/lib/verification-darwin-session'));
-const observedWire=require(path.join(q.source,'tools/lib/verification-darwin-session-protocol'));
-const originalRPC=observedTransport.rpc;let preparedDescriptor=null,observedOrdinal=0;
-observedTransport.rpc=async function(config,input,options={}){
- let nativeStderr='';const wrapped=input?.op==='run'?{...options,onStderr:part=>{nativeStderr=(nativeStderr+part.toString()).slice(0,8192);options.onStderr?.(part);}}:options;
- const response=await originalRPC(config,input,wrapped);
- if(input?.op==='prepare'&&input.mode==='admin_writable_workspace.v1'){preparedDescriptor=response.reply?.descriptor;observedOrdinal=0;}
- if(input?.op==='run'){
-  const v=response.reply,d=preparedDescriptor||{};observedOrdinal++;
-  const flags={};for(const key of ['ok','proof_current','guardian_reaped','permit_observed','timed_out','stop_latched','admission_closed','capability_qualified','command_cleanup_confirmed','kernel_membership_zero']){
-   flags[key]={type:typeof v[key],value:typeof v[key]==='boolean'?v[key]:Number.isInteger(v[key])&&[0,1].includes(v[key])?v[key]:null};
-  }
-  const command={argv:input.argv,env:input.env,cwd:input.cwd,timeout_ms:input.timeout_ms};
-  const bindings={attempt:v.attempt_id===input.attempt_id,descriptor:v.descriptor_sha256===observedWire.digest(d),epoch:v.daemon_epoch===d.daemon_epoch,
-   ordinal:v.command_ordinal===observedOrdinal,command_hash:v.command_sha256===observedWire.digest(command),writer_generation:Number.isSafeInteger(v.writer_generation)&&v.writer_generation>0};
-  for(const key of ['source_sha256','transport_header_sha256','installation_id','allocation_seq','allocation_sha256','host_id','boot_id'])bindings[key]=v[key]===d[key];
-  const credential=nativeStderr.match(/native C stub credential stage=(setgroups|setgid|setuid) errno=([0-9]{1,5})/);
-  const observation=nativeStderr.match(/native C stub private-credential observation: combined_bytes=([0-9]+) expected_bytes=([0-9]+) combined_observed=(true|false) observation_errno=([0-9]+) bsd_bytes=([0-9]+) bsd_errno=([0-9]+) bsd_credentials_match=(true|false) groups_count=(-?[0-9]+) groups_errno=([0-9]+) groups_query_count=(-?[0-9]+) groups_query_errno=([0-9]+)/);
-  lastNative={flags,bindings,schema_valid:v.schema==='knowledge-darwin-command-result.v1',guardian_protocol_valid:v.guardian_protocol==='KVR2',
-   exit_code:Number.isInteger(v.exit_code)&&v.exit_code>=0&&v.exit_code<=255?v.exit_code:null,
-   signal:Number.isInteger(v.signal)&&v.signal>=1&&v.signal<=128?v.signal:null,
-   credential_stage:credential?.[1]||null,credential_errno:credential?Number(credential[2]):null,
-   credential_observation:observation?observation.slice(1).map(x=>x==='true'?true:x==='false'?false:Number(x)):null,
-   stderr_bytes:response.helper?.stderr_bytes||0};
- }
- return response;
-};
 (async()=>{
  stage='caller_load_flow';const flow=require(path.join(q.source,'tools/flow.js'));let value;
  if(q.case==='normal_two_flow_steps'){
@@ -215,7 +186,7 @@ def install(runner, base, info, directory):
     package_rows = [{'path': item.relative_to(stage).as_posix(), 'bytes': item.stat().st_size,
         'sha256': base.sha_file(item)} for item in sorted(stage.rglob('*')) if item.is_file()]
     base.private_file(runner.evidence/'MACOS_WRITABLE_INPUTS.json', base.canonical({
-        'leaf_sha256': base.sha_bytes(LEAF.encode()), 'caller_sha256': base.sha_bytes(CALLER.encode()), 'rpc_diagnostic_only': True,
+        'leaf_sha256': base.sha_bytes(LEAF.encode()), 'caller_sha256': base.sha_bytes(CALLER.encode()),
         'provision_source_sha256': base.sha_file(directory/'macos-workspace-provision.c'),
         'provision_binary_sha256': base.sha_file(helper), 'protected_package_sha256': base.sha_bytes(base.canonical(package_rows)),
         'protected_package_members': package_rows,

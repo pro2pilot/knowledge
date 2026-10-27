@@ -17,6 +17,7 @@ HASH = re.compile(r'^[a-f0-9]{64}$')
 # Every addition is approved individually. Native outputs, runtime state, and
 # arbitrary new product/test files can never enter through a broad prefix.
 EXTRA_SOURCE_PATHS = frozenset({
+    'schemas/verification-execution-observation.schema.json',
     'tools/lib/macos-command-runner.js',
     'tools/lib/macos-command-scope.js',
     'tools/lib/macos-command-worker.js',
@@ -30,10 +31,12 @@ EXTRA_SOURCE_PATHS = frozenset({
     'tests/reliability-darwin-storage-guardian-contract.test.js',
     'tests/reliability-runtime-install-completeness.test.js',
     'tests/reliability-watchdog-progress-close.test.js',
+    'tests/reliability-windows-powershell-selection.test.js',
     'tests/reliability-macos-command-runner.test.js',
     'tests/reliability-macos-lock-preflight.test.js',
     'tests/reliability-macos-custody.test.js',
     'tests/reliability-macos-native-authority.test.js',
+    'tests/reliability-macos-failed-observation.test.js',
     'tests/reliability-macos-worker-envelope.test.js',
     'tests/reliability-macos-workspace-protocol.test.js',
     'tests/reliability-watcher-control.test.js',

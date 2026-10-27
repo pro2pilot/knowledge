@@ -164,6 +164,24 @@ def main():
                 manifest.get('binary_sha256') == base.sha_file(manifest_path.parent/'lock-publication.node'), 'native_addon_pin_mismatch')
             self.native_manifest = manifest
             self.addon_path = manifest_path.parent/'lock-publication.node'
+            # The compiler deliberately preserves its source snapshot and build
+            # receipt. Keep them as private evidence, outside the runtime tree
+            # whose declared derivation adds only the final binary/manifest.
+            build_history = list(manifest_path.parent.glob('.build-*'))
+            self.check(len(build_history) == 1, 'native_addon_build_history_ambiguous')
+            build_history = build_history[0]
+            self.check(build_history.is_dir() and not build_history.is_symlink() and
+                {item.name for item in build_history.iterdir()} == {'lock-publication.c', 'lock-publication.node', 'BUILD.json'} and
+                all(item.is_file() and not item.is_symlink() and item.stat().st_nlink == 1 for item in build_history.iterdir()) and
+                base.sha_file(build_history/'lock-publication.c') == manifest['source_sha256'] and
+                base.sha_file(build_history/'lock-publication.node') == manifest['binary_sha256'], 'native_addon_build_history_unbound')
+            history_receipt = json.loads((build_history/'BUILD.json').read_bytes())
+            self.check(history_receipt.get('binary') == manifest and history_receipt.get('status') == 0 and
+                history_receipt.get('signal') is None and history_receipt.get('error') is None,
+                'native_addon_build_history_unconfirmed')
+            history_target = evidence/'native-addon-build-history'
+            self.check(not history_target.exists(), 'native_addon_build_history_target_exists')
+            build_history.rename(history_target)
             before_source = Path(__file__).with_name('lock-publication-before-search.c')
             self.check(base.sha_file(before_source) == BEFORE_PROTECTED_SOURCE_SHA, 'protected_baseline_source_pin_mismatch')
             self.before_addon_path = evidence/'lock-publication-before-search.node'

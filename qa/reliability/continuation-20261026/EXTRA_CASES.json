@@ -1,6 +1,27 @@
 {
   "schema_version": "knowledge-continuation-extra-cases.v1",
   "cohorts": {
+    "failed-command-observation": {
+      "kind": "tap", "files": ["tests/reliability-macos-failed-observation.test.js"], "platforms": ["linux", "win32", "darwin"],
+      "timeout_seconds": 90, "count": 3,
+      "cases": [
+        "failed command observation persists while strict readers and finalization reject acceptance",
+        "failed observation validation retains exact schema runtime privacy and content checks",
+        "failed observation schema cannot be promoted through pass fields or strict writer validation"
+      ]
+    },
+    "windows-powershell-selection": {
+      "kind": "tap", "files": ["tests/reliability-windows-powershell-selection.test.js"], "platforms": ["win32"],
+      "timeout_seconds": 90, "count": 6,
+      "cases": [
+        "Windows ARM selects only the stable native installed PowerShell image and pins its exact bytes",
+        "Windows x64 keeps the existing system PowerShell path without probing a replacement",
+        "Windows PowerShell selection rejects wrong architecture malformed and truncated PE images",
+        "Windows PowerShell selection refuses relative or redirected Program Files roots and ignores PATH",
+        "Windows PowerShell selection rejects shared or concurrently changed executable bytes",
+        "Windows native keeper readiness requires the selected executable hash and preserves exact spawn path"
+      ]
+    },
     "watchdog-progress-close": {
       "kind": "tap", "files": ["tests/reliability-watchdog-progress-close.test.js"], "platforms": ["linux", "win32", "darwin"],
       "timeout_seconds": 90, "count": 3,
@@ -24,7 +45,7 @@
     },
     "runtime-install-completeness": {
       "kind": "tap", "files": ["tests/reliability-runtime-install-completeness.test.js"], "platforms": ["linux", "win32", "darwin"],
-      "timeout_seconds": 180, "count": 10,
+      "timeout_seconds": 180, "count": 11,
       "cases": [
         "new runtime modules enter the package and installer plan with exact source hashes",
         "manifestless and reduced-manifest installer paths retain every new runtime requirement",
@@ -35,7 +56,8 @@
         "package and installer refuse missing required runtime module: macos-worker-envelope.js",
         "package and installer refuse missing required runtime module: macos-workspace-protocol.js",
         "package and installer refuse missing required runtime module: macos-workspace-session.js",
-        "package and installer refuse missing required runtime module: watch-maintenance-worker.js"
+        "package and installer refuse missing required runtime module: watch-maintenance-worker.js",
+        "package and installer refuse missing required runtime module: verification-execution-observation.schema.json"
       ]
     },
     "macos-lock-preflight": {
@@ -280,7 +302,7 @@
       "count": 3,
       "cases": [
         "production KVS3 decoder separates fixed workspace GID from never-reused private RUID",
-        "production KVS3 FD predicate binds the separately provisioned writable inode and exact credentials",
+        "production KVS3 FD predicate binds real host inodes and modes with explicitly modeled privileged credential fields",
         "writable sandbox grants only pinned literal exec and data operations, never project mode or ACL mutation"
       ]
     },
@@ -293,11 +315,12 @@
         "darwin"
       ],
       "timeout_seconds": 120,
-      "count": 3,
+      "count": 4,
       "cases": [
         "native readonly closure boxes UID emptiness as JSON boolean rather than integer",
         "native reboot closure boxes UID emptiness and late-budget refusal as JSON booleans",
-        "real Darwin Foundation serializes exact production closure expressions as strict booleans"
+        "real Darwin Foundation serializes exact production closure expressions as strict booleans",
+        "real Darwin command canonical bytes match JS for mixed-case numeric keys and Unicode escapes"
       ]
     },
     "repair-producer-dependency-closure": {

@@ -1,0 +1,106 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),net=require('node:net'),crypto=require('node:crypto');
+const progress=require('../tools/lib/verification-progress');
+const end=ms=>process.hrtime.bigint()+BigInt(ms)*1000000n;
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function until(fn,ms=3000){const stop=end(ms);while(!fn()&&process.hrtime.bigint()<stop)await delay(5);assert(fn(),'Expected actual stream event');}
+async function channel(t,loopback=process.platform!=='win32'){const events=[],failures=[];const server=await progress.listen(event=>events.push(event),code=>failures.push(code),{loopback});t.after(()=>server.close());return{...server,events,failures};}
+function raw(descriptor){return descriptor.transport==='loopback.v1'?net.createConnection({host:'127.0.0.1',port:descriptor.port}):net.createConnection(descriptor.pipe);}
+async function connected(socket){await new Promise((resolve,reject)=>{socket.once('connect',resolve);socket.once('error',reject);});}
+
+test('progress final frame drains and both stream directions close before success',{timeout:10000},async t=>{
+ for(const loopback of process.platform==='win32'?[true,false]:[true]){
+ const server=await channel(t,loopback),client=await progress.connect(server.descriptor,end(3000));
+ await client.flush({type:'committed',ordinal:0},end(3000));await client.flush({type:'work_completed',count:1},end(3000));
+ await client.finish(end(3000));await until(()=>server.failures.length>0);
+ assert.deepEqual(server.events,[{type:'committed',ordinal:0},{type:'work_completed',count:1}]);
+ assert.deepEqual(server.failures,['verification_progress_transport_closed']);
+ assert.throws(()=>client.send({type:'late'}),{code:'verification_progress_transport_failed'});
+ }
+});
+test('progress truncated frame after work completion cannot be accepted as normal EOF',{timeout:10000},async t=>{
+ const server=await channel(t),client=raw(server.descriptor);client.on('error',()=>{});t.after(()=>client.destroy());await connected(client);
+ client.end(JSON.stringify({key:server.descriptor.key,event:{type:'work_completed',count:1}})+'\n'+JSON.stringify({key:server.descriptor.key,event:{type:'late'}}).slice(0,-1));
+ await until(()=>server.failures.length>0);assert.equal(server.events.length,1);assert.deepEqual(server.failures,['verification_progress_truncated']);
+});
+test('progress malformed complete frame after work completion stays a protocol failure',{timeout:10000},async t=>{
+ const server=await channel(t),client=raw(server.descriptor);client.on('error',()=>{});t.after(()=>client.destroy());await connected(client);
+ client.end(JSON.stringify({key:server.descriptor.key,event:{type:'work_completed',count:1}})+'\n{malformed}\n');
+ await until(()=>server.failures.length>0);assert.equal(server.events.length,1);assert(server.failures.includes('verification_progress_invalid'));
+});
+async function custom(t,action,{loopback=process.platform!=='win32'}={}){
+ const sockets=new Set(),pipe='\\\\.\\pipe\\knowledge-verification-'+crypto.randomBytes(16).toString('hex');
+ const server=net.createServer(socket=>{sockets.add(socket);socket.on('error',()=>{});socket.once('close',()=>sockets.delete(socket));action(socket);});
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(loopback?{host:'127.0.0.1',port:0,exclusive:true}:pipe,resolve);});
+ t.after(()=>{for(const socket of sockets)socket.destroy();server.close();});
+ return{descriptor:{...(loopback?{transport:'loopback.v1',port:server.address().port}:{pipe}),key:crypto.randomBytes(32).toString('hex')},sockets};
+}
+test('progress peer reset never becomes graceful producer completion',{timeout:10000},async t=>{
+ for(const loopback of process.platform==='win32'?[true,false]:[true]){
+  const server=await custom(t,()=>{},{loopback});let observedSocket;
+  const original=net.createConnection;
+  net.createConnection=function(){observedSocket=original.apply(this,arguments);return observedSocket;};
+  let client;
+  try{client=await progress.connect(server.descriptor,end(3000));}finally{net.createConnection=original;}
+  // A client connect event does not prove the server's accept callback has
+  // executed (particularly on Windows pipes). Observe the actual peer first.
+  await until(()=>server.sockets.size===1);
+  let eofObserved=false,closePending=false;
+  const checked=new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>reject(new Error('Actual peer EOF was not observed')),3000);
+   observedSocket.once('end',()=>{
+    eofObserved=true;closePending=!observedSocket.closed;
+    // This is the precise end-before-close interval, not a timed assumption.
+    assert.rejects(client.finish(end(2000)),{code:'verification_progress_transport_failed'}).then(resolve,reject).finally(()=>clearTimeout(timer));
+   });
+  });
+  for(const socket of server.sockets)socket.end();
+  await checked;assert(eofObserved);assert(closePending,'The regression must exercise the interval before socket close');
+  t.diagnostic(JSON.stringify({peer_eof_before_finish:true,close_pending:true,transport:loopback?'loopback.v1':'named_pipe'}));
+ }
+});
+test('progress completion after its original deadline cannot succeed',{timeout:10000},async t=>{
+ const server=await channel(t),client=await progress.connect(server.descriptor,end(3000));
+ await assert.rejects(client.finish(end(-1)),{code:'verification_progress_transport_failed'});
+});
+async function checkBackpressureDeadline(t,loopback){
+ const server=await custom(t,socket=>socket.pause(),{loopback}),client=await progress.connect(server.descriptor,end(3000));
+ const event={type:'fixture_backpressure',body:'x'.repeat(15000)};
+ // A fixed byte count is not proof of backpressure: Windows TCP can accept
+ // the old 10.5 MB fixture before the 150 ms deadline. Use the requested
+ // actual progress transport and observe an outstanding write callback.
+ // The peer stays paused throughout; both fixture time and queued data are
+ // bounded, and failure to establish pressure is a test failure, not a skip.
+ let probe,frames=0;
+ const pressureDeadline=end(4000);
+ while(!probe&&frames<4096&&process.hrtime.bigint()<pressureDeadline){
+  for(let i=0;i<128;i++){client.send(event);frames++;}
+  const candidate={state:'pending',started:process.hrtime.bigint()};
+  candidate.settled=client.flush({type:'fixture_pressure_probe'}).then(()=>{candidate.state='fulfilled';},error=>{candidate.state='rejected';candidate.error=error;});
+  await delay(120);
+  assert.notEqual(candidate.state,'rejected','The fixture must establish pressure without a transport failure');
+  if(candidate.state==='pending')probe=candidate;
+ }
+ assert(probe,'The bounded fixture did not establish an actual pending write');
+ assert.equal(server.sockets.size,1);
+ assert([...server.sockets].every(socket=>socket.isPaused()),'The real peer must remain paused');
+ t.diagnostic(JSON.stringify({transport:server.descriptor.transport||'named_pipe',frames_queued:frames,body_bytes_queued:frames*15000,pending_probe_ms:Number(process.hrtime.bigint()-probe.started)/1e6}));
+ const deadline=end(150),started=process.hrtime.bigint();await assert.rejects(client.flush({type:'work_completed'},deadline),{code:'verification_progress_transport_failed'});
+ const elapsed=Number(process.hrtime.bigint()-started)/1e6;
+ assert(elapsed>=145,'A live blocked channel must not fail before its original deadline');
+ assert(elapsed<3000,'Bounded flush must settle without reopening a fresh budget');
+ await until(()=>probe.state!=='pending');
+ assert.equal(probe.state,'rejected','The timed-out channel must also settle its earlier pending write');
+ assert.equal(probe.error.code,'verification_progress_transport_failed');
+ await assert.rejects(client.finish(end(2000)),{code:'verification_progress_transport_failed'});
+}
+test('progress pending flush respects its original deadline under real backpressure',{timeout:10000},async t=>{
+ // Every platform uses loopback for outer lifecycle/cancellation channels.
+ // Windows also uses native named pipes for its watchdog progress channel;
+ // qualifying one transport must not silently drop the other.
+ await checkBackpressureDeadline(t,true);
+ if(process.platform==='win32')await checkBackpressureDeadline(t,false);
+});
+test('absent optional progress channel preserves bounded producer API compatibility',async()=>{
+ const client=await progress.connect(null,end(1000),false);await client.flush({type:'work_completed'},end(1000));await client.finish(end(1000));client.close();
+});

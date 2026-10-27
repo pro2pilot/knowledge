@@ -83,7 +83,7 @@ def error_codes(source):
         'ERR_MODULE_NOT_FOUND MODULE_NOT_FOUND ERR_DLOPEN_FAILED ERR_CHILD_PROCESS_IPC_REQUIRED ERR_IPC_CHANNEL_CLOSED '
         'ERR_IPC_DISCONNECTED EACCES EPERM ENOENT ENOTDIR EISDIR ELOOP EEXIST ENOSPC EMFILE ENFILE ENOMEM EIO EPIPE '
         'ETIMEDOUT EBADF EINTR ENOTSUP ENOSYS'.split())
-    for name in ('verification-darwin-production.js', 'verification-darwin-preparation.js', 'verification-darwin-preparer.js',
+    for name in ('repair-on-touch.js', 'verification-darwin-production.js', 'verification-darwin-preparation.js', 'verification-darwin-preparer.js',
         'verification-darwin-session.js', 'verification-darwin-session-protocol.js', 'verification-darwin-client.js',
         'verification-darwin-control.js', 'verification-darwin-finalization.js', 'verification-darwin-store.js',
         'verification-control.js', 'verification-finalization.js', 'verification-execution.js', 'lock-publication.js',

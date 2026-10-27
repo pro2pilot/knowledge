@@ -63,10 +63,16 @@ def proof_valid(proof,row,special):
     if scope.get('schema_version')!='knowledge-command-scope.v1' or scope.get('backend')!='macos_uid_guardian' or d.get('schema')!='knowledge-macos-writable-descriptor.v1' or d.get('mode')!='admin_writable_workspace.v1':return False
     if type(d.get('task_ruid')) is not int or not 1000000000<=d['task_ruid']<1900000000:return False
     if type(owner.get('ruid')) is not int or owner['ruid']<=0 or owner.get('euid')!=owner['ruid'] or special.get('owner_canary_installed_uid')!=owner['ruid'] or type(special.get('owner_canary_installed_mode')) is not int or special['owner_canary_installed_mode']!=0o4755:return False
+    if d.get('owner_uid')!=owner['ruid']:return False
     if probe.get('uid')!=owner['ruid'] or probe.get('uid')==d['task_ruid'] or probe.get('pid')!=obj(obj(births.get('writer')).get('writer')).get('pid') or probe.get('inside_control') is not True or probe.get('outside_errno') not in ('EACCES','EPERM'):return False
     if execproof.get('uid')!=d['task_ruid'] or execproof.get('denied') is not True or execproof.get('errno') not in ('EACCES','EPERM') or execproof.get('status') is not None or execproof.get('stdout')!='':return False
     cmd=obj(proof.get('owner_exec_command'));cp=obj(obj(cmd.get('cleanup')).get('proof'))
     if type(cmd.get('status')) is not int or cmd['status']!=0 or obj(cmd.get('cleanup')).get('status')!='completed' or cp.get('command_cleanup_confirmed') is not True or cp.get('kernel_membership_zero') is not True:return False
+    if cp.get('schema')!='knowledge-darwin-command-result.v1' or cp.get('attempt_id')!=binding['attempt_id'] or cp.get('descriptor_sha256')!=binding['descriptor_sha256'] or cp.get('daemon_epoch')!=d.get('daemon_epoch') or not hex64(cp.get('command_sha256')):return False
+    if any(cp.get(k)!=d.get(k) for k in ('source_sha256','transport_header_sha256','installation_id','allocation_seq','allocation_sha256','host_id','boot_id')):return False
+    if type(cp.get('writer_generation')) is not int or cp['writer_generation']<=0 or cp.get('guardian_protocol')!='KVR2':return False
+    if any(cp.get(k) is not True for k in ('ok','proof_current','capability_qualified','guardian_reaped','permit_observed')) or any(cp.get(k) is not False for k in ('timed_out','stop_latched','admission_closed')):return False
+    if type(cp.get('exit_code')) is not int or cp['exit_code']!=0 or cp.get('signal') is not None or type(cp.get('command_ordinal')) is not int or cp['command_ordinal']!=1 or type(cp.get('cleanup_command_ordinal')) is not int or cp['cleanup_command_ordinal']!=1:return False
     if proof.get('checked_directory')!=proof.get('renamed_directory') or not isinstance(proof.get('checked_directory'),dict) or set(proof['checked_directory'])!={'dev','ino'} or any(not isinstance(v,str) or not v.isdecimal() for v in proof['checked_directory'].values()):return False
     if not isinstance(obj(proof.get('substituted_symlink')).get('target'),str) or proof.get('outside_unchanged') is not True:return False
     if writer.get('writer_exit_observed') is not True or type(writer.get('code')) is not int or writer['code']!=0 or writer.get('signal') is not None or writer.get('writer_sandbox')!='workspace.v1' or not isinstance(d.get('writable_root'),str) or writer.get('writable_root_sha256')!=sha(d['writable_root'].encode()):return False

@@ -60,10 +60,12 @@ EXTRA_COHORT_COUNTS = {
     'watcher-native': 3, 'watcher-runtime-safety': 20,
     'macos-workspace-protocol': 9, 'macos-command-runner': 26,
     'macos-worker-envelope': 8, 'macos-native-authority': 3,
-    'macos-boolean-wire': 3, 'repair-producer-dependency-closure': 8,
+    'macos-boolean-wire': 4, 'repair-producer-dependency-closure': 8,
     'macos-lock-preflight': 8, 'macos-custody': 2,
-    'macos-storage-guardian-contract': 6, 'runtime-install-completeness': 10,
+    'macos-storage-guardian-contract': 6, 'runtime-install-completeness': 11,
     'watchdog-progress-close': 3,
+    'windows-powershell-selection': 6,
+    'failed-command-observation': 3,
 }
 
 
@@ -253,7 +255,7 @@ def main():
             raise RuntimeError('Required additional cohort missing or unexpected')
         source_names = set(rows(manifest))
         for name, cohort in extra_cohorts.items():
-            platforms = {'darwin'} if name.startswith('macos-') else {'linux', 'win32', 'darwin'} if name in {'repair-producer-dependency-closure', 'runtime-install-completeness', 'watchdog-progress-close'} else {'linux', 'win32'}
+            platforms = {'darwin'} if name.startswith('macos-') else {'win32'} if name == 'windows-powershell-selection' else {'linux', 'win32', 'darwin'} if name in {'repair-producer-dependency-closure', 'runtime-install-completeness', 'watchdog-progress-close', 'failed-command-observation'} else {'linux', 'win32'}
             kind = 'json-selftest' if name == 'watcher-runtime-safety' else 'tap'
             if cohort.get('count') != EXTRA_COHORT_COUNTS[name] or set(cohort.get('platforms', [])) != platforms or cohort.get('kind') != kind or \
                     not isinstance(cohort.get('files'), list) or len(cohort['files']) != 1 or not set(cohort['files']) <= source_names:

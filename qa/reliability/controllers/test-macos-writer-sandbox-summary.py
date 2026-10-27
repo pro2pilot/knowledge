@@ -25,7 +25,7 @@ class WriterTests(unittest.TestCase):
         self.inputs['writer_sandbox_assets']={name:m.sha((HERE/name).read_bytes()) for name in m.ASSETS}
         history=self.raw['binary_history'][0]
         d={'schema':'knowledge-macos-writable-descriptor.v1','mode':'admin_writable_workspace.v1','task_ruid':1000000001,'writable_root':'/private/fixed/project',**{k:history[k] for k in ('source_sha256','stub_source_sha256')}}
-        d.update(attempt_id='a'*64,host_id='12345678-1234-1234-1234-123456789abc',boot_id='12345678-1234-1234-1234-123456789abd',daemon_epoch='c'*64,installation_id='d'*64,account_policy_sha256='e'*64,account_policy_id='admin_reserved_interval_no_runtime_nss.v1',allocation_sha256='f'*64,allocation_seq='2',broker_binary_sha256=history['broker_sha256'],stub_binary_sha256=history['stub_sha256'])
+        d.update(owner_uid=501,attempt_id='a'*64,host_id='12345678-1234-1234-1234-123456789abc',boot_id='12345678-1234-1234-1234-123456789abd',daemon_epoch='c'*64,installation_id='d'*64,account_policy_sha256='e'*64,account_policy_id='admin_reserved_interval_no_runtime_nss.v1',allocation_sha256='f'*64,allocation_seq='2',broker_binary_sha256=history['broker_sha256'],stub_binary_sha256=history['stub_sha256'])
         d.update({k:m.sha((self.source/'tools/lib'/name).read_bytes()) for k,name in m.SOURCE_NAMES.items()})
         binding={'attempt_id':'a'*64,'descriptor':d,'descriptor_sha256':m.sha(m.canonical(d))}
         native={'schema':'knowledge-darwin-scope-observation.v1','status':'completed','state':'closed','attempt_id':binding['attempt_id'],'descriptor_sha256':binding['descriptor_sha256'],'observation_nonce':'b'*64,**{k:d[k] for k in ('source_sha256','stub_source_sha256')}}
@@ -38,6 +38,8 @@ class WriterTests(unittest.TestCase):
         actorids={'state_writer':321,'state_guardian':322,'authority':323,'authority_guardian':324,'controller':325}
         self.proof['registered_actors']={k:{'pid':v} for k,v in actorids.items()};self.proof['actor_observations']={k:{'schema':'knowledge-darwin-qa-birth.v1','pid':v,'state':'absent'} for k,v in actorids.items()}
         self.proof['independent_uid_scan'].update(uid=d['task_ruid'],errno=0,members=[])
+        command=self.proof['owner_exec_command']['cleanup']['proof'];command.update(schema='knowledge-darwin-command-result.v1',attempt_id=binding['attempt_id'],descriptor_sha256=binding['descriptor_sha256'],command_sha256='1'*64,writer_generation=1,guardian_protocol='KVR2',ok=True,proof_current=True,capability_qualified=True,guardian_reaped=True,permit_observed=True,timed_out=False,stop_latched=False,admission_closed=False,exit_code=0,signal=None,command_ordinal=1,cleanup_command_ordinal=1)
+        command.update({k:d[k] for k in ('daemon_epoch','source_sha256','transport_header_sha256','installation_id','allocation_seq','allocation_sha256','host_id','boot_id')})
         self.row={'name':m.fixture.CASE,'status':m.fixture.STATUS,'controller_exit_code':0,'observations':{**{k:True for k in m.FACTS},'shipping_flow_proof':False,'external_recovery_requested':False,'private_allocation_count':1}}
         self.raw.update(status=m.fixture.STATUS,case_set='writable-sandbox',cases=[self.row])
     def project(self,rc=0):
@@ -63,6 +65,12 @@ class WriterTests(unittest.TestCase):
         for key in ('binary_sha256','stub_binary_sha256','source_sha256','transport_header_sha256','uid_history_header_sha256','uid_history_source_sha256','host_id','boot_id','daemon_epoch','installation_id','allocation_sha256','account_policy_sha256','task_ruid'):
             self.proof=copy.deepcopy(original);self.proof['native_closure'][key]=123 if key=='task_ruid' else '0'*64;self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE',key)
         self.proof=original
+    def test_owner_and_native_command_tuple_mutations_fail(self):
+        original=copy.deepcopy(self.proof)
+        for key in ('attempt_id','descriptor_sha256','daemon_epoch','source_sha256','host_id','allocation_seq','installation_id','command_ordinal','guardian_reaped','timed_out'):
+            self.proof=copy.deepcopy(original);command=self.proof['owner_exec_command']['cleanup']['proof'];command[key]=2 if key=='command_ordinal' else False if key=='guardian_reaped' else True if key=='timed_out' else 'mismatch';self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE',key)
+        self.proof=original;self.special['owner_control']['ruid']=self.special['owner_control']['euid']=502;self.special['owner_canary_installed_uid']=502;self.proof['probe']['uid']=502
+        self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE')
     def test_actual_package_and_native_bytes_are_required(self):
         (self.p/'macos-writer-package-stage/tools/lib/macos-command-worker.js').write_text('changed');self.assertEqual(self.project()['status'],'FAIL_OR_INCOMPLETE')
     def test_public_projection_has_no_raw_paths_or_process_ids(self):

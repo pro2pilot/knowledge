@@ -63,8 +63,12 @@ process.stdin.once('end', () => {
       assert.equal(commandError.timed_out, false);
       stage = 'failed-KVE-reader';
       const id = commandError.command_failure.execution_id;
-      const loaded = execution.loadExecutionRecord(stateRoot, id);
+      const loaded = execution.readExecutionRecord(stateRoot, id);
       assert.ok(loaded, 'the failed KVE must exist physically and validate');
+      const observation = execution.validateExecutionObservation(loaded.record);
+      assert.equal(observation.ok, true);assert.equal(observation.digest, loaded.expected_digest);
+      assert.equal(loaded.record.schema_version, 'knowledge-verification-execution-observation.v1');
+      assert.equal(execution.loadExecutionRecord(stateRoot, id), null, 'failed observations cannot satisfy the acceptance reader');
       assert.equal(loaded.record.execution_id, id);
       assert.equal(loaded.record.task_id, request.taskId);
       assert.equal(loaded.record.session_id, request.sessionId);
