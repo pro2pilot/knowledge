@@ -43,7 +43,12 @@ function validateTiming(timeoutMs, started) {
 function containmentCapability(nativeExecution) {
   if (nativeExecution !== undefined) {
     const normalized = require('./verification-policy').nativeExecutionConfig(nativeExecution);
-    if (normalized.darwin.enabled) return {
+    if (normalized.linux?.enabled) return {
+      platform: process.platform, backend: 'linux_native_service',
+      status: process.platform === 'linux' ? 'requires_runtime_setup' : 'unavailable',
+      reason: process.platform === 'linux' ? 'protected_native_service_private_uid_and_storage_finality_required' : 'linux_required'
+    };
+    if (normalized.darwin?.enabled) return {
       platform: process.platform, backend: 'darwin_private_ruid',
       status: process.platform === 'darwin' ? 'requires_runtime_setup' : 'unavailable',
       reason: process.platform === 'darwin' ? 'protected_broker_current_epoch_and_private_uid_finality_required' : 'darwin_required'
@@ -130,7 +135,10 @@ function runSupervised(request, timeoutMs, started = clock()) {
   const policy = resolvePolicy(request.verificationPolicy, timeoutMs);
   timeoutMs = policy.work_budget_ms;
   deadline = started + BigInt(timeoutMs) * 1000000n;
-  if (nativeExecution?.darwin.enabled && process.platform === 'darwin') {
+  if (nativeExecution?.linux?.enabled && process.platform === 'linux') {
+    return require('./verification-linux-service-production').runSync(request, timeoutMs, started);
+  }
+  if (nativeExecution?.darwin?.enabled && process.platform === 'darwin') {
     return require('./verification-darwin-production').runSync(request, timeoutMs, started);
   }
   assertContainmentAvailable(nativeExecution);
@@ -190,7 +198,10 @@ function runSupervisedOwned(request, timeoutMs, started = clock(), runtime = {})
   const policy = resolvePolicy(request.verificationPolicy, timeoutMs);
   timeoutMs = policy.work_budget_ms;
   deadline = started + BigInt(timeoutMs) * 1000000n;
-  if (nativeExecution?.darwin.enabled && process.platform === 'darwin') {
+  if (nativeExecution?.linux?.enabled && process.platform === 'linux') {
+    return require('./verification-linux-service-production').runSync(request, timeoutMs, started);
+  }
+  if (nativeExecution?.darwin?.enabled && process.platform === 'darwin') {
     return require('./verification-darwin-production').runSync(request, timeoutMs, started);
   }
   const unavailable = containmentFailure(timeoutMs, started, deadline, nativeExecution);

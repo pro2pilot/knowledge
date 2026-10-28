@@ -13,6 +13,9 @@ function backendFor(attempt) {
   if(backend==='linux_pid_namespace' && process.platform==='linux') return require('./verification-linux-namespace');
   if(backend==='windows_job_object' && process.platform==='win32') return require('./verification-windows-recovery');
   if(backend==='darwin_private_ruid' && process.platform==='darwin') return require('./verification-darwin-control');
+  // This backend deliberately exposes no fresh-owner identity/exit adapter:
+  // lost native service custody remains fenced, even with zero legacy rows.
+  if(backend==='linux_native_service' && process.platform==='linux') return require('./verification-linux-service-control');
   fail(backend?'verification_native_recovery_unavailable':'verification_recovery_descriptor_missing');
 }
 function namespaceFinality(proof,attempt) {

@@ -616,7 +616,7 @@ async function runVerificationTestsCore(request, supervisor) {
   // Only a fixed supervisor can install these hooks; inert public admission
   // rejects function properties. Darwin executes the command in the broker's
   // private UID while this trusted worker records its bounded observations.
-  const nativeHooks = supervisor.nativeBackend === 'darwin_private_ruid';
+  const nativeHooks = ['darwin_private_ruid', 'linux_native_service'].includes(supervisor.nativeBackend);
   if (!nativeHooks) boundary.assertContainmentAvailable(require('./verification-policy').nativeExecutionRequest(request));
   else if (typeof supervisor.runCommand !== 'function' || typeof supervisor.sourceSnapshot !== 'function') {
     throw Object.assign(new Error('Incomplete native command adapter'), { code: 'verification_native_adapter_invalid' });

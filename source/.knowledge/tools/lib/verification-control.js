@@ -201,13 +201,14 @@ function validate(a,loc) {
     const c=a.containment;
     if(exact(c,['backend','descriptor_sha256','descriptor','spawn_ids'])) c.cleanup_receipt=null;
     requireThat(exact(c,['backend','descriptor_sha256','descriptor','spawn_ids','cleanup_receipt']) &&
-      ['windows_job_object','linux_pid_namespace','darwin_private_ruid'].includes(c.backend) &&
+      ['windows_job_object','linux_pid_namespace','darwin_private_ruid','linux_native_service'].includes(c.backend) &&
       c.descriptor && !Array.isArray(c.descriptor) && typeof c.descriptor==='object' && c.descriptor.backend===c.backend &&
       HASH.test(c.descriptor_sha256) && hash(JSON.stringify(c.descriptor))===c.descriptor_sha256 &&
       Buffer.byteLength(JSON.stringify(c.descriptor))<=32768 && Array.isArray(c.spawn_ids) &&
-      (c.spawn_ids.length>0 || c.backend==='darwin_private_ruid') &&
+      (c.spawn_ids.length>0 || ['darwin_private_ruid','linux_native_service'].includes(c.backend)) &&
       c.spawn_ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || c.spawn_ids[i-1]<id)),'verification_control_corrupt');
     if(c.backend==='darwin_private_ruid')requireThat(require('./verification-darwin-control').validateAttemptBinding(a,c),'verification_control_corrupt');
+    if(c.backend==='linux_native_service')requireThat(require('./verification-linux-service-control').validateAttemptBinding(a,c),'verification_control_corrupt');
     if(c.cleanup_receipt!==null) {
       const receipt=c.cleanup_receipt,{evidence_sha256,...observed}=receipt;
       assertNativeProofPublicFields(receipt);
@@ -444,10 +445,11 @@ function updateAttempt(context,owner,event) {
       requireThat(!a.cancel.requested && !a.stop_reason && a.cleanup.status==='not_started' && a.containment===null,'verification_stopped');
       const descriptor=inert(event.descriptor),ids=inert(event.spawn_ids);
       requireThat(descriptor && !Array.isArray(descriptor) && typeof descriptor==='object' &&
-        ['windows_job_object','linux_pid_namespace','darwin_private_ruid'].includes(descriptor.backend) && Buffer.byteLength(JSON.stringify(descriptor))<=32768 &&
-        Array.isArray(ids) && (ids.length>0 || descriptor.backend==='darwin_private_ruid') && ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || ids[i-1]<id)),'verification_containment_invalid');
+        ['windows_job_object','linux_pid_namespace','darwin_private_ruid','linux_native_service'].includes(descriptor.backend) && Buffer.byteLength(JSON.stringify(descriptor))<=32768 &&
+        Array.isArray(ids) && (ids.length>0 || ['darwin_private_ruid','linux_native_service'].includes(descriptor.backend)) && ids.every((id,i)=>integer(id,1,a.processes.length) && (i===0 || ids[i-1]<id)),'verification_containment_invalid');
       a.containment={backend:descriptor.backend,descriptor_sha256:hash(JSON.stringify(descriptor)),descriptor,spawn_ids:ids,cleanup_receipt:null};
       if(descriptor.backend==='darwin_private_ruid')requireThat(require('./verification-darwin-control').validateAttemptBinding(a),'verification_containment_invalid');
+      if(descriptor.backend==='linux_native_service')requireThat(require('./verification-linux-service-control').validateAttemptBinding(a),'verification_containment_invalid');
     } else if(event.type==='darwin_authority_bound') {
       requireThat(!a.cancel.requested && !a.stop_reason && a.cleanup.status==='not_started' &&
         a.containment?.backend==='darwin_private_ruid' && a.containment.descriptor.authority_identity===null &&
@@ -465,7 +467,7 @@ function updateAttempt(context,owner,event) {
       requireThat(bridge.validateAttemptBinding(a),'verification_containment_invalid');
     } else if(event.type==='spawn_intent') {
       requireThat(!a.cancel.requested && !a.stop_reason && a.cleanup.status==='not_started','verification_stopped');
-      requireThat(a.containment?.backend!=='darwin_private_ruid','verification_spawn_invalid');
+      requireThat(!['darwin_private_ruid','linux_native_service'].includes(a.containment?.backend),'verification_spawn_invalid');
       requireThat(ROLES.has(event.role) && a.processes.length<128,'verification_spawn_invalid');
       a.processes.push({spawn_id:a.processes.length+1,role:event.role,pid:null,os_creation_time:null,process_nonce:null,executable_sha256:null,exit_observed:false});
     } else if(event.type==='spawn_aborted') {
@@ -540,6 +542,13 @@ function namespaceFinality(proof,allowInference) {
     ['linux_boot_birth_absent','linux_boot_birth_replaced'].includes(proof.init_exit_basis) && proof.init_reap_basis==='kernel_namespace_init_final_exit';
 }
 function validNativeContainerProof(a,proof) {
+  if(proof?.method==='linux_native_service') {
+    const bridge=require('./verification-linux-service-control');
+    return proof.attempt_id===a.attempt_id && proof.generation===a.generation &&
+      a.containment?.backend==='linux_native_service' && proof.descriptor_sha256===a.containment.descriptor_sha256 &&
+      HASH.test(proof.evidence_sha256) && bridge.validateAttemptBinding(a) &&
+      bridge.validateProof(proof,a.containment.descriptor);
+  }
   if(proof?.method==='darwin_private_ruid') {
     const bridge=require('./verification-darwin-control');
     return proof.attempt_id===a.attempt_id && proof.generation===a.generation &&
@@ -559,6 +568,7 @@ function confirmedCleanup(a,proof) {
   if(proof.method==='no_processes_started')return a.processes.length===0 && a.containment===null;
   if(proof.method==='controller_only')return proof.status==='completed' && HASH.test(proof.evidence_sha256) && controllerOnly(a);
   return validNativeContainerProof(a,proof) && (a.processes.length>0 ||
+    proof.method==='linux_native_service' ||
     proof.method==='darwin_private_ruid' && proof.proof_kind==='recovery_observation' && a.containment.descriptor.authority_identity===null) &&
     a.processes.every(p=>p.pid!==null && p.exit_observed);
 }
@@ -710,7 +720,7 @@ function finishRecord(loc,a,input) {
   requireThat(input && OUTCOMES.has(input.outcome));
   requireThat(confirmedCleanup(a,input.cleanup_proof),'verification_cleanup_unconfirmed');
   requireThat(input.cleanup_proof.method!=='controller_only' || input.outcome!=='passed','verification_ack_invalid');
-  requireThat(input.outcome!=='passed' || input.cleanup_proof.method!=='darwin_private_ruid' ||
+  requireThat(input.outcome!=='passed' || !['darwin_private_ruid','linux_native_service'].includes(input.cleanup_proof.method) ||
     input.cleanup_proof.proof_kind==='normal_current' && input.cleanup_proof.proof_current===true &&
     input.cleanup_proof.cleanup_only===false,'verification_cleanup_unconfirmed');
   requireThat(input.outcome!=='passed' || input.cleanup_proof.method!=='linux_pid_namespace' || input.cleanup_proof.init_reaped===true && input.cleanup_proof.init_exit_observed===true && input.cleanup_proof.init_exit_inferred!==true,'verification_cleanup_unconfirmed');

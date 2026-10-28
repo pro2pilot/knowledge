@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { copyInertData } = require('./inert-data');
 const darwinFinalization = require('./verification-darwin-finalization');
+const linuxServiceFinalization = require('./verification-linux-service-finalization');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const stable = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
@@ -94,8 +95,8 @@ async function persistFinalization(stateRoot, value) {
   const loaded = require('./verification-execution').readNativeRecord(root, content, STORE);
   if (!loaded || loaded.physical_sha256 !== hash(body) || digest(loaded.record) !== content) fail();
   return { receipt_id: 'KVF-' + content, physical_sha256: hash(body), batch_id: value.batch_id,
-    ...([SCHEMA, darwinFinalization.SCHEMA].includes(value.schema_version) ? { schema_version: value.schema_version } : {}),
-    ...([SCHEMA, V3_SCHEMA, PREVIOUS_SCHEMA, darwinFinalization.SCHEMA].includes(value.schema_version) ? { work_elapsed_ms: value.work_elapsed_ms,
+    ...([SCHEMA, darwinFinalization.SCHEMA, linuxServiceFinalization.SCHEMA].includes(value.schema_version) ? { schema_version: value.schema_version } : {}),
+    ...([SCHEMA, V3_SCHEMA, PREVIOUS_SCHEMA, darwinFinalization.SCHEMA, linuxServiceFinalization.SCHEMA].includes(value.schema_version) ? { work_elapsed_ms: value.work_elapsed_ms,
       cleanup_budget_ms: value.cleanup_budget_ms, observed_elapsed_ms: value.observed_elapsed_ms } : {}) };
 }
 
@@ -126,7 +127,8 @@ function acceptFinalization(reference, timeoutMs, elapsedMs, privateKey, timing 
   // Reference metadata is not spread into the signed shape. V4 records the
   // expanded invocation-source provenance. V1, V2 and V3 remain reader-only
   // historical formats with their exact original pin sets and proof rules.
-  const value = { schema_version: reference.schema_version === darwinFinalization.SCHEMA ? darwinFinalization.ACK_SCHEMA : ACK_SCHEMA, receipt_id: reference.receipt_id,
+  const value = { schema_version: reference.schema_version === darwinFinalization.SCHEMA ? darwinFinalization.ACK_SCHEMA :
+    reference.schema_version === linuxServiceFinalization.SCHEMA ? linuxServiceFinalization.ACK_SCHEMA : ACK_SCHEMA, receipt_id: reference.receipt_id,
     physical_sha256: reference.physical_sha256, batch_id: reference.batch_id,
     timeout_ms: timeoutMs, accepted_elapsed_ms: elapsedMs,
     work_elapsed_ms: workMs, cleanup_budget_ms: cleanupMs };
@@ -159,12 +161,13 @@ function requireFinalizedExecutions(stateRoot, executionIds, acceptances, privac
       const kernel = current || version3;
       const previous = ack?.schema_version === PREVIOUS_ACK_SCHEMA;
       const darwin = ack?.schema_version === darwinFinalization.ACK_SCHEMA;
-      const modern = kernel || previous || darwin;
+      const linuxService = ack?.schema_version === linuxServiceFinalization.ACK_SCHEMA;
+      const modern = kernel || previous || darwin || linuxService;
       const keys = modern
         ? 'accepted_elapsed_ms,batch_id,cleanup_budget_ms,physical_sha256,receipt_id,schema_version,signature,timeout_ms,work_elapsed_ms'
         : 'accepted_elapsed_ms,batch_id,physical_sha256,receipt_id,schema_version,signature,timeout_ms';
       if (!ack || Object.keys(ack).sort().join(',') !== keys ||
-          ![ACK_SCHEMA, V3_ACK_SCHEMA, PREVIOUS_ACK_SCHEMA, LEGACY_ACK_SCHEMA, darwinFinalization.ACK_SCHEMA].includes(ack.schema_version) || !BATCH.test(ack.batch_id) || batches.has(ack.batch_id) ||
+          ![ACK_SCHEMA, V3_ACK_SCHEMA, PREVIOUS_ACK_SCHEMA, LEGACY_ACK_SCHEMA, darwinFinalization.ACK_SCHEMA, linuxServiceFinalization.ACK_SCHEMA].includes(ack.schema_version) || !BATCH.test(ack.batch_id) || batches.has(ack.batch_id) ||
           !/^KVF-[a-f0-9]{64}$/.test(ack.receipt_id) || !HASH.test(ack.physical_sha256) ||
           (modern ? !workCleanupTiming(ack.timeout_ms, ack.work_elapsed_ms, ack.cleanup_budget_ms, ack.accepted_elapsed_ms)
             : !Number.isSafeInteger(ack.timeout_ms) || ack.timeout_ms <= 0 || !Number.isFinite(ack.accepted_elapsed_ms) ||
@@ -177,21 +180,22 @@ function requireFinalizedExecutions(stateRoot, executionIds, acceptances, privac
       const { signature, ...unsigned } = ack;
       if (publicKey.asymmetricKeyType !== 'ed25519' || typeof signature !== 'string' || !/^[a-f0-9]{128}$/.test(signature) ||
           !crypto.verify(null, Buffer.from(stable(unsigned)), publicKey, Buffer.from(signature, 'hex'))) fail();
-      if (record.schema_version !== (darwin ? darwinFinalization.SCHEMA : current ? SCHEMA : version3 ? V3_SCHEMA : previous ? PREVIOUS_SCHEMA : LEGACY_SCHEMA) || record.batch_id !== ack.batch_id || record.status !== 'commands_and_teardown_observed' ||
+      if (record.schema_version !== (darwin ? darwinFinalization.SCHEMA : linuxService ? linuxServiceFinalization.SCHEMA : current ? SCHEMA : version3 ? V3_SCHEMA : previous ? PREVIOUS_SCHEMA : LEGACY_SCHEMA) || record.batch_id !== ack.batch_id || record.status !== 'commands_and_teardown_observed' ||
           record.timeout_ms !== ack.timeout_ms || !Number.isFinite(record.observed_elapsed_ms) || record.observed_elapsed_ms < 0 ||
           record.observed_elapsed_ms > ack.accepted_elapsed_ms ||
           modern && (record.work_elapsed_ms !== ack.work_elapsed_ms || record.cleanup_budget_ms !== ack.cleanup_budget_ms ||
             record.observed_elapsed_ms < record.work_elapsed_ms || !darwin && record.teardown?.keeper_exited !== true) || record.teardown?.status !== 'completed' ||
           record.teardown.active_processes !== 0 || record.teardown.method !== record.backend ||
-          !(darwin ? ['darwin_private_ruid'] : kernel ? ['windows_job_object', 'linux_pid_namespace'] : ['windows_job_object']).includes(record.backend) ||
+          !(darwin ? ['darwin_private_ruid'] : linuxService ? [linuxServiceFinalization.METHOD] : kernel ? ['windows_job_object', 'linux_pid_namespace'] : ['windows_job_object']).includes(record.backend) ||
           kernel && (typeof record.teardown.descriptor_sha256 !== 'string' || !HASH.test(record.teardown.descriptor_sha256) || record.teardown.worker_exited !== true ||
             record.backend === 'linux_pid_namespace' && (record.teardown.init_exit_observed !== true || record.teardown.init_reaped !== true || record.teardown.namespace_drained !== true ||
               ['init_exit_inferred', 'init_release_inferred'].some(key => Object.hasOwn(record.teardown, key) && record.teardown[key] !== false))) ||
           !Array.isArray(record.executions) || !record.executions.length ||
           !HASH.test(record.request_sha256) || !HASH.test(record.runtime_sha256) || !Array.isArray(record.implementation) ||
-          !(darwin ? [darwinFinalization.IMPLEMENTATION_PATHS] : current ? [IMPLEMENTATION_PATHS] : version3 ? [V3_IMPLEMENTATION_PATHS] : previous ? [V2_IMPLEMENTATION_PATHS] : [PREVIOUS_IMPLEMENTATION_PATHS, LEGACY_IMPLEMENTATION_PATHS]).some(paths => record.implementation.length === paths.length &&
+          !(darwin ? [darwinFinalization.IMPLEMENTATION_PATHS] : linuxService ? [linuxServiceFinalization.IMPLEMENTATION_PATHS] : current ? [IMPLEMENTATION_PATHS] : version3 ? [V3_IMPLEMENTATION_PATHS] : previous ? [V2_IMPLEMENTATION_PATHS] : [PREVIOUS_IMPLEMENTATION_PATHS, LEGACY_IMPLEMENTATION_PATHS]).some(paths => record.implementation.length === paths.length &&
             record.implementation.every((pin, index) => pin && pin.path === paths[index] && HASH.test(pin.sha256)))) fail();
       if (darwin) darwinFinalization.validate(record);
+      if (linuxService) linuxServiceFinalization.validate(record);
       const ordered = [], seen = new Set();
       for (let index = 0; index < record.executions.length; index++) {
         const pin = record.executions[index];
@@ -208,6 +212,7 @@ function requireFinalizedExecutions(stateRoot, executionIds, acceptances, privac
             execution.record.runtime_binding === 'process_exec_path' && execution.record.runtime_sha256 !== record.runtime_sha256) fail();
         seen.add(pin.execution_id); ordered.push(pin.execution_id);
         if (darwin) darwinFinalization.validateExecution(record, execution.record, index);
+        if (linuxService) linuxServiceFinalization.validateExecution(record, execution.record, index);
         bind(execution);
         executionRecords.push(execution.record);
         if (requested.has(pin.execution_id)) covered.add(pin.execution_id);

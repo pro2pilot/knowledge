@@ -43,6 +43,19 @@ function nativeExecutionConfig(value) {
   const exact = (object, keys) => object && typeof object === 'object' && !Array.isArray(object) &&
     Object.keys(object).sort().join(',') === [...keys].sort().join(',');
   if (exact(data, [])) return { darwin: { enabled: false } };
+  if (exact(data, ['linux'])) {
+    const linux = data.linux;
+    const linuxFail = () => { throw requestError('verification_linux_service_config_invalid'); };
+    if (exact(linux, ['enabled']) && linux.enabled === false) return { linux: { enabled: false } };
+    if (!exact(linux, ['enabled', 'mode', 'broker_path', 'copy']) || linux.enabled !== true ||
+        linux.mode !== 'isolated_copy' || linux.broker_path !== '/var/lib/knowledge-linux-native-v1/broker' ||
+        !linux.copy || typeof linux.copy !== 'object' || Array.isArray(linux.copy)) linuxFail();
+    let copy;
+    try { copy = copyLimits({ max_files: 20000, max_bytes: 32 * 1024 * 1024,
+      max_file_bytes: 32 * 1024 * 1024, ...linux.copy }); } catch { linuxFail(); }
+    if (copy.max_bytes > 32 * 1024 * 1024 || copy.max_file_bytes > 32 * 1024 * 1024) linuxFail();
+    return { linux: { enabled: true, mode: 'isolated_copy', broker_path: linux.broker_path, copy } };
+  }
   if (!exact(data, ['darwin'])) fail();
   const input = data.darwin;
   if (!input || Array.isArray(input) || typeof input !== 'object') fail();

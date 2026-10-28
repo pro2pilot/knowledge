@@ -1,0 +1,14 @@
+{
+  "schema_version": "knowledge-linux-native-service-abi.v1",
+  "header": "tools/lib/verification-linux-service.h",
+  "client": {"argv": ["INSTALLED_BROKER", "--client"], "stdin": "80-byte request header; OPEN is followed by exactly payload_len opaque JSON bytes", "stdout": "16-byte output header plus exact payload_len bytes", "lifetime": "one live connection; caller death, stdin EOF or STOP revokes execution"},
+  "envelope": {"source": "knowledge-linux-service-copy-input.v1, existing strict importer shape", "authority": "fixed trusted authority request interpreted only by fresh private-UID Node"},
+  "authority": {"entry": "/runtime/knowledge/tools/lib/verification-linux-service-authority.js", "argv": ["/source", "/state", "AUTHORITY_UID", "WORKER_UID"], "fds": {"3": "sealed original envelope", "4": "one bounded opaque result JSON", "5": "40-byte command header plus body", "6": "32-byte reply header plus stdout then stderr"}},
+  "native_event_schema": "knowledge-linux-native-service.v1",
+  "capability_fields": ["event", "status", "installation_id", "host_id", "boot_id", "daemon_epoch", "source_sha256", "runtime_sha256", "broker_binary_sha256", "client_pid", "controller_pid", "controller_uid"],
+  "writer_event_fields": ["event", "status", "pid", "deadline_ns", "registered_before_storage_permit"],
+  "opened_fields": ["event", "status", "nonce", "allocation_sequence", "authority_uid", "worker_uid", "work_deadline_ns", "cleanup_budget_ms"],
+  "terminal_fields": ["event", "status", "nonce", "allocation_sequence", "authority_uid", "worker_uid", "keeper_pid", "init_pid", "authority_namespace_pid", "work_deadline_ns", "cleanup_budget_ms", "cleanup_started_ns", "cleanup_deadline_ns", "observed_ns", "importer_drained", "source_readonly", "authority_readback", "manifest_sha256", "directories_sha256", "files", "directories", "source_bytes", "commands", "commands_drained", "authority_exited", "authority_status", "init_exit_observed", "init_reaped", "keeper_exited", "output_eof", "cgroup_empty", "journal_closed", "result_bytes", "result_sha256", "proof_sha256"],
+  "native_proof_hash": "SHA-256 of the exact native terminal JSON body before adding proof_sha256; native journal stores this digest, then the original cleanup endpoint is rechecked before publication",
+  "positive_terminal": "status=completed, all physical/drain/readback/journal booleans true, commands>=1, authority_status=0, observed_ns<cleanup_deadline_ns; opaque A result alone is never acceptance"
+}

@@ -1,0 +1,61 @@
+name: RC5 audit8 native Linux service
+on:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit8-linux-service.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: rc5-audit8-linux-service
+  cancel-in-progress: false
+jobs:
+  physical:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+      - name: Prepare protected runtime as ordinary UID
+        run: |
+          mkdir -p evidence
+          python3 qa/reliability/audit8/linux/prepare_service.py --source source/.knowledge --out "$RUNNER_TEMP/native-service-prepared" --node "$(command -v node)" > evidence/prepare.stdout.txt 2> evidence/prepare.stderr.txt
+          cp "$RUNNER_TEMP/native-service-prepared/prepare.json" evidence/prepare.json
+          cp "$RUNNER_TEMP/native-service-prepared/install-native.sh" evidence/install-native.sh
+          cp "$RUNNER_TEMP/native-service-prepared/stage/runtime.manifest" evidence/runtime.manifest
+      - name: Install fixed root native service
+        run: |
+          sudo /bin/sh "$RUNNER_TEMP/native-service-prepared/install-native.sh" > evidence/install.stdout.txt 2> evidence/install.stderr.txt
+      - name: Physical native production entry and faults
+        run: |
+          python3 qa/reliability/audit8/linux/physical_native.py --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
+      - name: Preserve service diagnostics and identities
+        if: always()
+        run: |
+          sudo journalctl --no-pager -u knowledge-linux-native-v1.service > evidence/service-journal.txt 2>&1 || true
+          sudo systemctl show knowledge-linux-native-v1.service > evidence/service-state.txt 2>&1 || true
+          cp /var/lib/knowledge-linux-native-v1/installation.json evidence/installation.json || true
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,platform
+          p=pathlib.Path('source/.knowledge')
+          rows=[{'path':str(f.relative_to(p)),'sha256':hashlib.sha256(f.read_bytes()).hexdigest()} for f in sorted(p.rglob('*')) if f.is_file()]
+          pathlib.Path('evidence/SOURCE_PINS.json').write_text(json.dumps({'commit':os.environ['GITHUB_SHA'],'arch':platform.machine(),'files':rows},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit8-native-linux-${{ matrix.arch }}
+          path: evidence
+          retention-days: 3
+          if-no-files-found: error
