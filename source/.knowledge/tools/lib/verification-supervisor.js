@@ -254,7 +254,7 @@ function runSupervisedOwned(request, timeoutMs, started = clock(), runtime = {})
       code: 'verification_cancelled', teardown: { status: 'not_required', reason: 'no_processes_started' } });
     throw timeoutFailure(timeoutMs, started);
   }
-  const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.NODE_PATH;
+  const env = require('./command-runner').safeEnvironment(process.env);
   const child = spawnSync(process.execPath, [path.join(__dirname, 'verification-watchdog.js')], {
     input, encoding: 'utf8', windowsHide: true, env, maxBuffer: MAX_BYTES,
     // A last-resort transport bound, not a millisecond return guarantee.
@@ -370,7 +370,7 @@ function runAuthority(request, timeoutMs, started = clock(), channels = {}) {
       teardown: unavailable.teardown
     });
   }
-  const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.NODE_PATH;
+  const env = require('./command-runner').safeEnvironment(process.env);
   const left = remaining(deadline);
   if (left <= 0) throw timeoutFailure(timeoutMs, started);
   const child = spawnSync(process.execPath, [__filename, '--supervisor'], {

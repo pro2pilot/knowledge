@@ -43,8 +43,11 @@ function cliBudgets(flags = {}) {
 }
 function safeEnvironment(input = process.env) {
   const env = { ...input };
-  for (const key of ['NODE_OPTIONS', 'NODE_PATH', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE']) delete env[key];
-  for (const key of Object.keys(env)) if (key.startsWith('LD_')) delete env[key];
+  const denied = new Set(['NODE_OPTIONS', 'NODE_PATH', 'NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE']);
+  for (const key of Object.keys(env)) {
+    const normalized = process.platform === 'win32' ? key.toUpperCase() : key;
+    if (denied.has(normalized) || normalized.startsWith('LD_')) delete env[key];
+  }
   return env;
 }
 function deadlineError(signal) {
@@ -369,6 +372,7 @@ async function createScope(kind, payload, options = {}) {
       invocation = require('./verification-invocation').createInvocation(scope);
       options.onInvocationReady?.(invocation);
     }
+    if (firstError || options.signal?.aborted) throw firstError || fail('command_cancelled');
     if (typeof job.permit === 'function') job.permit();
     await Promise.race([hostReady, stopped.then(error => { throw error; })]);
     if (firstError || options.signal?.aborted) throw firstError || fail('command_cancelled');

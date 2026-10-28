@@ -1,0 +1,64 @@
+name: RC5 audit8 physical Windows native QA closure
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit8-windows-cleanup.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit8-windows-cleanup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-cleanup:
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve exact source bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-budget-fixtures-exact-zip
+          path: native-input
+          run-id: 40649827600
+          github-token: ${{ github.token }}
+      - name: Qualify native I/O, pipe-holder, cancellation, crash and Team cleanup
+        run: python qa/reliability/audit8/windows/run_native_cleanup.py --package native-input/public --arch ${{ matrix.arch }} --out native-cleanup --cohort-seconds 1200
+      - name: Preserve every raw result and native ownership receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit8-windows-native-cleanup-${{ matrix.arch }}
+          path: |
+            native-cleanup/RESULT.json
+            native-cleanup/SOURCE_RUNTIME_PINS.json
+            native-cleanup/*.stdout.json
+            native-cleanup/*.stderr.txt
+            native-cleanup/*.native-ownership.json
+            native-cleanup/team-failure-evidence/**
+          if-no-files-found: error
+          retention-days: 3

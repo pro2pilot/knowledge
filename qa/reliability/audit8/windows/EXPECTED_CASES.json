@@ -1,0 +1,66 @@
+{
+  "schema_version": "knowledge-audit8-windows-native-cases.v1",
+  "suites": {
+    "reliability-command-runner": {
+      "source_sha256": "3b9d0990480c0da131330b721d0f3b6013d3fbeddc5bec97e117229d5fbfd188",
+      "cases": [
+        "AbortSignal stops an admitted command independently of its I/O",
+        "a session budget closes native admission even if its caller never requests drain",
+        "a throwing output consumer causes native drain and preserves its error category",
+        "bounded output overflow drains the scope and cannot return a successful candidate",
+        "budgets preserve long work, default no-progress disabled, invalid values rejected",
+        "concurrent session request is refused without disturbing the first admitted command",
+        "detached descendants that close both output pipes are drained before acceptance",
+        "invalid UTF-8 stdout cannot become a successful semantic candidate",
+        "native guard reports the real nonzero exit without fabricating success",
+        "output noise cannot extend the absolute work deadline",
+        "output noise is not meaningful progress",
+        "persistent command session supports nested native scopes and drains between commands",
+        "real native command and trailing pipe bytes complete only after drain",
+        "scope proof distinguishes a live session from its immutable native finality",
+        "silent long work is allowed without a configured progress deadline",
+        "wall-clock rollback does not shorten or invert the monotonic duration"
+      ],
+      "allowed_windows_skips": [
+        "scope proof distinguishes a live session from its immutable native finality",
+        "a session budget closes native admission even if its caller never requests drain"
+      ]
+    },
+    "reliability-windows-command-lifecycle": {
+      "source_sha256": "1cc3f3dd00d6ae737d4ca6434af91fe77fb50f3ec129b6bb0ded07c7a825728f",
+      "cases": [
+        "Windows Job has a live exact root and signed finality after both holders close",
+        "Windows both holders crash before receipt keeps missing Job closure unconfirmed",
+        "Windows fresh observer rejects forged terminal files, wrong root birth and cross-scope replay",
+        "Windows native watchdogs cancel active work while both holder JavaScript loops are blocked",
+        "Windows primary holder crash drains admitted descendants and leaves survivor proof",
+        "Windows primary launcher crash preserves native holder drain and survivor receipt",
+        "Windows primary receipt fsync stall and crash does not stop the other native holder",
+        "Windows secondary holder crash drains admitted descendants and leaves survivor proof",
+        "Windows secondary launcher crash preserves native holder drain and survivor receipt",
+        "Windows secondary receipt fsync stall and crash does not stop the other native holder"
+      ],
+      "allowed_windows_skips": []
+    },
+    "reliability-windows-team-crash": {
+      "source_sha256": "9ee6dbbcd409570422ffe9354639d36edf4b903eae3c9e422dd06ec3e6f009ce",
+      "cases": [
+        "Windows nested fixed Flow cancellation preserves a custodian outside every owned ancestor Job",
+        "Windows original CLI crash leaves independent B custody proof and a new Team Flow recovers"
+      ],
+      "allowed_windows_skips": []
+    },
+    "reliability-windows-qa-custody": {
+      "source_sha256": "b54219145805adcdc9397c2828e6c76dad55c7f114a82ff1b650dcdf17a6133d",
+      "cases": [
+        "Windows cancellation at native readiness admits no project command and confirms drain",
+        "Windows cancellation drains an actual pending named-pipe read",
+        "Windows cancellation drains an actual pending named-pipe write",
+        "Windows cancellation seals late descendant births without a numerical PID sweep",
+        "Windows case-insensitive Node preload variables cannot execute before native admission",
+        "Windows direct child exit with inherited output pipes drains the live pipe holder"
+      ],
+      "allowed_windows_skips": []
+    }
+  }
+}

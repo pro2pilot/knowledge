@@ -20,6 +20,13 @@ try {
 const sourceKnowledgeRoot = path.resolve(__dirname, '..');
 const keepTemp = process.argv.includes('--keep-temp');
 let rootForCleanup = null;
+const selftestStarted = process.hrtime.bigint();
+let nextChildPhase = 0;
+function childPhase(event, id, name, details = {}) {
+  // Bounded diagnostics only; native receipts remain the cleanup authority.
+  fs.writeSync(2, JSON.stringify({ schema_version: 'knowledge-team-selftest-phase.v1',
+    event, id, name, elapsed_ms: Number(process.hrtime.bigint() - selftestStarted) / 1e6, ...details }) + '\n');
+}
 
 process.on('exit', () => {
   if (!keepTemp && rootForCleanup && fs.existsSync(rootForCleanup)) {
@@ -55,7 +62,9 @@ function isolatedChildEnv(overrides = {}) {
 }
 
 function run(cmd, args, options = {}) {
-  const started = Date.now();
+  const started = Date.now(), id = ++nextChildPhase;
+  const name = path.basename(cmd) + ' ' + path.basename(args[0] || '');
+  childPhase('begin', id, name);
   const result = spawnSync(cmd, args, {
     cwd: options.cwd,
     env: isolatedChildEnv(options.env || {}),
@@ -63,6 +72,7 @@ function run(cmd, args, options = {}) {
     windowsHide: true,
     timeout: options.timeoutMs || 120000
   });
+  childPhase('exit', id, name, { exit_code: result.status, error: result.error?.code || null });
   return {
     ok: result.status === 0 && !result.error && !result.signal,
     status: result.status,
@@ -306,7 +316,26 @@ function checkExclusiveFailureCapture(root) {
   }
 }
 
-function spawnNode(script, args, options = {}) {
+async function spawnNode(script, args, options = {}) {
+  const id = ++nextChildPhase, name = path.basename(script) + ' ' + (args[0] || '');
+  childPhase('begin', id, name);
+  if (process.platform === 'win32') {
+    // Reuse the product's native Job custody. Direct exit is not pipe EOF;
+    // cancellation drains all descendants and both streams before returning.
+    const result = await require('./lib/command-runner').runOwnedCommand({
+      executable: process.execPath, args: [script, ...args],
+      cwd: options.cwd || process.cwd(), env: isolatedChildEnv(options.env || {})
+    }, {
+      budgets: { workMs: options.timeoutMs || 120000, setupMs: 30000, cleanupMs: 60000, progressMs: 0 },
+      onNativeReady(descriptor) {
+        childPhase('native_ready', id, name, { scope_id: descriptor.scope_id });
+      }
+    });
+    childPhase('exit', id, name, { exit_code: result.status, error: result.error?.code || null,
+      cleanup: result.cleanup?.status || 'unconfirmed', output_closed: result.cleanup?.output_closed === true });
+    return { code: result.error || result.cleanup?.status !== 'completed' ? null : result.status,
+      stdout: result.stdout, stderr: result.stderr, error: result.error, cleanup: result.cleanup, script, args };
+  }
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [script, ...args], {
       cwd: options.cwd,
@@ -318,7 +347,11 @@ function spawnNode(script, args, options = {}) {
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('close', (code) => resolve({ code, stdout, stderr, script, args }));
+    child.on('exit', code => childPhase('direct_exit', id, name, { exit_code: code }));
+    child.on('close', (code) => {
+      childPhase('exit', id, name, { exit_code: code });
+      resolve({ code, stdout, stderr, script, args });
+    });
   });
 }
 

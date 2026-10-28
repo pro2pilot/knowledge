@@ -131,7 +131,7 @@ function queryScopeClosure(value, { timeoutMs = 5000, localOnly = false } = {}) 
     (result.code === 'command_scope_observer_outside_lineage' ||
       scope.backend === 'linux_pid_namespace' && linuxObserverRefusals.has(result.code));
   if (relayEligible && relay && !localOnly) {
-    const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.NODE_PATH;
+    const env = require('./command-runner').safeEnvironment(process.env);
     const relayTimeoutMs = remainingMs();
     if (relayTimeoutMs < 1) return timeout();
     const input = JSON.stringify({ relay, scope, timeoutMs: relayTimeoutMs });

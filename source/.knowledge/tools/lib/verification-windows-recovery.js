@@ -9,7 +9,7 @@ function native(request, cleanupMs = 30000) {
   const root=process.env.SystemRoot || process.env.WINDIR;
   if(process.platform!=='win32' || !root || !path.isAbsolute(root)) fail('verification_native_recovery_unavailable');
   if(!Number.isSafeInteger(cleanupMs) || cleanupMs<1 || cleanupMs>3600000) fail('verification_profile_invalid');
-  const env={...process.env};delete env.NODE_OPTIONS;delete env.NODE_PATH;
+  const env=require('./command-runner').safeEnvironment(process.env);
   const shell=require('./verification-windows-job').selectPowerShell();
   const result=spawnSync(shell.executable,
     ['-NoProfile','-NonInteractive','-File',path.join(__dirname,'verification-windows-recovery.ps1'),

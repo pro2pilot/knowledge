@@ -53,16 +53,17 @@ def main():
               'image_version': os.environ.get('ImageVersion'),
               'image_os': os.environ.get('ImageOS'),
               'scope': 'Read-only host prerequisites. Enabled SIP alone does not establish any product runtime, failure-path, installed-package, or release qualification.'}
-    if report['system'] != 'Darwin' or arch != LABELS[args.label]:
+    if report['system'] != 'Darwin':
         report['status'] = 'HOST_MISMATCH'
     else:
+        report['expected_arch_matched'] = arch == LABELS[args.label]
         report['os_version'] = observe(['/usr/bin/sw_vers'])
         report['hardware_arm64'] = observe(['/usr/sbin/sysctl', '-n', 'hw.optional.arm64'])
         report['sip'] = observe(['/usr/bin/csrutil', 'status'])
         sip = report['sip']
         exact = sip.get('exit_code') == 0 and sip.get('stdout_bytes', 8193) <= 8192 and sip.get('stderr_bytes', 8193) <= 8192
         if exact and re.fullmatch(r'System Integrity Protection status: enabled\.\s*', sip.get('stdout', '').strip()):
-            report.update(status='HOST_PREREQUISITE_ENABLED', host_has_stock_sip=True)
+            report.update(status='HOST_PREREQUISITE_ENABLED' if report['expected_arch_matched'] else 'HOST_ARCH_MISMATCH_SIP_ENABLED', host_has_stock_sip=True)
         elif exact and re.fullmatch(r'System Integrity Protection status: disabled\.\s*', sip.get('stdout', '').strip()):
             report['status'] = 'BLOCKED_STOCK_SIP_NOT_ENABLED'
         else:
@@ -71,7 +72,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     (output/'RESULT.json').write_text(json.dumps(report, indent=2, sort_keys=True)+'\n', encoding='utf8')
     print(json.dumps({key: report[key] for key in ('status', 'runner_label', 'process_arch', 'host_has_stock_sip', 'runtime_qualification_executed', 'release_qualified')}))
-    return 0 if report['host_has_stock_sip'] else 2
+    return 0 if report['host_has_stock_sip'] and report.get('expected_arch_matched') else 2
 
 
 if __name__ == '__main__':

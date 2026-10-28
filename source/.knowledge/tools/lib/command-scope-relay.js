@@ -33,8 +33,7 @@ async function createScopeRelay() {
       if (request.operation !== undefined || !validateExecutionScope(request.scope)) {
         socket.end(JSON.stringify({ proof: { status: 'unconfirmed', code: 'command_scope_request_invalid' } })); return;
       }
-      const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.NODE_PATH;
-      for (const key of Object.keys(env)) if (key.startsWith('LD_')) delete env[key];
+      const env = require('./command-runner').safeEnvironment(process.env);
       let executable = process.execPath, args = [path.join(__dirname, 'command-scope-proof.js')], nativeOnly = false;
       if (process.platform === 'linux') {
         const native = require('./verification-linux-namespace');
