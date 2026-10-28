@@ -125,7 +125,20 @@
     "tools/lib/macos-worker-envelope.js",
     "tools/lib/macos-workspace-protocol.js",
     "tools/lib/macos-workspace-session.js",
-    "tools/lib/watch-maintenance-worker.js"
+    "tools/lib/watch-maintenance-worker.js",
+    "tools/install-linux-native-service.py",
+    "docs/native-linux-service.md",
+    "tools/lib/verification-linux-service.c",
+    "tools/lib/verification-linux-service.h",
+    "tools/lib/verification-linux-service-importer.js",
+    "tools/lib/verification-linux-service-authority.js",
+    "tools/lib/verification-linux-service-client.js",
+    "tools/lib/verification-linux-service-store.js",
+    "tools/lib/verification-linux-service-production.js",
+    "tools/lib/verification-linux-service-finalization.js",
+    "tools/lib/verification-linux-service-control.js",
+    "tools/lib/verification-linux-uid-history.c",
+    "tools/lib/verification-linux-uid-history.h"
   ],
   "approved_local_rebuild_tools": [
     "tools/build-routing-bundle.js",
@@ -505,7 +518,20 @@
       "tools/lib/verification-darwin-uid-history.m",
       "tools/lib/verification-darwin-client.js",
       "tools/lib/verification-isolated-copy.js",
-      "docs/native-darwin-broker.md"
+      "docs/native-darwin-broker.md",
+      "tools/install-linux-native-service.py",
+      "docs/native-linux-service.md",
+      "tools/lib/verification-linux-service.c",
+      "tools/lib/verification-linux-service.h",
+      "tools/lib/verification-linux-service-importer.js",
+      "tools/lib/verification-linux-service-authority.js",
+      "tools/lib/verification-linux-service-client.js",
+      "tools/lib/verification-linux-service-store.js",
+      "tools/lib/verification-linux-service-production.js",
+      "tools/lib/verification-linux-service-finalization.js",
+      "tools/lib/verification-linux-service-control.js",
+      "tools/lib/verification-linux-uid-history.c",
+      "tools/lib/verification-linux-uid-history.h"
     ],
     "transient_name_patterns": [
       "\\.tmp-",

@@ -409,12 +409,23 @@ static void keeper_main(int channel,int ownerfd,int controllerfd,int brokerfd,in
     else if(pidfd_dead(held))result.reason=4;
     else if(p.revents&POLLIN){uint32_t message;int passed=-1;ssize_t n=packet_recv(channel,&message,sizeof(message),&passed,NULL,0);if(passed>=0)close(passed);result.reason=n==sizeof(message)&&passed<0&&message==INTERNAL_STOP?1:5;}
   }
+  /* An exited init may have queued its final progress after the last running
+   * poll. Resolve that native report before choosing whether S may finalize. */
+  if(collect_work_reports(report[0],channel,&result))result.reason=5;
+  if(result.work.reason&&result.reason==4)result.reason=result.work.reason;
   result.cleanup_start=now_ns();result.cleanup_end=result.cleanup_start+cleanup_ms*UINT64_C(1000000);
   uint64_t hard_end=args.deadline+cleanup_ms*UINT64_C(1000000);if(result.cleanup_end>hard_end)result.cleanup_end=hard_end;
   result.kind=INTERNAL_CLEANUP;(void)packet_send(channel,&result,sizeof(result),-1);
   /* The independent native keeper latches storage guardians too. A broker
    * blocked in fsync cannot silently give S a new or longer cleanup window. */
-  for(unsigned i=0;i<args.guards_count;i++){(void)send(args.guards[i],&result.cleanup_end,sizeof(result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);close(args.guards[i]);}
+  for(unsigned i=0;i<args.guards_count;i++){
+    (void)send(args.guards[i],&result.cleanup_end,sizeof(result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);
+    /* Zero is an irreversible stop instruction, not a replacement endpoint.
+     * Timeout/failure starts S drain now; a completed A leaves S time to
+     * publish its verified finalization within the same cleanup endpoint. */
+    if(result.reason!=4){uint64_t stop=0;(void)send(args.guards[i],&stop,sizeof(stop),MSG_NOSIGNAL|MSG_DONTWAIT);}
+    close(args.guards[i]);
+  }
   if(!pidfd_dead(held)){if(pidfd_stop(held))result.reason=5;else result.stop_dispatched=1;}
   while(now_ns()<result.cleanup_end){
     pid_t got=waitpid(init,&result.init_status,WNOHANG);if(got==init){result.init_reaped=1;break;}if(got<0&&errno!=EINTR)break;poll(NULL,0,2);
@@ -464,7 +475,7 @@ static void writer_guardian(int writerfd,int parentfd,int clientfd,int brokerfd,
   if(write_all(readyfd,"G",1))_exit(152);close(readyfd);
   while(!pidfd_dead(writerfd)){
     uint64_t update;ssize_t received=recv(control,&update,sizeof(update),MSG_DONTWAIT|MSG_TRUNC);
-    if(received==sizeof(update)){if(update>end){(void)pidfd_stop(writerfd);break;}end=update;}
+    if(received==sizeof(update)){if(!update||update>end){(void)pidfd_stop(writerfd);break;}end=update;}
     else if(received==0||(received<0&&errno!=EAGAIN&&errno!=EWOULDBLOCK&&errno!=EINTR)||received>0){(void)pidfd_stop(writerfd);break;}
     if(now_ns()>=end||pidfd_dead(parentfd)||pidfd_dead(clientfd)||pidfd_dead(brokerfd)||(cancel_read>=0&&pidfd_dead(cancel_read))||cancelled){(void)pidfd_stop(writerfd);break;}
     struct pollfd fds[]={{writerfd,POLLIN,0},{parentfd,POLLIN,0},{clientfd,POLLIN,0},{brokerfd,POLLIN,0},{control,POLLIN,0}};poll(fds,5,10);
@@ -608,7 +619,7 @@ static void observe_attempt(void) {
    * Subreaper custody permits an exact wait after that parent death. */
   if(a->keeper_reaped&&!a->final_received&&a->initfd>=0){
     if(!a->result.cleanup_start){a->result.cleanup_start=now_ns();a->result.cleanup_end=a->result.cleanup_start+a->cleanup_ms*UINT64_C(1000000);uint64_t hard=a->work_deadline+a->cleanup_ms*UINT64_C(1000000);if(a->result.cleanup_end>hard)a->result.cleanup_end=hard;a->result.reason=5;
-      for(unsigned i=0;i<c->writers_count;i++)if(!c->writers[i].closed&&c->writers[i].guard_channel>=0){if(a->result.cleanup_end<c->writers[i].deadline)c->writers[i].deadline=a->result.cleanup_end;(void)send(c->writers[i].guard_channel,&a->result.cleanup_end,sizeof(a->result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);}
+      for(unsigned i=0;i<c->writers_count;i++)if(!c->writers[i].closed&&c->writers[i].guard_channel>=0){if(a->result.cleanup_end<c->writers[i].deadline)c->writers[i].deadline=a->result.cleanup_end;(void)send(c->writers[i].guard_channel,&a->result.cleanup_end,sizeof(a->result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);uint64_t stop=0;(void)send(c->writers[i].guard_channel,&stop,sizeof(stop),MSG_NOSIGNAL|MSG_DONTWAIT);}
     }
     (void)pidfd_stop(a->initfd);int status;pid_t n=waitpid(a->result.init,&status,WNOHANG);if(n==a->result.init){a->result.init_reaped=1;a->result.init_status=status;a->result.observed=now_ns();a->final_received=1;}
   }

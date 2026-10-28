@@ -20,6 +20,8 @@ import subprocess
 import sys
 import time
 
+MODES = ["positive", "cancel", "timeout", "cancel_before_permit", "broker_paused_cancel"]
+
 
 def sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
@@ -27,6 +29,56 @@ def sha(body: bytes) -> str:
 
 def wire(value) -> bytes:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+
+
+def identity(pid):
+    body = Path(f"/proc/{pid}/stat").read_text()
+    fields = body[body.rfind(")") + 2:].split()
+    return {"pid": pid, "state": fields[0], "birth_ticks": fields[19]}
+
+
+def dead(descriptor):
+    poller = select.poll();poller.register(descriptor, select.POLLIN)
+    return bool(poller.poll(0))
+
+
+def systemctl_signal(signame):
+    assert signame in {"SIGSTOP", "SIGCONT"}
+    subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "kill", "--kill-whom=main",
+                    "--signal=" + signame, "knowledge-linux-native-v1.service"], check=True, timeout=5,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={"PATH": "/usr/bin:/bin", "LANG": "C"})
+
+
+def cancel_with_paused_broker(bridge, opened, storage):
+    """Suspend only the fixed native main process, keeping its custody intact."""
+    main = subprocess.run(["/usr/bin/systemctl", "show", "--property=MainPID", "--value", "knowledge-linux-native-v1.service"],
+                          check=True, timeout=3, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    broker_pid = int(main.stdout)
+    assert broker_pid > 1
+    before = identity(broker_pid)
+    held = {name: os.pidfd_open(pid) for name, pid in {
+        "broker": broker_pid, "keeper": opened["keeper_pid"], "init": opened["init_pid"], "storage": storage.pid}.items()}
+    paused = False
+    try:
+        systemctl_signal("SIGSTOP");paused = True
+        observed = identity(broker_pid)
+        assert observed["birth_ticks"] == before["birth_ticks"] and observed["state"] in {"T", "t"}
+        started = time.monotonic_ns()
+        bridge.send(4)
+        limit = time.monotonic() + 3
+        while time.monotonic() < limit and not all(dead(held[name]) for name in ("keeper", "init", "storage")):
+            time.sleep(0.01)
+        assert all(dead(held[name]) for name in ("keeper", "init", "storage")), "independent native cancellation did not drain while broker stopped"
+        during = identity(broker_pid)
+        assert during["birth_ticks"] == before["birth_ticks"] and during["state"] in {"T", "t"} and not dead(held["broker"])
+        return {"broker": before, "broker_stopped_during_exact_pidfd_exits": True,
+                "keeper_pidfd_exit": True, "init_pidfd_exit": True, "storage_pidfd_exit": True,
+                "elapsed_ms": round((time.monotonic_ns() - started) / 1_000_000, 3)}
+    finally:
+        if paused:
+            systemctl_signal("SIGCONT")
+        for descriptor in held.values():
+            os.close(descriptor)
 
 
 class Bridge:
@@ -102,11 +154,12 @@ for(const fd of fs.readdirSync('/proc/self/fd')){try{const link=fs.readlinkSync(
             "manifest_sha256": manifest, "directories_sha256": sha(wire([]))}
 
 
-def run_mode(config, mode):
+def run_mode(config, mode, evidence=None):
     bridge = Bridge(config, mode)
     storage = subprocess.Popen([sys.executable, "-c", "import sys,time;sys.stdin.readline();sys.stdin.readline()"],
                                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     started = time.monotonic()
+    observations = {}
     try:
         bridge.send(1)
         capability, _ = bridge.until("capability")
@@ -128,13 +181,19 @@ def run_mode(config, mode):
         bridge.send(3, body=wire({"source": source, "authority": authority}))
         opened, _ = bridge.until("opened")
         assert opened["authority_uid"] != opened["worker_uid"] and opened["work_deadline_ns"] == str(bridge.deadline)
-        bridge.send(6)
-        if mode == "cancel":
+        if mode == "cancel_before_permit":
+            bridge.send(4)
+        else:
+            bridge.send(6)
+        if mode in {"cancel", "broker_paused_cancel"}:
             bridge.until("authority_bound")
             time.sleep(0.2)
-            bridge.send(4)
+            if mode == "broker_paused_cancel":
+                observations["broker_pause"] = cancel_with_paused_broker(bridge, opened, storage)
+            else:
+                bridge.send(4)
         terminal, raw = bridge.until("terminal")
-        expected = {"positive": "completed", "cancel": "cancelled", "timeout": "timed_out"}[mode]
+        expected = "completed" if mode == "positive" else "timed_out" if mode == "timeout" else "cancelled"
         assert terminal["status"] == expected, terminal
         for key in ("cleanup_confirmed", "init_exit_observed", "init_reaped", "keeper_exited", "output_eof", "cgroup_empty", "journal_closed"):
             assert terminal[key] is True, (key, terminal)
@@ -142,6 +201,10 @@ def run_mode(config, mode):
         assert int(terminal["observed_ns"]) < int(terminal["cleanup_deadline_ns"]) <= bridge.deadline + bridge.cleanup_ms * 1_000_000
         base = dict(terminal);proof = base.pop("proof_sha256")
         assert sha(wire(base)) == proof
+        if mode == "cancel_before_permit":
+            assert terminal["commands"] == terminal["commands_drained"] == terminal["authority_pid"] == 0
+            assert terminal["importer_drained"] is False and terminal["authority_readback"] is False
+            assert not any(event["event"] in {"authority_bound", "permitted"} for event in bridge.events)
         if mode == "positive":
             assert terminal["authority_pid"] > 1 and terminal["authority_pidfd_exit_observed"] is True
             assert terminal["commands"] == terminal["commands_drained"] == 1 and terminal["authority_status"] == 0
@@ -155,11 +218,22 @@ def run_mode(config, mode):
         assert closed["pid"] == storage.pid and closed["birth_ticks"] == registered["birth_ticks"] and closed["registration_ordinal"] == registered["ordinal"]
         assert closed["writer_cgroup_empty"] is True and closed["closed_in_budget"] is True
         assert int(closed["observed_ns"]) < int(closed["deadline_ns"]) <= int(terminal["cleanup_deadline_ns"])
+        if mode == "timeout":
+            # Regression: timeout previously killed stopped S only at cleanup
+            # END, so no exact closure could be recorded within that budget.
+            assert int(closed["observed_ns"]) - int(terminal["cleanup_started_ns"]) < 5_000_000_000
+            observations["timeout_starts_storage_drain"] = True
         storage.wait(timeout=5)
         bridge.child.stdin.close()
         assert bridge.child.wait(timeout=5) == 0
         return {"scenario": mode, "status": "PASS", "elapsed_seconds": round(time.monotonic() - started, 3), "events": bridge.events,
-                "result": bridge.results, "storage_exit_code": storage.returncode}
+                "result": bridge.results, "storage_exit_code": storage.returncode, "observations": observations}
+    except BaseException as error:
+        if evidence is not None:
+            evidence.append({"scenario": mode, "status": "FAIL", "elapsed_seconds": round(time.monotonic() - started, 3),
+                             "events": bridge.events, "result": bridge.results, "observations": observations,
+                             "error": {"type": type(error).__name__, "message": str(error)}})
+        raise
     finally:
         if storage.poll() is None:
             storage.kill();storage.wait(timeout=5)
@@ -171,19 +245,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=Path("/var/lib/knowledge-linux-native-v1/installation.json"))
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--mode", choices=["positive", "cancel", "timeout", "all"], default="all")
+    parser.add_argument("--mode", choices=MODES + ["all"], default="all")
     args = parser.parse_args()
     assert os.getuid() != 0 and os.geteuid() != 0
     config = json.loads(args.config.read_bytes())
     assert config["caller_uid"] == os.getuid()
     results = []
     try:
-        for mode in (["positive", "cancel", "timeout"] if args.mode == "all" else [args.mode]):
-            results.append(run_mode(config, mode))
+        for mode in (MODES if args.mode == "all" else [args.mode]):
+            results.append(run_mode(config, mode, results))
             time.sleep(0.1)
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps({"schema_version": "knowledge-linux-native-physical-qa.v1", "status": "PASS" if len(results) == (3 if args.mode == "all" else 1) else "FAIL",
+        args.output.write_text(json.dumps({"schema_version": "knowledge-linux-native-physical-qa.v1", "status": "PASS" if len(results) == (len(MODES) if args.mode == "all" else 1) and all(item["status"] == "PASS" for item in results) else "FAIL",
                                           "configuration": config, "scenarios": results}, indent=2) + "\n")
     print(json.dumps({"status": "PASS", "scenarios": len(results), "output": str(args.output)}))
 

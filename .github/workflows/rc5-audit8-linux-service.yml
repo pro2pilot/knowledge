@@ -59,7 +59,7 @@ jobs:
         id: prepare
         run: |
           mkdir -p evidence
-          python3 qa/reliability/audit8/linux/prepare_service.py --source source/.knowledge --out "$RUNNER_TEMP/native-service-prepared" --node "$(command -v node)" > evidence/prepare.stdout.txt 2> evidence/prepare.stderr.txt
+          python3 qa/reliability/audit8/linux/prepare_service.py --source source/.knowledge --out "$RUNNER_TEMP/native-service-prepared" --node "$(command -v node)" --service-lifetime-seconds 14400 > evidence/prepare.stdout.txt 2> evidence/prepare.stderr.txt
           cp "$RUNNER_TEMP/native-service-prepared/prepare.json" evidence/prepare.json
           cp "$RUNNER_TEMP/native-service-prepared/install-native.sh" evidence/install-native.sh
           cp "$RUNNER_TEMP/native-service-prepared/stage/runtime.manifest" evidence/runtime.manifest
@@ -72,16 +72,22 @@ jobs:
         continue-on-error: true
         run: |
           python3 qa/reliability/audit8/linux/protocol_mutations.py --output evidence/protocol-mutations.json > evidence/protocol.stdout.txt 2> evidence/protocol.stderr.txt
-      - name: Physical native production entry and faults
-        id: physical
-        continue-on-error: true
-        run: |
-          python3 qa/reliability/audit8/linux/physical_native.py --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
       - name: Public KVE KVF ACK path and failure reuse
         id: public
         continue-on-error: true
         run: |
           node qa/reliability/audit8/linux/public_production.cjs --source source/.knowledge --output evidence/public-production.json --cohort-seconds 600 > evidence/public.stdout.txt 2> evidence/public.stderr.txt
+      - name: Physical native production entry and faults
+        id: physical
+        continue-on-error: true
+        run: |
+          python3 qa/reliability/audit8/linux/physical_native.py --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
+      - name: Actual blocked I/O preserves the original cleanup boundary
+        id: blocked_io
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          python3 qa/reliability/audit8/linux/blocked_io.py --output evidence/blocked-io.json > evidence/blocked-io.stdout.txt 2> evidence/blocked-io.stderr.txt
       - name: Preserve service diagnostics and identities
         if: always()
         run: |
@@ -102,7 +108,7 @@ jobs:
           python3 - <<'PY'
           import json,os,pathlib,sys
           steps=json.loads(os.environ['LANE_OUTCOMES'])
-          names=['native_input','reader','client','boundary','prepare','install','protocol','physical','public']
+          names=['native_input','reader','client','boundary','prepare','install','protocol','physical','public','blocked_io']
           outcomes={name:steps.get(name,{}).get('outcome','missing') for name in names}
           passed=all(value=='success' for value in outcomes.values())
           pathlib.Path('evidence').mkdir(exist_ok=True)

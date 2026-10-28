@@ -151,7 +151,8 @@ async function main() {
       assert.equal(transportError,null,transportError?.message);assert.equal(exitCode,0,stderr.toString());assert.equal(signal,null);
       const value=JSON.parse(stdout.toString('utf8'));assert.equal(value.schema_version,SCHEMA);assert.equal(value.uid,process.getuid());
       const attempt=control.readStatus(context).attempt;
-      assert.ok(attempt && attempt.generation!==priorGeneration); assert.equal(attempt.claimed,false,JSON.stringify(attempt));
+      assert.ok(attempt && attempt.generation!==priorGeneration,JSON.stringify({public_result:value,attempt}));
+      assert.equal(attempt.claimed,false,JSON.stringify(attempt));
       assert.equal(attempt.cleanup.status,'confirmed'); const terminal=terminalFrom(attempt);
       assert.ok(terminal.commands>=1,'The native service must have admitted actual command work');
       assert.notEqual(terminal.authority_uid,terminal.worker_uid); assert.notEqual(terminal.authority_uid,process.getuid());assert.notEqual(terminal.worker_uid,process.getuid());
