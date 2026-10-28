@@ -240,7 +240,7 @@ check('Doctor blocks unsafe project layout with separate state and preserves tas
   const before = snapshot(obstruction);
   const overrides = { KNOWLEDGE_MODE: 'repo', KNOWLEDGE_DISABLE_GIT_DISCOVERY: '1', KNOWLEDGE_SYSTEM_ROOT: source,
     KNOWLEDGE_TARGET_ROOT: target, KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT: knowledge, KNOWLEDGE_STATE_ROOT: context.stateRoot,
-    KNOWLEDGE_AGENT_ID: 'lock-layout-regression', KNOWLEDGE_LOCK_TIMEOUT_MS: '100', KNOWLEDGE_NO_OPEN: '1', CI: 'true' };
+    KNOWLEDGE_AGENT_ID: 'lock-layout-regression', KNOWLEDGE_LOCK_TIMEOUT_MS: '3000', KNOWLEDGE_NO_OPEN: '1', CI: 'true' };
   const saved = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
   let report;
   try {

@@ -644,7 +644,7 @@
     "tools/self-test-large-child-json.js": "da134caf7454b307da736505fd23a122d0cb672ca14c10880284858841b3d3d1",
     "tools/self-test-legacy-release-gate.js": "912619feceac8ec7cca32c461df186a69b553115ba5c9a4225b48ffd2a16e468",
     "tools/self-test-linux-namespace.js": "b118c537376661815edca05573b796f12e8c6f5a8ca5e81a563d3cb1d438df3f",
-    "tools/self-test-lock-layout-safety.js": "5012e288525eb02e5ebc8eb9f1403b854dd4b36f894e5721c86008f4e15585fc",
+    "tools/self-test-lock-layout-safety.js": "f309e4d27bdd624d11a1cc1aaa76b115d6a62b14b288fbd8eb4b115e18db2d0e",
     "tools/self-test-lock-owner-transitions.js": "c07c9c98d3d4b9566d914251e580f7b1f6347f75abeb6619dbd945b260ce3fbd",
     "tools/self-test-native-verification-boundaries.js": "e303d0e41942f1844c5d085799d9b0b586781370df204df8581b815c357f403f",
     "tools/self-test-operational-locks.js": "f7ee4140064325b34e1c0fc2f1a2a41d28dbbbd163a2fcad31082434857dde5f",

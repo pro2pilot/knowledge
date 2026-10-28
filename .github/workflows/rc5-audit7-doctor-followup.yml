@@ -1,4 +1,4 @@
-name: RC5 audit7 bounded Doctor fixture follow-up
+name: RC5 audit7 bounded positive-fixture follow-up
 
 on:
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: audit7-doctor-exact-zip
+          name: audit7-budget-fixtures-exact-zip
           path: |
             packed/public/**
             packed/RESULT.json
@@ -78,15 +78,15 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
-          name: audit7-doctor-exact-zip
+          name: audit7-budget-fixtures-exact-zip
           path: downloaded-package
-      - name: Verify corrected happy-path Doctor fixture from exact new ZIP
-        run: python qa/reliability/audit7/windows_repair_qa.py --only-doctor --package downloaded-package/public --arch ${{ matrix.arch }} --out installed-contract
+      - name: Verify corrected happy-path Doctor and lock-layout fixtures from exact new ZIP
+        run: python qa/reliability/audit7/windows_repair_qa.py --only-budget-fixtures --package downloaded-package/public --arch ${{ matrix.arch }} --out installed-contract
       - name: Preserve exact result and all observed failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: audit7-doctor-followup-${{ matrix.os }}-${{ matrix.arch }}
+          name: audit7-budget-fixtures-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             installed-contract/RESULT.json
             installed-contract/*.stdout.json

@@ -38,17 +38,21 @@ def phases(path):
 def main():
     ap = argparse.ArgumentParser()
     for name in ('package', 'arch', 'out'): ap.add_argument('--'+name, required=True)
-    ap.add_argument('--only-doctor', action='store_true')
+    selection = ap.add_mutually_exclusive_group()
+    selection.add_argument('--only-doctor', action='store_true')
+    selection.add_argument('--only-budget-fixtures', action='store_true')
     a = ap.parse_args(); out = P(a.out).resolve(); out.mkdir(parents=True, exist_ok=False)
-    scripts = [(SCRIPTS[0][0], 120, SCRIPTS[0][2])] if a.only_doctor else SCRIPTS
+    scripts = [(SCRIPTS[0][0], 120, SCRIPTS[0][2])] if a.only_doctor or a.only_budget_fixtures else SCRIPTS
+    if a.only_budget_fixtures: scripts = scripts + [('self-test-lock-layout-safety', 30, 20)]
     report = {'schema_version': 'knowledge-audit7-windows-repair.v1', 'status': 'FAIL',
               'commit': os.environ.get('GITHUB_SHA'), 'workflow_run': os.environ.get('GITHUB_RUN_ID'),
               'host': {'system': platform.system(), 'machine': platform.machine()}, 'steps': [],
               'release_qualified': False, 'retries': 0,
-              'scope': 'Complete Doctor lifecycle self-test; remaining public scripts not executed in this targeted run.'
+              'scope': 'Complete Doctor lifecycle and lock-layout self-tests; remaining public scripts not executed in this targeted run.'
+                       if a.only_budget_fixtures else 'Complete Doctor lifecycle self-test; remaining public scripts not executed in this targeted run.'
                        if a.only_doctor else 'Complete three declared public repair self-tests, not all 54 public tests.',
               'declared_scripts': [{'name': n, 'cap_s': cap, 'expected_checks': count} for n, cap, count in scripts]}
-    deadline = time.monotonic()+(150 if a.only_doctor else 720)
+    deadline = time.monotonic()+(180 if a.only_budget_fixtures else 150 if a.only_doctor else 720)
     try:
         m.need(sys.platform == 'win32', 'windows_required')
         extracted, contents = m.extract(a, out, report); system = extracted/'.knowledge'
@@ -69,17 +73,19 @@ def main():
                                    deadline, cap, fixture_tmp=temp)
             report['selftests'].append(row)
             m.admit_report('tools/'+name+'.js', row, value)
-            observed = phases(out/(name+'.stderr.txt')) if 'stderr_sha256' in row else None
+            phase_required = name != 'self-test-lock-layout-safety'
+            observed = phases(out/(name+'.stderr.txt')) if phase_required and 'stderr_sha256' in row else None
             row['phase_diagnostics'] = observed
             if row['status'] == 'PASS_SELFTEST':
                 checks = value.get('checks')
                 names = [c if isinstance(c, str) else c.get('name') if isinstance(c, dict) else None
                          for c in checks] if isinstance(checks, list) else []
                 passed_phases = [f['name'] for f in observed['frames'] if f['event'] == 'pass'] if observed else []
-                if not isinstance(checks, list) or len(checks) != expected or not observed or \
-                        observed['unfinished'] or observed['errors'] or \
-                        any(not isinstance(n, str) or passed_phases.count(n) != 1 for n in names) or \
-                        len(set(names)) != len(names):
+                if not isinstance(checks, list) or len(checks) != expected or \
+                        any(not isinstance(n, str) for n in names) or len(set(names)) != len(names) or \
+                        any(isinstance(c, dict) and c.get('status') != 'pass' for c in checks) or \
+                        phase_required and (not observed or observed['unfinished'] or observed['errors'] or \
+                        any(passed_phases.count(n) != 1 for n in names)):
                     row.update(status='FAIL_COMPLETE_CHECK_INVENTORY_OR_PHASES')
             m.save(out/'RESULT.json', report)
             if row.get('timed_out') or row.get('output_limit_exceeded') or row['status'].startswith('NOT_RUN'):
@@ -89,7 +95,8 @@ def main():
         m.need(not changed, 'installed_bytes_changed')
         m.need(len(report['selftests']) == len(scripts) and
                all(r['status'] == 'PASS_SELFTEST' for r in report['selftests']), 'repair_contract_incomplete')
-        report['status'] = 'PASS_COMPLETE_INSTALLED_DOCTOR_LIFECYCLE' if a.only_doctor else \
+        report['status'] = 'PASS_COMPLETE_INSTALLED_BUDGET_FIXTURES' if a.only_budget_fixtures else \
+                           'PASS_COMPLETE_INSTALLED_DOCTOR_LIFECYCLE' if a.only_doctor else \
                            'PASS_THREE_COMPLETE_INSTALLED_REPAIR_SELFTESTS'; return 0
     except BaseException as error:
         report['error'] = {'type': type(error).__name__, 'message': str(error)}; return 1
