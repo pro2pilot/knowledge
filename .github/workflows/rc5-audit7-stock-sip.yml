@@ -1,0 +1,49 @@
+name: RC5 audit7 stock SIP prerequisite and canonical production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit7-stock-sip.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit7-stock-sip-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stock-sip:
+    timeout-minutes: 13
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: macos-26-intel
+            arch: x64
+          - os: macos-26
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require enabled SIP before any installation and execute existing canonical gate
+        run: python qa/reliability/audit6/run_macos_production.py --source source/.knowledge --pins qa/reliability/audit6/SOURCE_PINS.json --out macos-stock-sip --arch '${{ matrix.arch }}' --case-set failures --require-stock-sip
+      - name: Preserve exact observation even when host prerequisite blocks execution
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit7-stock-sip-${{ matrix.arch }}
+          path: macos-stock-sip/public/**
+          if-no-files-found: error
+          retention-days: 3
