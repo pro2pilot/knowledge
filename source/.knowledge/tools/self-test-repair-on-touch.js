@@ -68,9 +68,15 @@ function assert(value, message) {
   if (!value) throw new Error(message);
 }
 
+const selftestStarted = process.hrtime.bigint();
+function phase(event, name) {
+  fs.writeSync(2, JSON.stringify({ schema_version: 'knowledge-selftest-phase.v1',
+    event, name, elapsed_ms: Number(process.hrtime.bigint() - selftestStarted) / 1e6 }) + '\n');
+}
 function check(name, fn) {
-  fn();
-  checks.push(name);
+  phase('begin', name);
+  try { fn(); checks.push(name); phase('pass', name); }
+  catch (error) { phase('fail', name); throw error; }
 }
 
 function verificationFailureDetails(error) {
@@ -482,8 +488,23 @@ function main() {
     const receiptContext = fixtureContext(receiptRoot);
     prepareSourceFixture(receiptRoot);
     const authFinding = findings[0];
+    // These cases mutate receipt metadata, not execution. Keep one physical
+    // verified baseline and clone its JSON instead of launching a complete
+    // native verification for every malformed field. The separate positive
+    // receipt test and every execution/producer scenario still run physically.
+    phase('begin', 'receipt validation baseline');
+    const receiptTemplate = receiptInput(receiptRoot, authFinding, scope);
+    const receiptTemplateBytes = JSON.stringify(receiptTemplate);
+    phase('pass', 'receipt validation baseline');
+    const validationReceiptInput = (overrides = {}) => {
+      const copy = JSON.parse(receiptTemplateBytes);
+      const baseline = validateReceipt(copy, { finding: authFinding, scope,
+        policyResolution: scopedPolicy, repoRoot: receiptRoot, stateRoot: receiptContext.stateRoot });
+      assert(baseline.ok, `receipt validation baseline is no longer valid: ${baseline.errors.join(',')}`);
+      return Object.assign(copy, JSON.parse(JSON.stringify(overrides)));
+    };
     check('17 reading source without relevant tests cannot create a valid receipt', () => {
-      const invalid = validateReceipt(receiptInput(receiptRoot, authFinding, scope, { tests_run: [] }), {
+      const invalid = validateReceipt(validationReceiptInput({ tests_run: [] }), {
         finding: authFinding,
         scope,
         policyResolution: scopedPolicy,
@@ -504,7 +525,7 @@ function main() {
       assert(goodReceipt.receipt_id.startsWith('KVR-') && goodReceipt.content_sha256.length === 64, 'valid receipt not content-addressed');
     });
     check('18a receipt must bind the exact trusted task scope hash', () => {
-      const raw = receiptInput(receiptRoot, authFinding, scope);
+      const raw = validationReceiptInput();
       delete raw.task_scope_hash;
       const invalid = validateReceipt(raw, {
         finding: authFinding,
@@ -519,7 +540,7 @@ function main() {
       );
     });
     check('18b canonical task-scope v1 fields are accepted without module-ID collapse', () => {
-      const raw = receiptInput(receiptRoot, authFinding, scope, {
+      const raw = validationReceiptInput({
         task_scope: {
           direct_modules: scope.direct_modules,
           direct_artifacts: scope.direct_artifacts,
@@ -537,7 +558,7 @@ function main() {
       assert(valid.ok, `canonical task-scope fields were rejected: ${valid.errors.join(',')}`);
     });
     check('18c receipt task and session IDs must match the trusted scope', () => {
-      const taskMismatch = validateReceipt(receiptInput(receiptRoot, authFinding, scope, {
+      const taskMismatch = validateReceipt(validationReceiptInput({
         task_id: 'another-task'
       }), {
         finding: authFinding,
@@ -546,7 +567,7 @@ function main() {
         repoRoot: receiptRoot,
         stateRoot: receiptContext.stateRoot
       });
-      const sessionMismatch = validateReceipt(receiptInput(receiptRoot, authFinding, scope, {
+      const sessionMismatch = validateReceipt(validationReceiptInput({
         session_id: 'another-session'
       }), {
         finding: authFinding,
@@ -562,7 +583,7 @@ function main() {
       );
     });
     check('18d receipt test envelope must exactly match its execution record', () => {
-      const raw = receiptInput(receiptRoot, authFinding, scope);
+      const raw = validationReceiptInput();
       raw.tests_run[0].command_argv = ['node', 'different-test.js'];
       const invalid = validateReceipt(raw, {
         finding: authFinding,
@@ -577,7 +598,7 @@ function main() {
       );
     });
     check('19 an incomplete resolution predicate cannot elevate trust', () => {
-      const invalid = validateReceipt(receiptInput(receiptRoot, authFinding, scope, { predicate_result: 'fail' }), {
+      const invalid = validateReceipt(validationReceiptInput({ predicate_result: 'fail' }), {
         finding: authFinding,
         scope,
         policyResolution: scopedPolicy,
@@ -695,11 +716,7 @@ function main() {
         selected.opportunities.some((item) => item.decision_reason === 'budget_exhausted_context'), 'context budget not enforced');
     });
     check('33a receipt wall time cannot underreport physical KVE duration', () => {
-      const raw = receiptInput(
-        receiptRoot,
-        authFinding,
-        scope
-      );
+      const raw = validationReceiptInput();
       raw.additional_work.wall_time_ms = 0;
       const validation = validateReceipt(raw, {
         finding: authFinding,
@@ -724,7 +741,7 @@ function main() {
       assert(summary.includes('Primary behavior completed successfully.') && summary.includes('additional-time limit'), 'primary result lost under budget exhaustion');
     });
     check('35 partial predicate never creates partial trust elevation', () => {
-      const invalid = validateReceipt(receiptInput(receiptRoot, authFinding, scope, {
+      const invalid = validateReceipt(validationReceiptInput({
         required_checks_completed: ['read_current_source']
       }), {
         finding: authFinding,
@@ -906,7 +923,7 @@ function main() {
     });
 
     check('51 secret-like values are rejected from receipts', () => {
-      const invalid = validateReceipt(receiptInput(receiptRoot, authFinding, scope, {
+      const invalid = validateReceipt(validationReceiptInput({
         claims_checked: [{
           claim_id: 'secret',
           claim: 'token=sk_abcdefghijklmnopqrstuvwxyz123456',
@@ -976,7 +993,7 @@ function main() {
         telemetry.token_values === 'actual_only' && !Object.keys(telemetry).some((key) => /bytes/i.test(key)), 'telemetry contract is not actual-only');
     });
     check('56 caller-asserted tests without a local execution record are rejected', () => {
-      const forged = receiptInput(receiptRoot, authFinding, scope, {
+      const forged = validationReceiptInput({
         tests_run: [{
           command: 'this command was never executed',
           status: 'pass',
@@ -994,7 +1011,7 @@ function main() {
       assert(!invalid.ok && invalid.errors.some((item) => item.startsWith('test_result_invalid:')), 'forged test claim was accepted');
     });
     check('57 claim evidence must bind to verified source or an execution record', () => {
-      const invalid = validateReceipt(receiptInput(receiptRoot, authFinding, scope, {
+      const invalid = validateReceipt(validationReceiptInput({
         claims_checked: [{
           claim_id: 'invented-evidence',
           claim: 'The claim is allegedly supported elsewhere.',
@@ -1011,7 +1028,7 @@ function main() {
       assert(!invalid.ok && invalid.errors.includes('claim_evidence_unbound:invented-evidence'), 'unbound claim evidence was accepted');
     });
     check('58 receipt privacy rejects email and absolute local path values', () => {
-      const invalid = validateReceipt(receiptInput(receiptRoot, authFinding, scope, {
+      const invalid = validateReceipt(validationReceiptInput({
         claims_checked: [{
           claim_id: 'private-value',
           claim: 'Verified by person@example.com using /srv/acme/private.txt.',
@@ -1028,7 +1045,7 @@ function main() {
       assert(!invalid.ok && invalid.errors.some((item) => item.startsWith('private_value:')), 'private receipt value was accepted');
     });
     check('59 every affected artifact must be present in the verified source snapshot', () => {
-      const incomplete = receiptInput(receiptRoot, authFinding, scope);
+      const incomplete = validationReceiptInput();
       incomplete.source_files_checked = incomplete.source_files_checked.filter((item) => item.path === authFinding.artifact);
       const invalid = validateReceipt(incomplete, {
         finding: authFinding,
@@ -1058,7 +1075,7 @@ function main() {
           affected_artifacts: ['src/linked-auth.js']
         });
         const raw = {
-          ...receiptInput(receiptRoot, authFinding, scope),
+          ...validationReceiptInput(),
           finding_id: linkedFinding.lifecycle_id,
           source_files_checked: [{ path: 'src/linked-auth.js', sha256: hash(outside) }]
         };

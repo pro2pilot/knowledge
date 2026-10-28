@@ -22,7 +22,14 @@ function write(file, value) {
   fs.writeFileSync(file, typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`);
 }
 const document = (relative, value) => write(path.join(knowledge, relative), value);
+const selftestStarted = process.hrtime.bigint();
+function phase(event, name) {
+  fs.writeSync(2, JSON.stringify({ schema_version: 'knowledge-selftest-phase.v1',
+    event, name, elapsed_ms: Number(process.hrtime.bigint() - selftestStarted) / 1e6 }) + '\n');
+}
 function run(tool, args = [], allowNonzero = false) {
+  const phaseName = tool + ' ' + (args[0] || '');
+  phase('begin', phaseName);
   const result = spawnSync(process.execPath, [path.join(systemRoot, 'tools', tool), ...args], {
     cwd: repo, encoding: 'utf8', timeout: 30000, maxBuffer: 12 * 1024 * 1024,
     env: { ...process.env, KNOWLEDGE_MODE: 'repo', KNOWLEDGE_TEAM_ROOT: '', KNOWLEDGE_WORKSPACE_ID: '',
@@ -31,6 +38,7 @@ function run(tool, args = [], allowNonzero = false) {
       KNOWLEDGE_STATE_ROOT: knowledge, KNOWLEDGE_AGENT_ID: 'doctor-repair-audit',
       KNOWLEDGE_CHANGED_FILES: '[]', KNOWLEDGE_FULL_SCAN: '0', KNOWLEDGE_DISCOVER_NEW: '0' }
   });
+  phase(result.error || result.signal || !allowNonzero && result.status !== 0 ? 'fail' : 'exit', phaseName);
   if (!allowNonzero) assert.equal(result.status, 0, result.stderr || result.stdout);
   assert(result.stdout, result.stderr || `${tool} returned no JSON`);
   return { exit_code: result.status, ...JSON.parse(result.stdout) };
@@ -41,8 +49,9 @@ function request(name, body) {
   return file;
 }
 function check(name, callback) {
-  callback();
-  checks.push(name);
+  phase('begin', name);
+  try { callback(); checks.push(name); phase('pass', name); }
+  catch (error) { phase('fail', name); throw error; }
 }
 
 let failure = null;
@@ -164,6 +173,19 @@ try {
   });
 } catch (error) {
   failure = error.message;
+  // Preserve the owned fixture's typed stage and timing before strict cleanup.
+  // Do not publish credentials, arbitrary ledger payloads or local paths.
+  try {
+    const status = require('./lib/verification-control').readStatus({ stateRoot: knowledge });
+    outcomes.failed_verification_state = { status: status.status,
+      current_stage: status.current_stage, waiting_reason: status.waiting_reason,
+      timing: status.timing, phase: status.attempt?.phase || null,
+      claimed: status.attempt?.claimed ?? null, stop_reason: status.attempt?.stop_reason || null,
+      cleanup_status: status.attempt?.cleanup?.status || null,
+      terminal_outcome: status.attempt?.terminal?.outcome || null };
+  } catch (observation) {
+    outcomes.failed_verification_state = { observation_error: observation.code || 'status_unavailable' };
+  }
 } finally {
   try { removeTempDirStrict(repo); }
   catch (error) { failure = `${failure || ''}\n${error.message}`; }

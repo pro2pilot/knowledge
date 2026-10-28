@@ -24,9 +24,15 @@ function text(file, body) {
   fs.writeFileSync(file, body);
 }
 function json(file, body) { text(file, `${JSON.stringify(body, null, 2)}\n`); }
+const selftestStarted = process.hrtime.bigint();
+function phase(event, name) {
+  fs.writeSync(2, JSON.stringify({ schema_version: 'knowledge-selftest-phase.v1',
+    event, name, elapsed_ms: Number(process.hrtime.bigint() - selftestStarted) / 1e6 }) + '\n');
+}
 function check(name, fn) {
-  try { fn(); checks.push({ name, status: 'pass' }); }
-  catch (error) { checks.push({ name, status: 'fail', error: error.message }); }
+  phase('begin', name);
+  try { fn(); checks.push({ name, status: 'pass' }); phase('pass', name); }
+  catch (error) { checks.push({ name, status: 'fail', error: error.message }); phase('fail', name); }
 }
 function envFor(repo) {
   return {
@@ -71,6 +77,7 @@ function runRestoreFixtureTool(repo, tool, args) {
     return [relative, { exists, sha256: exists ? sha(fs.readFileSync(file)) : null }];
   }));
   const before = artifacts(), started = new Date().toISOString(), start = process.hrtime.bigint();
+  phase('begin', 'restore tool: ' + tool);
   const run = spawnSync(argv[0], argv.slice(1), {
     cwd: repo, env: envFor(repo), encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024
   });
@@ -81,6 +88,7 @@ function runRestoreFixtureTool(repo, tool, args) {
     stdout: run.stdout || '', stderr: run.stderr || '',
     stdout_sha256: sha(run.stdout || ''), stderr_sha256: sha(run.stderr || ''),
     artifacts_before: before, artifacts_after: artifacts() });
+  phase(run.error || run.signal ? 'fail' : 'exit', 'restore tool: ' + tool);
   assert.equal(run.error, undefined, run.error?.message);
   assert.equal(run.signal, null);
   return run;

@@ -1,0 +1,90 @@
+name: RC5 audit7 complete Windows repair contracts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit7-windows-repair.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit7-windows-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: audit5-native-*
+          path: native-input
+          run-id: 40576756772
+          github-token: ${{ github.token }}
+      - name: Package exact pinned source and previously verified native pairs once
+        run: python3 qa/reliability/audit6/run_installed_contract.py pack --source source/.knowledge --pins qa/reliability/audit7/WINDOWS_SOURCE_PINS.json --native-input native-input --out packed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit7-windows-exact-zip
+          path: |
+            packed/public/**
+            packed/RESULT.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  targeted:
+    needs: pack
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-windows-exact-zip
+          path: downloaded-package
+      - name: Execute all checks of three complete public repair self-tests
+        run: python qa/reliability/audit7/windows_repair_qa.py --package downloaded-package/public --arch ${{ matrix.arch }} --out installed-contract
+      - name: Preserve every observed FAIL, skip, warning and exact artifact identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit7-windows-repair-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            installed-contract/RESULT.json
+            installed-contract/*.stdout.json
+            installed-contract/*.stderr.txt
+            installed-contract/team-failure-evidence/**
+          if-no-files-found: error
+          retention-days: 3
