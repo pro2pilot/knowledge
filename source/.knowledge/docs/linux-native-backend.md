@@ -78,13 +78,37 @@ The pinned outer authority uses a separate, explicit `trustedAuthority: true` se
 
 Before native helper calls, `nativeEnv()` removes `LD_*` dynamic-loader
 overrides; it does not launch a compiler or construct a compiler environment.
-The `--probe` subprocess has a 20-second timeout and must report both ready and
-closed with zero active processes and reaped namespace init. `job.close()` uses
+The capability `--probe-nested` subprocess has a 20-second caller timeout. Its
+original native 15-second deadline encloses both namespace levels and both
+drains. Ordered outer-ready, inner-ready, inner-closed and outer-closed receipts
+must bind the actual caller, keeper, boot, procfs and nested births; both closures
+require zero active processes and reaped namespace init. The fixed outer
+canary self-execs `/proc/self/exe --probe`, preserving the mapped helper inode
+and the trusted-authority capability profile. Its inner zero exit is required
+before the outer pidfd drain. No Node or project command runs in this probe.
+Legacy `--probe` remains a one-level component operation and cannot satisfy the
+exported capability check by itself. `job.close()` uses
 a 30-second default cleanup allowance unless the caller supplies another
 budget; it latches an unconfirmed result when the allowance expires. Other
 observer operations use their own explicit bounded timeouts. These are
 observation/cleanup budgets, not guarantees that kernel I/O or an uninterruptible
 task returns by a wall-clock deadline.
+
+## Capability depth and refusal
+
+The public `runVerificationTests` path first creates the ordinary command
+ownership namespace (level 1). Its owned supervisor then performs the nested
+prerequisite probe before `beginAttempt`: the probe's authority-profile level 2
+and zero-capability worker level 3 match the later watchdog authority and its
+command worker. A direct host capability call creates two new levels from the
+caller's current namespace; it does not qualify the complete three-level public
+Node pipeline. Actual work still performs its own admission and native cleanup.
+
+A host can permit a first user namespace while denying a nested creation. The
+legacy one-level probe cannot establish this prerequisite. The new capability
+check refuses an incomplete nested transcript, a changed birth, nonzero inner
+exit, or missing drain. It does not change AppArmor policy or retry with weaker
+containment. Unavailable capability is a refusal result, never release evidence.
 
 ## Cleanup proof
 

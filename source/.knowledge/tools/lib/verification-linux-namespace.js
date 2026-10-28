@@ -154,13 +154,36 @@ function containmentCapability() {
   if (process.platform !== 'linux') return { platform: process.platform, backend: null, status: 'unavailable', reason: 'linux_pid_namespace_requires_linux' };
   try {
     const helper = prepareHelper();
-    const result = spawnSync(helper.executable, ['--probe'], { encoding: 'utf8', timeout: 20000, maxBuffer: 65536, env: nativeEnv() });
+    const result = spawnSync(helper.executable, ['--probe-nested'], { encoding: 'utf8', timeout: 20000, maxBuffer: 65536, env: nativeEnv() });
     const rows = parseLines(result.stdout);
-    if (result.error || result.status !== 0 || !rows.some(x => x.status === 'ready') || !rows.some(x => x.status === 'closed' && x.active_processes === 0 && x.init_reaped === true)) {
-      return { platform: 'linux', backend: 'linux_pid_namespace', status: 'unavailable', reason: rows.find(x => x.code)?.code || result.error?.code || 'namespace_probe_failed' };
+    if (result.error || result.status !== 0 || !validNestedProbe(rows, helper, result.pid)) {
+      return { platform: 'linux', backend: 'linux_pid_namespace', status: 'unavailable', reason: rows.find(x => x.code)?.code || result.error?.code || 'namespace_nested_probe_unconfirmed' };
     }
-    return { platform: 'linux', backend: 'linux_pid_namespace', status: 'requires_runtime_setup', reason: 'namespace_init_pidfd_exit_required', helper_source_sha256: helper.source_sha256, helper_binary_sha256: helper.binary_sha256 };
+    return { platform: 'linux', backend: 'linux_pid_namespace', status: 'requires_runtime_setup', reason: 'nested_namespace_init_pidfd_exit_required', probe_depth: 2,
+      helper_source_sha256: helper.source_sha256, helper_binary_sha256: helper.binary_sha256 };
   } catch (e) { return { platform: 'linux', backend: 'linux_pid_namespace', status: 'unavailable', reason: e.code || 'namespace_probe_failed' }; }
+}
+function validNestedProbe(rows, helper, keeperPid) {
+  // Ordered native receipts only. One successful namespace probe cannot admit
+  // a backend whose actual authority needs to create a nested namespace.
+  if (rows.length !== 4 || rows.some(row => !row || row.protocol !== PROTOCOL) ||
+      rows.map(row => row.status).join(',') !== 'ready,ready,closed,closed') return false;
+  const [outer, inner, innerClose, outerClose] = rows;
+  if ([innerClose, outerClose].some(row => row.active_processes !== 0 || row.init_exit_observed !== true || row.init_reaped !== true) ||
+      Object.hasOwn(innerClose, 'probe_depth') || outerClose.probe_depth !== 2) return false;
+  const descriptor = value => ({ schema_version: SCHEMA, backend: 'linux_pid_namespace',
+    boot_id: value.boot_id, procfs_dev: value.procfs_dev, observer_pid_namespace: value.observer_pid_namespace,
+    namespace_identity_provider: value.namespace_identity_provider, capability_profile: value.capability_profile,
+    no_new_privileges: value.no_new_privileges, ...value.identities, helper });
+  if (!validDescriptor(descriptor(outer)) || !validDescriptor(descriptor(inner)) ||
+      outer.identities.controller.pid !== process.pid || outer.identities.keeper.pid !== keeperPid ||
+      outer.capability_profile !== (process.getuid() === 0 ? 'authority_setfcap' : 'authority_none') ||
+      inner.capability_profile !== 'worker_none' || inner.boot_id !== outer.boot_id || inner.procfs_dev !== outer.procfs_dev ||
+      !sameNamespaceIdentity(inner.observer_pid_namespace, outer.identities.init.pid_namespace)) return false;
+  const sameBirth = (left, right) => left.proc_pid === right.proc_pid && left.start_ticks === right.start_ticks;
+  // Fixed self-exec preserves the outer worker's birth as the inner keeper.
+  return sameBirth(inner.identities.keeper, outer.identities.worker) &&
+    sameBirth(inner.identities.controller, outer.identities.init);
 }
 function validNamespaceIdentity(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

@@ -497,7 +497,11 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
       long long final_time = now_ms();
       if (final_time < 0) { print_error(out, "native_clock_unavailable"); return 1; }
       if (final_time >= deadline) { print_error(out, "namespace_cleanup_timeout"); return 1; }
-      if (closing && !failed) { report_printf(out, "{\"protocol\":\"%s\",\"status\":\"closed\",\"active_processes\":0,\"init_exit_observed\":true,\"init_reaped\":true}\n", PROTOCOL); return report_failed ? 1 : 0; }
+      if (closing && !failed) {
+        report_printf(out, "{\"protocol\":\"%s\",\"status\":\"closed\",\"active_processes\":0,\"init_exit_observed\":true,\"init_reaped\":true%s}\n",
+          PROTOCOL, probe == 2 ? ",\"probe_depth\":2" : "");
+        return report_failed ? 1 : 0;
+      }
       print_error(out, "namespace_init_exited_unexpectedly"); return 1;
     }
     struct pollfd p[3] = {{a.events[0], POLLIN, 0}, {probe ? -1 : 4, POLLIN, 0}, {permitted && !started ? a.execerr[0] : -1, POLLIN, 0}};
@@ -514,7 +518,14 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
         if (write_map(host_init, "gid_map", map) || write_all(a.commands[1], "M", 1)) { print_error(out, "namespace_gid_mapping_failed"); failed = closing = 1; (void)pidfd_kill(initfd); continue; }
       } else if (e.kind == 'R') ready = 1;
       else if (e.kind == 'W') host_worker = e.pid;
-      else if (e.kind == 'X') { if (!closing) report_printf(out, "{\"protocol\":\"%s\",\"status\":\"worker_exit\",\"wait_status\":%d}\n", PROTOCOL, e.value); }
+      else if (e.kind == 'X') {
+        if (probe == 2 && !closing) {
+          /* The fixed inner --probe exits zero only after its own exact init
+           * final exit and wait. A signal/nonzero exit cannot qualify nesting. */
+          if (!WIFEXITED(e.value) || WEXITSTATUS(e.value) != 0) failed = 1;
+          closing = 1; (void)pidfd_kill(initfd);
+        } else if (!closing) report_printf(out, "{\"protocol\":\"%s\",\"status\":\"worker_exit\",\"wait_status\":%d}\n", PROTOCOL, e.value);
+      }
       else {
         if (e.kind == 'E') report_printf(out, "{\"protocol\":\"%s\",\"status\":\"unconfirmed\",\"code\":\"namespace_child_setup_failed\",\"errno\":%d,\"setup_stage\":%d}\n", PROTOCOL, e.value, e.pid);
         else print_error(out, "namespace_child_setup_failed");
@@ -531,11 +542,23 @@ static int run_keeper(char **command, int lifetime, int probe, int trusted_autho
       print_namespace(out, observer_dev, observer_ino);
       report_printf(out, ",\"namespace_identity_provider\":\"%s\",\"procfs_mode\":\"inherited_ancestor_view\",\"capability_profile\":\"%s\",\"no_new_privileges\":true,\"identities\":{\"controller\":", PID_NAMESPACE_LINK_PROVIDER, trusted_authority ? (getuid() == 0 ? "authority_setfcap" : "authority_none") : "worker_none");
       print_identity(out, &controller_identity); report_printf(out, ",\"keeper\":"); print_identity(out, &keeper_identity); report_printf(out, ",\"init\":"); print_identity(out, &init_identity); report_printf(out, ",\"worker\":"); print_identity(out, &worker_identity); report_printf(out, "}}\n");
-      if (probe) { closing = 1; (void)pidfd_kill(initfd); }
+      if (probe == 1) { closing = 1; (void)pidfd_kill(initfd); }
+      else if (probe == 2) {
+        /* Only this fixed native canary is auto-permitted. The outer original
+         * deadline encloses inner setup and both drains; it is never renewed. */
+        long long before_probe_permit = now_ms();
+        if (report_failed || before_probe_permit < 0 || before_probe_permit >= deadline || write_all(a.commands[1], "P", 1)) {
+          failed = closing = 1; (void)pidfd_kill(initfd);
+        } else permitted = 1;
+      }
     }
     if (p[2].revents & (POLLIN | POLLHUP)) {
       int exec_errno = 0; ssize_t n = read(a.execerr[0], &exec_errno, sizeof(exec_errno)); started = 1; close(a.execerr[0]);
-      if (n == 0 && !closing) report_printf(out, "{\"protocol\":\"%s\",\"status\":\"started\"}\n", PROTOCOL);
+      if (n == 0 && !closing) {
+        /* The inner probe now owns stdout. Suppress this optional outer event
+         * so its multi-write JSON cannot interleave the inner ready receipt. */
+        if (probe != 2) report_printf(out, "{\"protocol\":\"%s\",\"status\":\"started\"}\n", PROTOCOL);
+      }
       else if (!closing) { errno = exec_errno; print_error(out, "namespace_worker_exec_failed"); failed = closing = 1; (void)pidfd_kill(initfd); }
     }
     /* Keep consuming a caller's close budget even after report failure.
@@ -642,6 +665,12 @@ int main(int argc, char **argv) {
     close(parentfd); argc -= 2; argv += 2;
   }
   if (argc == 2 && !strcmp(argv[1], "--probe")) { namespace_link_provider = 1; return run_keeper(NULL, 15000, 1, 0); }
+  if (argc == 2 && !strcmp(argv[1], "--probe-nested")) {
+    /* Self-exec names the already mapped helper inode, not an updateable path.
+     * This fixed native prerequisite probe never runs Node or project code. */
+    char *nested[] = {"/proc/self/exe", "--probe", NULL};
+    namespace_link_provider = 1; return run_keeper(nested, 15000, 2, 1);
+  }
   if (argc == 2 && (!strcmp(argv[1], "--identity") || !strcmp(argv[1], "--identity-link"))) {
     namespace_link_provider = !strcmp(argv[1], "--identity-link");
     if (setup_observer()) { print_error(1, "native_observer_unavailable"); return 1; }

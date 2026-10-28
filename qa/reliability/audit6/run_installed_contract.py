@@ -182,7 +182,10 @@ def extract(args,out,report):
 
 def installed(args,out,report):
     targeted=args.mode=='targeted'
-    deadline=time.monotonic()+(330 if targeted else 660)
+    final_windows=args.mode=='final_windows'
+    need(not final_windows or sys.platform=='win32','final_windows_requires_windows')
+    cohort_cap=1200 if final_windows else 330 if targeted else 660
+    deadline=time.monotonic()+cohort_cap
     extracted,contents=extract(args,out,report);system=extracted/'.knowledge'
     contract=strict_json((system/'install-manifest.json').read_text())['release_contract']
     scripts=contract['public_self_test_paths']
@@ -281,8 +284,16 @@ def installed(args,out,report):
     report['public_selftests']=scripts;report['selftests']=[]
     report['planned_public_order']=ordered
     report['script_time_caps_s']={'default':90,'heavy':150,'tools/self-test-agent-task-workflow.js':240}
-    report['cohort_time_cap_s']=330 if targeted else 660
+    report['cohort_time_cap_s']=cohort_cap
     if targeted:report['script_time_caps_s']['tools/self-test-repair-on-touch.js']=180
+    if final_windows:
+        # These are harness caps for entire serial public self-test suites.
+        # Individual product work/cleanup deadlines and fixture assertions are
+        # unchanged. Keep all 54 script entries and the original source cohort.
+        report['script_time_caps_s'].update({'tools/self-test-repair-audit.js':240,
+            'tools/self-test-repair-on-touch.js':360})
+        report['retries']=0
+        report['scope']='Complete 54-entry public contract and pinned source regression cohort from one exact installed ZIP on Windows; existing named platform exclusions retained. Harness suite caps do not change product deadlines or qualify the separate production platform/release gates.'
     if report.get('cohort_halted'):report['remaining_not_run']=ordered
     for script in ([] if report.get('cohort_halted') else ordered):
         name=P(script).stem
@@ -292,8 +303,10 @@ def installed(args,out,report):
         args_extra=['--keep-temp'] if script=='tools/self-test-team-mode.js' else []
         if script=='tools/self-test-recording-blockers.js' and sys.platform in ('linux','win32'):
             args_extra=['--workflow-fixture']
+        cap=report['script_time_caps_s'].get(script,
+            report['script_time_caps_s']['heavy' if script in heavy else 'default'])
         row,value=execute(name,[node,str(system/script)]+args_extra,system,out,deadline,
-                          timeout=180 if targeted and script=='tools/self-test-repair-on-touch.js' else 240 if script=='tools/self-test-agent-task-workflow.js' else 150 if script in heavy else 90,fixture_tmp=fixture_tmp)
+                          timeout=cap,fixture_tmp=fixture_tmp)
         row['script']=script;admit_report(script,row,value);report['selftests'].append(row)
         if row['status'] in ('TIMEOUT_CLEANUP_UNCONFIRMED','OUTPUT_LIMIT_CLEANUP_UNCONFIRMED','NOT_RUN_BUDGET_EXHAUSTED'):
             report['cohort_halted']=True
@@ -311,7 +324,7 @@ def installed(args,out,report):
     report['status']='PASS_TARGETED_INSTALLED_REGRESSIONS' if targeted else 'PASS_INSTALLED_PUBLIC_CONTRACT'
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['pack','installed','targeted'])
+    ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['pack','installed','targeted','final_windows'])
     for name in ['out','source','pins','native-input','package','arch']:ap.add_argument('--'+name,required=name=='out')
     args=ap.parse_args();out=P(args.out).resolve();out.mkdir(parents=True,exist_ok=False)
     report={'schema_version':'knowledge-audit6-installed-contract.v1','status':'FAIL','mode':args.mode,

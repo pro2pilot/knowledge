@@ -1,0 +1,61 @@
+name: RC5 audit7 nested Linux native prerequisite and public lifecycle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit7-linux-preflight.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit7-linux-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-public:
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-windows-exact-zip
+          run-id: 40646147293
+          github-token: ${{ github.token }}
+          path: downloaded-package
+      - name: Build changed native pair, preserve old outcomes, test current public admission and cleanup
+        run: python3 -B qa/reliability/audit7/run_linux_preflight.py --package downloaded-package/public --out linux-preflight
+      - name: Preserve exact native build and all outcomes including denied-host scope
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit7-linux-preflight-${{ matrix.arch }}
+          path: |
+            linux-preflight/RESULT.json
+            linux-preflight/*.stdout.txt
+            linux-preflight/*.stderr.txt
+            linux-preflight/*-public.json
+            linux-preflight/public/**
+          if-no-files-found: error
+          retention-days: 3
