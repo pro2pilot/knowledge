@@ -38,19 +38,22 @@ def phases(path):
 def main():
     ap = argparse.ArgumentParser()
     for name in ('package', 'arch', 'out'): ap.add_argument('--'+name, required=True)
+    ap.add_argument('--only-doctor', action='store_true')
     a = ap.parse_args(); out = P(a.out).resolve(); out.mkdir(parents=True, exist_ok=False)
+    scripts = [(SCRIPTS[0][0], 120, SCRIPTS[0][2])] if a.only_doctor else SCRIPTS
     report = {'schema_version': 'knowledge-audit7-windows-repair.v1', 'status': 'FAIL',
               'commit': os.environ.get('GITHUB_SHA'), 'workflow_run': os.environ.get('GITHUB_RUN_ID'),
               'host': {'system': platform.system(), 'machine': platform.machine()}, 'steps': [],
               'release_qualified': False, 'retries': 0,
-              'scope': 'Complete three declared public repair self-tests, not all 54 public tests.',
-              'declared_scripts': [{'name': n, 'cap_s': cap, 'expected_checks': count} for n, cap, count in SCRIPTS]}
-    deadline = time.monotonic()+720
+              'scope': 'Complete Doctor lifecycle self-test; remaining public scripts not executed in this targeted run.'
+                       if a.only_doctor else 'Complete three declared public repair self-tests, not all 54 public tests.',
+              'declared_scripts': [{'name': n, 'cap_s': cap, 'expected_checks': count} for n, cap, count in scripts]}
+    deadline = time.monotonic()+(150 if a.only_doctor else 720)
     try:
         m.need(sys.platform == 'win32', 'windows_required')
         extracted, contents = m.extract(a, out, report); system = extracted/'.knowledge'
         pins = m.strict_json((P(a.package)/'SOURCE_PINS.json').read_text())
-        for name, _, _ in SCRIPTS:
+        for name, _, _ in scripts:
             relative = 'tools/'+name+'.js'
             m.need(m.sha(system/relative) == pins['files'][relative] == m.sha(m.ROOT/'source/.knowledge'/relative),
                    'installed_selftest_source_pin_mismatch:'+name)
@@ -61,7 +64,7 @@ def main():
         m.need(row['status'] == 'PASS_PROCESS' and value and value.get('status') == 'pass' and
                value.get('arch') == a.arch, 'native_runtime_not_qualified')
         report['selftests'] = []
-        for name, cap, expected in SCRIPTS:
+        for name, cap, expected in scripts:
             row, value = m.execute(name, [node, str(system/'tools'/(name+'.js'))], system, out,
                                    deadline, cap, fixture_tmp=temp)
             report['selftests'].append(row)
@@ -84,9 +87,10 @@ def main():
         changed = [n for n, v in contents.items() if m.sha(extracted/n) != v['sha256']]
         report['installed_byte_changes'] = changed
         m.need(not changed, 'installed_bytes_changed')
-        m.need(len(report['selftests']) == len(SCRIPTS) and
+        m.need(len(report['selftests']) == len(scripts) and
                all(r['status'] == 'PASS_SELFTEST' for r in report['selftests']), 'repair_contract_incomplete')
-        report['status'] = 'PASS_THREE_COMPLETE_INSTALLED_REPAIR_SELFTESTS'; return 0
+        report['status'] = 'PASS_COMPLETE_INSTALLED_DOCTOR_LIFECYCLE' if a.only_doctor else \
+                           'PASS_THREE_COMPLETE_INSTALLED_REPAIR_SELFTESTS'; return 0
     except BaseException as error:
         report['error'] = {'type': type(error).__name__, 'message': str(error)}; return 1
     finally:

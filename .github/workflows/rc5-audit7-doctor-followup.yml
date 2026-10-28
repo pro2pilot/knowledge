@@ -1,0 +1,95 @@
+name: RC5 audit7 bounded Doctor fixture follow-up
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit7-doctor-followup.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit7-doctor-followup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-windows-exact-zip
+          path: base-package
+          run-id: 40646147293
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: audit7-linux-preflight-*
+          path: linux-input
+          run-id: 40647532088
+          github-token: ${{ github.token }}
+      - name: Package exact final source and ten source-bound native pairs
+        run: python3 qa/reliability/audit7/repack_exact.py --source source/.knowledge --pins qa/reliability/audit7/SOURCE_PINS.json --base-package base-package/public --linux-input linux-input --linux-commit cf661b42564a0a2507aa13d3dcbf2cdbc052d61c --linux-run 40647532088 --out packed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit7-doctor-exact-zip
+          path: |
+            packed/public/**
+            packed/RESULT.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  targeted:
+    needs: pack
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-doctor-exact-zip
+          path: downloaded-package
+      - name: Verify corrected happy-path Doctor fixture from exact new ZIP
+        run: python qa/reliability/audit7/windows_repair_qa.py --only-doctor --package downloaded-package/public --arch ${{ matrix.arch }} --out installed-contract
+      - name: Preserve exact result and all observed failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit7-doctor-followup-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            installed-contract/RESULT.json
+            installed-contract/*.stdout.json
+            installed-contract/*.stderr.txt
+          if-no-files-found: error
+          retention-days: 3

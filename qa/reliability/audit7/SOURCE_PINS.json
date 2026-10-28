@@ -624,7 +624,7 @@
     "tools/self-test-agent-task-workflow.js": "331997ecb8ef7f0e15e56b36b0c8a343ace527313333c8758bc7665335b3968f",
     "tools/self-test-dedicated-verification.js": "111442425a64533e717649aac910179ebe551801024093c29f3dc42e65d18cb9",
     "tools/self-test-doctor-audit.js": "a33e92cc7229320500d5dc83a8231444f72345ae9199949277a4f587a347c4b9",
-    "tools/self-test-doctor-repair-lifecycle.js": "a19b442ac46e60fc8a517136ec8bd8d5d245a48cc7f651be34dc73e5a2d75aed",
+    "tools/self-test-doctor-repair-lifecycle.js": "32d2f57afba6c272fb119dd73cba53a32b4fe561b8f8e98020462094b95ade4b",
     "tools/self-test-evaluation-metrics.js": "d99a22a48904872617ee9d9afc7fd013535988a3ecee82af56621d2dfe1e2eff",
     "tools/self-test-export-privacy.js": "9f5f94d099d1d77cefbf57b3168f02372026088d988853de6b1c7e7385f32412",
     "tools/self-test-extension-state-safety.js": "f244f49e4978e0256d67b953738913c04ce1307abd358288ea2dbfdcb410b733",

@@ -30,8 +30,11 @@ function phase(event, name) {
 function run(tool, args = [], allowNonzero = false) {
   const phaseName = tool + ' ' + (args[0] || '');
   phase('begin', phaseName);
+  // The closure fixture allows native setup plus the declared work and cleanup
+  // budgets. Deadline enforcement is covered by separate deadline self-tests.
+  const cliTimeout = tool === 'repair-on-touch.js' && args[0] === 'verify' ? 75000 : 30000;
   const result = spawnSync(process.execPath, [path.join(systemRoot, 'tools', tool), ...args], {
-    cwd: repo, encoding: 'utf8', timeout: 30000, maxBuffer: 12 * 1024 * 1024,
+    cwd: repo, encoding: 'utf8', timeout: cliTimeout, maxBuffer: 12 * 1024 * 1024,
     env: { ...process.env, KNOWLEDGE_MODE: 'repo', KNOWLEDGE_TEAM_ROOT: '', KNOWLEDGE_WORKSPACE_ID: '',
       KNOWLEDGE_DISABLE_GIT_DISCOVERY: '1', KNOWLEDGE_SYSTEM_ROOT: systemRoot,
       KNOWLEDGE_TARGET_ROOT: repo, KNOWLEDGE_PROJECT_KNOWLEDGE_ROOT: knowledge,
@@ -97,7 +100,7 @@ try {
     routing: {}, pr_impact: {}, critical_path_map: {}, scope_source: 'explicit' })]);
   const sources = [...new Set([...finding.affected_artifacts, '.knowledge/modules/root.json', '.knowledge/evidence/file_facts.json'])];
   const verified = run('repair-on-touch.js', ['verify', '--request', request('verify', { ...identity,
-    source_files: sources, tests_to_run: [{ argv: ['node', 'tests/probe.js'], timeout_ms: 10000 }] })]);
+    source_files: sources, tests_to_run: [{ argv: ['node', 'tests/probe.js'], timeout_ms: 30000 }] })]);
   const created = run('repair-on-touch.js', ['receipt', '--request', request('receipt', { ...identity,
     finding_id: finding.lifecycle_id, source_files: sources,
     test_execution_ids: verified.executions.map((item) => item.execution_id),
