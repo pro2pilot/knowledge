@@ -76,7 +76,7 @@ jobs:
         id: public
         continue-on-error: true
         run: |
-          node qa/reliability/audit8/linux/public_production.cjs --source source/.knowledge --output evidence/public-production.json --cohort-seconds 600 > evidence/public.stdout.txt 2> evidence/public.stderr.txt
+          node qa/reliability/audit8/linux/public_production.cjs --source source/.knowledge --output evidence/public-production.json --cohort-seconds 600 --include-controller-crash > evidence/public.stdout.txt 2> evidence/public.stderr.txt
       - name: Physical native production entry and faults
         id: physical
         continue-on-error: true

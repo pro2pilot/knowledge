@@ -34,9 +34,10 @@ if (process.argv[2] === '--invoke') {
 async function main() {
   assert.equal(process.platform,'linux'); assert.notEqual(process.getuid(),0,'Public caller must be an ordinary UID');
   const args = {};
-  for (let i=2;i<process.argv.length;i+=2) {
+  for (let i=2;i<process.argv.length;i++) {
+    if(process.argv[i]==='--include-controller-crash'){args['include-controller-crash']=true;continue;}
     assert.ok(['--source','--output','--work-root','--cohort-seconds'].includes(process.argv[i]) && process.argv[i+1], 'Unknown or incomplete argument');
-    args[process.argv[i].slice(2)] = process.argv[i+1];
+    args[process.argv[i].slice(2)] = process.argv[++i];
   }
   const runtime = path.resolve(args.source || path.resolve(__dirname,'../../../../source/.knowledge'));
   const output = path.resolve(args.output || 'evidence/public-production.json');
@@ -108,13 +109,75 @@ async function main() {
       cleanup_started_ns:result.cleanup_started_ns,cleanup_deadline_ns:result.cleanup_deadline_ns,observed_ns:result.observed_ns });
     return result;
   }
-  async function invoke(name, body, { paired=false, workMs=30000, cancel=false, expected='pass' }={}) {
+  function persistControl(name,row,attempt) {
+    const bytes=readStableFile(state,path.join(state,'maintenance/verification-control/active.json'),{maxBytes:2*1024*1024});
+    const physical=JSON.parse(bytes),{owner_token_sha256,root_identity,...view}=physical;
+    assert.match(owner_token_sha256,/^[a-f0-9]{64}$/);assert.ok(root_identity);
+    assert.equal(finalization.digest(view),finalization.digest(attempt));
+    const inspect=value=>{
+      if(!value||typeof value!=='object')return;
+      for(const [key,child] of Object.entries(value)){
+        assert.ok(!/^(?:token|owner_token|private_key|signing_key)$/i.test(key),'Never export private capabilities');inspect(child);
+      }
+    };inspect(physical);
+    const filename=name+'.control.json';fs.writeFileSync(path.join(evidence,filename),bytes);
+    row.raw_control=filename;row.control_physical_sha256=sha(bytes);
+    fs.writeFileSync(path.join(evidence,name+'.attempt.json'),JSON.stringify(attempt,null,2)+'\n');
+  }
+  async function observeControllerCrash(name,attempt,callerPid) {
+    const descriptor=attempt.containment.descriptor,capability=descriptor.capability,opened=descriptor.opened;
+    const observerFile=path.join(__dirname,'observe_parent_crash.py'),observerOutput=path.join(evidence,name+'.observer.json');
+    const maximum=BigInt(opened.work_deadline_ns)+BigInt(opened.cleanup_budget_ms)*1000000n;
+    const originalEnd=maximum<cohortEnd?maximum:cohortEnd;
+    assert.ok(originalEnd>mono(),'No crash observer admission after original endpoint');
+    const helper=spawn('python3',[observerFile,'--output',observerOutput],{env,stdio:['pipe','pipe','pipe']});
+    let stdout='',stderr='',buffer='',closed=false,exitCode,exitSignal,helperError,readyResolve,readyReject;
+    const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});
+    const done=new Promise(resolve=>helper.once('close',(code,signal)=>{closed=true;exitCode=code;exitSignal=signal;
+      readyReject(fail('qa_crash_observer_early_exit',{message:stderr.slice(-4096)}));resolve();}));
+    helper.on('error',error=>{helperError=error;readyReject(error);});
+    helper.stdin.on('error',error=>{helperError=error;readyReject(error);});
+    helper.stderr.on('data',part=>{stderr+=part.toString();if(stderr.length>1024*1024){helperError=fail('qa_crash_observer_output_limit');helper.kill('SIGKILL');}});
+    helper.stdout.on('data',part=>{
+      stdout+=part.toString();buffer+=part.toString();
+      if(stdout.length>1024*1024){helperError=fail('qa_crash_observer_output_limit');helper.kill('SIGKILL');return;}
+      for(;;){const newline=buffer.indexOf('\n');if(newline<0)break;const line=buffer.slice(0,newline);buffer=buffer.slice(newline+1);
+        try{const value=JSON.parse(line);if(value.status==='READY_WITH_RETAINED_PIDFDS')readyResolve(value);}catch{}}
+    });
+    const limit=Math.max(1,Math.min(25000,Number(originalEnd-mono())/1e6));
+    let deadlineReject;const timedOut=new Promise((_,reject)=>{deadlineReject=reject;});timedOut.catch(()=>{});
+    const watchdog=setTimeout(()=>{helperError=fail('qa_crash_observer_timeout');readyReject(helperError);
+      deadlineReject(helperError);helper.kill('SIGKILL');},limit);
+    try {
+      helper.stdin.write(JSON.stringify({controller_pid:capability.controller_pid,controller_birth_ticks:capability.controller_birth_ticks,
+        caller_pid:callerPid,client_pid:capability.client_pid,keeper_pid:opened.keeper_pid,init_pid:opened.init_pid,
+        allocation_sequence:opened.allocation_sequence,worker_uid:opened.worker_uid,cleanup_budget_ms:opened.cleanup_budget_ms,
+        original_max_end_ns:String(originalEnd)})+'\n');
+      await Promise.race([ready,timedOut]);helper.stdin.end('KILL\n');await Promise.race([done,timedOut]);
+      assert.equal(helperError,undefined,helperError?.message);assert.equal(exitCode,0,stderr);assert.equal(exitSignal,null);
+      const value=JSON.parse(fs.readFileSync(observerOutput));
+      assert.equal(value.status,'PASS_RETAINED_PIDFD_CRASH_OBSERVATION');assert.equal(value.actual_worker_observed,true);
+      assert.equal(value.kill_sent_through_retained_pidfd,true);
+      for(const key of ['native_terminal_proof','root_reaping_observed','cgroup_empty_observed'])assert.equal(value[key],false);
+      assert.ok(value.identities.some(row=>row.role==='actual_private_worker'&&row.uid===opened.worker_uid));
+      assert.ok(value.identities.some(row=>row.role==='storage_child'));
+      assert.ok(value.identities.every(row=>row.pidfd_exit_observed===true&&BigInt(row.observed_ns)<BigInt(value.original_cleanup_endpoint_ns)));
+      return {observation:value,raw_observer:path.basename(observerOutput),observer_sha256:sha(fs.readFileSync(observerOutput)),
+        observer_script_sha256:sha(fs.readFileSync(observerFile))};
+    } finally {
+      clearTimeout(watchdog);if(!closed)helper.kill('SIGKILL');
+      if(!closed){let timer;try{await Promise.race([done,new Promise(resolve=>{timer=setTimeout(resolve,2000);})]);}finally{clearTimeout(timer);}}
+      if(!closed){helper.unref();for(const stream of helper.stdio)stream?.destroy?.();}
+      fs.writeFileSync(path.join(evidence,name+'.observer.stdout.txt'),stdout);fs.writeFileSync(path.join(evidence,name+'.observer.stderr.txt'),stderr);
+    }
+  }
+  async function invoke(name, body, { paired=false, workMs=30000, cancel=false, crash=false, expected='pass' }={}) {
     fs.writeFileSync(path.join(repo,'probe.js'),body);
     const q = request(name,workMs,paired), before = mono();
     assert.ok(cohortEnd-before > BigInt(workMs+17000)*1000000n, 'Not enough original cohort budget to admit another case');
     const row = { name, status:'FAIL', expected, request_sha256:finalization.digest(q), work_budget_ms:workMs,
       cleanup_budget_ms:15000, creator_owned_caller_exit:false, output_eof:false };
-    report.cases.push(row); save();
+    if(crash)report.controller_crash=row;else report.cases.push(row);save();
     const child = spawn(process.execPath,[__filename,'--invoke',runtime],{ env,stdio:['pipe','pipe','pipe'] });
     let stdout=Buffer.alloc(0),stderr=Buffer.alloc(0),exited=false,closed=false,exitCode,signal,transportError=null,externalTimeout=false;
     child.stdout.on('data',part=>{stdout=Buffer.concat([stdout,part]);if(stdout.length>2*1024*1024){transportError=fail('qa_output_limit');child.kill('SIGKILL');}});
@@ -125,9 +188,9 @@ async function main() {
     child.stdin.on('error',error=>{transportError ||= error;}); child.stdin.end(JSON.stringify(q));
     const externalMs=Math.min(workMs+17000,Number(cohortEnd-mono())/1e6);
     const watchdog=setTimeout(()=>{externalTimeout=true;child.kill('SIGKILL');},externalMs);
-    let cancellation=null;
+    let cancellation=null,crashObservation=null;
     try {
-      if(cancel) {
+      if(cancel||crash) {
         const targetEnd=mono()+12000000000n;let observed;
         while(!closed && mono()<targetEnd) {
           observed=control.readStatus(context).attempt;
@@ -140,8 +203,11 @@ async function main() {
         // Allow the fixed importer/authority to admit the deliberately silent
         // command; the returned native terminal must independently count it.
         await delay(2000);
-        const answer=control.requestCancel(context,{attempt_id:observed.attempt_id,generation:observed.generation,reason_code:'user_requested'});
-        cancellation={attempt_id:observed.attempt_id,generation:observed.generation,result:answer};
+        if(crash)crashObservation=await observeControllerCrash(name,observed,child.pid);
+        else {
+          const answer=control.requestCancel(context,{attempt_id:observed.attempt_id,generation:observed.generation,reason_code:'user_requested'});
+          cancellation={attempt_id:observed.attempt_id,generation:observed.generation,result:answer};
+        }
       }
       let closeTimer;
       try { await Promise.race([complete,new Promise((_,reject)=>{
@@ -152,6 +218,18 @@ async function main() {
       const value=JSON.parse(stdout.toString('utf8'));assert.equal(value.schema_version,SCHEMA);assert.equal(value.uid,process.getuid());
       const attempt=control.readStatus(context).attempt;
       assert.ok(attempt && attempt.generation!==priorGeneration,JSON.stringify({public_result:value,attempt}));
+      if(crash) {
+        assert.equal(value.status,'threw');assert.equal(value.acceptances,undefined);assert.equal(value.records,undefined);
+        assert.equal(value.error.code,'verification_linux_transport_failed');assert.equal(value.error.recovery_required,true);
+        assert.equal(value.error.teardown.status,'unconfirmed');assert.equal(attempt.claimed,true);assert.equal(attempt.terminal,null);
+        assert.notEqual(attempt.cleanup.status,'confirmed');
+        assert.throws(()=>control.assertResourceAvailable(context),{code:'verification_recovery_required'});
+        row.attempt_id=attempt.attempt_id;row.generation=attempt.generation;row.error=value.error;
+        Object.assign(row,crashObservation,{no_acceptance_released:true,project_claim_fenced:true,
+          original_native_terminal_proof:'NOT_AVAILABLE_AFTER_CONTROLLER_DEATH',
+          status:'PASS_PUBLIC_CRASH_FENCE_AND_RETAINED_HANDLES',creator_owned_caller_exit:exited,output_eof:closed});
+        persistControl(name,row,attempt);return;
+      }
       assert.equal(attempt.claimed,false,JSON.stringify(attempt));
       assert.equal(attempt.cleanup.status,'confirmed'); const terminal=terminalFrom(attempt);
       assert.ok(terminal.commands>=1,'The native service must have admitted actual command work');
@@ -201,23 +279,9 @@ async function main() {
         assert.equal(nativeClient?.exit_observed,true);assert.equal(nativeClient?.close_observed,true);
         row.error=value.error;row.no_acceptance_released=true;
       }
-      const controlBytes=readStableFile(state,path.join(state,'maintenance/verification-control/active.json'),{maxBytes:2*1024*1024});
-      const physicalControl=JSON.parse(controlBytes);
-      const {owner_token_sha256,root_identity,...publicControl}=physicalControl;
-      assert.match(owner_token_sha256,/^[a-f0-9]{64}$/);assert.ok(root_identity);
-      assert.equal(finalization.digest(publicControl),finalization.digest(attempt));
-      const inspect=value=>{
-        if(!value||typeof value!=='object')return;
-        for(const [key,child] of Object.entries(value)){
-          assert.ok(!/^(?:token|owner_token|private_key|signing_key)$/i.test(key),'Never export private capabilities');
-          inspect(child);
-        }
-      };inspect(physicalControl);
-      const controlFilename=name+'.control.json';fs.writeFileSync(path.join(evidence,controlFilename),controlBytes);
-      row.raw_control=controlFilename;row.control_physical_sha256=sha(controlBytes);
+      persistControl(name,row,attempt);
       priorGeneration=attempt.generation;row.status='PASS';row.creator_owned_caller_exit=exited;row.output_eof=closed;
-      fs.writeFileSync(path.join(evidence,name+'.attempt.json'),JSON.stringify(attempt,null,2)+'\n');
-    } catch(error) { row.error=boundedError(error);throw error; }
+    } catch(error) { row.status='FAIL';row.error=boundedError(error);throw error; }
     finally {
       clearTimeout(watchdog);if(!exited)child.kill('SIGKILL');
       if(!closed) {
@@ -233,7 +297,7 @@ async function main() {
       row.elapsed_ms=ms(before);row.stdout_sha256=sha(stdout);row.stderr_sha256=sha(stderr);save();
     }
   }
-  const positive="const fs=require('fs');let source=false,state=false;try{fs.writeFileSync('/source/probe.js','forbidden');}catch(e){source=['EROFS','EACCES','EPERM'].includes(e.code);}try{fs.writeFileSync('/state/forbidden','no');}catch(e){state=['EROFS','EACCES','EPERM'].includes(e.code);}if(!source||!state)throw Error('private UID isolation failed');process.stdout.write(JSON.stringify({uid:process.getuid(),euid:process.geteuid(),source_write_denied:source,state_write_denied:state})+'\\n');\n";
+  const positive="const fs=require('fs');let source=false,state=false;try{fs.writeFileSync('/source/probe.js','forbidden');}catch(e){source=['EROFS','EACCES','EPERM'].includes(e.code);}try{fs.writeFileSync('/state/forbidden','no');}catch(e){state=['EROFS','EACCES','EPERM'].includes(e.code);}if(!source||!state)throw Error('private UID isolation failed');const child=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:['ignore',1,2]});child.unref();process.stdout.write(JSON.stringify({uid:process.getuid(),euid:process.geteuid(),source_write_denied:source,state_write_denied:state})+'\\n');\n";
   try {
     await invoke('positive',positive,{paired:true});
     await invoke('nonzero','process.stderr.write("expected-seven\\n");process.exit(7);\n',{expected:'nonzero'});
@@ -242,6 +306,7 @@ async function main() {
     await invoke('repeat-after-timeout',positive);
     await invoke('cancel','setInterval(()=>{},1000);\n',{expected:'cancel',cancel:true});
     await invoke('repeat-after-cancel',positive);
+    if(args['include-controller-crash'])await invoke('controller-crash','setInterval(()=>{},1000);\n',{crash:true,expected:'controller_crash'});
     report.status='PASS_LINUX_PUBLIC_PRODUCTION';report.normal_and_recovery_cases=report.cases.length;
   } finally {
     const after=sourceInventory();report.source_changes=[...new Set([...Object.keys(initialSource),...Object.keys(after)])]

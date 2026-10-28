@@ -488,7 +488,7 @@ static void writer_guardian(int writerfd,int parentfd,int clientfd,int brokerfd,
   _exit(0);
 }
 static int register_writer(struct client *c,const struct kls_request *request) {
-  if(request->pid<2||request->pid>INT_MAX||c->writers_count>=MAX_WRITERS||pidfd_dead(c->parentfd)||pidfd_dead(c->peerfd)||
+  if(quarantine||request->pid<2||request->pid>INT_MAX||c->writers_count>=MAX_WRITERS||pidfd_dead(c->parentfd)||pidfd_dead(c->peerfd)||
      (c->opened&&(!c->terminal||attempt.client_slot!=(int)(c-clients))))return -1;
   for(unsigned ci=0;ci<MAX_CLIENTS;ci++)for(unsigned wi=0;wi<clients[ci].writers_count;wi++)if(!clients[ci].writers[wi].closed&&clients[ci].writers[wi].pid==(int)request->pid)return -1;
   int held=pidfd_open_exact((pid_t)request->pid);if(held<0)return -1;
@@ -514,6 +514,9 @@ static int register_writer(struct client *c,const struct kls_request *request) {
 static void observe_writers(struct client *c) {
   for(unsigned i=0;i<c->writers_count;i++){
     struct writer *w=&c->writers[i];if(w->closed||w->pidfd<0)continue;
+    /* Expired live custody fences new admission immediately. Physical exit
+     * arriving later cannot defer this fence or retroactively meet the bound. */
+    if(now_ns()>=w->deadline)quarantine=1;
     if(pidfd_dead(c->parentfd)||pidfd_dead(c->peerfd))pidfd_stop(w->pidfd);
     if(c->opened){if(!c->terminal)continue;if(attempt.result.cleanup_end<w->deadline)w->deadline=attempt.result.cleanup_end;}
     if(pidfd_dead(w->pidfd)&&w->guardianfd>=0&&pidfd_dead(w->guardianfd)){
@@ -737,6 +740,12 @@ static void deny_client(int slot,const char *reason) {
   char reply[512];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"denied\",\"status\":\"rejected\",\"reason\":\"%s\"}",reason);
   if(clients[slot].fd>=0)(void)json_packet(clients[slot].fd,reply,-1);close_client(slot);
 }
+static void fence_expired_writers(void) {
+  uint64_t now=now_ns();
+  for(unsigned ci=0;ci<MAX_CLIENTS;ci++)for(unsigned wi=0;wi<clients[ci].writers_count;wi++){
+    const struct writer *w=&clients[ci].writers[wi];if(!w->closed&&w->pidfd>=0&&now>=w->deadline)quarantine=1;
+  }
+}
 static void receive_request(int slot) {
   struct client *c=&clients[slot];struct kls_request request;struct ucred cred;int passed=-1;
   ssize_t bytes=packet_recv(c->fd,&request,sizeof(request),&passed,&cred,1);
@@ -744,6 +753,9 @@ static void receive_request(int slot) {
   if(bytes!=sizeof(request)||cred.pid!=c->pid||cred.uid!=(uid_t)c->uid||pidfd_dead(c->peerfd)||pidfd_dead(c->parentfd)||request_shape(&request)){
     if(passed>=0)close(passed);deny_client(slot,"invalid_request_or_origin");return;
   }
+  /* Client slot order must not admit a new request ahead of an already
+   * expired writer that the normal observation loop has not visited yet. */
+  fence_expired_writers();
   if(!c->ordinal){
     uint64_t now=now_ns();
     if(passed>=0||request.op!=KLS_HELLO||request.ordinal!=1||request.work_deadline_ns<=now||request.work_deadline_ns-now>KLS_MAX_WORK_MS*UINT64_C(1000000)){

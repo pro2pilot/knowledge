@@ -21,14 +21,14 @@ root; it does not require enabling unprivileged user namespaces.
 ```sh
 python3 .knowledge/tools/install-linux-native-service.py \
   --node "$(command -v node)" \
-  --out /tmp/knowledge-native-install
+  --out "$HOME/native-service-install"
 ```
 
 The output directory must be fresh. Review its `prepare.json`,
 `stage/installation.json`, `SHA256SUMS`, and `install-native.sh`, then install:
 
 ```sh
-sudo /bin/sh /tmp/knowledge-native-install/install-native.sh
+sudo /bin/sh "$HOME/native-service-install/install-native.sh"
 systemctl status knowledge-linux-native-v1.service
 ```
 

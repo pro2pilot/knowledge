@@ -125,9 +125,26 @@ class DisposableDevice:
         assert self.table_observation[:3] == ["0", str(IMAGE_BYTES // 512), "delay"]
         parameters = self.table_observation[3:]
         assert len(parameters) in (3, 6, 9) and all(parameters[i:i+3] == [own_device, "0", str(DELAY_MS)] for i in range(0, len(parameters), 3))
+        numbers = self.command(["/usr/sbin/dmsetup", "info", "--columns", "--noheadings", "--separator", ":",
+                                "--options", "major,minor", self.name]).stdout.decode().strip()
+        assert re.fullmatch(r"[0-9]+:[0-9]+", numbers)
+        mapped_major, mapped_minor = map(int, numbers.split(":"))
+        # --noudevsync deliberately does not establish a device-node barrier.
+        # Repair only this exact newly created mapping, then check its kernel
+        # device number rather than sleeping for an arbitrary udev delay.
+        self.command(["/usr/sbin/dmsetup", "mknodes", self.name])
         mapped = Path("/dev/mapper") / self.name
-        observed = mapped.stat()
-        assert stat.S_ISBLK(observed.st_mode)
+        ready_end = min(time.monotonic() + 2, self.deadline)
+        observed = None
+        while time.monotonic() < ready_end:
+            try:
+                observed = mapped.stat()
+                break
+            except FileNotFoundError:
+                time.sleep(0.01)
+        assert observed is not None and stat.S_ISBLK(observed.st_mode)
+        assert observed.st_rdev == os.makedev(mapped_major, mapped_minor)
+        assert Path(f"/sys/dev/block/{numbers}/dm/name").read_text().strip() == self.name
         assert self.command(["/usr/sbin/blockdev", "--getro", str(mapped)]).stdout.strip() == b"1"
         self.command(["/usr/bin/chown", f"{os.getuid()}:0", str(mapped)])
         self.command(["/usr/bin/chmod", "0600", str(mapped)])
@@ -153,8 +170,19 @@ class DisposableDevice:
                     receipt["mapping_removed"] = False
                 else:
                     assert self.table_observation is not None and current.stdout.decode().split() == self.table_observation
-                    result = self.command(["/usr/sbin/dmsetup", "remove", "--noudevsync", "--noudevrules", self.name], timeout=6, check=False)
-                    receipt["mapping_removed"] = result.returncode == 0
+                    retire_end = min(time.monotonic() + 25, self.deadline - 3)
+                    while time.monotonic() < retire_end:
+                        result = self.command(["/usr/sbin/dmsetup", "remove", "--retry", "--noudevsync", "--noudevrules", self.name], timeout=6, check=False)
+                        if result.returncode == 0:
+                            receipt["mapping_removed"] = True
+                            break
+                        # A udev probe can still hold this new delayed device.
+                        # Retry only its reported EBUSY; never force removal.
+                        if b"Device or resource busy" not in result.stderr:
+                            break
+                        current = self.command(["/usr/sbin/dmsetup", "table", self.name], check=False)
+                        assert current.returncode == 0 and current.stdout.decode().split() == self.table_observation
+                        time.sleep(0.05)
             if self.loop is not None and receipt["mapping_removed"]:
                 result = self.command(["/usr/sbin/losetup", "--detach", self.loop], check=False)
                 binding = self.command(["/usr/sbin/losetup", "--list", "--json", "--output", "NAME,BACK-FILE,RO", self.loop], check=False)
@@ -262,6 +290,7 @@ def run_registered_io(config, kind, filename, device, report, deadline):
         report["stop_sent_ns"] = str(stopped)
         bridge.send(4)
         observed_live_past_maximum = False
+        live_fence = None
         samples = []
         while not dead(writerfd) and time.monotonic() < deadline - 10:
             pump()
@@ -273,6 +302,23 @@ def run_registered_io(config, kind, filename, device, report, deadline):
             stamp = time.monotonic_ns()
             if stamp >= maximum:
                 observed_live_past_maximum = True
+                if live_fence is None:
+                    for _ in range(20):
+                        observer = Client(config)
+                        try:
+                            observer.send(1, 1)
+                            value, raw_cap = observer.receive(capability=True)
+                            assert value["event"] == "capability"
+                            if value["status"] == "quarantined" and not dead(writerfd):
+                                live_fence = {"value": value, **raw_cap,
+                                              "writer_pidfd_still_alive": True,
+                                              "observed_ns": str(time.monotonic_ns())}
+                                report["live_overdue_service_fence"] = live_fence
+                                break
+                        finally:
+                            observer.close()
+                        time.sleep(0.01)
+                    assert live_fence is not None, "overdue_live_writer_did_not_fence_new_admission"
             if len(samples) < 128 and (not samples or stamp - int(samples[-1]["observed_ns"]) >= 100_000_000):
                 samples.append({"state": current["state"], "observed_ns": str(stamp), "pidfd_dead": False})
             time.sleep(0.01)
@@ -295,6 +341,7 @@ def run_registered_io(config, kind, filename, device, report, deadline):
                                           "observed_ns": str(time.monotonic_ns()), "acceptance_authority": False}
         if observed_live_past_maximum:
             assert kind == "dm_delay" and report["d_state_observed"]
+            assert live_fence is not None
             pump()
             assert not any(row["value"].get("event") == "writer_closed" for row in records), "expired_native_deadline_relabelled_closed"
             value = None
