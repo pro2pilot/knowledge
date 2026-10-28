@@ -41,18 +41,21 @@ def main():
     selection = ap.add_mutually_exclusive_group()
     selection.add_argument('--only-doctor', action='store_true')
     selection.add_argument('--only-budget-fixtures', action='store_true')
+    selection.add_argument('--only-team', action='store_true')
     a = ap.parse_args(); out = P(a.out).resolve(); out.mkdir(parents=True, exist_ok=False)
     scripts = [(SCRIPTS[0][0], 120, SCRIPTS[0][2])] if a.only_doctor or a.only_budget_fixtures else SCRIPTS
     if a.only_budget_fixtures: scripts = scripts + [('self-test-lock-layout-safety', 30, 20)]
+    if a.only_team: scripts = [('self-test-team-mode', 360, 27)]
     report = {'schema_version': 'knowledge-audit7-windows-repair.v1', 'status': 'FAIL',
               'commit': os.environ.get('GITHUB_SHA'), 'workflow_run': os.environ.get('GITHUB_RUN_ID'),
               'host': {'system': platform.system(), 'machine': platform.machine()}, 'steps': [],
               'release_qualified': False, 'retries': 0,
-              'scope': 'Complete Doctor lifecycle and lock-layout self-tests; remaining public scripts not executed in this targeted run.'
+              'scope': 'Complete Team normal-flow self-test only; no replay of prior forced termination or claim about its cleanup.'
+                       if a.only_team else 'Complete Doctor lifecycle and lock-layout self-tests; remaining public scripts not executed in this targeted run.'
                        if a.only_budget_fixtures else 'Complete Doctor lifecycle self-test; remaining public scripts not executed in this targeted run.'
                        if a.only_doctor else 'Complete three declared public repair self-tests, not all 54 public tests.',
               'declared_scripts': [{'name': n, 'cap_s': cap, 'expected_checks': count} for n, cap, count in scripts]}
-    deadline = time.monotonic()+(180 if a.only_budget_fixtures else 150 if a.only_doctor else 720)
+    deadline = time.monotonic()+(390 if a.only_team else 180 if a.only_budget_fixtures else 150 if a.only_doctor else 720)
     try:
         m.need(sys.platform == 'win32', 'windows_required')
         extracted, contents = m.extract(a, out, report); system = extracted/'.knowledge'
@@ -69,11 +72,12 @@ def main():
                value.get('arch') == a.arch, 'native_runtime_not_qualified')
         report['selftests'] = []
         for name, cap, expected in scripts:
-            row, value = m.execute(name, [node, str(system/'tools'/(name+'.js'))], system, out,
+            argv = [node, str(system/'tools'/(name+'.js'))] + (['--keep-temp'] if a.only_team else [])
+            row, value = m.execute(name, argv, system, out,
                                    deadline, cap, fixture_tmp=temp)
             report['selftests'].append(row)
             m.admit_report('tools/'+name+'.js', row, value)
-            phase_required = name != 'self-test-lock-layout-safety'
+            phase_required = name not in ('self-test-lock-layout-safety', 'self-test-team-mode')
             observed = phases(out/(name+'.stderr.txt')) if phase_required and 'stderr_sha256' in row else None
             row['phase_diagnostics'] = observed
             if row['status'] == 'PASS_SELFTEST':
@@ -95,7 +99,8 @@ def main():
         m.need(not changed, 'installed_bytes_changed')
         m.need(len(report['selftests']) == len(scripts) and
                all(r['status'] == 'PASS_SELFTEST' for r in report['selftests']), 'repair_contract_incomplete')
-        report['status'] = 'PASS_COMPLETE_INSTALLED_BUDGET_FIXTURES' if a.only_budget_fixtures else \
+        report['status'] = 'PASS_TARGETED_TEAM_NORMAL_FLOW' if a.only_team else \
+                           'PASS_COMPLETE_INSTALLED_BUDGET_FIXTURES' if a.only_budget_fixtures else \
                            'PASS_COMPLETE_INSTALLED_DOCTOR_LIFECYCLE' if a.only_doctor else \
                            'PASS_THREE_COMPLETE_INSTALLED_REPAIR_SELFTESTS'; return 0
     except BaseException as error:
