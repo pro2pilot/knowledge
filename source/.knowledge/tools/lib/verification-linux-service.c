@@ -166,6 +166,9 @@ static int json_packet(int fd,const char *json,int passed) { size_t bytes=strlen
 static int sealed_input(int fd,uint32_t bytes) { struct stat s;int seals=F_SEAL_SEAL|F_SEAL_SHRINK|F_SEAL_GROW|F_SEAL_WRITE,actual=fd>=0?fcntl(fd,F_GET_SEALS):-1;return fd>=0&&bytes>0&&bytes<=KLS_MAX_INPUT&&fstat(fd,&s)==0&&S_ISREG(s.st_mode)&&s.st_nlink==0&&s.st_size==(off_t)bytes&&actual>=0&&(actual&seals)==seals; }
 
 struct work_args { int gate,keeperfd,input,report,result,cancel_read;uid_t authority,worker;uint64_t deadline;unsigned guards_count;int guards[MAX_WRITERS];char root[PATH_MAX],cgroup[PATH_MAX]; };
+static int send_work_progress(const struct work_args *a,const struct work_result *work) {
+  struct native_result report={.magic=INTERNAL_MAGIC,.kind=INTERNAL_WORK_RESULT,.work=*work};return packet_send(a->report,&report,sizeof(report),-1);
+}
 static int exact_reap(pid_t pid,int *status) { for(;;){pid_t n=waitpid(pid,status,0);if(n==pid)return 0;if(n<0&&errno==EINTR)continue;return -1;} }
 static int layout(const struct work_args *a) {
   char name[PATH_MAX],source[PATH_MAX];
@@ -274,10 +277,10 @@ static int execute_command(struct work_args *a,const struct kls_command *request
   pid_t init=clone(command_init,stack+STACK_BYTES,CLONE_NEWPID|CLONE_NEWNS|SIGCHLD,&args);
   if(init<0)return -1;close(out[1]);close(err[1]);close(status_pipe[1]);close(gate[0]);int held=pidfd_open_exact(init);
   if(held<0||now_ns()>=request->deadline_ns||now_ns()>=a->deadline||write_all(gate[1],"W",1)){close(gate[1]);return -1;}close(gate[1]);
+  result->commands++;if(send_work_progress(a,result))return -1;
   if(nonblock(out[0])||nonblock(err[0])||nonblock(status_pipe[0]))return -1;
   unsigned char *buffers[2]={malloc(KLS_MAX_STREAM),malloc(KLS_MAX_STREAM)};uint32_t sizes[2]={0,0};int fds[2]={out[0],err[0]},eof[2]={0,0},worker_status=0,got_worker=0,init_status=0,reaped=0;
   if(!buffers[0]||!buffers[1])return -1;
-  result->commands++;
   while(!(eof[0]&&eof[1]&&reaped&&got_worker)){
     if(now_ns()>=request->deadline_ns||now_ns()>=a->deadline){result->reason=3;pidfd_stop(held);return -1;}
     for(int i=0;i<2;i++)if(!eof[i]){unsigned char overflow;void *target=sizes[i]<KLS_MAX_STREAM?buffers[i]+sizes[i]:&overflow;size_t cap=sizes[i]<KLS_MAX_STREAM?KLS_MAX_STREAM-sizes[i]:1;ssize_t n=read(fds[i],target,cap);
@@ -321,7 +324,7 @@ static int authority_phase(struct work_args *a,struct work_result *result) {
       if(command.op!=KLS_AUTHORITY_READY||command.ordinal||command.flags||command.argc||command.cwd_len||command.body_len!=sizeof(observed))protocol_ok=0;
       else {memcpy(&observed,body,sizeof(observed));
         if(memcmp(observed.manifest_sha256,result->manifest,32)||memcmp(observed.directories_sha256,result->directory_hash,32)||observed.files!=result->files||observed.bytes!=result->source_bytes||observed.directories!=result->directories)protocol_ok=0;
-        else {ready=1;result->authority_readback=1;}
+        else {ready=1;result->authority_readback=1;if(send_work_progress(a,result))protocol_ok=0;}
       }
     } else if(command.op!=KLS_RUN||command.ordinal!=ordinal+1||ordinal>=KLS_MAX_COMMANDS||execute_command(a,&command,body,replies[1],result))protocol_ok=0;
     else ordinal++;
@@ -357,7 +360,7 @@ static int host_pid_from_pidfd(int held) {
 static int collect_work_reports(int report,int channel,struct native_result *result) {
   for(unsigned i=0;i<4;i++){
     struct native_result item;int passed=-1;ssize_t size=packet_recv(report,&item,sizeof(item),&passed,NULL,0);
-    if(size<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))return 0;if(!size)return 0;
+    if(size<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR||errno==ECONNRESET))return 0;if(!size)return 0;
     if(size!=sizeof(item)||item.magic!=INTERNAL_MAGIC){if(passed>=0)close(passed);return -1;}
     if(item.kind==INTERNAL_AUTHORITY&&passed>=0&&!result->work.authority_host_pid){
       pid_t parent;uid_t uid;uint64_t birth;int host=host_pid_from_pidfd(passed);
@@ -373,9 +376,9 @@ static int collect_work_reports(int report,int channel,struct native_result *res
   }
   return 0;
 }
-static void keeper_main(int channel,int ownerfd,int brokerfd,int input,int output,
+static void keeper_main(int channel,int ownerfd,int controllerfd,int brokerfd,int input,int output,
                         const struct work_args *configuration,uint64_t cleanup_ms) {
-  int keep[6+MAX_WRITERS]={channel,ownerfd,brokerfd,input,output,configuration->cancel_read};for(unsigned i=0;i<configuration->guards_count;i++)keep[6+i]=configuration->guards[i];if(close_except(keep,6+configuration->guards_count))_exit(143);
+  int keep[7+MAX_WRITERS]={channel,ownerfd,controllerfd,brokerfd,input,output,configuration->cancel_read};for(unsigned i=0;i<configuration->guards_count;i++)keep[7+i]=configuration->guards[i];if(close_except(keep,7+configuration->guards_count))_exit(143);
   int report[2],gate[2];if(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC|SOCK_NONBLOCK,0,report)||pipe2(gate,O_CLOEXEC))_exit(144);
   int self=pidfd_open_exact(getpid());if(self<0)_exit(145);
   char *stack=malloc(STACK_BYTES);if(!stack)_exit(146);
@@ -386,12 +389,12 @@ static void keeper_main(int channel,int ownerfd,int brokerfd,int input,int outpu
   struct native_result result={.magic=INTERNAL_MAGIC,.kind=INTERNAL_BIRTH,.init=init,.init_status=-1};
   if(packet_send(channel,&result,sizeof(result),held)){close(gate[1]);_exit(149);}
   int permitted=0;uint64_t setup_end=now_ns()+UINT64_C(5000000000);if(setup_end>args.deadline)setup_end=args.deadline;
-  while(now_ns()<setup_end&&!pidfd_dead(ownerfd)&&!pidfd_dead(brokerfd)&&!pidfd_dead(args.cancel_read)&&!cancelled){
+  while(now_ns()<setup_end&&!pidfd_dead(ownerfd)&&!pidfd_dead(controllerfd)&&!pidfd_dead(brokerfd)&&!pidfd_dead(args.cancel_read)&&!cancelled){
     struct pollfd p={channel,POLLIN,0};int polled=poll(&p,1,10);if(polled<0&&errno==EINTR)continue;if(polled<0||p.revents&(POLLHUP|POLLERR))break;
     if(p.revents&POLLIN){uint32_t message;int passed=-1;ssize_t n=packet_recv(channel,&message,sizeof(message),&passed,NULL,0);if(passed>=0)close(passed);if(n==sizeof(message)&&passed<0&&message==INTERNAL_PERMIT)permitted=1;break;}
   }
   if(cancelled||pidfd_dead(args.cancel_read))result.reason=1;
-  else if(pidfd_dead(ownerfd)||pidfd_dead(brokerfd))result.reason=2;
+  else if(pidfd_dead(ownerfd)||pidfd_dead(controllerfd)||pidfd_dead(brokerfd))result.reason=2;
   else if(now_ns()>=args.deadline)result.reason=3;
   else if(!permitted||now_ns()>=setup_end||write_all(gate[1],"G",1))result.reason=5;
   close(gate[1]);
@@ -400,7 +403,7 @@ static void keeper_main(int channel,int ownerfd,int brokerfd,int input,int outpu
     struct pollfd p={channel,POLLIN,0};int rc=poll(&p,1,10);if(rc<0&&errno==EINTR)continue;
     if(rc<0)result.reason=5;
     else if(cancelled||pidfd_dead(args.cancel_read))result.reason=1;
-    else if(pidfd_dead(ownerfd)||pidfd_dead(brokerfd)||p.revents&(POLLHUP|POLLERR))result.reason=2;
+    else if(pidfd_dead(ownerfd)||pidfd_dead(controllerfd)||pidfd_dead(brokerfd)||p.revents&(POLLHUP|POLLERR))result.reason=2;
     else if(now_ns()>=args.deadline)result.reason=3;
     else if(pidfd_dead(held))result.reason=4;
     else if(p.revents&POLLIN){uint32_t message;int passed=-1;ssize_t n=packet_recv(channel,&message,sizeof(message),&passed,NULL,0);if(passed>=0)close(passed);result.reason=n==sizeof(message)&&passed<0&&message==INTERNAL_STOP?1:5;}
@@ -531,7 +534,7 @@ static int start_attempt(int slot,int input) {
   memcpy(args.root,attempt.root,sizeof(args.root));memcpy(args.cgroup,attempt.cgroup,sizeof(args.cgroup));
   if(now_ns()>=attempt.work_deadline||pidfd_dead(c->peerfd)||pidfd_dead(c->parentfd))goto failed;
   pid_t keeper=fork();if(keeper<0)goto failed;
-  if(!keeper){close(channel[0]);close(output[0]);keeper_main(channel[1],c->peerfd,daemonfd,input,output[1],&args,attempt.cleanup_ms);_exit(153);}
+  if(!keeper){close(channel[0]);close(output[0]);keeper_main(channel[1],c->peerfd,c->parentfd,daemonfd,input,output[1],&args,attempt.cleanup_ms);_exit(153);}
   close(channel[1]);close(output[1]);attempt.keeper=keeper;attempt.keeperfd=pidfd_open_exact(keeper);attempt.channel=channel[0];
   attempt.resultfd=(int)syscall(SYS_memfd_create,"knowledge-native-result",MFD_CLOEXEC|MFD_ALLOW_SEALING|MFD_NOEXEC_SEAL);
   attempt.result.init=-1;attempt.resultpipe=output[0];
@@ -567,7 +570,11 @@ static void observe_attempt(void) {
   }
   for(unsigned i=0;i<4;i++){
     struct native_result value;int passed=-1;ssize_t n=packet_recv(a->channel,&value,sizeof(value),&passed,NULL,0);
-    if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))break;if(!n)break;
+    /* A keeper may publish FINAL and exit while a late STOP remains unread
+     * in the opposite direction. Unix seqpacket then reports ECONNRESET
+     * after draining that valid FINAL. This is transport EOF, never by itself
+     * a physical-exit proof or a reason to discard exact retained closure. */
+    if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR||errno==ECONNRESET))break;if(!n)break;
     if(n!=sizeof(value)||value.magic!=INTERNAL_MAGIC){if(passed>=0)close(passed);a->quarantined=quarantine=1;break;}
     if(value.kind==INTERNAL_BIRTH&&a->initfd<0&&passed>=0&&value.init>1){
       a->initfd=passed;a->result.init=value.init;
@@ -748,7 +755,7 @@ static void receive_request(int slot) {
       char reply[384];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"permitted\",\"status\":\"running\",\"ordinal\":%u}",request.ordinal);if(!ok)ok=json_packet(c->fd,reply,-1);break;
     }
     case KLS_STOP:{unsigned char byte=1;if(write(c->cancel_write,&byte,1)<0&&errno!=EAGAIN)ok=-1;
-      if(attempt.active&&!attempt.closed&&attempt.client_slot==slot){uint32_t stop=INTERNAL_STOP;if(packet_send(attempt.channel,&stop,sizeof(stop),-1)&&errno!=EAGAIN)ok=-1;}
+      if(attempt.active&&!attempt.closed&&attempt.client_slot==slot){uint32_t stop=INTERNAL_STOP;(void)packet_send(attempt.channel,&stop,sizeof(stop),-1);}
       char reply[256];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"stop_requested\",\"status\":\"stopping\",\"ordinal\":%u}",request.ordinal);if(json_packet(c->fd,reply,-1))ok=-1;break;}
     case KLS_OBSERVE:{observe_writers(c);char reply[512];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"observation\",\"status\":\"%s\",\"ordinal\":%u,\"writers_open\":%u,\"terminal\":%s,\"quarantined\":%s}",c->terminal?"terminal":c->opened?"running":"ready",request.ordinal,writers_open(c),truth(c->terminal),truth(quarantine));ok=json_packet(c->fd,reply,-1);break;}
     default:ok=-1;

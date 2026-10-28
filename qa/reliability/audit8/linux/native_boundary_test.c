@@ -56,6 +56,10 @@ int main(void) {
   int status;CHECK(waitpid(child,&status,0)==child&&WIFEXITED(status)&&WEXITSTATUS(status)==0);
   CHECK(packet_recv(pair[1],&byte,1,&passed,&cred,1)==1);CHECK(cred.pid==child&&cred.pid!=original.pid&&passed<0);
   close(pair[0]);close(pair[1]);close(source);
-  printf("{\"status\":\"PASS\",\"checks\":%u,\"scm_credentials_inherited_sender_distinguished\":true,\"extra_fds_rejected\":true,\"ancillary_truncation_rejected\":true,\"sealed_shared_offset_ignored\":true}\n",checks);
+  CHECK(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,pair)==0);
+  CHECK(packet_send(pair[1],"F",1,-1)==0);CHECK(packet_send(pair[0],"S",1,-1)==0);close(pair[1]);
+  CHECK(packet_recv(pair[0],&byte,1,&passed,NULL,0)==1&&byte=='F'&&passed<0);
+  ssize_t ending=packet_recv(pair[0],&byte,1,&passed,NULL,0);CHECK(ending==0||(ending<0&&errno==ECONNRESET));close(pair[0]);
+  printf("{\"status\":\"PASS\",\"checks\":%u,\"scm_credentials_inherited_sender_distinguished\":true,\"extra_fds_rejected\":true,\"ancillary_truncation_rejected\":true,\"sealed_shared_offset_ignored\":true,\"final_before_late_stop_eof_observed\":true}\n",checks);
   return 0;
 }

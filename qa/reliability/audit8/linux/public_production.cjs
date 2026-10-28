@@ -165,13 +165,19 @@ async function main() {
         assert.equal(admitted.execution_records.length,ids.length);
         const ack=value.acceptances[0], kvf=execution.readNativeRecord(state,ack.receipt_id.slice(4),'verification_finalizations');
         assert.ok(kvf);assert.equal(kvf.physical_sha256,ack.physical_sha256);service.validate(kvf.record);
+        const kvfBytes=fs.readFileSync(kvf.path);assert.equal(sha(kvfBytes),kvf.physical_sha256);
+        fs.writeFileSync(path.join(evidence,name+'.kvf.json'),kvfBytes);
         assert.equal(kvf.record.linux.terminal_reply.proof_sha256,terminal.proof_sha256);
         const printed=JSON.stringify({uid:terminal.worker_uid,euid:terminal.worker_uid,source_write_denied:true,state_write_denied:true})+'\n';
         assert.equal(value.records[0].record.stdout_sha256,sha(Buffer.from(printed)));
         assert.equal(value.records[0].record.stdout_bytes,Buffer.byteLength(printed));
-        for(const item of value.records) {
+        const savedExecutions=[];
+        for(const [index,item] of value.records.entries()) {
           const loaded=execution.readExecutionRecord(state,item.record.execution_id);assert.ok(loaded);
           assert.equal(finalization.digest(loaded.record),finalization.digest(item.record));
+          const bytes=fs.readFileSync(loaded.path), filename=name+'.kve-'+index+'.json';
+          assert.equal(sha(bytes),loaded.physical_sha256);fs.writeFileSync(path.join(evidence,filename),bytes);
+          savedExecutions.push({execution_id:item.record.execution_id,filename,physical_sha256:loaded.physical_sha256});
         }
         ownClosed(value.budget.storage_exit);ownClosed(value.budget.finalizer_exit);
         for(const key of ['exit_observed','close_observed','stdout_eof','stderr_eof'])assert.equal(value.budget.client_exit[key],true,key);
@@ -179,6 +185,7 @@ async function main() {
         if(priorAcceptance)assert.throws(()=>finalization.requireFinalizedExecutions(state,ids,[priorAcceptance]),{code:'verification_finalization_required'});
         priorAcceptance=ack;
         row.execution_ids=ids;row.finalization_receipt_id=ack.receipt_id;row.finalization_physical_sha256=kvf.physical_sha256;
+        row.raw_finalization=name+'.kvf.json';row.raw_executions=savedExecutions;
         row.acceptance_signature_verified=true;row.kve_kvf_physical_readback=true;row.older_acceptance_replay_rejected=report.cases.length>1;
       } else {
         assert.equal(value.status,'threw');assert.equal(value.acceptances,undefined);

@@ -87,10 +87,11 @@ function createClient({ config, nonce, workDeadline, cleanupMs, onEvent, onFailu
       waiter.check();
     });
   }
-  function send(op, body = null, pid = 0) {
+  function send(op, body = null, pid = 0, onFramed = null) {
     if (ended || exited || (lastError && op !== 4)) return Promise.reject(lastError || fail('verification_linux_client_exited'));
     const data = body === null ? Buffer.alloc(0) : Buffer.from(body);
     const requestOrdinal = ++ordinal;
+    onFramed?.(requestOrdinal);
     const bytes = Buffer.concat([frame(op, requestOrdinal, nonce, workDeadline, cleanupMs, data.length, pid), data]);
     return new Promise((resolve, rejectPromise) => child.stdin.write(bytes, error => error ? rejectPromise(error) : resolve(requestOrdinal)));
   }
@@ -100,8 +101,8 @@ function createClient({ config, nonce, workDeadline, cleanupMs, onEvent, onFailu
       return waitFor(() => events.find(event => event.kind === kind && predicate(event.value)), deadline);
     },
     async hello() { await send(1);return this.event('capability', workDeadline); },
-    async registerWriter(pid, deadline) {
-      const requestOrdinal = await send(2, null, pid);
+    async registerWriter(pid, deadline, onFramed = null) {
+      const requestOrdinal = await send(2, null, pid, onFramed);
       return this.event('writer_registered', deadline, value => value.pid === pid && value.ordinal === requestOrdinal);
     },
     async writerClosed(pid, deadline, registration) {

@@ -33,6 +33,15 @@ function within(promise, deadline) {
     input.then(value => { clearTimeout(timer);resolve(value); }, error => { clearTimeout(timer);reject(error); });
   });
 }
+function writerClosureValid(closed, registration, maximum, observedBefore) {
+  const value = closed?.value, source = registration?.value;
+  return value?.event === 'writer_closed' && value.status === 'closed' && source?.event === 'writer_registered' &&
+    value.pid === source.pid && value.birth_ticks === source.birth_ticks && value.registration_ordinal === source.ordinal &&
+    ['pidfd_exit_observed', 'guardian_reaped', 'writer_cgroup_empty', 'registration_removed', 'closed_in_budget'].every(key => value[key] === true) &&
+    /^[1-9]\d{0,19}$/.test(value.deadline_ns || '') && /^[1-9]\d{0,19}$/.test(value.observed_ns || '') &&
+    BigInt(value.observed_ns) < BigInt(value.deadline_ns) && BigInt(value.deadline_ns) <= maximum &&
+    BigInt(value.observed_ns) < observedBefore;
+}
 function guardInput(request, timeoutMs, started) {
   if (process.platform !== 'linux') throw failure('verification_linux_required');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > policyAPI.MAX_WORK_MS ||
@@ -187,7 +196,8 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
     // No operation is sent before the service acknowledges exact writer
     // custody and durable registration for this P birth and child PID.
     owned.add(value);
-    const registered = await client.registerWriter(value.child.pid, deadline());guard();
+    const registered = await client.registerWriter(value.child.pid, deadline(), ordinal => { value.registrationOrdinal = ordinal; });
+    value.registration = registered;guard();
     const r = registered.value;
     if (r.status !== 'registered' || r.pid !== value.child.pid || r.controller_pid !== process.pid ||
         r.controller_birth_ticks !== capability.controller_birth_ticks || r.registered_before_storage_permit !== true ||
@@ -198,12 +208,7 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   async function closeStore(value) {
     const observed = await value.finish(deadline());guard();
     const closed = await client.writerClosed(observed.pid, deadline(), value.registration);guard();
-    if (closed.value.status !== 'closed' || closed.value.pidfd_exit_observed !== true || closed.value.guardian_reaped !== true ||
-        closed.value.writer_cgroup_empty !== true || closed.value.registration_removed !== true || closed.value.closed_in_budget !== true ||
-        !/^[1-9]\d{0,19}$/.test(closed.value.deadline_ns || '') || !/^[1-9]\d{0,19}$/.test(closed.value.observed_ns || '') ||
-        BigInt(closed.value.observed_ns) >= BigInt(closed.value.deadline_ns) ||
-        BigInt(closed.value.deadline_ns) > (nativeCleanupEnd || maximumEnd) ||
-        closed.value.birth_ticks !== undefined && closed.value.birth_ticks !== value.registration.value.birth_ticks) throw failure('verification_linux_storage_cleanup_unconfirmed');
+    if (!writerClosureValid(closed, value.registration, nativeCleanupEnd || maximumEnd, deadline())) throw failure('verification_linux_storage_cleanup_unconfirmed');
     return { ...observed, native_registration: value.registration.value, native_closure: closed.value };
   }
   async function ensureCleanupEpoch() {
@@ -302,43 +307,90 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
     if (cleanupDeadline > maximumEnd) cleanupDeadline = maximumEnd;
     const children = [...owned];
     const exits = await Promise.all(children.map(child => child.terminate(cleanupDeadline)));
-    let recovered = false, recovery = null;
+    let recovered = false, recovery = null, allStorageClosed = exits.every(value => value.exit_observed && value.ipc_closed);
+    const nativeStorageClosures = [];
+    for (const child of children) {
+      try {
+        if (!allStorageClosed) break;
+        // A lost registration ACK is unknown custody. Recover only the exact
+        // ordinal from this live authenticated session before matching closure.
+        if (child.registrationOrdinal === undefined) {
+          if (child.registration) throw failure('verification_linux_storage_custody_unconfirmed');
+          continue;
+        }
+        const registration = child.registration || await client.event('writer_registered', cleanupDeadline,
+          value => value.pid === child.child.pid && value.ordinal === child.registrationOrdinal);
+        const closed = await client.writerClosed(child.child.pid, cleanupDeadline, registration);
+        if (!writerClosureValid(closed, registration, nativeCleanupEnd || maximumEnd, cleanupDeadline)) throw failure('verification_linux_storage_cleanup_unconfirmed');
+        nativeStorageClosures.push({ registration: registration.value, closure: closed.value });
+      } catch { allStorageClosed = false; }
+    }
     try {
-      if (client && owner && descriptor && exits.every(value => value.exit_observed && value.ipc_closed) && left(cleanupDeadline)) {
+      if (client && owner && descriptor && allStorageClosed && left(cleanupDeadline)) {
         const terminal = terminalEvent || await client.event('terminal', cleanupDeadline);
         const proof = adapter.normalProof({ descriptor, capability, terminalReply: terminal.value, terminalRaw: terminal.raw });
-        for (const child of children) {
-          const closure = await client.writerClosed(child.child.pid, cleanupDeadline, child.registration);
-          if (closure.value.pidfd_exit_observed !== true || closure.value.writer_cgroup_empty !== true ||
-              closure.value.guardian_reaped !== true || closure.value.registration_removed !== true) throw failure('verification_linux_storage_cleanup_unconfirmed');
-        }
         // The client is still the original authenticated session; its retained
         // native receipt supports a cleanup-only failed terminal transition.
         if (!left(cleanupDeadline)) throw failure('verification_cleanup_unconfirmed');
         const value = storageChannel({ onFailure: () => {}, onEvent: () => {} });owned.add(value);
         try {
-          const registration = await within(client.registerWriter(value.child.pid, cleanupDeadline), cleanupDeadline);value.registration = registration;
+          const registration = await within(client.registerWriter(value.child.pid, cleanupDeadline,
+            ordinal => { value.registrationOrdinal = ordinal; }), cleanupDeadline);value.registration = registration;
           const result = await within(value.request('finish_only', { request, capability, owner, deadline_ns: String(cleanupDeadline), input: {
             outcome: primary?.timed_out ? 'timed_out' : primary?.code === 'verification_cancelled' ? 'cancelled' : 'failed',
             cleanup_proof: control.bindCleanupProof(owner, proof), deadline_ns: String(cleanupDeadline) }, descriptor }), cleanupDeadline);
           const exit = await value.finish(cleanupDeadline), closure = await client.writerClosed(value.child.pid, cleanupDeadline, registration);
           recovered = ['failed', 'cancelled', 'timed_out', 'already_terminal'].includes(result.status) && result.ack_released !== true &&
-            exit.exit_observed && exit.ipc_closed && closure.value.pidfd_exit_observed === true && closure.value.writer_cgroup_empty === true;
+            exit.exit_observed && exit.ipc_closed && writerClosureValid(closure, registration, nativeCleanupEnd || maximumEnd, cleanupDeadline);
           recovery = { status: result.status, ack_released: result.ack_released === true, exit, native_closure: closure.value };
         } finally { await value.terminate(cleanupDeadline); }
+      } else if (client && claimStarted && !openSent && allStorageClosed && left(cleanupDeadline) > 20) {
+        // No OPEN frame was ever issued. Once every original S has physically
+        // closed, a fresh storage-only native session can resolve a lost begin
+        // reply by its random startup nonce. Its hard bound is the old endpoint.
+        await client.finish(cleanupDeadline);
+        const recoveryEnd = cleanupDeadline - 1000000n;
+        const recoveryClient = clientAPI.createClient({ config, nonce: crypto.randomBytes(32).toString('hex'),
+          workDeadline: recoveryEnd, cleanupMs: 1, onEvent: () => {}, onFailure: () => {} });
+        let value;
+        try {
+          const observedCapability = (await within(recoveryClient.hello(), cleanupDeadline)).value;
+          if (!serviceFinalization.validateCapability(observedCapability) || observedCapability.controller_pid !== process.pid ||
+              observedCapability.client_pid !== recoveryClient.child.pid ||
+              !['installation_id', 'host_id', 'boot_id', 'daemon_epoch', 'native_source_sha256', 'trusted_runtime_manifest_sha256',
+                'trusted_source_manifest_sha256', 'node_sha256', 'broker_binary_sha256'].every(key => observedCapability[key] === capability[key])) {
+            throw failure('verification_linux_storage_custody_unconfirmed');
+          }
+          if (left(cleanupDeadline) <= 1) throw failure('verification_cleanup_unconfirmed');
+          value = storageChannel({ onFailure: () => {}, onEvent: () => {} });owned.add(value);
+          const registration = await within(recoveryClient.registerWriter(value.child.pid, cleanupDeadline,
+            ordinal => { value.registrationOrdinal = ordinal; }), cleanupDeadline);value.registration = registration;
+          const result = await within(value.request('recover_initial', { request, capability: observedCapability,
+            startup_nonce_sha256: finalization.hash(nonce), deadline_ns: String(cleanupDeadline) }), cleanupDeadline);
+          const exit = await value.finish(cleanupDeadline), closed = await recoveryClient.writerClosed(value.child.pid, cleanupDeadline, registration);
+          const helper = await recoveryClient.finish(cleanupDeadline);
+          recovered = ['not_published', 'failed', 'cancelled', 'already_terminal'].includes(result.status) && result.ack_released !== true &&
+            exit.exit_observed && exit.ipc_closed && writerClosureValid(closed, registration, cleanupDeadline, cleanupDeadline) && helper.exit_observed && helper.close_observed;
+          recovery = { status: result.status, ack_released: false, exact_startup_nonce: true, no_open_frame_issued: true,
+            exit, native_closure: closed.value, client_exit: helper };
+        } finally {
+          if (value) await value.terminate(cleanupDeadline);
+          await recoveryClient.terminate(cleanupDeadline);
+        }
       }
     } catch (cause) { recovery = { status: 'unconfirmed', code: cause.code || 'verification_linux_recovery_failed' }; }
     const clientExit = client ? await client.terminate(cleanupDeadline) : null;
     const noClaim = !claimStarted;
-    const noClaimClosed = noClaim && exits.every(value => value.exit_observed && value.ipc_closed) &&
+    const noClaimClosed = noClaim && allStorageClosed &&
       (!client || clientExit?.exit_observed === true && clientExit.close_observed === true);
     return { protocol: PROTOCOL, status: 'failed', error: { code: primary?.code || 'verification_linux_service_failed',
-      timed_out: primary?.timed_out === true, stage, attempt_id: owner?.attempt_id || null, recovery_required: claimStarted && !recovered,
+      timed_out: primary?.timed_out === true, stage, attempt_id: owner?.attempt_id || null,
+      recovery_required: primary?.code === 'verification_recovery_required' || claimStarted && !recovered,
       result_visibility: 'ack_not_delivered', terminal_commit: finalCommit || 'not_started',
       ...(noClaim ? { execution: { status: 'not_started' } } : {}) }, completed_executions: [],
       teardown: { status: (recovered || noClaimClosed) && (!client || clientExit?.exit_observed === true &&
         clientExit.close_observed === true && clientExit.stdout_eof === true && clientExit.stderr_eof === true) ? 'completed' : 'unconfirmed',
-        owned_children: exits, client_exit: clientExit, recovery },
+        owned_children: exits, native_storage_closures: nativeStorageClosures, client_exit: clientExit, recovery },
       budget: { timeout_ms: policy.work_budget_ms, cleanup_budget_ms: policy.cleanup_budget_ms, total_elapsed_ms: elapsed(started) } };
   } finally {
     clearTimeout(timer);clearTimeout(pollTimer);polling = false;
@@ -377,4 +429,4 @@ if (require.main === module && process.argv[2] === '--controller') {
       teardown: { status: 'unconfirmed' } }), () => process.exit(0)); }
   });
 }
-module.exports = { PROTOCOL, runSync, runAsync, completeResult, storageChannel };
+module.exports = { PROTOCOL, runSync, runAsync, completeResult, storageChannel, writerClosureValid };

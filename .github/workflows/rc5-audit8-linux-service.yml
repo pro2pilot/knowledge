@@ -37,6 +37,10 @@ jobs:
       - name: Restore only source-checked native input pairs
         run: |
           python3 qa/reliability/audit8/linux/stage_native_pairs.py --package native-input/public/knowledge-v3.4.4.zip --source source/.knowledge --output evidence/native-input.json
+      - name: Validate new reader and client regressions
+        run: |
+          node source/.knowledge/tests/verification-linux-service-finalization.test.js > evidence/reader-tests.tap 2> evidence/reader-tests.stderr.txt
+          node source/.knowledge/tests/reliability-linux-service-client.test.js > evidence/client-tests.tap 2> evidence/client-tests.stderr.txt
       - name: Native framing seals and inherited sender boundary
         run: |
           mkdir -p evidence
