@@ -183,8 +183,10 @@ def extract(args,out,report):
 def installed(args,out,report):
     targeted=args.mode=='targeted'
     final_windows=args.mode=='final_windows'
+    regressions=REGRESSIONS+(['reliability-linux-nested-preflight'] if final_windows else [])
+    sharded=getattr(args,'shard_index',None) is not None
     need(not final_windows or sys.platform=='win32','final_windows_requires_windows')
-    cohort_cap=1200 if final_windows else 330 if targeted else 660
+    cohort_cap=900 if sharded else 1200 if final_windows else 330 if targeted else 660
     deadline=time.monotonic()+cohort_cap
     extracted,contents=extract(args,out,report);system=extracted/'.knowledge'
     contract=strict_json((system/'install-manifest.json').read_text())['release_contract']
@@ -213,14 +215,16 @@ def installed(args,out,report):
     # New source tests are deliberately absent from the public archive. Stage
     # just their pinned test bodies beside a copy of the actual installed code.
     report['source_regressions']=[]
+    report['source_regression_inventory']=regressions
+    if final_windows:report['source_regression_expected_test_count']=144
     if not report.get('cohort_halted'):
         pins=strict_json((P(args.package)/'SOURCE_PINS.json').read_text())
         testroot=out/'source-regressions'/'.knowledge';shutil.copytree(system,testroot)
-        for name in REGRESSIONS:
+        for name in regressions:
             rel='tests/'+name+'.test.js';original=ROOT/'source/.knowledge'/rel
             need(rel in pins['files'] and sha(original)==pins['files'][rel],'regression_source_pin_mismatch:'+rel)
             target=testroot/rel;target.parent.mkdir(exist_ok=True);shutil.copyfile(original,target)
-        for name in REGRESSIONS:
+        for name in regressions:
             selected_pattern='^status reader handles .* between open and fstat without accepting a stale row$' if name=='verification-control' else None
             test_argv=[node,'--test','--test-reporter=tap']+(['--test-name-pattern='+selected_pattern] if selected_pattern else [])+[str(testroot/'tests'/(name+'.test.js'))]
             row,_=execute('source-'+name,test_argv,testroot,out,deadline,35,fixture_tmp=fixture_tmp)
@@ -229,9 +233,10 @@ def installed(args,out,report):
             inventory=re.findall(r'^# (tests|pass|fail|skipped|cancelled|todo) (\d+)\s*$',body,re.M)
             counts={k:int(v) for k,v in inventory}
             tap_ok=len(inventory)==6 and len(counts)==6 and counts.get('tests',0)>0 and counts.get('pass')==counts.get('tests') and all(counts.get(k)==0 for k in ('fail','skipped','cancelled','todo'))
-            if name=='repair-producer-dependency-closure':
-                tap_ok=tap_ok and counts.get('tests')==11
-                row['expected_test_count']=11
+            expected_count={'repair-producer-dependency-closure':11,'reliability-linux-nested-preflight':19}.get(name)
+            if expected_count is not None:
+                tap_ok=tap_ok and counts.get('tests')==expected_count
+                row['expected_test_count']=expected_count
             if selected_pattern:
                 # This declares the four race cases before execution; other
                 # ledger scenarios are not part of this targeted regression.
@@ -283,6 +288,12 @@ def installed(args,out,report):
         report['scope']='Explicit final installed regression subset: public error envelope, field-report lock recovery, four ledger race cases, producer closure and pinned reliability tests; classic finalization/repair additionally on Linux x64 and Windows. No full contract or platform qualification claim.'
     report['public_selftests']=scripts;report['selftests']=[]
     report['planned_public_order']=ordered
+    if sharded:
+        full_order=ordered
+        ordered=[s for index,s in enumerate(full_order) if index%args.shard_count==args.shard_index]
+        report['shard']={'index':args.shard_index,'count':args.shard_count,'selection':'full_order_index_modulo_count',
+            'planned_public_order':ordered,'assigned_to_other_shard':[s for s in full_order if s not in ordered],
+            'source_regression_cohort':'complete_repeated_in_each_shard_not_additional_unique_tests'}
     report['script_time_caps_s']={'default':90,'heavy':150,'tools/self-test-agent-task-workflow.js':240}
     report['cohort_time_cap_s']=cohort_cap
     if targeted:report['script_time_caps_s']['tools/self-test-repair-on-touch.js']=180
@@ -291,9 +302,11 @@ def installed(args,out,report):
         # Individual product work/cleanup deadlines and fixture assertions are
         # unchanged. Keep all 54 script entries and the original source cohort.
         report['script_time_caps_s'].update({'tools/self-test-repair-audit.js':240,
-            'tools/self-test-repair-on-touch.js':360})
+            'tools/self-test-repair-on-touch.js':360,'tools/self-test-update-safety.js':240,
+            'tools/self-test-doctor-audit.js':150,'tools/self-test-field-report.js':150})
         report['retries']=0
         report['scope']='Complete 54-entry public contract and pinned source regression cohort from one exact installed ZIP on Windows; existing named platform exclusions retained. Harness suite caps do not change product deadlines or qualify the separate production platform/release gates.'
+        if sharded:report['scope']='One fixed 27-entry shard of the complete 54-entry public contract, plus the complete repeated source regression cohort. A matching pair of successful disjoint shards is required for aggregate public-contract acceptance; no release qualification.'
     if report.get('cohort_halted'):report['remaining_not_run']=ordered
     for script in ([] if report.get('cohort_halted') else ordered):
         name=P(script).stem
@@ -319,12 +332,15 @@ def installed(args,out,report):
     report['installed_byte_changes']=changes;report['installed_bytes_unchanged']=not changes
     rows=report['selftests'];report['selftest_counts']={s:sum(x['status']==s for x in rows) for s in sorted({x['status'] for x in rows})}
     complete=len(rows)==len(ordered) and all(x['status'] in ('PASS_SELFTEST','NOT_APPLICABLE') for x in rows) and \
-      len(report['source_regressions'])==len(REGRESSIONS) and all(x['status'] in ('PASS_SOURCE_REGRESSION','PASS_SCOPED_SOURCE_REGRESSION','NOT_APPLICABLE_SOURCE') for x in report['source_regressions'])
+      len(report['source_regressions'])==len(regressions) and all(x['status'] in ('PASS_SOURCE_REGRESSION','PASS_SCOPED_SOURCE_REGRESSION','NOT_APPLICABLE_SOURCE') for x in report['source_regressions']) and \
+      (not final_windows or sum(x.get('tap',{}).get('tests',0) for x in report['source_regressions'])==144)
     need(complete and not changes and not report.get('fixture_cleanup_unconfirmed'),'installed_contract_incomplete')
-    report['status']='PASS_TARGETED_INSTALLED_REGRESSIONS' if targeted else 'PASS_INSTALLED_PUBLIC_CONTRACT'
+    report['status']='PASS_INSTALLED_PUBLIC_CONTRACT_SHARD' if sharded else 'PASS_TARGETED_INSTALLED_REGRESSIONS' if targeted else 'PASS_INSTALLED_PUBLIC_CONTRACT'
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['pack','installed','targeted','final_windows'])
+    ap.add_argument('--shard-index',type=int,choices=[0,1])
+    ap.add_argument('--shard-count',type=int,choices=[2])
     for name in ['out','source','pins','native-input','package','arch']:ap.add_argument('--'+name,required=name=='out')
     args=ap.parse_args();out=P(args.out).resolve();out.mkdir(parents=True,exist_ok=False)
     report={'schema_version':'knowledge-audit6-installed-contract.v1','status':'FAIL','mode':args.mode,
@@ -334,6 +350,9 @@ def main():
       'production_platform_qualification':'SEPARATE_REQUIRED_EVIDENCE',
       'scope':'Manifest-listed public tests from identical extracted ZIP plus explicit source regression cohort; internal skips and refusal-only tests retain their own narrower scope.'}
     try:
+        need((args.shard_index is None and args.shard_count is None) or
+             (args.mode=='final_windows' and args.shard_index in (0,1) and args.shard_count==2),
+             'sharding_requires_final_windows_and_both_fixed_shard_arguments')
         if args.mode=='pack':base.pack(args,out,report['steps'],report)
         else:installed(args,out,report)
         return 0

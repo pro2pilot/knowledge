@@ -159,10 +159,10 @@ Direct pidfd evidence and historical finality inference are explicitly distingui
 ## Verification and limits
 
 This page's current source revision is
-`independent-audit.20261027.reliability.5`. Earlier physical results apply only
-to their pinned historical source. The fresh audit5 matrix is in progress at
-this documentation checkpoint; see [audit status](audit-3.4.4-rc5.md). No final
-passing outcome for the new source is asserted here.
+`independent-audit.20261028.reliability.7`. Earlier physical results apply only
+to their pinned historical source. The handoff for this revision records exact
+source pins, installed ZIP digests and separate outcomes for each host.
+Complete release qualification is not asserted.
 
 The accepted separate native system broker with isolated project import,
 protected Node authority, KVE/ACK, nested ownership and durable restart recovery

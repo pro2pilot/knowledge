@@ -43,7 +43,7 @@ function capability(rows, overrides = {}) {
       return { pid: 222, status: 0, signal: null,
         stdout: rows.map(row => JSON.stringify(row)).join('\n') + '\n', ...overrides };
     }
-  } : require(name), module, module.exports, root);
+  } : name === 'path' ? path.posix : require(name), module, module.exports, root);
   module.exports.setInvocationHelper(helper);
   return { result: module.exports.containmentCapability(), calls };
 }

@@ -1,0 +1,128 @@
+name: RC5 audit7 exact final ZIP and complete Windows contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit7-final-contract.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rc5-audit7-final-contract-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-windows-exact-zip
+          path: base-package
+          run-id: 40646147293
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: audit7-linux-preflight-*
+          path: linux-input
+          run-id: 40647532088
+          github-token: ${{ github.token }}
+      - name: Package exact final source and ten source-bound native pairs
+        run: python3 qa/reliability/audit7/repack_exact.py --source source/.knowledge --pins qa/reliability/audit7/SOURCE_PINS.json --base-package base-package/public --linux-input linux-input --linux-commit cf661b42564a0a2507aa13d3dcbf2cdbc052d61c --linux-run 40647532088 --out packed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit7-final-exact-zip
+          path: |
+            packed/public/**
+            packed/RESULT.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  installed:
+    needs: pack
+    timeout-minutes: ${{ matrix.job_minutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+            mode: final_windows
+            job_minutes: 17
+            shard: 0
+            flags: --shard-index 0 --shard-count 2
+          - os: windows-2022
+            arch: x64
+            mode: final_windows
+            job_minutes: 17
+            shard: 1
+            flags: --shard-index 1 --shard-count 2
+          - os: windows-11-arm
+            arch: arm64
+            mode: final_windows
+            job_minutes: 17
+            shard: 0
+            flags: --shard-index 0 --shard-count 2
+          - os: windows-11-arm
+            arch: arm64
+            mode: final_windows
+            job_minutes: 17
+            shard: 1
+            flags: --shard-index 1 --shard-count 2
+          - os: ubuntu-22.04
+            arch: x64
+            mode: targeted
+            job_minutes: 7
+            shard: all
+            flags: ''
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            mode: targeted
+            job_minutes: 7
+            shard: all
+            flags: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve source bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-final-exact-zip
+          path: downloaded-package
+      - name: Execute declared complete Windows or targeted Linux contract from final installed ZIP
+        run: python qa/reliability/audit6/run_installed_contract.py ${{ matrix.mode }} --package downloaded-package/public --arch ${{ matrix.arch }} --out installed-contract ${{ matrix.flags }}
+      - name: Preserve all FAIL, skips, warnings, unfinished cases and exact hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit7-final-contract-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.shard }}
+          path: |
+            installed-contract/RESULT.json
+            installed-contract/*.stdout.json
+            installed-contract/*.stderr.txt
+            installed-contract/team-failure-evidence/**
+          if-no-files-found: error
+          retention-days: 3
