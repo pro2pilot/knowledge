@@ -67,15 +67,15 @@ def main() -> int:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--node", type=Path, default=Path(shutil.which("node") or "/usr/bin/node"))
-    parser.add_argument("--uid-first", type=int, default=310000)
-    parser.add_argument("--uid-last", type=int, default=319999)
+    parser.add_argument("--uid-first", type=int, default=1590000000)
+    parser.add_argument("--uid-last", type=int, default=1590009999)
     args = parser.parse_args()
     if os.getuid() == 0 or os.geteuid() == 0:
         raise RuntimeError("prepare must run as the ordinary installation caller, never root")
     source, out, node = args.source.resolve(strict=True), args.out.absolute(), args.node.resolve(strict=True)
     if source.name != ".knowledge" or not source.is_dir() or out.exists():
         raise RuntimeError("expected an existing .knowledge source and a fresh output directory")
-    if not 65536 <= args.uid_first < args.uid_last < 2**31 or args.uid_first <= os.getuid() <= args.uid_last:
+    if not 1_000_000_000 <= args.uid_first < args.uid_last < 1_900_000_000 or args.uid_first <= os.getuid() <= args.uid_last:
         raise RuntimeError("invalid dedicated UID range")
     token = secrets.token_hex(12)
     install_root = "/var/lib/knowledge-linux-native-v1"
@@ -106,7 +106,18 @@ def main() -> int:
         target.chmod(mode)
         records[name] = digest(data)
 
-    paths = command(["/usr/bin/rg", "--files", "--hidden", "--no-ignore", str(source)]).decode().splitlines()
+    rg = shutil.which("rg", path="/usr/bin:/bin")
+    if rg:
+        paths = command([rg, "--files", "--hidden", "--no-ignore", str(source)]).decode().splitlines()
+    else:
+        # Some stock Actions images omit ripgrep. Inventory stays ordinary-UID
+        # and every selected leaf is still opened NOFOLLOW and read back.
+        paths = []
+        for current, directories, files in os.walk(source, followlinks=False):
+            for name in directories:
+                if (Path(current) / name).is_symlink():
+                    raise RuntimeError("trusted source contains a directory symlink")
+            paths.extend(str(Path(current) / name) for name in files)
     if not 1 <= len(paths) <= 20000:
         raise RuntimeError("trusted runtime inventory outside bounds")
     for file in sorted(map(Path, paths), key=lambda x: os.fsencode(str(x.relative_to(source)))):

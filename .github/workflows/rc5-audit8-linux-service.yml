@@ -27,6 +27,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.17.1
+      - name: Native framing seals and inherited sender boundary
+        run: |
+          mkdir -p evidence
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -Wno-misleading-indentation -Wno-parentheses qa/reliability/audit8/linux/native_boundary_test.c source/.knowledge/tools/lib/verification-linux-uid-history.c -lcrypto -o "$RUNNER_TEMP/native-boundary-test"
+          "$RUNNER_TEMP/native-boundary-test" > evidence/native-boundary.json 2> evidence/native-boundary.stderr.txt
       - name: Prepare protected runtime as ordinary UID
         run: |
           mkdir -p evidence

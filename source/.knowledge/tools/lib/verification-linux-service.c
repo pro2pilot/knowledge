@@ -655,7 +655,7 @@ static int validate_runtime(void) {
 }
 static int fixed_configuration(kv_linux_uid_configuration *config) {
   memset(config,0,sizeof(*config));config->anchor_dir=KLS_ROOT "/anchor";config->journal_dir=KLS_ROOT "/journal";config->uid_first=KLS_UID_FIRST;config->uid_last=KLS_UID_LAST;
-  if(KLS_CALLER_UID<1||KLS_UID_FIRST<65536||KLS_UID_LAST<=KLS_UID_FIRST||KLS_CALLER_UID>=KLS_UID_FIRST&&KLS_CALLER_UID<=KLS_UID_LAST||
+  if(KLS_CALLER_UID<1||KLS_UID_FIRST<1000000000U||KLS_UID_LAST>=1900000000U||KLS_UID_LAST<=KLS_UID_FIRST||KLS_CALLER_UID>=KLS_UID_FIRST&&KLS_CALLER_UID<=KLS_UID_LAST||
      unhex(KLS_INSTALLATION_ID,config->installation_id,16)||unhex(KLS_HOST_ID,config->host_id,16))return -1;
   return 0;
 }
@@ -746,7 +746,7 @@ static void accept_client(void) {
 }
 static int unresolved_writers(void) {
   int duplicate=dup(rootfd);if(duplicate<0)return -1;DIR *dir=fdopendir(duplicate);if(!dir){close(duplicate);return -1;}
-  int found=0;struct dirent *entry;while((entry=readdir(dir)))if(!strncmp(entry->d_name,"writer-",7)){found=1;break;}closedir(dir);return found;
+  int found=0;struct dirent *entry;errno=0;while((entry=readdir(dir)))if(!strncmp(entry->d_name,"writer-",7)){found=1;break;}if(!found&&errno)found=-1;closedir(dir);return found;
 }
 static int serve(void) {
   kv_linux_uid_configuration config;const char *reason=NULL;
@@ -868,6 +868,7 @@ int main(int argc,char **argv) {
   if(argc!=2)return 179;
   if(!strcmp(argv[1],"--client"))return native_client();
   if(getuid()!=0||geteuid()!=0)return 180;
+  if(OPENSSL_init_crypto(OPENSSL_INIT_NO_LOAD_CONFIG,NULL)!=1)return 186;
   if(!strcmp(argv[1],"--serve"))return serve();
   if(!strcmp(argv[1],"--initialize-history")){
     kv_linux_uid_configuration config;const char *reason=NULL;int fd=protected_open(KLS_ROOT,1);
