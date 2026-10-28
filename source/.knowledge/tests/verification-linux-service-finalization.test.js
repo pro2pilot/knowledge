@@ -99,7 +99,7 @@ test('Linux service signed KVE/KVF/ACK reader accepts a bound complete batch and
 test('Linux service reader rejects coherently rehashed native, stream, source and batch substitutions', async t => {
   const cases = [
     ['incomplete namespace', f => resignTerminal(f, x => { x.init_reaped = false; })],
-    ['unclosed writer journal', f => resignTerminal(f, x => { x.journal_closed = false; })],
+    ['unclosed UID journal', f => resignTerminal(f, x => { x.journal_closed = false; })],
     ['readback missing', f => resignTerminal(f, x => { x.authority_readback = false; })],
     ['late native observation', f => resignTerminal(f, x => { x.observed_ns = x.cleanup_deadline_ns; })],
     ['expanded cleanup endpoint', f => resignTerminal(f, x => { x.cleanup_deadline_ns = '1100000001'; })],
@@ -142,7 +142,13 @@ test('Linux service control binds the exact allocation without fabricated host p
 });
 test('Linux service cleanup-only terminals release a failed claim but never a successful ACK', t => {
   const fixture = model(), root = temp(t), context = { stateRoot: root };
-  fixture.terminal.status = 'cancelled'; fixture.terminal.authority_status = -1; fixture.terminal.authority_readback = false;
+  // A may never have been admitted. Native namespace closure must not invent
+  // an A exit; it may still clear a failed claim without authorizing any ACK.
+  Object.assign(fixture.terminal, { status: 'cancelled', authority_status: -1,
+    authority_pid: 0, authority_namespace_pid: 0, authority_birth_ticks: '0',
+    authority_pidfd_exit_observed: false, authority_exited: false,
+    importer_drained: false, source_readonly: false, authority_readback: false,
+    commands: 0, commands_drained: 0, result_bytes: 0, result_sha256: linux.hash('') });
   const proof = bridge.normalProof({ descriptor: fixture.descriptor, capability: fixture.capability,
     terminalReply: fixture.terminal, terminalRaw: terminalRaw(fixture.terminal) });
   assert.equal(proof.cleanup_only, true);

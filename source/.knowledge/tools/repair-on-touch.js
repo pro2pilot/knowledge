@@ -751,8 +751,8 @@ function verificationExecutions(body, taskId, sessionId) {
   const sourceFiles = body.source_files_checked || body.source_files || [];
   const testsToRun = body.tests_to_run || body.verification_commands || [];
   // Referencing an older batch must not silently reinterpret a newly requested
-  // execution boundary. Darwin acceptance has no production reader yet.
-  if (!testsToRun.length && nativeExecution?.darwin.enabled === true) {
+  // execution boundary. Explicit platform selection remains an admission gate.
+  if (!testsToRun.length && (nativeExecution?.darwin?.enabled === true || nativeExecution?.linux?.enabled === true)) {
     require('./lib/verification-supervisor').assertContainmentAvailable(nativeExecution);
   }
   const references = Array.from(new Set([

@@ -128,6 +128,7 @@ def run_mode(config, mode):
         bridge.send(3, body=wire({"source": source, "authority": authority}))
         opened, _ = bridge.until("opened")
         assert opened["authority_uid"] != opened["worker_uid"] and opened["work_deadline_ns"] == str(bridge.deadline)
+        bridge.send(6)
         if mode == "cancel":
             bridge.until("authority_bound")
             time.sleep(0.2)

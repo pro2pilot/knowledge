@@ -101,15 +101,28 @@ async function sourceEnvelope(request, limits) {
 }
 async function dispatch(message) {
   guard(['cleanup_epoch', 'stop', 'cancel'].includes(message.op));
-  if (message.op === 'init' || message.op === 'finish_only') {
+  if (message.op === 'init' || message.op === 'finish_only' || message.op === 'recover_initial') {
     if (initialized) fail('verification_linux_storage_reinitialized');
     initialized = true;setDeadline(message.deadline_ns);guard();context = contextFor(message.request);
     // Candidate/runtime equality is checked before opening a project claim.
     const runtimeSource = trustedSourceManifest();
     if (runtimeSource.sha256 !== message.capability?.trusted_source_manifest_sha256) fail('verification_linux_runtime_source_mismatch');
     lease = control.acquireStorageLease(context, { timeoutMs: Math.max(1, Math.min(600000, Math.floor(Number(deadline - clock()) / 1e6))) });guard();
+    if (message.op === 'recover_initial') {
+      const live = control.readStatus(context).attempt;
+      if (!live) return { status: 'not_published', ack_released: false };
+      if (live.storage_protocol !== 'lifetime_lease.v1' || live.startup_nonce_sha256 !== message.startup_nonce_sha256 ||
+          live.containment !== null || live.processes.length !== 0) fail('verification_attempt_mismatch');
+      const result = require('./verification-recovery').recoverAttempt(context, {
+        startup_nonce_sha256: message.startup_nonce_sha256, deadline_ns: message.deadline_ns });guard();return result;
+    }
     if (message.op === 'finish_only') {
-      owner = message.owner;const result = control.commitFinish(context, owner, message.input);guard();return result;
+      owner = message.owner;
+      if (message.descriptor && control.readStatus(context).attempt?.containment === null) {
+        control.updateAttempt(context, owner, { type: 'containment_bound', backend: 'linux_native_service',
+          descriptor: message.descriptor, spawn_ids: [] });guard();
+      }
+      const result = control.commitFinish(context, owner, message.input);guard();return result;
     }
     if (control.readStatus(context).attempt?.claimed) fail('verification_recovery_required');
     guard();return { runtime_source: runtimeSource };

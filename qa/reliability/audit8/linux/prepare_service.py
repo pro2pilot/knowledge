@@ -209,7 +209,7 @@ def main() -> int:
     script.append(f"test \"$(/usr/bin/sha256sum {q(install_root + '/broker')} | /usr/bin/cut -d ' ' -f 1)\" = {q(digest(binary))}")
     script += [f"/usr/bin/install -d -o root -g root -m 0700 {q(install_root + '/anchor')} {q(install_root + '/journal')}",
                f"{q(install_root + '/broker')} --initialize-history",
-               f"/usr/bin/systemd-run --system --unit={q(unit)} --service-type=exec --property=Delegate=yes --property=KillMode=control-group --property=TimeoutStopSec=10s --property=RuntimeMaxSec=14400s --property=Restart=no --property=NoNewPrivileges=no --property=ProtectControlGroups=no {q(install_root + '/broker')} --serve",
+               f"/usr/bin/systemd-run --system --unit={q(unit)} --service-type=notify --property=NotifyAccess=main --property=TimeoutStartSec=20s --property=Delegate=yes --property=KillMode=control-group --property=TimeoutStopSec=10s --property=RuntimeMaxSec=14400s --property=Restart=no --property=NoNewPrivileges=no --property=ProtectControlGroups=no {q(install_root + '/broker')} --serve",
                f"/usr/bin/printf '%s\\n' {q(install_root + '/installation.json')}"]
     (out / "install-native.sh").write_text("\n".join(script) + "\n")
     (out / "install-native.sh").chmod(0o700)

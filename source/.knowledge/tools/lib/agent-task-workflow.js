@@ -861,7 +861,7 @@ function finish(context, workflowId, rawRequest, dependencies = {}) {
   const routeStateFn = dependencies.resolveEffectiveTaskRoutingState || resolveEffectiveTaskRoutingState;
   const existing = load(context, workflowId);
   const normalizedRequest = normalizedFinishRequest(context, rawRequest);
-  if (normalizedRequest.native_execution?.darwin.enabled === true) {
+  if (normalizedRequest.native_execution?.darwin?.enabled === true || normalizedRequest.native_execution?.linux?.enabled === true) {
     require('./verification-supervisor').assertContainmentAvailable(normalizedRequest.native_execution);
   }
   const admissionSnapshot = inspectKnowledgeMaintenance(context, existing, normalizedRequest);

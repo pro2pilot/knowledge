@@ -90,8 +90,9 @@ function createClient({ config, nonce, workDeadline, cleanupMs, onEvent, onFailu
   function send(op, body = null, pid = 0) {
     if (ended || exited || (lastError && op !== 4)) return Promise.reject(lastError || fail('verification_linux_client_exited'));
     const data = body === null ? Buffer.alloc(0) : Buffer.from(body);
-    const bytes = Buffer.concat([frame(op, ++ordinal, nonce, workDeadline, cleanupMs, data.length, pid), data]);
-    return new Promise((resolve, rejectPromise) => child.stdin.write(bytes, error => error ? rejectPromise(error) : resolve()));
+    const requestOrdinal = ++ordinal;
+    const bytes = Buffer.concat([frame(op, requestOrdinal, nonce, workDeadline, cleanupMs, data.length, pid), data]);
+    return new Promise((resolve, rejectPromise) => child.stdin.write(bytes, error => error ? rejectPromise(error) : resolve(requestOrdinal)));
   }
   return {
     child, events, snapshot, send, waitFor,
@@ -99,7 +100,10 @@ function createClient({ config, nonce, workDeadline, cleanupMs, onEvent, onFailu
       return waitFor(() => events.find(event => event.kind === kind && predicate(event.value)), deadline);
     },
     async hello() { await send(1);return this.event('capability', workDeadline); },
-    async registerWriter(pid, deadline) { await send(2, null, pid);return this.event('writer_registered', deadline, value => value.pid === pid); },
+    async registerWriter(pid, deadline) {
+      const requestOrdinal = await send(2, null, pid);
+      return this.event('writer_registered', deadline, value => value.pid === pid && value.ordinal === requestOrdinal);
+    },
     async writerClosed(pid, deadline, registration) {
       return this.event('writer_closed', deadline, value => value.pid === pid && (!registration ||
         value.birth_ticks === registration.value.birth_ticks && value.registration_ordinal === registration.value.ordinal));

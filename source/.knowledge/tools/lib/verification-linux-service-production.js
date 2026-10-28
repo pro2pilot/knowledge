@@ -25,11 +25,12 @@ const left = deadline => Math.max(0, Number(deadline - clock()) / 1e6);
 const failure = (code, fields = {}) => Object.assign(new Error(code), { code, ...fields });
 const inert = value => copyInertData(value, null, MAX_REQUEST);
 function within(promise, deadline) {
+  const input = Promise.resolve(promise);
   return new Promise((resolve, reject) => {
     const remaining = left(deadline);
-    if (!remaining) { reject(failure('verification_cleanup_unconfirmed'));return; }
+    if (!remaining) { input.catch(() => {});reject(failure('verification_cleanup_unconfirmed'));return; }
     const timer = setTimeout(() => reject(failure('verification_cleanup_unconfirmed')), policyAPI.timerDelay(remaining));
-    Promise.resolve(promise).then(value => { clearTimeout(timer);resolve(value); }, error => { clearTimeout(timer);reject(error); });
+    input.then(value => { clearTimeout(timer);resolve(value); }, error => { clearTimeout(timer);reject(error); });
   });
 }
 function guardInput(request, timeoutMs, started) {
@@ -135,8 +136,8 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   const requestDigest = finalization.digest(request), keys = crypto.generateKeyPairSync('ed25519');
   const publicKey = keys.publicKey.export({ type: 'spki', format: 'der' }).toString('hex');
   let client, capability, store, finalizer, owner, descriptor, plan, implementation, terminalEvent, teardown,
-    cleanupDeadline, cleanupStart, workElapsed, storeCleanup = false, stopped = false, primary, timer,
-    parentChannel, polling = false, pollTimer, pollPromise, stage = 'preflight', finalCommit = null, claimStarted = false;
+    cleanupDeadline, cleanupStart, nativeCleanupEnd, workElapsed, storeCleanup = false, stopped = false, primary, timer,
+    parentChannel, polling = false, pollTimer, pollPromise, stage = 'preflight', finalCommit = null, claimStarted = false, openSent = false;
   const owned = new Set();
   let copyFiles = 0, copyBytes = 0, lastProgress = clock(), progressAvailable = false;
   let rejectInterrupted;
@@ -150,8 +151,8 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
     }
     const begin = BigInt(value.cleanup_started_ns), end = BigInt(value.cleanup_deadline_ns);
     if (begin < started || end <= begin || end > maximumEnd || end - begin > BigInt(policy.cleanup_budget_ms) * 1000000n ||
-        cleanupStart && (cleanupStart !== begin || cleanupStart + BigInt(policy.cleanup_budget_ms) * 1000000n !== end)) throw failure('verification_linux_cleanup_epoch_invalid');
-    cleanupStart = begin;cleanupDeadline = cleanupDeadline && cleanupDeadline < end ? cleanupDeadline : end;
+        cleanupStart && (cleanupStart !== begin || nativeCleanupEnd !== end)) throw failure('verification_linux_cleanup_epoch_invalid');
+    cleanupStart = begin;nativeCleanupEnd = end;cleanupDeadline = cleanupDeadline && cleanupDeadline < end ? cleanupDeadline : end;
     workElapsed = Number(begin - started) / 1e6;progressAvailable = false;
   }
   function interrupt(error) {
@@ -170,7 +171,12 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
   }
   function onNativeEvent(event) {
     if (event.kind === 'cleanup_started') latchCleanup(event.value);
-    if (event.kind === 'terminal') { latchCleanup(event.value);terminalEvent = event; }
+    if (event.kind === 'terminal') {
+      latchCleanup(event.value);terminalEvent = event;
+      if (event.value.status !== 'completed') interrupt(failure(event.value.status === 'timed_out' ? 'verification_timeout' :
+        event.value.status === 'cancelled' ? 'verification_cancelled' : 'verification_linux_native_failed', {
+        timed_out: event.value.status === 'timed_out' }));
+    }
   }
   async function newStore() {
     guard();const value = storageChannel({ onFailure: interrupt, onEvent(event) {
@@ -193,7 +199,10 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
     const observed = await value.finish(deadline());guard();
     const closed = await client.writerClosed(observed.pid, deadline(), value.registration);guard();
     if (closed.value.status !== 'closed' || closed.value.pidfd_exit_observed !== true || closed.value.guardian_reaped !== true ||
-        closed.value.writer_cgroup_empty !== true || closed.value.registration_removed !== true ||
+        closed.value.writer_cgroup_empty !== true || closed.value.registration_removed !== true || closed.value.closed_in_budget !== true ||
+        !/^[1-9]\d{0,19}$/.test(closed.value.deadline_ns || '') || !/^[1-9]\d{0,19}$/.test(closed.value.observed_ns || '') ||
+        BigInt(closed.value.observed_ns) >= BigInt(closed.value.deadline_ns) ||
+        BigInt(closed.value.deadline_ns) > (nativeCleanupEnd || maximumEnd) ||
         closed.value.birth_ticks !== undefined && closed.value.birth_ticks !== value.registration.value.birth_ticks) throw failure('verification_linux_storage_cleanup_unconfirmed');
     return { ...observed, native_registration: value.registration.value, native_closure: closed.value };
   }
@@ -235,14 +244,17 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
     const envelope = JSON.stringify({ source: prepared.source, authority: { batch_id: batchId, deadline_ns: String(workDeadline),
       nonce, public_key: publicKey, request, request_sha256: requestDigest } });
     if (Buffer.byteLength(envelope) > 64 * 1024 * 1024) throw failure('verification_transport_oversized');
-    await client.send(3, envelope);guard();
+    openSent = true;await client.send(3, envelope);guard();
     const opened = (await client.event('opened', deadline())).value;guard();
     if (!serviceFinalization.validateOpened(opened) || opened.nonce !== nonce || opened.work_deadline_ns !== String(workDeadline) ||
         opened.cleanup_budget_ms !== policy.cleanup_budget_ms) throw failure('verification_linux_open_unconfirmed');
     descriptor = adapter.descriptor({ capability, opened });
     if (cleanupDeadline) await ensureCleanupEpoch();
     await store.request('update', { event: { type: 'containment_bound', backend: adapter.METHOD, descriptor, spawn_ids: [] } });guard();
-    if (!cleanupDeadline) await store.request('update', { event: { type: 'phase', phase: 'running' } });
+    if (!cleanupDeadline) await store.request('update', { event: { type: 'phase', phase: 'running' } });guard();
+    // Native OPEN reserves custody but its namespace gate remains closed.
+    // Repository execution is permitted only after durable project binding.
+    await client.send(6);await client.event('permitted', deadline());guard();
     polling = true;pollTimer = setTimeout(poll, Math.max(250, policy.control_poll_ms));
     // Native cleanup may start before the original work endpoint. Waits use
     // the immutable maximum here; tick and native custody enforce the earlier
@@ -302,13 +314,15 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
         }
         // The client is still the original authenticated session; its retained
         // native receipt supports a cleanup-only failed terminal transition.
+        if (!left(cleanupDeadline)) throw failure('verification_cleanup_unconfirmed');
         const value = storageChannel({ onFailure: () => {}, onEvent: () => {} });owned.add(value);
         try {
           const registration = await within(client.registerWriter(value.child.pid, cleanupDeadline), cleanupDeadline);value.registration = registration;
           const result = await within(value.request('finish_only', { request, capability, owner, deadline_ns: String(cleanupDeadline), input: {
-            outcome: 'failed', cleanup_proof: control.bindCleanupProof(owner, proof), deadline_ns: String(cleanupDeadline) } }), cleanupDeadline);
+            outcome: primary?.timed_out ? 'timed_out' : primary?.code === 'verification_cancelled' ? 'cancelled' : 'failed',
+            cleanup_proof: control.bindCleanupProof(owner, proof), deadline_ns: String(cleanupDeadline) }, descriptor }), cleanupDeadline);
           const exit = await value.finish(cleanupDeadline), closure = await client.writerClosed(value.child.pid, cleanupDeadline, registration);
-          recovered = ['failed', 'cancelled', 'already_terminal'].includes(result.status) && result.ack_released !== true &&
+          recovered = ['failed', 'cancelled', 'timed_out', 'already_terminal'].includes(result.status) && result.ack_released !== true &&
             exit.exit_observed && exit.ipc_closed && closure.value.pidfd_exit_observed === true && closure.value.writer_cgroup_empty === true;
           recovery = { status: result.status, ack_released: result.ack_released === true, exit, native_closure: closure.value };
         } finally { await value.terminate(cleanupDeadline); }
@@ -322,7 +336,9 @@ async function runAsync(request, timeoutMs, started = clock(), options = {}) {
       timed_out: primary?.timed_out === true, stage, attempt_id: owner?.attempt_id || null, recovery_required: claimStarted && !recovered,
       result_visibility: 'ack_not_delivered', terminal_commit: finalCommit || 'not_started',
       ...(noClaim ? { execution: { status: 'not_started' } } : {}) }, completed_executions: [],
-      teardown: { status: recovered || noClaimClosed ? 'completed' : 'unconfirmed', owned_children: exits, client_exit: clientExit, recovery },
+      teardown: { status: (recovered || noClaimClosed) && (!client || clientExit?.exit_observed === true &&
+        clientExit.close_observed === true && clientExit.stdout_eof === true && clientExit.stderr_eof === true) ? 'completed' : 'unconfirmed',
+        owned_children: exits, client_exit: clientExit, recovery },
       budget: { timeout_ms: policy.work_budget_ms, cleanup_budget_ms: policy.cleanup_budget_ms, total_elapsed_ms: elapsed(started) } };
   } finally {
     clearTimeout(timer);clearTimeout(pollTimer);polling = false;

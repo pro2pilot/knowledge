@@ -86,7 +86,7 @@ struct client {
   struct writer writers[MAX_WRITERS];unsigned writers_count;
 };
 struct attempt {
-  int active,closed,quarantined,client_slot,keeper,keeperfd,initfd,authorityfd,channel,resultfd,resultpipe,result_eof;
+  int active,closed,permitted,quarantined,client_slot,keeper,keeperfd,initfd,authorityfd,channel,resultfd,resultpipe,result_eof;
   int keeper_reaped,keeper_status,final_received;
   uint64_t started,work_deadline,cleanup_ms,result_bytes;
   struct native_result result;
@@ -170,6 +170,10 @@ static int exact_reap(pid_t pid,int *status) { for(;;){pid_t n=waitpid(pid,statu
 static int layout(const struct work_args *a) {
   char name[PATH_MAX],source[PATH_MAX];
   if(mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL))return -1;
+  /* The import and A's staging state live only in this private mount
+   * namespace. Exact namespace drain releases all temporary bytes; no root
+   * recursive traversal of caller-controlled names is needed afterward. */
+  if(mount("knowledge-private-copy",a->root,"tmpfs",MS_NOSUID|MS_NODEV,"mode=0755,size=134217728,nr_inodes=65536"))return -1;
   const char *fixed[]={"runtime",LOADER_DIR,"proc","dev"};
   for(size_t i=0;i<sizeof(fixed)/sizeof(fixed[0]);i++){if(snprintf(name,sizeof(name),"%s/%s",a->root,fixed[i])>=(int)sizeof(name)||make_dir(name,0,0,0755))return -1;}
   if(snprintf(name,sizeof(name),"%s/source",a->root)>=(int)sizeof(name)||make_dir(name,a->authority,a->worker,0750)||
@@ -359,6 +363,7 @@ static int collect_work_reports(int report,int channel,struct native_result *res
       pid_t parent;uid_t uid;uint64_t birth;int host=host_pid_from_pidfd(passed);
       if(host<2||process_identity(host,&parent,&birth,&uid)||parent!=result->init||uid!=0||pidfd_dead(passed)){close(passed);return -1;}
       result->work.authority_host_pid=host;result->work.authority_birth=birth;
+      result->work.authority_pid=item.init;
       item.work.authority_host_pid=host;item.work.authority_birth=birth;
       if(packet_send(channel,&item,sizeof(item),passed)){close(passed);return -1;}close(passed);
       uint32_t ack=INTERNAL_PERMIT;if(packet_send(report,&ack,sizeof(ack),-1))return -1;
@@ -385,7 +390,10 @@ static void keeper_main(int channel,int ownerfd,int brokerfd,int input,int outpu
     struct pollfd p={channel,POLLIN,0};int polled=poll(&p,1,10);if(polled<0&&errno==EINTR)continue;if(polled<0||p.revents&(POLLHUP|POLLERR))break;
     if(p.revents&POLLIN){uint32_t message;int passed=-1;ssize_t n=packet_recv(channel,&message,sizeof(message),&passed,NULL,0);if(passed>=0)close(passed);if(n==sizeof(message)&&passed<0&&message==INTERNAL_PERMIT)permitted=1;break;}
   }
-  if(!permitted||now_ns()>=setup_end||now_ns()>=args.deadline||pidfd_dead(ownerfd)||pidfd_dead(brokerfd)||pidfd_dead(args.cancel_read)||cancelled||write_all(gate[1],"G",1))result.reason=5;
+  if(cancelled||pidfd_dead(args.cancel_read))result.reason=1;
+  else if(pidfd_dead(ownerfd)||pidfd_dead(brokerfd))result.reason=2;
+  else if(now_ns()>=args.deadline)result.reason=3;
+  else if(!permitted||now_ns()>=setup_end||write_all(gate[1],"G",1))result.reason=5;
   close(gate[1]);
   while(!result.reason){
     if(collect_work_reports(report[0],channel,&result)){result.reason=5;break;}
@@ -564,17 +572,18 @@ static void observe_attempt(void) {
     if(value.kind==INTERNAL_BIRTH&&a->initfd<0&&passed>=0&&value.init>1){
       a->initfd=passed;a->result.init=value.init;
       if(now_ns()>=a->work_deadline||pidfd_dead(c->peerfd)||pidfd_dead(c->parentfd)||pidfd_dead(c->cancel_read)||a->quarantined){uint32_t stop=INTERNAL_STOP;(void)packet_send(a->channel,&stop,sizeof(stop),-1);}
-      else {uint32_t permit=INTERNAL_PERMIT;if(packet_send(a->channel,&permit,sizeof(permit),-1))a->quarantined=quarantine=1;}
       char nonce[65],reply[1024];hex(a->reservation.attempt_nonce,32,nonce);
       snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"opened\",\"status\":\"starting\",\"nonce\":\"%s\",\"allocation_sequence\":%llu,\"authority_uid\":%u,\"worker_uid\":%u,\"keeper_pid\":%d,\"init_pid\":%d,\"work_deadline_ns\":\"%llu\",\"cleanup_budget_ms\":%llu}",nonce,(unsigned long long)a->reservation.allocation_sequence,a->reservation.authority_uid,a->reservation.worker_uid,a->keeper,value.init,(unsigned long long)a->work_deadline,(unsigned long long)a->cleanup_ms);
       if(c->fd<0||json_packet(c->fd,reply,-1)){uint32_t stop=INTERNAL_STOP;(void)packet_send(a->channel,&stop,sizeof(stop),-1);}
     } else if(value.kind==INTERNAL_AUTHORITY&&passed>=0&&a->authorityfd<0&&value.work.authority_host_pid>1&&value.work.authority_birth){
       a->authorityfd=passed;a->result.work.authority_host_pid=value.work.authority_host_pid;a->result.work.authority_birth=value.work.authority_birth;
+      a->result.work.authority_pid=value.init;
       char reply[1024];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"authority_bound\",\"status\":\"admitted\",\"authority_pid\":%d,\"authority_namespace_pid\":%d,\"authority_birth_ticks\":\"%llu\",\"authority_uid\":%u,\"worker_uid\":%u,\"pidfd_retained\":true}",value.work.authority_host_pid,value.init,(unsigned long long)value.work.authority_birth,a->reservation.authority_uid,a->reservation.worker_uid);
       if(c->fd>=0)(void)json_packet(c->fd,reply,-1);
     } else if(value.kind==INTERNAL_CLEANUP&&passed<0&&!a->final_received&&!a->result.cleanup_start&&value.init==a->result.init&&value.cleanup_start&&value.cleanup_end>value.cleanup_start&&
       value.cleanup_end-value.cleanup_start<=a->cleanup_ms*UINT64_C(1000000)&&value.cleanup_end<=a->work_deadline+a->cleanup_ms*UINT64_C(1000000)){
       a->result.cleanup_start=value.cleanup_start;a->result.cleanup_end=value.cleanup_end;
+      for(unsigned wi=0;wi<c->writers_count;wi++)if(!c->writers[wi].closed&&value.cleanup_end<c->writers[wi].deadline)c->writers[wi].deadline=value.cleanup_end;
       char nonce[65],reply[1024];hex(a->reservation.attempt_nonce,32,nonce);
       snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"cleanup_started\",\"nonce\":\"%s\",\"work_deadline_ns\":\"%llu\",\"cleanup_started_ns\":\"%llu\",\"cleanup_deadline_ns\":\"%llu\",\"cleanup_budget_ms\":%llu}",nonce,(unsigned long long)a->work_deadline,(unsigned long long)value.cleanup_start,(unsigned long long)value.cleanup_end,(unsigned long long)a->cleanup_ms);
       if(c->fd>=0)(void)json_packet(c->fd,reply,-1);
@@ -590,7 +599,7 @@ static void observe_attempt(void) {
    * Subreaper custody permits an exact wait after that parent death. */
   if(a->keeper_reaped&&!a->final_received&&a->initfd>=0){
     if(!a->result.cleanup_start){a->result.cleanup_start=now_ns();a->result.cleanup_end=a->result.cleanup_start+a->cleanup_ms*UINT64_C(1000000);uint64_t hard=a->work_deadline+a->cleanup_ms*UINT64_C(1000000);if(a->result.cleanup_end>hard)a->result.cleanup_end=hard;a->result.reason=5;
-      for(unsigned i=0;i<c->writers_count;i++)if(!c->writers[i].closed&&c->writers[i].guard_channel>=0)(void)send(c->writers[i].guard_channel,&a->result.cleanup_end,sizeof(a->result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);
+      for(unsigned i=0;i<c->writers_count;i++)if(!c->writers[i].closed&&c->writers[i].guard_channel>=0){if(a->result.cleanup_end<c->writers[i].deadline)c->writers[i].deadline=a->result.cleanup_end;(void)send(c->writers[i].guard_channel,&a->result.cleanup_end,sizeof(a->result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);}
     }
     (void)pidfd_stop(a->initfd);int status;pid_t n=waitpid(a->result.init,&status,WNOHANG);if(n==a->result.init){a->result.init_reaped=1;a->result.init_status=status;a->result.observed=now_ns();a->final_received=1;}
   }
@@ -668,9 +677,9 @@ static void close_client(int slot) {
 static void reset_attempt(void) {
   if(!attempt.active||!attempt.closed||attempt.quarantined)return;
   int descriptors[]={attempt.keeperfd,attempt.initfd,attempt.authorityfd,attempt.channel,attempt.resultfd,attempt.resultpipe};for(unsigned i=0;i<6;i++)if(descriptors[i]>=0)close(descriptors[i]);
-  /* History is permanent. An empty cgroup may be removed only after its exact
-   * live proof; private source files are retained for administrator accounting. */
-  (void)rmdir(attempt.cgroup);memset(&attempt,0,sizeof(attempt));attempt.keeperfd=attempt.initfd=attempt.authorityfd=attempt.channel=attempt.resultfd=attempt.resultpipe=-1;
+  /* History is permanent. Only empty fixed host mountpoints/cgroups are
+   * removed after exact closure; private tmpfs bytes died with the namespace. */
+  (void)rmdir(attempt.cgroup);(void)rmdir(attempt.root);memset(&attempt,0,sizeof(attempt));attempt.keeperfd=attempt.initfd=attempt.authorityfd=attempt.channel=attempt.resultfd=attempt.resultpipe=-1;
 }
 static void release_client(int slot) {
   struct client *c=&clients[slot];if(c->fd>=0||c->peerfd<0||writers_open(c)||(attempt.active&&attempt.client_slot==slot&&!attempt.closed))return;
@@ -681,7 +690,7 @@ static void release_client(int slot) {
 }
 static int request_shape(const struct kls_request *r) {
   unsigned nonzero=0;for(unsigned i=0;i<32;i++)nonzero|=r->nonce[i];
-  if(r->magic!=KLS_MAGIC||r->version!=KLS_VERSION||r->op<KLS_HELLO||r->op>KLS_OBSERVE||!r->ordinal||r->reserved||!nonzero||
+  if(r->magic!=KLS_MAGIC||r->version!=KLS_VERSION||r->op<KLS_HELLO||r->op>KLS_PERMIT||!r->ordinal||r->reserved||!nonzero||
      !r->cleanup_ms||r->cleanup_ms>KLS_MAX_CLEANUP_MS||r->work_deadline_ns>UINT64_MAX-r->cleanup_ms*UINT64_C(1000000))return -1;
   if(r->op==KLS_OPEN){if(!r->payload_len||r->payload_len>KLS_MAX_INPUT||r->pid)return -1;}
   else if(r->payload_len||(r->op==KLS_REGISTER_WRITER?(r->pid<2||r->pid>INT_MAX):r->pid!=0))return -1;
@@ -693,7 +702,16 @@ static int same_attempt(const struct kls_request *a,const struct kls_request *b)
 static int capability(struct client *c) {
   char json[2048];int n=snprintf(json,sizeof(json),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"capability\",\"status\":\"%s\",\"installation_id\":\"%s\",\"host_id\":\"%s\",\"boot_id\":\"%s\",\"daemon_epoch\":\"%s\",\"source_sha256\":\"%s\",\"runtime_sha256\":\"%s\",\"native_source_sha256\":\"%s\",\"trusted_runtime_manifest_sha256\":\"%s\",\"trusted_source_manifest_sha256\":\"%s\",\"node_sha256\":\"%s\",\"broker_binary_sha256\":\"%s\",\"client_pid\":%d,\"controller_pid\":%d,\"controller_uid\":%d,\"controller_birth_ticks\":\"%llu\",\"busy\":%s}",
     quarantine?"quarantined":"ready",KLS_INSTALLATION_ID,KLS_HOST_ID,boot_hex,epoch_hex,KLS_NATIVE_SOURCE_SHA,KLS_RUNTIME_MANIFEST_SHA,KLS_NATIVE_SOURCE_SHA,KLS_RUNTIME_MANIFEST_SHA,KLS_TRUSTED_SOURCE_MANIFEST_SHA,KLS_NODE_SHA,binary_hex,c->pid,c->parent,c->uid,(unsigned long long)c->parent_birth,truth(attempt.active));
-  return n<0||(size_t)n>=sizeof(json)?-1:json_packet(c->fd,json,c->cancel_write);
+  if(n<0||(size_t)n>=sizeof(json))return -1;
+  /* SCM_RIGHTS shares file-status flags. An ordinary recipient must not be
+   * able to clear O_NONBLOCK on the root broker's own cancel writer and then
+   * fill the pipe to stall its stop path. Reopen the fixed kernel FD alias to
+   * obtain a separate OFD for the public capability, retaining the same FIFO. */
+  char alias[96];snprintf(alias,sizeof(alias),"/proc/self/fd/%d",c->cancel_write);
+  int public_write=open(alias,O_WRONLY|O_NONBLOCK|O_CLOEXEC);struct stat original,copy;
+  if(public_write<0||fstat(c->cancel_write,&original)||fstat(public_write,&copy)||!S_ISFIFO(copy.st_mode)||
+     original.st_dev!=copy.st_dev||original.st_ino!=copy.st_ino){if(public_write>=0)close(public_write);return -1;}
+  int sent=json_packet(c->fd,json,public_write);close(public_write);return sent;
 }
 static void deny_client(int slot,const char *reason) {
   char reply[512];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"denied\",\"status\":\"rejected\",\"reason\":\"%s\"}",reason);
@@ -723,6 +741,12 @@ static void receive_request(int slot) {
   switch(request.op){
     case KLS_REGISTER_WRITER:ok=register_writer(c,&request);break;
     case KLS_OPEN:ok=start_attempt(slot,passed);close(passed);passed=-1;break;
+    case KLS_PERMIT:{
+      if(!attempt.active||attempt.closed||attempt.permitted||attempt.client_slot!=slot||attempt.initfd<0||attempt.quarantined||quarantine||
+         now_ns()>=attempt.work_deadline||pidfd_dead(attempt.initfd)||pidfd_dead(attempt.keeperfd)||pidfd_dead(c->cancel_read)){ok=-1;break;}
+      uint32_t permit=INTERNAL_PERMIT;ok=packet_send(attempt.channel,&permit,sizeof(permit),-1);if(!ok)attempt.permitted=1;
+      char reply[384];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"permitted\",\"status\":\"running\",\"ordinal\":%u}",request.ordinal);if(!ok)ok=json_packet(c->fd,reply,-1);break;
+    }
     case KLS_STOP:{unsigned char byte=1;if(write(c->cancel_write,&byte,1)<0&&errno!=EAGAIN)ok=-1;
       if(attempt.active&&!attempt.closed&&attempt.client_slot==slot){uint32_t stop=INTERNAL_STOP;if(packet_send(attempt.channel,&stop,sizeof(stop),-1)&&errno!=EAGAIN)ok=-1;}
       char reply[256];snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"stop_requested\",\"status\":\"stopping\",\"ordinal\":%u}",request.ordinal);if(json_packet(c->fd,reply,-1))ok=-1;break;}
@@ -748,6 +772,13 @@ static int unresolved_writers(void) {
   int duplicate=dup(rootfd);if(duplicate<0)return -1;DIR *dir=fdopendir(duplicate);if(!dir){close(duplicate);return -1;}
   int found=0;struct dirent *entry;errno=0;while((entry=readdir(dir)))if(!strncmp(entry->d_name,"writer-",7)){found=1;break;}if(!found&&errno)found=-1;closedir(dir);return found;
 }
+static int notify_ready(void) {
+  const char *name=getenv("NOTIFY_SOCKET");if(!name||!name[0]||strlen(name)>=sizeof(((struct sockaddr_un *)0)->sun_path)||(name[0]!='/'&&name[0]!='@'))return -1;
+  struct sockaddr_un address={.sun_family=AF_UNIX};size_t bytes=strlen(name);memcpy(address.sun_path,name,bytes+1);if(name[0]=='@')address.sun_path[0]=0;
+  int fd=socket(AF_UNIX,SOCK_DGRAM|SOCK_CLOEXEC,0);if(fd<0)return -1;
+  socklen_t length=(socklen_t)(offsetof(struct sockaddr_un,sun_path)+bytes+(name[0]=='@'?0:1));
+  int ok=sendto(fd,"READY=1",7,MSG_NOSIGNAL,(struct sockaddr *)&address,length)==7;close(fd);return ok?0:-1;
+}
 static int serve(void) {
   kv_linux_uid_configuration config;const char *reason=NULL;
   if(getuid()!=0||geteuid()!=0||getppid()!=1||fixed_configuration(&config)||(rootfd=protected_open(KLS_ROOT,1))<0||validate_runtime()||read_boot()||
@@ -764,6 +795,7 @@ static int serve(void) {
   struct sockaddr_un address={.sun_family=AF_UNIX};if(strlen(KLS_ROOT "/control.sock")>=sizeof(address.sun_path))return 165;memcpy(address.sun_path,KLS_ROOT "/control.sock",sizeof(KLS_ROOT "/control.sock"));
   struct stat old;if(lstat(address.sun_path,&old)==0){if(!S_ISSOCK(old.st_mode)||old.st_uid!=0||unlink(address.sun_path))return 166;}else if(errno!=ENOENT)return 166;
   if(bind(serverfd,(struct sockaddr *)&address,sizeof(address))||chmod(address.sun_path,0666)||listen(serverfd,MAX_CLIENTS))return 167;
+  if(notify_ready())return 187;
   while(!cancelled){
     struct pollfd fds[1+MAX_CLIENTS];fds[0]=(struct pollfd){serverfd,POLLIN,0};for(unsigned i=0;i<MAX_CLIENTS;i++)fds[1+i]=(struct pollfd){clients[i].fd,POLLIN,0};
     int ready=poll(fds,1+MAX_CLIENTS,10);if(ready<0&&errno!=EINTR)break;

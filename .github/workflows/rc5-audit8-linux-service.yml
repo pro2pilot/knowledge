@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: rc5-audit8-linux-service
   cancel-in-progress: false
@@ -27,6 +28,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.17.1
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-budget-fixtures-exact-zip
+          path: native-input
+          run-id: 40649827600
+          github-token: ${{ github.token }}
+      - name: Restore only source-checked native input pairs
+        run: |
+          python3 qa/reliability/audit8/linux/stage_native_pairs.py --package native-input/public/knowledge-v3.4.4.zip --source source/.knowledge --output evidence/native-input.json
       - name: Native framing seals and inherited sender boundary
         run: |
           mkdir -p evidence
@@ -42,9 +52,15 @@ jobs:
       - name: Install fixed root native service
         run: |
           sudo /bin/sh "$RUNNER_TEMP/native-service-prepared/install-native.sh" > evidence/install.stdout.txt 2> evidence/install.stderr.txt
+      - name: Reject actual malformed and inherited socket senders
+        run: |
+          python3 qa/reliability/audit8/linux/protocol_mutations.py --output evidence/protocol-mutations.json > evidence/protocol.stdout.txt 2> evidence/protocol.stderr.txt
       - name: Physical native production entry and faults
         run: |
           python3 qa/reliability/audit8/linux/physical_native.py --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
+      - name: Public KVE KVF ACK path and failure reuse
+        run: |
+          node qa/reliability/audit8/linux/public_production.cjs --source source/.knowledge --output evidence/public-production.json --cohort-seconds 600 > evidence/public.stdout.txt 2> evidence/public.stderr.txt
       - name: Preserve service diagnostics and identities
         if: always()
         run: |
