@@ -1,0 +1,265 @@
+name: RC5 audit8 exact installed candidate qualification
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit8-installed-candidate.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: rc5-audit8-installed-candidate
+  cancel-in-progress: false
+jobs:
+  pack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      zip_sha256: ${{ steps.pack.outputs.zip_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit7-budget-fixtures-exact-zip
+          path: native-input
+          run-id: 40649827600
+          github-token: ${{ github.token }}
+      - name: Build exact pinned source using product packager and validator
+        id: pack
+        run: |
+          python3 qa/reliability/audit8/repack_exact.py --source source/.knowledge --pins qa/reliability/audit8/SOURCE_PINS.json --base-package native-input/public --out packed
+          python3 - <<'PYCODE'
+          import json,os,pathlib,re
+          p=json.loads(pathlib.Path('packed/public/BUILD_PROVENANCE.json').read_text())
+          assert p['status']=='PASS_PACKAGED_STRUCTURAL_VALIDATION' and re.fullmatch('[0-9a-f]{64}',p['artifact_sha256'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: print('zip_sha256='+p['artifact_sha256'],file=f)
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit8-exact-candidate
+          path: |
+            packed/public/**
+            packed/RESULT.json
+          if-no-files-found: error
+          retention-days: 3
+  windows:
+    needs: pack
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: x64
+            shard: 0
+          - runner: windows-2022
+            arch: x64
+            shard: 1
+          - runner: windows-11-arm
+            arch: arm64
+            shard: 0
+          - runner: windows-11-arm
+            arch: arm64
+            shard: 1
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Preserve exact source bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          architecture: ${{ matrix.arch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit8-exact-candidate
+          path: downloaded
+      - name: Run fixed public shard and exact installed native fault cohort
+        run: python qa/reliability/audit8/windows/run_installed_contract.py --package downloaded/public --arch ${{ matrix.arch }} --out installed-contract --shard-index ${{ matrix.shard }} --shard-count 2 --cohort-seconds 1200 --expected-zip-sha256 ${{ needs.pack.outputs.zip_sha256 }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit8-installed-windows-${{ matrix.arch }}-${{ matrix.shard }}
+          path: |
+            installed-contract/RESULT.json
+            installed-contract/*.stdout.json
+            installed-contract/*.stderr.txt
+            installed-contract/*.native-ownership.json
+            installed-contract/team-failure-evidence/**
+          if-no-files-found: error
+          retention-days: 3
+  linux:
+    needs: pack
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          architecture: ${{ matrix.arch }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit8-exact-candidate
+          path: downloaded
+      - name: Strictly extract and bind the same final candidate
+        id: extract
+        run: |
+          mkdir evidence
+          python3 qa/reliability/audit8/extract_candidate.py --package downloaded/public --out installed --expected-zip-sha256 ${{ needs.pack.outputs.zip_sha256 }} > evidence/extraction.stdout.json 2> evidence/extraction.stderr.txt
+          cp installed/EXTRACTION.json evidence/EXTRACTION.json
+      - name: Prepare shipping persistent service from the actual installed ZIP
+        id: prepare
+        run: |
+          python3 installed/fresh-install/.knowledge/tools/install-linux-native-service.py --source installed/fresh-install/.knowledge --out "$RUNNER_TEMP/native-service-prepared" --node "$(command -v node)" > evidence/prepare.stdout.txt 2> evidence/prepare.stderr.txt
+          cp "$RUNNER_TEMP/native-service-prepared/prepare.json" evidence/prepare.json
+          cp "$RUNNER_TEMP/native-service-prepared/install-native.sh" evidence/install-native.sh
+          cp "$RUNNER_TEMP/native-service-prepared/stage/runtime.manifest" evidence/runtime.manifest
+      - name: Install fixed root-native persistent service
+        id: install
+        run: sudo /bin/sh "$RUNNER_TEMP/native-service-prepared/install-native.sh" > evidence/install.stdout.txt 2> evidence/install.stderr.txt
+      - name: Actual protocol boundary mutations
+        id: protocol
+        continue-on-error: true
+        run: python3 qa/reliability/audit8/linux/protocol_mutations.py --output evidence/protocol-mutations.json > evidence/protocol.stdout.txt 2> evidence/protocol.stderr.txt
+      - name: Public installed KVE KVF ACK and failure reuse
+        id: public
+        continue-on-error: true
+        run: node qa/reliability/audit8/linux/public_production.cjs --source installed/fresh-install/.knowledge --output evidence/public-production.json --cohort-seconds 600 --include-controller-crash > evidence/public.stdout.txt 2> evidence/public.stderr.txt
+      - name: Build the fixed native QA retained-pidfd signal helper as ordinary UID
+        id: pidfd_helper
+        continue-on-error: true
+        run: gcc -std=c11 -O2 -Wall -Wextra -Werror -static -no-pie qa/reliability/audit8/linux/pidfd_kill.c -o "$RUNNER_TEMP/pidfd-kill"
+      - name: Independent native cancellation timeout and broker pause
+        id: physical
+        continue-on-error: true
+        run: python3 qa/reliability/audit8/linux/physical_native.py --pidfd-helper "$RUNNER_TEMP/pidfd-kill" --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
+      - name: Last-only actual blocked I/O and unchanged deadline
+        id: blocked_io
+        continue-on-error: true
+        timeout-minutes: 2
+        run: python3 qa/reliability/audit8/linux/blocked_io.py --output evidence/blocked-io.json > evidence/blocked-io.stdout.txt 2> evidence/blocked-io.stderr.txt
+      - name: Preserve exact service and installed identities
+        if: always()
+        run: |
+          sudo journalctl --no-pager -u knowledge-linux-native-v1.service > evidence/service-journal.txt 2>&1 || true
+          sudo systemctl show knowledge-linux-native-v1.service > evidence/service-state.txt 2>&1 || true
+          cp /var/lib/knowledge-linux-native-v1/installation.json evidence/installation.json || true
+          cp downloaded/public/BUILD_PROVENANCE.json evidence/BUILD_PROVENANCE.json
+          cp downloaded/public/PACKAGE_CONTENTS.json evidence/PACKAGE_CONTENTS.json
+          cp downloaded/public/SOURCE_PINS.json evidence/SOURCE_PINS.json
+      - name: Require all physical lanes and exact installed byte preservation
+        if: always()
+        env:
+          LANE_OUTCOMES: '${{ toJSON(steps) }}'
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,os,pathlib,sys
+          steps=json.loads(os.environ['LANE_OUTCOMES'])
+          names=['extract','prepare','install','protocol','public','pidfd_helper','physical','blocked_io']
+          outcomes={name:steps.get(name,{}).get('outcome','missing') for name in names}
+          entries=json.loads(pathlib.Path('downloaded/public/PACKAGE_CONTENTS.json').read_text())
+          root=pathlib.Path('installed/fresh-install')
+          changed=[name for name,item in entries.items() if not (root/name).is_file() or hashlib.sha256((root/name).read_bytes()).hexdigest()!=item['sha256']]
+          passed=all(value=='success' for value in outcomes.values()) and not changed
+          pathlib.Path('evidence').mkdir(exist_ok=True)
+          pathlib.Path('evidence/LANE_OUTCOMES.json').write_text(json.dumps({'passed':passed,'outcomes':outcomes,'installed_byte_changes':changed},indent=2)+'\n')
+          print(json.dumps({'outcomes':outcomes,'changed':changed}))
+          sys.exit(0 if passed else 1)
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit8-installed-linux-${{ matrix.arch }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 3
+  linux-broker-crash:
+    needs: pack
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+          architecture: ${{ matrix.arch }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: audit8-exact-candidate
+          path: downloaded
+      - name: Bind the same installed candidate
+        run: |
+          mkdir evidence
+          python3 qa/reliability/audit8/extract_candidate.py --package downloaded/public --out installed --expected-zip-sha256 ${{ needs.pack.outputs.zip_sha256 }} > evidence/extraction.stdout.json 2> evidence/extraction.stderr.txt
+          cp installed/EXTRACTION.json evidence/EXTRACTION.json
+      - name: Prepare and install the shipping persistent native service
+        run: |
+          python3 installed/fresh-install/.knowledge/tools/install-linux-native-service.py --source installed/fresh-install/.knowledge --out "$RUNNER_TEMP/native-service-prepared" --node "$(command -v node)" > evidence/prepare.stdout.txt 2> evidence/prepare.stderr.txt
+          cp "$RUNNER_TEMP/native-service-prepared/prepare.json" evidence/prepare.json
+          cp "$RUNNER_TEMP/native-service-prepared/install-native.sh" evidence/install-native.sh
+          cp "$RUNNER_TEMP/native-service-prepared/stage/runtime.manifest" evidence/runtime.manifest
+          sudo /bin/sh "$RUNNER_TEMP/native-service-prepared/install-native.sh" > evidence/install.stdout.txt 2> evidence/install.stderr.txt
+      - name: Actual broker death retained actor exits and same-boot restart fence
+        run: python3 qa/reliability/audit8/linux/broker_crash.py --output evidence/broker-crash.json > evidence/broker-crash.stdout.txt 2> evidence/broker-crash.stderr.txt
+      - name: Preserve the intentionally quarantined persistent service
+        if: always()
+        run: |
+          sudo journalctl --no-pager -u knowledge-linux-native-v1.service > evidence/service-journal.txt 2>&1 || true
+          sudo systemctl show knowledge-linux-native-v1.service > evidence/service-state.txt 2>&1 || true
+          cp /var/lib/knowledge-linux-native-v1/installation.json evidence/installation.json || true
+          cp downloaded/public/BUILD_PROVENANCE.json evidence/BUILD_PROVENANCE.json
+          cp downloaded/public/PACKAGE_CONTENTS.json evidence/PACKAGE_CONTENTS.json
+          cp downloaded/public/SOURCE_PINS.json evidence/SOURCE_PINS.json
+      - name: Require exact installed bytes after crash and restart
+        if: always()
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib,json,pathlib,sys
+          entries=json.loads(pathlib.Path('downloaded/public/PACKAGE_CONTENTS.json').read_text())
+          root=pathlib.Path('installed/fresh-install')
+          changed=[name for name,item in entries.items() if not (root/name).is_file() or hashlib.sha256((root/name).read_bytes()).hexdigest()!=item['sha256']]
+          pathlib.Path('evidence/INSTALLED_BYTES.json').write_text(json.dumps({'unchanged':not changed,'changes':changed},indent=2)+'\n')
+          sys.exit(1 if changed else 0)
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit8-installed-broker-crash-${{ matrix.arch }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 3
