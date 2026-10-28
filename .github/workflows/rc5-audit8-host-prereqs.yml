@@ -1,0 +1,38 @@
+name: RC5 audit8 read-only stock-SIP host prerequisites
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-blocker-fixes-20261027]
+    paths: [.github/workflows/rc5-audit8-host-prereqs.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit8-host-prereqs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observe-host:
+    timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [macos-15-intel, macos-15, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Observe exact SIP status without modifying host configuration
+        run: python3 qa/reliability/audit8/probe_host.py --label '${{ matrix.os }}' --out host-prerequisite
+      - name: Preserve enabled, disabled, unknown and host mismatch results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit8-host-prerequisite-${{ matrix.os }}
+          path: host-prerequisite/RESULT.json
+          if-no-files-found: error
+          retention-days: 3
