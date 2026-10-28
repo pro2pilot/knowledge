@@ -127,8 +127,10 @@ class DisposableDevice:
         assert len(parameters) in (3, 6, 9) and all(parameters[i:i+3] == [own_device, "0", str(DELAY_MS)] for i in range(0, len(parameters), 3))
         numbers = self.command(["/usr/sbin/dmsetup", "info", "--columns", "--noheadings", "--separator", ":",
                                 "--options", "major,minor", self.name]).stdout.decode().strip()
-        assert re.fullmatch(r"[0-9]+:[0-9]+", numbers)
-        mapped_major, mapped_minor = map(int, numbers.split(":"))
+        parsed_numbers = re.fullmatch(r"\s*([0-9]+)\s*:\s*([0-9]+)\s*", numbers)
+        assert parsed_numbers is not None
+        mapped_major, mapped_minor = map(int, parsed_numbers.groups())
+        numbers = f"{mapped_major}:{mapped_minor}"
         # --noudevsync deliberately does not establish a device-node barrier.
         # Repair only this exact newly created mapping, then check its kernel
         # device number rather than sleeping for an arbitrary udev delay.
@@ -170,6 +172,51 @@ class DisposableDevice:
                     receipt["mapping_removed"] = False
                 else:
                     assert self.table_observation is not None and current.stdout.decode().split() == self.table_observation
+                    proof = self.report.get("late_physical_closure", {})
+                    if self.table_observation[2] == "delay" and all(proof.get(key) is True for key in (
+                            "writer_pidfd_exit_observed", "guardian_pidfd_exit_observed", "original_cgroup_empty")):
+                        # The product proof is already complete. A separate
+                        # udev reader can keep issuing delayed probes forever;
+                        # remove only this fixture's artificial delay so those
+                        # readers finish naturally. Never change a live S test.
+                        observed_image = self.image.stat()
+                        assert (observed_image.st_dev, observed_image.st_ino) == self.image_identity
+                        binding = json.loads(self.command(["/usr/sbin/losetup", "--list", "--json", "--output", "NAME,BACK-FILE,RO", self.loop]).stdout)
+                        rows = binding["loopdevices"]
+                        assert len(rows) == 1 and rows[0]["name"] == self.loop and rows[0]["ro"] in (True, 1)
+                        assert Path(rows[0]["back-file"]).resolve() == self.image.resolve()
+                        mapped = Path(self.report["device"]["path"])
+                        info = mapped.stat()
+                        expected_rdev = os.makedev(self.report["device"]["major"], self.report["device"]["minor"])
+                        assert stat.S_ISBLK(info.st_mode) and info.st_rdev == expected_rdev
+                        assert self.command(["/usr/sbin/blockdev", "--getro", str(mapped)]).stdout.strip() == b"1"
+                        info_text = self.command(["/usr/sbin/dmsetup", "info", "--columns", "--noheadings", "--separator", ":",
+                                                  "--options", "major,minor,open", self.name]).stdout.decode().strip()
+                        fields = re.fullmatch(r"\s*([0-9]+)\s*:\s*([0-9]+)\s*:\s*([0-9]+)\s*", info_text)
+                        assert fields and tuple(map(int, fields.groups()[:2])) == (os.major(expected_rdev), os.minor(expected_rdev))
+                        started_ns = time.monotonic_ns()
+                        assert started_ns > int(proof["observed_ns"])
+                        old_table = list(self.table_observation)
+                        loop_rdev = os.stat(self.loop).st_rdev
+                        assert old_table[3] == f"{os.major(loop_rdev)}:{os.minor(loop_rdev)}"
+                        linear = ["0", str(IMAGE_BYTES // 512), "linear", old_table[3], "0"]
+                        self.command(["/usr/sbin/dmsetup", "suspend", "--nolockfs", self.name], timeout=20)
+                        resumed = False
+                        try:
+                            self.command(["/usr/sbin/dmsetup", "reload", "--readonly", "--table", " ".join(linear), self.name])
+                            self.command(["/usr/sbin/dmsetup", "resume", "--noudevsync", "--noudevrules", "--readahead", "none", self.name])
+                            resumed = True
+                        finally:
+                            if not resumed:
+                                self.command(["/usr/sbin/dmsetup", "resume", "--noudevsync", "--noudevrules", self.name], check=False)
+                        self.table_observation = self.command(["/usr/sbin/dmsetup", "table", self.name]).stdout.decode().split()
+                        assert self.table_observation == linear
+                        assert mapped.stat().st_rdev == expected_rdev
+                        assert self.command(["/usr/sbin/blockdev", "--getro", str(mapped)]).stdout.strip() == b"1"
+                        self.report["fixture_delay_disabled_after_proof"] = {
+                            "started_ns": str(started_ns), "old_table": old_table, "new_table": linear,
+                            "owned_device_open_count": int(fields.group(3)), "read_only": True,
+                            "product_original_deadlines_unchanged": True, "original_s_already_closed": True}
                     retire_end = min(time.monotonic() + 25, self.deadline - 3)
                     while time.monotonic() < retire_end:
                         result = self.command(["/usr/sbin/dmsetup", "remove", "--retry", "--noudevsync", "--noudevrules", self.name], timeout=6, check=False)

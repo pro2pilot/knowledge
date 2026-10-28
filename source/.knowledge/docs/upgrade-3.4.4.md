@@ -9,10 +9,10 @@ Keep a backup and follow the system-file update procedure in
 curated settings, lifecycle records and content-addressed receipts. Reinstall
 the active agent integration to update its managed instructions.
 
-This tree uses audit revision `independent-audit.20261027.reliability.5`. The
+This tree uses audit revision `independent-audit.20261028.reliability.8`. The
 675-file source snapshot at commit `5bed133f860d2d5e2ae395287d47c065c410f605`
 (SOURCE SHA-256 `bea4ec0c914990e546d84883ee429eee97b7fd5d2148eaf58407b8b8ed849229`)
-is a historical evidence baseline, not the current `.5` artifact. New source and
+is a historical evidence baseline, not the current `.8` artifact. New source and
 package pins must be recorded after the docs-integrated candidate is rebuilt.
 The unchanged version/candidate label does not identify
 the bytes and does not promise automatic update detection. Review
@@ -59,7 +59,7 @@ runtime-safety checks. Reducer correction reinterpreted saved TAP output without
 rerunning those physical tests. Preceding reliability.4 Team evidence is 7/7 physical cases
 and 8/8 shipping steps; Doctor is 86/100 `usable_with_warnings` with medium
 `suspect_module` and `low_confidence_module` warnings. These scoped results do
-not qualify the changed reliability.5 runtime, stock-SIP Macs or the final
+not qualify the current runtime, stock-SIP Macs or the final
 installed ZIP. New audit5 matrix evidence has separate source pins; no final
 passing outcome is asserted here. The historical second
 ownerless-lock cause remains unknown.

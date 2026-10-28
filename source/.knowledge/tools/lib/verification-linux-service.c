@@ -573,6 +573,28 @@ static int terminal_body(struct attempt *a,const char *status,int physical,int j
       (unsigned long long)a->result_bytes,result_hash);
   return n<0||(size_t)n>=cap?-1:n;
 }
+static void publish_cleanup_start(const struct attempt *a,struct client *c) {
+  char nonce[65],reply[1024];hex(a->reservation.attempt_nonce,32,nonce);
+  snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"cleanup_started\",\"nonce\":\"%s\",\"work_deadline_ns\":\"%llu\",\"cleanup_started_ns\":\"%llu\",\"cleanup_deadline_ns\":\"%llu\",\"cleanup_budget_ms\":%llu}",nonce,(unsigned long long)a->work_deadline,(unsigned long long)a->result.cleanup_start,(unsigned long long)a->result.cleanup_end,(unsigned long long)a->cleanup_ms);
+  if(c->fd>=0)(void)json_packet(c->fd,reply,-1);
+}
+static void latch_keeper_loss(struct attempt *a,struct client *c) {
+  if(a->result.reason==5)return;
+  if(!a->result.cleanup_start){
+    a->result.cleanup_start=now_ns();a->result.cleanup_end=a->result.cleanup_start+a->cleanup_ms*UINT64_C(1000000);
+    uint64_t hard=a->work_deadline+a->cleanup_ms*UINT64_C(1000000);if(a->result.cleanup_end>hard)a->result.cleanup_end=hard;
+    publish_cleanup_start(a,c);
+  }
+  /* A prior CLEANUP may have deliberately left S alive for finalization. The
+   * keeper's subsequent loss revokes that permission even though its original
+   * cleanup epoch is already latched. Never recompute or extend that epoch. */
+  a->result.reason=5;
+  for(unsigned i=0;i<c->writers_count;i++)if(!c->writers[i].closed&&c->writers[i].guard_channel>=0){
+    if(a->result.cleanup_end<c->writers[i].deadline)c->writers[i].deadline=a->result.cleanup_end;
+    (void)send(c->writers[i].guard_channel,&a->result.cleanup_end,sizeof(a->result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);
+    uint64_t stop=0;(void)send(c->writers[i].guard_channel,&stop,sizeof(stop),MSG_NOSIGNAL|MSG_DONTWAIT);
+  }
+}
 static void observe_attempt(void) {
   struct attempt *a=&attempt;if(!a->active||a->closed||a->keeperfd<0)return;
   struct client *c=&clients[a->client_slot];
@@ -607,9 +629,7 @@ static void observe_attempt(void) {
       value.cleanup_end-value.cleanup_start<=a->cleanup_ms*UINT64_C(1000000)&&value.cleanup_end<=a->work_deadline+a->cleanup_ms*UINT64_C(1000000)){
       a->result.cleanup_start=value.cleanup_start;a->result.cleanup_end=value.cleanup_end;
       for(unsigned wi=0;wi<c->writers_count;wi++)if(!c->writers[wi].closed&&value.cleanup_end<c->writers[wi].deadline)c->writers[wi].deadline=value.cleanup_end;
-      char nonce[65],reply[1024];hex(a->reservation.attempt_nonce,32,nonce);
-      snprintf(reply,sizeof(reply),"{\"schema_version\":\"knowledge-linux-native-service.v1\",\"event\":\"cleanup_started\",\"nonce\":\"%s\",\"work_deadline_ns\":\"%llu\",\"cleanup_started_ns\":\"%llu\",\"cleanup_deadline_ns\":\"%llu\",\"cleanup_budget_ms\":%llu}",nonce,(unsigned long long)a->work_deadline,(unsigned long long)value.cleanup_start,(unsigned long long)value.cleanup_end,(unsigned long long)a->cleanup_ms);
-      if(c->fd>=0)(void)json_packet(c->fd,reply,-1);
+      publish_cleanup_start(a,c);
     } else if(value.kind==INTERNAL_FINAL&&passed<0&&!a->final_received&&value.init==a->result.init&&value.cleanup_start&&value.cleanup_end>value.cleanup_start&&
       value.cleanup_end-value.cleanup_start<=a->cleanup_ms*UINT64_C(1000000)&&value.cleanup_end<=a->work_deadline+a->cleanup_ms*UINT64_C(1000000)){
       if(a->result.cleanup_start&&(a->result.cleanup_start!=value.cleanup_start||a->result.cleanup_end!=value.cleanup_end)){a->quarantined=quarantine=1;continue;}
@@ -621,9 +641,7 @@ static void observe_attempt(void) {
   /* A surviving root broker retains the exact init pidfd if its keeper dies.
    * Subreaper custody permits an exact wait after that parent death. */
   if(a->keeper_reaped&&!a->final_received&&a->initfd>=0){
-    if(!a->result.cleanup_start){a->result.cleanup_start=now_ns();a->result.cleanup_end=a->result.cleanup_start+a->cleanup_ms*UINT64_C(1000000);uint64_t hard=a->work_deadline+a->cleanup_ms*UINT64_C(1000000);if(a->result.cleanup_end>hard)a->result.cleanup_end=hard;a->result.reason=5;
-      for(unsigned i=0;i<c->writers_count;i++)if(!c->writers[i].closed&&c->writers[i].guard_channel>=0){if(a->result.cleanup_end<c->writers[i].deadline)c->writers[i].deadline=a->result.cleanup_end;(void)send(c->writers[i].guard_channel,&a->result.cleanup_end,sizeof(a->result.cleanup_end),MSG_NOSIGNAL|MSG_DONTWAIT);uint64_t stop=0;(void)send(c->writers[i].guard_channel,&stop,sizeof(stop),MSG_NOSIGNAL|MSG_DONTWAIT);}
-    }
+    latch_keeper_loss(a,c);
     (void)pidfd_stop(a->initfd);int status;pid_t n=waitpid(a->result.init,&status,WNOHANG);if(n==a->result.init){a->result.init_reaped=1;a->result.init_status=status;a->result.observed=now_ns();a->final_received=1;}
   }
   uint64_t hard=a->result.cleanup_end?a->result.cleanup_end:a->work_deadline+a->cleanup_ms*UINT64_C(1000000);

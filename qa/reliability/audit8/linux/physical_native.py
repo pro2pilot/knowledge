@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 
-MODES = ["positive", "cancel", "timeout", "cancel_before_permit", "broker_paused_cancel"]
+MODES = ["positive", "cancel", "timeout", "cancel_before_permit", "broker_paused_cancel", "keeper_crash", "repeat_after_keeper_crash"]
 
 
 def sha(body: bytes) -> str:
@@ -44,7 +44,7 @@ def dead(descriptor):
 
 def systemctl_signal(signame):
     assert signame in {"SIGSTOP", "SIGCONT"}
-    subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "kill", "--kill-whom=main",
+    subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/timeout", "--signal=KILL", "4", "/usr/bin/systemctl", "kill", "--kill-whom=main",
                     "--signal=" + signame, "knowledge-linux-native-v1.service"], check=True, timeout=5,
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={"PATH": "/usr/bin:/bin", "LANG": "C"})
 
@@ -79,6 +79,64 @@ def cancel_with_paused_broker(bridge, opened, storage):
             systemctl_signal("SIGCONT")
         for descriptor in held.values():
             os.close(descriptor)
+
+
+def kill_exact_keeper(bridge, opened, authority, helper):
+    """Bind actual active W, then send SIGKILL through the retained keeper FD."""
+    assert helper is not None
+    helper = Path(helper).resolve(strict=True)
+    helper_before = helper.stat()
+    assert helper.is_file() and helper_before.st_uid == os.getuid() and helper_before.st_nlink == 1
+    binary_sha = sha(helper.read_bytes())
+    source_sha = sha(Path(__file__).with_name("pidfd_kill.c").read_bytes())
+    keeperfd, brokerfd, workerfd = None, None, None
+    try:
+        keeperfd = os.pidfd_open(opened["keeper_pid"])
+        keeper = identity(opened["keeper_pid"])
+        broker_pid = int(subprocess.run(["/usr/bin/systemctl", "show", "--property=MainPID", "--value", "knowledge-linux-native-v1.service"],
+                                       check=True, timeout=3, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout)
+        brokerfd = os.pidfd_open(broker_pid);broker = identity(broker_pid)
+        keeper_stat = Path(f"/proc/{keeper['pid']}/stat").read_text()
+        assert int(keeper_stat[keeper_stat.rfind(")") + 2:].split()[1]) == broker_pid
+        assert not dead(keeperfd) and not dead(brokerfd)
+        end = time.monotonic() + 3
+        worker = None
+        while time.monotonic() < end:
+            descendants = [int(value) for value in Path(f"/proc/{opened['init_pid']}/task/{opened['init_pid']}/children").read_text().split()]
+            command_inits = [pid for pid in descendants if pid != authority["authority_pid"]]
+            if len(command_inits) == 1:
+                workers = Path(f"/proc/{command_inits[0]}/task/{command_inits[0]}/children").read_text().split()
+                if len(workers) == 1:
+                    pid = int(workers[0])
+                    uid_line = next(row for row in Path(f"/proc/{pid}/status").read_text().splitlines() if row.startswith("Uid:"))
+                    if [int(value) for value in uid_line.split()[1:]] == [opened["worker_uid"]] * 4:
+                        workerfd = os.pidfd_open(pid);worker = identity(pid);break
+            time.sleep(0.01)
+        assert worker is not None and not dead(workerfd), "actual_worker_missing_before_keeper_crash"
+        assert identity(keeper["pid"])["birth_ticks"] == keeper["birth_ticks"] and not dead(keeperfd)
+        command = ["/usr/bin/sudo", "-n", "/usr/bin/timeout", "--signal=KILL", "3", str(helper)]
+        started = time.monotonic_ns()
+        killed = subprocess.run(command, stdin=keeperfd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=4,
+                                env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+        assert killed.returncode == 0, (killed.returncode, killed.stderr)
+        observed_end = min(time.monotonic_ns() + 3_000_000_000, bridge.deadline + bridge.cleanup_ms * 1_000_000)
+        while time.monotonic_ns() < observed_end and not (dead(keeperfd) and dead(workerfd)):
+            assert not dead(brokerfd)
+            time.sleep(0.005)
+        assert dead(keeperfd) and dead(workerfd), "exact_keeper_or_worker_exit_unobserved"
+        assert not dead(brokerfd) and identity(broker_pid)["birth_ticks"] == broker["birth_ticks"]
+        helper_after = helper.stat()
+        assert (helper_before.st_dev, helper_before.st_ino, helper_before.st_mtime_ns, helper_before.st_size) == (helper_after.st_dev, helper_after.st_ino, helper_after.st_mtime_ns, helper_after.st_size)
+        assert sha(helper.read_bytes()) == binary_sha
+        return {"keeper": keeper, "broker": broker, "worker": worker, "active_worker_uid": opened["worker_uid"],
+                "keeper_pidfd_retained": True, "signal_target": "retained_pidfd_passed_as_FD0", "signal": "SIGKILL",
+                "keeper_pidfd_exit_observed": True, "worker_pidfd_exit_observed": True,
+                "broker_remained_alive": True, "helper_source_sha256": source_sha, "helper_binary_sha256": binary_sha,
+                "helper_exit_code": killed.returncode, "signal_started_ns": str(started), "admin_argv": command}
+    finally:
+        for descriptor in (keeperfd, brokerfd, workerfd):
+            if descriptor is not None:
+                os.close(descriptor)
 
 
 class Bridge:
@@ -142,7 +200,12 @@ for(const name of Object.keys(process.env))assert.ok(!name.startsWith('KNOWLEDGE
 for(const fd of fs.readdirSync('/proc/self/fd')){try{const link=fs.readlinkSync('/proc/self/fd/'+fd);assert.ok(!link.includes('knowledge-native-source')&&!link.includes('/var/lib/knowledge-linux-native'));}catch(e){if(e.code!=='ENOENT')throw e;}}
 """
     if mode == "positive":
-        script += "const p=cp.spawn(process.execPath,['-e',\"setInterval(()=>{},1000)\"],{detached:true,stdio:['ignore','inherit','inherit']});p.unref();console.log(JSON.stringify({native_worker:true,uid:process.getuid(),descendant:p.pid}));\n"
+        script += """(async()=>{
+const p=cp.spawn(process.execPath,['-e',"setInterval(()=>{},1000);process.send('ready');"],{detached:true,stdio:['ignore','inherit','inherit','ipc']});
+await new Promise((resolve,reject)=>{p.once('message',value=>value==='ready'?resolve():reject(new Error('descendant readiness mismatch')));p.once('error',reject);p.once('exit',()=>reject(new Error('descendant exited before readiness')));});
+p.disconnect();p.unref();console.log(JSON.stringify({native_worker:true,uid:process.getuid(),descendant:p.pid,descendant_ready:true}));
+})().catch(error=>{console.error(error.message);process.exitCode=1;});
+"""
     else:
         script += "console.log('native-work-started');setInterval(()=>{},1000);\n"
     body = script.encode()
@@ -154,12 +217,13 @@ for(const fd of fs.readdirSync('/proc/self/fd')){try{const link=fs.readlinkSync(
             "manifest_sha256": manifest, "directories_sha256": sha(wire([]))}
 
 
-def run_mode(config, mode, evidence=None):
+def run_mode(config, mode, evidence=None, pidfd_helper=None):
     bridge = Bridge(config, mode)
     storage = subprocess.Popen([sys.executable, "-c", "import sys,time;sys.stdin.readline();sys.stdin.readline()"],
                                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     started = time.monotonic()
     observations = {}
+    positive = mode in {"positive", "repeat_after_keeper_crash"}
     try:
         bridge.send(1)
         capability, _ = bridge.until("capability")
@@ -170,9 +234,9 @@ def run_mode(config, mode, evidence=None):
         registered, _ = bridge.until("writer_registered")
         assert registered["pid"] == storage.pid and registered["registered_before_storage_permit"] is True
         storage.stdin.write(b"permit\n");storage.stdin.flush()
-        if mode != "positive":
+        if not positive:
             os.kill(storage.pid, signal.SIGSTOP)
-        source = source_for(mode)
+        source = source_for("positive" if positive else mode)
         request = {"repoRoot": "/source", "stateRoot": "/state", "taskId": "AUDIT8-NATIVE", "sessionId": "AUDIT8-LINUX",
                    "tests": [{"argv": ["node", "native-fixture.js"], "cwd": ".", "timeout_ms": 10000}],
                    "sourceFiles": ["native-fixture.js"], "checkedBy": "audit8-native"}
@@ -185,15 +249,17 @@ def run_mode(config, mode, evidence=None):
             bridge.send(4)
         else:
             bridge.send(6)
-        if mode in {"cancel", "broker_paused_cancel"}:
-            bridge.until("authority_bound")
+        if mode in {"cancel", "broker_paused_cancel", "keeper_crash"}:
+            authority, _ = bridge.until("authority_bound")
             time.sleep(0.2)
             if mode == "broker_paused_cancel":
                 observations["broker_pause"] = cancel_with_paused_broker(bridge, opened, storage)
+            elif mode == "keeper_crash":
+                observations["keeper_crash"] = kill_exact_keeper(bridge, opened, authority, pidfd_helper)
             else:
                 bridge.send(4)
         terminal, raw = bridge.until("terminal")
-        expected = "completed" if mode == "positive" else "timed_out" if mode == "timeout" else "cancelled"
+        expected = "completed" if positive else "timed_out" if mode == "timeout" else "failed" if mode == "keeper_crash" else "cancelled"
         assert terminal["status"] == expected, terminal
         for key in ("cleanup_confirmed", "init_exit_observed", "init_reaped", "keeper_exited", "output_eof", "cgroup_empty", "journal_closed"):
             assert terminal[key] is True, (key, terminal)
@@ -205,7 +271,7 @@ def run_mode(config, mode, evidence=None):
             assert terminal["commands"] == terminal["commands_drained"] == terminal["authority_pid"] == 0
             assert terminal["importer_drained"] is False and terminal["authority_readback"] is False
             assert not any(event["event"] in {"authority_bound", "permitted"} for event in bridge.events)
-        if mode == "positive":
+        if positive:
             assert terminal["authority_pid"] > 1 and terminal["authority_pidfd_exit_observed"] is True
             assert terminal["commands"] == terminal["commands_drained"] == 1 and terminal["authority_status"] == 0
             kind, result, body = bridge.next()
@@ -246,6 +312,7 @@ def main():
     parser.add_argument("--config", type=Path, default=Path("/var/lib/knowledge-linux-native-v1/installation.json"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mode", choices=MODES + ["all"], default="all")
+    parser.add_argument("--pidfd-helper", type=Path, help="ordinary-built QA pidfd_kill executable, required by keeper_crash/all")
     args = parser.parse_args()
     assert os.getuid() != 0 and os.geteuid() != 0
     config = json.loads(args.config.read_bytes())
@@ -253,7 +320,7 @@ def main():
     results = []
     try:
         for mode in (MODES if args.mode == "all" else [args.mode]):
-            results.append(run_mode(config, mode, results))
+            results.append(run_mode(config, mode, results, args.pidfd_helper))
             time.sleep(0.1)
     finally:
         args.output.parent.mkdir(parents=True, exist_ok=True)

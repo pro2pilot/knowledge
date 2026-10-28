@@ -62,6 +62,35 @@ int main(void) {
   if(final<0&&errno==ECONNRESET)final=packet_recv(pair[0],&byte,1,&passed,NULL,0);
   CHECK(final==1&&byte=='F'&&passed<0);
   ssize_t ending=packet_recv(pair[0],&byte,1,&passed,NULL,0);CHECK(ending==0||(ending<0&&errno==ECONNRESET));close(pair[0]);
-  printf("{\"status\":\"PASS\",\"checks\":%u,\"scm_credentials_inherited_sender_distinguished\":true,\"extra_fds_rejected\":true,\"ancillary_truncation_rejected\":true,\"sealed_shared_offset_ignored\":true,\"final_before_late_stop_eof_observed\":true}\n",checks);
+  /* Keeper loss after a completed-work CLEANUP must stop S too. Exercise the
+   * real native guardian channel without inventing a process-closure proof. */
+  CHECK(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC|SOCK_NONBLOCK,0,pair)==0);
+  uint64_t began=now_ns(),endpoint=began+UINT64_C(1000000000),message=0;
+  struct attempt lost={.work_deadline=began+UINT64_C(30000000000),.cleanup_ms=1000};
+  lost.result.cleanup_start=began;lost.result.cleanup_end=endpoint;lost.result.reason=4;
+  struct client storage={.writers_count=1};storage.writers[0].guard_channel=pair[0];storage.writers[0].deadline=lost.work_deadline+UINT64_C(1000000000);
+  latch_keeper_loss(&lost,&storage);
+  CHECK(lost.result.reason==5&&lost.result.cleanup_start==began&&lost.result.cleanup_end==endpoint);
+  CHECK(storage.writers[0].deadline==endpoint);
+  CHECK(recv(pair[1],&message,sizeof(message),0)==sizeof(message)&&message==endpoint);
+  CHECK(recv(pair[1],&message,sizeof(message),0)==sizeof(message)&&message==0);
+  latch_keeper_loss(&lost,&storage);
+  CHECK(recv(pair[1],&message,sizeof(message),0)<0&&(errno==EAGAIN||errno==EWOULDBLOCK));
+  CHECK(lost.result.cleanup_start==began&&lost.result.cleanup_end==endpoint);
+  int feedback[2];CHECK(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC|SOCK_NONBLOCK,0,feedback)==0);
+  storage.fd=feedback[0];lost.result.reason=4;latch_keeper_loss(&lost,&storage);
+  char event[1024];CHECK(recv(feedback[1],event,sizeof(event)-1,0)<0&&(errno==EAGAIN||errno==EWOULDBLOCK));
+  CHECK(recv(pair[1],&message,sizeof(message),0)==sizeof(message)&&message==endpoint);
+  CHECK(recv(pair[1],&message,sizeof(message),0)==sizeof(message)&&message==0);
+  lost.result.reason=0;lost.result.cleanup_start=lost.result.cleanup_end=0;storage.writers[0].deadline=lost.work_deadline+UINT64_C(1000000000);
+  uint64_t before=now_ns();latch_keeper_loss(&lost,&storage);
+  CHECK(lost.result.cleanup_start>=before&&lost.result.cleanup_end==lost.result.cleanup_start+UINT64_C(1000000000));
+  ssize_t event_size=recv(feedback[1],event,sizeof(event)-1,0);CHECK(event_size>0);event[event_size]=0;
+  CHECK(strstr(event,"\"event\":\"cleanup_started\"")!=NULL&&control_deadline(event)==lost.result.cleanup_end);
+  latch_keeper_loss(&lost,&storage);
+  CHECK(recv(feedback[1],event,sizeof(event)-1,0)<0&&(errno==EAGAIN||errno==EWOULDBLOCK));
+  close(feedback[0]);close(feedback[1]);
+  close(pair[0]);close(pair[1]);
+  printf("{\"status\":\"PASS\",\"checks\":%u,\"scm_credentials_inherited_sender_distinguished\":true,\"extra_fds_rejected\":true,\"ancillary_truncation_rejected\":true,\"sealed_shared_offset_ignored\":true,\"final_before_late_stop_eof_observed\":true,\"keeper_loss_after_cleanup_stops_storage_without_epoch_reset\":true,\"keeper_loss_publishes_new_cleanup_epoch_once\":true}\n",checks);
   return 0;
 }

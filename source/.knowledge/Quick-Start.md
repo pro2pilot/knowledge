@@ -4,7 +4,7 @@
 > for installation outside candidate testing.
 
 > Unpublished candidate, audit revision
-> **`independent-audit.20261027.reliability.5`**: native verification and the native
+> **`independent-audit.20261028.reliability.8`**: native verification and the native
 > verification phase of `agent-task finish` require native prerequisites on Linux.
 > macOS is disabled by default, even with a ready broker. Explicitly set
 > `native_execution.darwin.enabled=true`, `mode="isolated_copy"`, broker paths
@@ -18,11 +18,18 @@
 > see [current candidate limits](docs/verification-execution-contract.md) before following native
 > verification examples in this guide.
 
-> Common lock-owner v2 also requires confirmed native scope for automatic crash
-> recovery. Old v1 locks and Windows/macOS scopes remain conservative/unknown.
+> Common lock-owner v3 uses a native kernel lifetime lease. Automatic crash
+> recovery also requires closure of any bound execution scope; Windows Team
+> uses its native Job provider. Unknown legacy owners and unconfirmed scopes
+> remain fenced.
 > Follow [the lock migration contract](docs/team-mode.md) before an RC5 update.
 > Preserve retained recovery history in `locks/v1/.stale/` and drain old writers.
 > Unknown ownerless locks are diagnosed; they are not automatically removed.
+
+Linux isolated-copy verification is a separate explicit option. Prepare the
+fixed native service as an ordinary user, review its generated administrative
+script, and select `native_execution.linux` per request. See
+[Linux service setup and limits](docs/native-linux-service.md).
 
 ## Recommended meaningful-task entrypoint
 
@@ -707,7 +714,8 @@ Legacy KVE is command-only evidence and cannot authorize new certification.
 Team Status and Inspector show the final per-attempt outcome after release;
 missing finalization is incomplete, not successful. See the
 [acceptance and retry contract](docs/verification-execution-contract.md).
-Linux native execution requires a successful namespace capability probe. macOS
+Linux native execution requires a successful unprivileged namespace capability
+probe or an explicitly configured protected native service. macOS
 execution stays disabled unless a request explicitly enables the isolated-copy
 mode and supplies broker configuration; a missing broker refuses before work.
 The preceding reliability.4 targeted hosted Team run passed 7 physical cases, including its scoped
@@ -717,11 +725,11 @@ ownership/restart observations, and all 8 shipping steps. Doctor reported 86/100
 preceding reliability.4 scoped physical Windows x64 / Node 22.17.1 run passed 61
 selected TAP cases plus 20 runtime-safety checks. The reducer correction
 reinterpreted saved TAP output; it did not rerun the physical tests. This is
-historical scoped evidence; it does not qualify the changed reliability.5 runtime.
-The audit5 matrix has separate source pins and no successful outcome is asserted
-here. The accepted Linux
-system-broker/isolated-copy direction is not implemented or qualified; the
-hosted Ubuntu 24.04 ARM64 nested namespace probe returned `EPERM`. This
-unpublished audit candidate has no release certification.
+historical scoped evidence; it does not qualify the current runtime. Subsequent
+Windows/Linux source and installed-candidate results are separately bound in the
+handoff. Linux now provides an explicit administrator-installed isolated-copy
+service; the older unprivileged namespace backend retains its own capability
+requirements and its historical hosted ARM64 refusal. This unpublished candidate
+has no release certification; the full release gate is the final local check.
 Identify the exact ZIP and scoped test results by SHA-256 in its accompanying
 handoff.

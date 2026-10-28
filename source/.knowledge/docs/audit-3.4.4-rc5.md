@@ -1,142 +1,89 @@
 # 3.4.4 RC5 reliability audit status
 
-This page describes the current unpublished candidate. Package version remains
-`3.4.4`, candidate status remains `RC5`, and audit revision is
-`independent-audit.20261027.reliability.5`. This candidate is not published, has
-not passed the full release gate, and is not certified for general release.
+Current source revision: `independent-audit.20261028.reliability.8`. Package
+version remains `3.4.4`, candidate label remains `RC5`, and the intended runtime
+asset remains `knowledge-v3.4.4.zip`. This is an unpublished candidate. Its full
+release gate is the maintainer's final local check. Exact final source/ZIP hashes,
+installed-candidate results and retained failures are in the accompanying audit
+handoff; a successful component does not qualify a different artifact.
 
-## Reliability.5 checkpoint
+## Implemented continuation
 
-This source changes Linux keeper report transport and the shared Linux/Windows/
-macOS recovery deadline handling. Previous physical PASS records therefore do
-not qualify the changed runtime. The fresh [audit5 matrix, run
-40576756772](https://github.com/pro2pilot/knowledge/actions/runs/40576756772), is
-in progress at this documentation checkpoint. No final passing outcome is
-asserted here; its final report must identify the exact tested source, native
-artifacts, skipped or blocked checks and any later source changes.
+The explicit [native Linux service](native-linux-service.md) now connects the
+protected native broker to the public verification API. Its ordinary-user
+preparer compiles and pins the fixed native runtime; the administrative script
+runs fixed OS utilities and native code. Project Node/Python never runs as host
+root. The production service uses private UIDs, isolated source import, fresh
+A after importer drainage, typed nested W commands, durable UID history and
+separately enrolled storage S actors.
 
-The preceding reliability.4 audit source contained 682 files, SOURCE SHA-256
-`7f47ec76ecf8ea10ff32931939d83d080d95f24528eb578459e6651b77942693`, with QA HEAD
-`0299aeadc58a5c116a9a1e1e0f193cde24787662`. The 81 Windows selected checks and
-seven Team physical cases/eight shipping steps below belong to that earlier
-handoff and its exact source bindings. They are retained as historical evidence.
+OPEN is gated until its descriptor is durably bound. Failure, cancellation and
+timeout start storage drainage immediately inside the original cleanup epoch.
+Success requires physical native closure, immutable KVE/KVF readback, signed
+acceptance, final CAS, final storage closure and native-client EOF. An overdue
+live writer blocks new admission. Lost custody preserves a fence and cannot
+be replaced with PID absence, a timer or a late receipt.
 
-The Linux production system service remains **unimplemented and unqualified**.
-The new component fault mini-matrix is bounded QA work; it is not the complete
-production crash/cancellation/recovery matrix. A private-pipe stall does not
-prove behavior under a hung disk or kernel D-state. Component receipts do not
-establish production KVE/ACK, nested authority or durable restart recovery.
-Stock-SIP macOS and final installed-ZIP acceptance remain open.
+Windows QA now uses the existing owned-command/Job path, including held pipes,
+actual pending named-pipe reads/writes and cancellation before the work permit.
+Team cancellation uses that same native ownership path. Native lock owner v3
+and the existing Windows scope provider support exact crash recovery; unknown
+legacy owners still require independent evidence. There is no added generic
+supervisor or new Windows native module.
 
-## Historical evidence baseline
+## Source-bound physical checkpoints
 
-The previous reliability evidence baseline contained 675 product-source files
-and is identified by SHA-256
-`bea4ec0c914990e546d84883ee429eee97b7fd5d2148eaf58407b8b8ed849229`.
-Its source commit was
-[`5bed133f860d2d5e2ae395287d47c065c410f605`](https://github.com/pro2pilot/knowledge/commit/5bed133f860d2d5e2ae395287d47c065c410f605).
-Scoped workflow evidence is available from [CI06](https://github.com/pro2pilot/knowledge/actions/runs/40463689764),
-[QA07](https://github.com/pro2pilot/knowledge/actions/runs/40464641016), and
-[QA08](https://github.com/pro2pilot/knowledge/actions/runs/40465272797). Each
-result applies only to that pinned historical source and test cohort. These
-receipts do not qualify the current `.5` source; historical failures remain
-preserved and a later scoped pass does not erase them.
+These are observed checkpoints; later source and package changes need their own
+binding. The final installed-candidate matrix and artifact manifest are supplied
+separately, so this page does not contain a self-referential ZIP digest.
 
-The prior diagnostic build was named
-`NOT-QUALIFIED-knowledge-v3.4.4.zip` (SHA-256
-`5ea2cd56e2bad85fc68b2b144af8c5264837bd5b02664fbeba398966738a5f7a`). It is a
-baseline archive, not the current `.5` candidate or a release asset. Its digest
-does not identify the new package. The exact `.5` source/package pins will be
-recorded after the docs-integrated candidate is rebuilt and verified. Complete
-post-ZIP runtime qualification has not run; `release_gate_qualified=false` and
-`release_ready=false`.
+| Checkpoint | Observed scope |
+| --- | --- |
+| [Windows source run 40679517087](https://github.com/pro2pilot/knowledge/actions/runs/40679517087) | x64 and ARM64: 32 applicable source assertions with two exact Linux-only exclusions (including six physical custody cases and two actual Team CLI crash/recovery cases), plus normal Team workflow and forced cancellation after two native scopes. |
+| [Linux source run 40685710431](https://github.com/pro2pilot/knowledge/actions/runs/40685710431) | x64 and ARM64: seven public KVE/KVF/ACK and failure/reuse cases, five native cases, actual protocol mutations, reader/client regression tests and 56 native boundary checks. |
+| [Linux fault run 40686349420](https://github.com/pro2pilot/knowledge/actions/runs/40686349420) | Both architectures repeat the public/native cases, add actual controller death with retained-handle observation and a fenced public claim, and observe a real delayed-read D state across its original deadline. Its device-fixture retirement returned EBUSY; that FAIL is preserved and is not relabeled as a complete successful lane. |
 
-## Platform state
+The isolated native cases include cancellation before PERMIT (zero admitted
+commands) and cancellation while the native broker's main process is stopped.
+The latter observes exact keeper/init/storage exits while the broker remains
+stopped; native terminal and storage receipts are required after it resumes.
+The public positive probe also admits a detached descendant that retains output
+pipes. A parent exit or root-worker exit alone cannot produce acceptance.
 
-- **Windows x64:** historical CI06 continuation passed on its pinned baseline.
-  The preceding reliability.4 scoped physical run on Windows x64 / Node 22.17.1
-  passed 61 selected TAP cases plus 20 runtime-safety checks (81 selected checks
-  across eight groups). The evidence correction only reinterpreted saved TAP; it
-  did not rerun the physical tests. The original reducer marked the final holder
-  group failed because it expected two skipped baseline tests; the saved TAP has
-  the exact eight expected passes and no skips. This does not qualify the changed
-  reliability.5 runtime, ARM64 or the final installed ZIP.
-- **Windows ARM64:** historical CI06 continuation passed on its pinned baseline.
-  No fresh ARM64 qualification for `.5` is recorded here. Qualification of the
-  final installed ZIP is still pending; historical workflow receipts above do
-  not qualify `.5`.
-  The Windows watcher smoke profile is setup 30 s, work 60 s, cleanup 15 s;
-  startup allowance 60 s and caller-ready window 90 s. The default observation
-  budget is `5 × setup + work + cleanup + debounce + 1 s` (227.5 s at the default
-  1.5 s debounce). `KNOWLEDGE_SMOKE_WATCH_MS` remains an exact explicit override.
-  This observation window does not assert a hard filesystem-I/O latency limit.
-  Recorded measurements from one Windows run:
+## Platform and recovery limits
 
-  | Measurement | Observed duration | Scope |
-  |---|---:|---|
-  | Watcher startup | 11.5–22.1 s | Startup observation only |
-  | Sync after change | about 22.7 s | One sync cycle |
-  | Full smoke | about 46.8 s | One complete smoke run |
+The unprivileged [Linux namespace backend](linux-native-backend.md) retains its
+own prerequisites. Hosted Ubuntu 24.04 ARM64 previously denied nested setup;
+that refusal is historical evidence for that backend. The explicit root-native
+service supplies a different administrator-provisioned path without changing
+AppArmor or globally enabling unprivileged namespaces. It does not silently
+replace general Flow/Team command execution.
 
-  These measurements do not close installed-ZIP qualification and do not assert
-  an I/O upper bound.
-- **Linux x64:** historical pinned QA08 continuation passed on its named source
-  snapshot; it is not current `.5` qualification.
-- **Linux ARM64:** the hosted Ubuntu 24.04 runner denied the required nested PID
-  namespace with `EPERM` under its active AppArmor policy. The policy was not
-  weakened. A separate system broker with isolated-copy execution is the accepted
-  design direction for restricted hosts, but its production implementation and
-  qualification are not complete. Safe refusal is not a successful process-tree
-  qualification; Linux ARM64 runtime qualification remains open.
-- **macOS Intel and ARM64:** the production isolated-copy verification path is
-  disabled by default. A request must explicitly set
-  `native_execution.darwin.enabled=true` and `mode="isolated_copy"`, with broker
-  paths and copy limits. Administrator installation of the broker and reserved
-  private UID provisioning are separate tasks; broker availability alone does
-  not opt a request in. Writable Flow/Team operations require separately
-  provisioned workspace access and are not enabled by isolated-copy verification.
-  Historical CI06/QA07/QA08 have distinct scoped basic, failure, physical,
-  writable and sandbox results; they do not establish fresh full qualification
-  for `.5` or all supported hosts. Physical runs were on GitHub-hosted machines.
-  Stock-SIP behavior on a user's own Mac has not been verified.
+The macOS production path remains explicitly configured and disabled by default.
+Broker provisioning and writable workspace provisioning are separate tasks.
+Observed hosted macOS prerequisite probes reported SIP disabled; they do not
+qualify stock-SIP behavior. The maintainer must include required macOS hosts in
+the final local platform/release checks. No SIP or security-policy downgrade
+was performed to manufacture a passing result.
 
-## Team and historical uncertainty
+Kernel-uninterruptible I/O can outlive cancellation. The original deadline stays
+fixed; custody and durable fences survive, and late physical exit cannot
+produce an in-budget successful receipt. Broker loss with unresolved durable
+state remains quarantined. There is no history reset, UID recycling, age-based
+unlock, or automatic adoption of an unknown ownerless lock.
 
-The preceding reliability.4 targeted macOS Team run passed seven physical cases and all eight shipping
-steps. The Doctor result was 86/100 `usable_with_warnings`; two genuine medium
-warnings were `suspect_module` and `low_confidence_module`. They do not promote
-either module to trusted. The public projection and acceptance report are the
-available evidence; the private Doctor raw report was not loaded in this review.
-This scoped result does not qualify reliability.5 or stock-macOS/SIP.
+The historic second ownerless-lock creator remains unknown. Modern controlled
+crash/recovery tests do not identify that historical actor. Old FAIL files,
+Doctor warnings and scope restrictions remain part of the handoff history.
 
-The historical second ownerless-lock cause remains **UNKNOWN**. Current replayed
-or controlled mechanisms do not identify the original historical writer. Unknown
-ownerless locks remain subject to evidence-based diagnosis; they are not
-automatically deleted or adopted.
+## Final local release check
 
-## Remaining gates
+Use the exact supplied candidate ZIP and its checksum. Its accompanying source
+snapshot and QA scripts reproduce the engineering checks. The full canonical
+release gate is run locally by the maintainer as the final pre-release step;
+no result in this document asserts that it already ran. Publishing the release
+is separate from preparing and testing the candidate.
 
-1. Complete fresh, source-bound qualification for the exact release candidate,
-   including macOS platform requirements and a permitted Linux ARM64 host with the
-   needed namespaces.
-2. Implement and qualify the Linux system service with protected installation,
-   isolated project import, separate authority/worker identities, KVE/ACK,
-   nested ownership and durable recovery. Passing QA components are insufficient.
-3. Complete the required production fault matrix, including controller/keeper
-   death during drain, stalled import/result, late result after stop and a
-   surviving descendant after the primary worker exits. Retain earlier failures.
-4. Preserve reliability.4 Windows/Team evidence as historical, rebuild all six
-   native targets against the intended final source and record fresh results.
-5. Build the docs-integrated `.5` installable candidate only after its engineering
-   prerequisites are met; bind its exact name, `.knowledge/` root, versions and
-   public-document parity. Source handoff ZIPs are not installable candidates.
-6. Pass release preflight and exact installed-ZIP checks before the full release
-   gate. Record each result against that same artifact; later packaged changes
-   require a new binding and the affected checks again.
-
-The earlier operational audit and its timeout/lock discussion are preserved in
-[the historical 2026-10-19 audit](historical/audit-3.4.4-rc5-operational-20261019.md).
-Its statements describe that source snapshot, not revision `.5`.
-
-Do not transfer scoped PASS results to different bytes, label the candidate as
-released, or infer a performance guarantee from a smoke observation budget.
+The prior reliability.5 checkpoint remains in the previous committed source
+and retained audit artifacts. The earlier operational discussion is preserved
+in [the historical 2026-10-19 audit](historical/audit-3.4.4-rc5-operational-20261019.md).

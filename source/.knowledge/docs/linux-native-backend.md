@@ -1,9 +1,11 @@
 # Linux native verification backend
 
-The separate administrator-installed service remains an unadmitted production
-path. Its new root-native UID history and the exact remaining integration
-boundary are documented in [Linux native service history](linux-native-service-history.md).
-That persistence component does not change the namespace backend described here.
+This page describes the packaged unprivileged namespace backend. The separate
+administrator-installed [native Linux service](native-linux-service.md) now
+provides the explicit isolated-copy production verification path on restricted
+hosts. Its [durable UID history](linux-native-service-history.md) remains an
+independent native component. Service admission does not change the capability
+requirements or guarantees of the namespace backend described here.
 
 ## Contract and supported environment
 
@@ -159,17 +161,18 @@ Direct pidfd evidence and historical finality inference are explicitly distingui
 ## Verification and limits
 
 This page's current source revision is
-`independent-audit.20261028.reliability.7`. Earlier physical results apply only
+`independent-audit.20261028.reliability.8`. Earlier physical results apply only
 to their pinned historical source. The handoff for this revision records exact
 source pins, installed ZIP digests and separate outcomes for each host.
 Complete release qualification is not asserted.
 
-The accepted separate native system broker with isolated project import,
-protected Node authority, KVE/ACK, nested ownership and durable restart recovery
-is **not implemented or production-qualified**. The reliability.5 component
-fault mini-matrix does not close those integration requirements or the full
-production fault matrix. Its held private pipes do not simulate a hung disk or
-kernel D-state. Separate QA actors/receipts are not shipping production APIs.
+The separate [root-native service](native-linux-service.md) now implements
+isolated project import, protected Node authority, KVE/KVF/ACK, nested command
+ownership and durable admission fences. Its public integration and actual
+failure checks are separate from the unprivileged helper tests on this page.
+A bounded delayed-read D-state experiment records its exact deadline and late
+closure; it does not promise a bound for arbitrary kernel or disk failures.
+Read the accompanying handoff for the exact source and installed ZIP results.
 
 Run `node tools/self-test-linux-namespace.js` on an actually supported Linux
 host. An unavailable capability returns `BLOCKED` and a nonzero exit code, not

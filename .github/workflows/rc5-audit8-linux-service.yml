@@ -55,6 +55,7 @@ jobs:
           mkdir -p evidence
           gcc -std=c11 -O2 -Wall -Wextra -Werror -Wno-misleading-indentation -Wno-parentheses qa/reliability/audit8/linux/native_boundary_test.c source/.knowledge/tools/lib/verification-linux-uid-history.c -lcrypto -o "$RUNNER_TEMP/native-boundary-test"
           "$RUNNER_TEMP/native-boundary-test" > evidence/native-boundary.json 2> evidence/native-boundary.stderr.txt
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -static -no-pie qa/reliability/audit8/linux/pidfd_kill.c -o "$RUNNER_TEMP/pidfd-kill"
       - name: Prepare protected runtime as ordinary UID
         id: prepare
         run: |
@@ -81,7 +82,7 @@ jobs:
         id: physical
         continue-on-error: true
         run: |
-          python3 qa/reliability/audit8/linux/physical_native.py --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
+          python3 qa/reliability/audit8/linux/physical_native.py --pidfd-helper "$RUNNER_TEMP/pidfd-kill" --output evidence/native-physical.json > evidence/native.stdout.txt 2> evidence/native.stderr.txt
       - name: Actual blocked I/O preserves the original cleanup boundary
         id: blocked_io
         continue-on-error: true

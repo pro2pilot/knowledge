@@ -8,25 +8,30 @@
 > release at [GitHub Releases](https://github.com/pro2pilot/knowledge/releases/latest).
 
 > This unpublished candidate uses audit revision
-> **`independent-audit.20261027.reliability.5`**. Windows Jobs, Linux PID
-> namespaces, and an opt-in macOS production verification path are present in the
-> source. Darwin verification remains disabled by default even if a broker is
+> **`independent-audit.20261028.reliability.8`**. Windows Jobs, Linux PID
+> namespaces, and explicit Linux/macOS isolated-copy verification backends are
+> present in the source. Darwin verification remains disabled by default even if a broker is
 > ready: the request must explicitly set `native_execution.darwin.enabled=true`
 > and `mode=isolated_copy`, with the configured broker paths and copy limits.
 > Broker installation and reserved private UID provisioning are separate
 > administrator tasks. This isolated-copy verification path does not enable
 > writable Flow/Team operations, which need a separately provisioned workspace.
-> The accepted Linux system-broker/isolated-copy direction is not implemented or
-> qualified; hosted Ubuntu 24.04 ARM64 still refused nested PID setup with `EPERM`.
-> Fresh macOS qualification is incomplete; this candidate is not release-qualified.
+> Restricted Linux hosts can explicitly select the administrator-installed
+> [native Linux service](docs/native-linux-service.md). Its protected importer,
+> separate authority/worker UIDs, public KVE/KVF/ACK path and bounded native
+> cleanup have physical x64/ARM64 evidence. The older unprivileged namespace
+> backend still requires its own capability probe. Fresh stock-SIP macOS
+> qualification is incomplete. The full release gate is a final local maintainer
+> check; this candidate is not release-qualified.
 > Identify snapshots by commit and manifest, not version alone. See
 > [current audit and limits](docs/verification-execution-contract.md).
 
-> New common locks use owner v2 with native Linux PID-scope checks. Unbound old
-> locks and unsupported observer scopes are retained. Automatic stale-mutex
-> recovery on Windows/macOS still requires a qualified provider; it is not
-> established by the historical Job recovery results. Stop old writers before
-> upgrading and let them release their locks. See [lock migration and scope](docs/team-mode.md).
+> New common locks use owner v3 with native kernel lifetime leases. Recovery
+> requires the exact owner lease to be free and, for a scoped writer, confirmed
+> closure of its immutable execution scope. Windows Team recovery uses the
+> existing native Job provider. Unknown legacy ownership and unconfirmed scopes
+> remain fenced. Stop old writers before upgrading and let them release their
+> locks. See [lock migration and scope](docs/team-mode.md).
 > Recovery history is now retained to protect newer owners from delayed contenders.
 > Preserve `locks/v1/.stale/`; automatic deletion of unknown ownerless locks remains unsupported.
 
@@ -122,12 +127,13 @@ paths and process termination using the platform's actual conventions. Team
 Doctor test failures retain their contained flow log and child process identity;
 capture rejects paths outside the selected state root and linked parents. The
 separate audit handoff records platform-scoped evidence and remaining limits.
-Linux native verification currently uses PID namespaces when their runtime probe
-passes. A separate Linux system broker with isolated-copy execution is an accepted
-design direction, but production implementation and qualification are still
-pending. Hosted Ubuntu 24.04 ARM64 denied the required nested namespace with
-`EPERM`; host policy was not changed. The exact installed ZIP still needs complete
-post-ZIP runtime qualification.
+Linux verification can use the packaged unprivileged PID-namespace backend when
+its runtime probe passes, or the explicit protected native service. The latter
+implements isolated import, distinct private A/W identities, nested command
+custody, registered storage actors and public KVE/KVF/ACK acceptance. It does not
+require weakening the hosted ARM64 policy that refused unprivileged nested
+setup. See [Linux service setup](docs/native-linux-service.md) and the exact
+source/package evidence in the accompanying audit handoff.
 
 The opt-in macOS production verification path uses an isolated administrative
 broker and reserved private UID allocation. Broker availability does not enable
@@ -150,8 +156,8 @@ and full smoke about 46.8 s; these are measurements, not guarantees. The precedi
 reliability.4 scoped physical testing on Windows x64 / Node 22.17.1
 passed 61 selected TAP cases plus 20 runtime-safety checks (81 selected checks
 total). Those results apply to the preceding pinned source, not the changed
-reliability.5 runtime. The new audit5 matrix is separate; no passing outcome is
-asserted here. Final installed-ZIP qualification remains pending.
+current runtime. Current Windows/Linux physical and installed-candidate results
+are separately bound to their exact source/ZIP in the audit handoff.
 
 The preceding reliability.4 targeted Team run passed 7 physical cases and all 8
 shipping steps. Its Doctor
@@ -463,7 +469,8 @@ missing finalization is incomplete, not successful. See the
 New Team attempts use v2 records bound to the selected state root, run and log.
 Inspector displays the attempt ID and binding version; a damaged current final
 record cannot fall back to an older successful attempt.
-Linux native execution requires a successful namespace capability probe. macOS
+Linux native execution requires either a successful unprivileged namespace
+capability probe or an explicitly configured protected native service. macOS
 verification remains disabled by default, even if the broker is available. Enable
 it only with an explicit request using `native_execution.darwin.enabled: true`,
 `mode: isolated_copy`, broker paths and copy limits. Broker installation and

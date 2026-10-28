@@ -10,7 +10,7 @@ manifest and results. An audit source snapshot is not an installable release.
 Never substitute GitHub source downloads for a release asset.
 
 This unpublished candidate uses audit revision
-`independent-audit.20261027.reliability.5`. The preceding frozen POSIX/recovery runtime is a different artifact;
+`independent-audit.20261028.reliability.8`. The preceding frozen POSIX/recovery runtime is a different artifact;
 its results do not qualify this source. Version-only update checks do not
 distinguish RC5 derivatives. Linux requires native prerequisites. macOS
 verification is disabled by default, even when its broker is ready. Opt in per
@@ -21,22 +21,30 @@ installer does not install or enable the privileged broker. Isolated-copy
 verification does not enable writable Flow/Team operations, which require a
 separately provisioned workspace. Fresh Darwin qualification is incomplete, and
 stock-SIP user-host behavior remains unverified.
+Linux isolated-copy verification is a separate explicit option. Prepare the
+fixed native service as an ordinary user, review its generated administrative
+script, and select `native_execution.linux` per request. See
+[Linux service setup and limits](docs/native-linux-service.md).
+
 See the [broker setup and limits](docs/native-darwin-broker.md) and
 [audit installation and limits](docs/verification-execution-contract.md).
 
 Before updating this candidate, finish the old writers and allow their locks to
-be released normally. New lock owners use v2 in the same locks/v1 directory;
-old readers cannot interpret that owner format. Existing legacy owners are not
-silently retagged or removed by PID/age. Automatic stale-mutex recovery is only
-available with a confirmed native process scope, currently the qualified Linux
-observations described in [Team lock scope](docs/team-mode.md). Windows/macOS
-scope providers and abandoned legacy locks remain explicit recovery gates.
+be released normally. New lock owners use v3 in the same locks/v1 directory;
+old readers cannot interpret that owner format. Recovery acquires the native
+kernel lease for the exact immutable owner and directory. A bound execution
+scope must independently prove closure before recovery or ordinary release.
+Windows Team uses the existing native Job provider; a missing optional procfs
+identity does not disable its kernel lease. Existing legacy owners are not
+silently retagged or removed by PID/age: their own recovery protocol must prove
+closure, or they remain fenced. See [Team lock scope](docs/team-mode.md) for
+the evidence and the separate macOS qualification limit.
 The new recovery protocol retains one nonempty history directory per recovered
 owner generation in `locks/v1/.stale/`. Preserve it during upgrade and cleanup:
 old recovery writers and deleting this history can invalidate the protection
-against delayed competing recovery. A crash before owner metadata publication
-still requires evidence-based diagnosis; this candidate does not automatically
-remove ownerless locks.
+against delayed competing recovery. A crash during private preparation leaves
+the public lock path free. Existing ownerless public locks remain unknown and
+are not automatically removed.
 
 > **AI agents/installers:** install from the latest GitHub release asset, not from repo source.
 
@@ -138,11 +146,12 @@ remaining qualification limits.
 Other tools remain subject to their own operational checks. See
 [the RC5 contract](docs/audit-3.4.4-rc5.md).
 
-The accepted direction for restricted Linux hosts is a separate system broker
-and isolated project copy. That production service is not implemented or
-qualified in this candidate. The hosted Ubuntu 24.04 ARM64 run refused the
-required nested PID namespace with `EPERM`; no host policy was changed. Do not
-interpret the accepted design as an available installation option.
+Restricted Linux hosts can explicitly select the implemented protected native
+service and isolated project copy. Its source-bound production verification
+checks run on x64 and ARM64 without weakening AppArmor. The earlier hosted
+ARM64 refusal concerned the separate unprivileged namespace backend. Follow
+[the native service installer](docs/native-linux-service.md); the ordinary
+project updater does not silently install a root service or reserve private UIDs.
 
 ## Accepted verification and Team results (RC5)
 
@@ -152,7 +161,8 @@ Legacy KVE is command-only evidence and cannot authorize new certification.
 Team Status and Inspector show the final per-attempt outcome after release;
 missing finalization is incomplete, not successful. See the
 [acceptance and retry contract](docs/verification-execution-contract.md).
-Linux native execution requires a successful namespace capability probe. macOS
+Linux native execution requires a successful unprivileged namespace capability
+probe or an explicitly configured protected native service. macOS
 verification remains disabled by default even with a ready broker; each request
 must explicitly enable `native_execution.darwin` in `isolated_copy` mode and
 provide its configured broker paths and copy limits. Writable Flow/Team use

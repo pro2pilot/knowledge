@@ -6,12 +6,12 @@ This contract supersedes the earlier millisecond caller-return criterion for
 millisecond. Cancellation and work-budget expiry start stopping and cleanup.
 A completed response can therefore arrive after the work deadline.
 
-Current source revision: `independent-audit.20261027.reliability.5`. Shared
+Current source revision: `independent-audit.20261028.reliability.8`. Shared
 recovery identity, takeover and cleanup observations consume the remaining
 original cleanup interval; a late valid observation cannot authorize recovery
 completion. This does not promise a hard return deadline for blocked filesystem
 I/O. Fresh source qualification is separate from this behavioral contract; see
-[the audit5 checkpoint and open gates](audit-3.4.4-rc5.md).
+[the current audit checkpoint and local release check](audit-3.4.4-rc5.md).
 
 ## Timing profiles
 
@@ -89,8 +89,10 @@ controller externally is a crash path; it can require recovery.
 
 Successful verification requires validated command results, an empty native
 container and observed keeper termination. Windows uses a Job Object. Linux
-uses a private user/PID namespace whose trusted PID 1 owns the descendant
-lifecycle; the ordinary completion path waits for that init to be reaped.
+uses either the packaged private user/PID namespace or the explicitly selected
+root-native service. The latter separately owns private A/W namespaces and
+registered storage S cgroups; its native keeper and S guardians retain exact
+process handles. Both paths require native init/reaper finality.
 A termination request, a dead worker PID, or a process-group sweep alone is
 insufficient. Detached sessions and reparented children remain in the container.
 
@@ -135,8 +137,18 @@ issues an ACK. Do not delete a claim because a PID disappeared or use a new
 state root to bypass the resource guard.
 
 The short filesystem control mutex is a separate ownership boundary from the
-native verification claim. New mutex owners use lock-owner v2 in the existing
-`locks/v1` layout. Linux stale reclaim requires a boot/namespace-bound PID
+native verification claim. New mutex owners use lock-owner v3 in the existing
+`locks/v1` layout. Native publication retains a kernel lifetime lease tied to
+the exact immutable owner and directory: a Windows kernel event or a POSIX
+owner-inode lease. A reclaimer must acquire that same lease and verify the
+owner bytes and physical identities before retiring the generation. It does
+not infer closure from PID absence, wall age or a missing optional procfs
+identity. When an immutable execution scope is bound, both recovery and
+ordinary release also require the existing native scope provider to prove
+that every scoped writer has stopped. An active or unconfirmed scope retains
+the lock even after its owner lease becomes free.
+
+Legacy v2 Linux stale reclaim still requires a boot/namespace-bound PID
 coordinate and an actual ESRCH in that coordinate, with fresh observer and
 procfs-visibility checks before and after. A private lifetime-held procfs root
 descriptor binds the outer coordinate of a nested owner without increasing
@@ -157,8 +169,9 @@ renew the budget or publish a new owner after it has expired.
 Acquisition and Windows sharing-violation release retries measure elapsed time
 with a monotonic clock. Wall-clock adjustments cannot reset, prolong or consume
 these retry budgets. Owner timestamps and stale-age diagnostics still use wall
-time: clock rollback can postpone stale eligibility, causing conservative
-recovery refusal. These checks do not promise a hard real-time return from
+time. The legacy v2 age gate can postpone recovery after a clock rollback;
+the v3 kernel lease path does not wait for that age threshold. These checks do
+not promise a hard real-time return from
 blocked kernel or synchronous filesystem I/O.
 
 Stale recovery atomically moves an observed generation into one deterministic,
@@ -172,21 +185,21 @@ A crash during staging does not create an ownerless public lock. Existing
 ownerless locks from older versions remain unknown and are not automatically
 removed.
 
-An abandoned Linux mutex from a different boot or unconfirmed procfs scope is
-retained as unknown. Automatic recovery across a real OS reboot, moving a state
+An abandoned legacy v2 Linux mutex from a different boot or unconfirmed procfs
+scope is retained as unknown. Automatic recovery across a real OS reboot, moving a state
 root to another host, or changing its native observation scope is not yet
 qualified. A clean shutdown with no remaining claims is not blocked by this
 restriction. Shared storage and restored VM clones require a separate fencing
 or migration protocol.
 
-On Windows/macOS a qualified native scope provider for this common mutex is
-still absent. Ordinary acquisition and exact-owner release remain available;
-automatic stale recovery of a mutex abandoned by a crash is conservatively
-blocked. Even an otherwise valid native Job/container recovery can consequently
-wait on an unresolved mutex. This availability boundary, including old v1 locks
-at upgrade, must pass separate native migration/recovery acceptance before a
-cross-platform release. See [Team lock scope](team-mode.md). No timeout was
-shortened to make unknown ownership appear recoverable.
+The common mutex already connects to the Windows Job and Darwin scope
+providers. On Windows x64 and ARM64, audit8 physical Team scenarios killed the
+original CLI after command admission, required independently observed native
+Job closure, and successfully ran a new Team Flow through the recovered v3
+lock. This evidence does not qualify an unknown legacy owner or a missing
+Job receipt. Fresh stock-SIP macOS qualification remains incomplete despite
+the implemented provider. See [Team lock scope](team-mode.md) for migration
+limits. No timeout is shortened to make unknown ownership appear recoverable.
 
 ## Durable native cleanup transcript
 
@@ -222,7 +235,8 @@ format cannot substitute a new backend or a different pin list. Currency
 checks determine whether historical evidence covers the current source;
 history is not rewritten and an old acceptance does not make changed code fresh.
 
-Linux requires user and PID namespaces, pidfds, readable native identity
+The packaged unprivileged Linux backend requires user and PID namespaces,
+pidfds, readable native identity
 metadata, and the packaged architecture-matched native helper. Runtime verifies
 the helper's installed source/binary manifest and the actual native namespace
 probe; it does not compile the helper or call util-linux `unshare`. Compilation
@@ -239,15 +253,28 @@ environment uses inherited procfs; readable process metadata is not a claim of
 private procfs isolation. Runtime capability is checked through actual native
 setup, not inferred solely from an operating-system name.
 
-For restricted Linux hosts, the separate system-broker/isolated-copy direction
-has been accepted, but the production service is not implemented or qualified.
-The hosted Ubuntu 24.04 ARM64 runner refused nested PID namespace setup with
-`EPERM` under its active policy; that safe refusal does not qualify a process
-scope. No host policy was changed.
+Restricted Linux hosts can opt into the implemented native service with
+`native_execution.linux.enabled=true`, `mode="isolated_copy"`, its fixed broker
+path and bounded copy configuration. The administrator-installed native code
+creates private namespaces without changing global unprivileged-namespace or
+AppArmor policy. The public KVE/KVF/ACK path, failed-command reuse, cancellation,
+timeout, pre-permit stop and independent cleanup while the broker is paused
+have separate physical x64/ARM64 evidence. See [the service contract](native-linux-service.md).
 
-The bounded Linux component fault mini-matrix is not full production fault
-qualification. It does not supply the missing system-service/KVE/ACK/nested/
-durable-recovery integration or prove arbitrary disk/kernel I/O fault behavior.
+Storage enrollment precedes project operations; OPEN remains gated until its
+containment descriptor is durably bound. Failed cleanup immediately stops S,
+while normal completion permits bounded final storage writes. Exact S closure,
+final CAS, finalizer closure and client EOF precede externally delivered ACK.
+An unresolved writer that reaches its original endpoint fences new admission.
+Unknown or lost native custody stays quarantined, including after a broker
+restart; no PID-absence or lease-age rule creates a successful receipt.
+
+Physical fault records name the injected condition and exact scope. A pipe
+stall is not a disk fault, and a finite delayed device read does not establish
+an upper bound for arbitrary kernel or storage failure. Late kernel exit cannot
+upgrade an expired attempt. The final handoff binds these observations to the
+exact source and installed candidate; the full release gate is run locally by
+the maintainer.
 
 The current unpublished RC5 source includes a production isolated-copy
 verification path, disabled by default even if a broker is ready. Explicit opt-in
@@ -273,6 +300,6 @@ passed 61 selected TAP cases and 20 runtime-safety checks. The reducer correctio
 reinterpreted saved TAP output without rerunning the physical tests. The preceding
 reliability.4 Team result passed 7 physical cases and all 8 shipping steps; its Doctor score is
 86/100 `usable_with_warnings` with two medium warnings. Neither qualifies the
-changed reliability.5 runtime or the full installed artifact. The new audit5
-matrix has separate source pins; no successful outcome is asserted here. Stock-SIP behavior remains unverified, and the historic second
-ownerless-lock cause is unknown.
+current runtime or the full installed artifact. Subsequent results have their
+own exact source/package bindings in the audit handoff. Stock-SIP behavior
+remains unverified here, and the historic second ownerless-lock cause is unknown.

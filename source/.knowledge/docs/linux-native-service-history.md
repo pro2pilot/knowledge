@@ -1,6 +1,10 @@
 # Linux native service: durable UID custody and integration boundary
 
-Status: **native persistence component implemented; production broker admission remains unavailable**.
+Status: **native persistence component integrated into the explicit Linux
+production service**. See [installation and execution](native-linux-service.md)
+for the shipping broker, fixed client, private importer/authority/worker roles,
+public KVE/KVF/ACK path, and separate storage finality. This page describes the
+persistence contract and preserves the earlier component evidence scope.
 
 `tools/lib/verification-linux-uid-history.c` and its header implement the root-only
 UID burn journal needed by a separate Linux native broker. The component does
@@ -62,17 +66,18 @@ service. Its explicit initialization, real closed-attempt restart, next UID
 pair, and pending-attempt restart fence are independently checkable without
 changing the production availability flag.
 
-## Exact production integration still required
+## Production integration boundaries
 
-The existing service-copy QA already demonstrates an isolated low-UID importer,
-a sealed input memfd, full importer-namespace drain, a readonly source mount,
-and separate authority/worker UIDs. Its input and command are fixed fixtures.
-Connecting it to the public service requires the following concrete boundaries.
+The shipping `verification-linux-service.c` composes this journal with the
+native keeper, isolated importer, fresh authority and nested command scopes.
+Its public JavaScript adapter validates the exact native/authority receipts and
+uses the existing final compare-and-swap. The following requirements remain the
+contract; the old fixed service-copy fixture alone never qualified them.
 
 | Boundary | Required production behavior |
 | --- | --- |
 | Administrative installation | Root-protected native daemon, fixed native client, pinned runtime/entrypoints, reserved account range, explicit journal initialization, and a system-manager unit. No root interpreter or root project command. |
-| Public transport | Fixed versioned `SOCK_SEQPACKET` frames for HELLO, OPEN, STOP and OBSERVE; exact per-connection ordinal and nonce; initial `SO_PEERCRED`/`SO_PEERPIDFD` retained; per-message `SCM_CREDENTIALS` matched to that original live controller. Unknown ancillary data, unexpected descriptors and truncated frames are rejected. |
+| Public transport | Fixed versioned `SOCK_SEQPACKET` frames for HELLO, REGISTER_WRITER, OPEN, PERMIT, STOP and OBSERVE; exact per-connection ordinal and nonce; initial `SO_PEERCRED`/`SO_PEERPIDFD` retained; per-message `SCM_CREDENTIALS` matched to that original live controller. Unknown ancillary data, unexpected descriptors and truncated frames are rejected. |
 | Source transfer | OPEN may carry exactly one bounded regular memfd with WRITE/GROW/SHRINK/SEAL seals already present. Root checks descriptor metadata and seals only. The isolated importer parses opaque bytes. It must use explicit-position reads: seals do not stop the sender from changing a shared open-file-description offset. |
 | Source custody | Native code creates fresh protected paths. The importer runs without root IDs/capabilities and never opens caller-selected source paths. All importer descendants and writable aliases must be gone before the native readonly mount and fresh authority process are admitted. |
 | Runtime custody | A and W execute only after native UID/GID/capability/descriptor checks. A loads its installed trusted entrypoint; project code runs under W. Nested W launches use a bounded typed native request, never an arbitrary root command or shell string. |
@@ -81,9 +86,9 @@ Connecting it to the public service requires the following concrete boundaries.
 
 There is no public CLOSE, caller-selected UID, caller-selected privileged path,
 `force` admission flag, or caller-supplied cleanup digest in this design.
-Journal and native process-custody integration must precede activation of the
-public service backend. Passing the journal or fixed-copy component tests alone
-does not satisfy that requirement.
+The public service activates only after native installation and custody
+admission. Its physical source-bound integration results are separate from
+journal and fixed-copy component tests; the accompanying handoff records both.
 
 ## Evidence scope and reproducible checks
 

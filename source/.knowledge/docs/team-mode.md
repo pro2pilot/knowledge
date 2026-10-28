@@ -1,7 +1,7 @@
 # Team mode — 3.4.4 RC5
 
 Ветка: Knowledge 3.4.4 RC5, аудит
-`independent-audit.20261027.reliability.5`. Точные source/package pins для
+`independent-audit.20261028.reliability.8`. Точные source/package pins для
 собранного кандидата фиксируются после новой сборки и qualification; прежние
 675-file baseline hashes не идентифицируют текущий кандидат. Исходная проектная
 спецификация 3.2.4 сохранена в архиве входных материалов.
@@ -27,24 +27,26 @@
   сообщил 86/100 `usable_with_warnings` с двумя подлинными medium warnings:
   `suspect_module` и `low_confidence_module`; это не повышает доверие к модулям.
   Hosted result ограничен старым source snapshot; он не квалифицирует изменённый
-  reliability.5 runtime или stock macOS/SIP.
+  текущий runtime или stock macOS/SIP.
 - Предшествующий reliability.4 scoped physical run на Windows x64 / Node 22.17.1
   прошёл 61 selected TAP cases и 20 runtime-safety checks. Reducer correction
   переинтерпретировал сохранённый TAP и не повторял физические тесты. Это не
-  qualification нового reliability.5, ARM64 или full release gate.
-- Для restricted Linux hosts принято направление отдельного system broker с
-  isolated copy, но production implementation и qualification ещё отсутствуют.
-  Hosted Ubuntu 24.04 ARM64 отказал в nested PID namespace с `EPERM`; host policy
-  не меняли.
+  qualification текущего кандидата, ARM64 или full release gate.
+- Для restricted Linux hosts реализован отдельный native service с isolated copy.
+  Он явно выбирается через `native_execution.linux` и устанавливается
+  администратором; публичные KVE/KVF/ACK, отмена, таймаут и повторный запуск
+  имеют отдельные physical evidence x64/ARM64. Отказ старого unprivileged
+  namespace backend на hosted ARM64 сохранён; host policy не меняли.
+  Этот verification backend не заменяет общий Flow/Team command backend.
 - Причина исторического второго ownerless lock остаётся **UNKNOWN**.
 
-Все результаты относятся к точному source snapshot. В момент подготовки этой
-документации новая audit5 matrix
-[run 40576756772](https://github.com/pro2pilot/knowledge/actions/runs/40576756772)
-ещё выполняется; итоговый PASS здесь не заявлен. Linux component fault
-mini-matrix не равна полной production fault qualification и не реализует
-production broker. Итоговый установленный ZIP ещё ожидает полной runtime
-qualification. Итоговые результаты и точные pins находятся в отдельном handoff.
+Все результаты относятся к точному source snapshot. Текущий аудит отдельно
+сохраняет Windows Job/Team crash recovery, Linux production pipeline, гибель
+controller и реальный D-state с неизменным исходным deadline. Последующее
+завершение процесса не превращает просроченную очистку в PASS. Точные исходники,
+установленный ZIP, результаты повторных проверок и прежние FAIL находятся в
+handoff. Полный release gate выполняется локально как последняя проверка перед
+публикацией. Сводка: [текущий аудит](audit-3.4.4-rc5.md).
 
 ## Область действия
 
@@ -65,23 +67,32 @@ Team mode включается явно. Каждый агент работае�
 не заменяет Git и не делает одновременные изменения в одном dirty working tree
 безопасными. Практический рабочий порядок — отдельная branch/worktree на задачу.
 
-Новые владельцы используют `knowledge-lock-owner.v2`. Каталоги остаются в
+Новые владельцы используют `knowledge-lock-owner.v3`. Каталоги остаются в
 `locks/v1`: смена пути создала бы две независимые блокировки для старого и нового
-writer. `hostname` сохраняется для диагностики и не определяет область PID.
-На Linux owner содержит kernel boot ID, identity PID namespace, точные start
-ticks и подтверждённые координаты PID в собственном namespace и в procfs view.
-Сравнение выполняется до и после process probe. Owner неизвестной области
-сохраняется, независимо от возраста.
+writer. Владелец удерживает native kernel lease до завершения защищённой записи:
+на Windows это время жизни kernel event, связанного с физическими identity
+тома, owner-файла и каталога; на Linux/macOS — блокировка точного owner inode.
+Recovery сначала получает эту lease и проверяет неизменные owner bytes и
+identity каталога. Исчезновение PID, возраст lock и `hostname` не заменяют
+это доказательство. Поле `native_identity` с Linux procfs-данными для v3
+необязательно: его отсутствие не отменяет подтверждённую kernel lease.
 
-Это не распределённая lease/fencing система. При разных hosts/boots, недоступной
-native identity или неподтверждённой области автоматическое восстановление
-блокировки запрещено. Обычный acquire после штатного release владельца остаётся
-доступен. На Windows/macOS provider точной области для общего lock manager ещё
-не квалифицирован: новый owner записывается с `native_identity: null`, а
-автоматический stale reclaim после аварии остаётся ограничением доступности.
-Это отдельный вопрос от native Job/broker cleanup. Наличие production macOS
-verification broker не квалифицирует общий lock manager recovery provider на
-Windows или macOS.
+Если owner содержит `execution_scope`, свободной lease недостаточно:
+восстановление и штатный release требуют отдельного подтверждения завершения
+всего связанного scope. Общий lock manager уже использует существующие Windows
+Job и Darwin scope providers. На Windows x64 и ARM64 физические сценарии audit8
+проверили аварийное завершение исходного CLI, независимое native доказательство
+Job closure и успешный следующий Team Flow. Свежая stock-SIP macOS qualification
+остаётся отдельной незавершённой проверкой; наличие provider само по себе не
+означает её прохождение.
+
+Старые v2 owners сохраняют собственный Linux boot/namespace/procfs-протокол.
+v1 owners, неизвестная область, неподтверждённый provider или изменённые
+неизменные данные не разрешают automatic reclaim. Это локальный протокол,
+а не распределённая lease/fencing система: перенос state root между hosts,
+восстановление VM clones и recovery после реальной перезагрузки требуют
+отдельной qualification. Перед обновлением завершите старые writers и сохраните
+generation history в `locks/v1/.stale/`.
 
 ## Регистрация и запуск
 
