@@ -1,4 +1,4 @@
-name: RC5 audit7 nested Linux native prerequisite and public lifecycle
+name: RC5 audit7 nested Linux prerequisite with exact canary controller
 
 on:
   workflow_dispatch:

@@ -140,7 +140,14 @@ def main():
                 row['qualification']='PASS_REFUSAL_BEFORE_ATTEMPT_ONLY'
             save(out/'RESULT.json',report)
         new=report['new_public'];oldvalue=report['old_public']
+        # A valid refusal can never excuse a regression of a working backend.
+        # The first audit7 cohort exposed exactly this false-green harness gap.
+        if oldvalue['public']['status']=='accepted':
+            need(new['public']['status']=='accepted' and new['host_capability']['status']=='requires_runtime_setup',
+              'REGRESSION: baseline public acceptance was replaced by an unavailable current backend')
         if new['host_capability']['status']=='unavailable':
+            need(new['host_capability'].get('reason')=='namespace_create_denied',
+              'Unexpected new host refusal: only the observed nested kernel-policy denial is in this QA scope')
             need(new['public']['status']=='failed','unavailable host unexpectedly executed work')
             report['observed_change']='NESTED_HOST_PREREQUISITE_REFUSED' if oldvalue['host_capability']['status']!='unavailable' else 'BOTH_HOST_PROBES_UNAVAILABLE'
         else:

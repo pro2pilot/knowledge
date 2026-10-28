@@ -24,8 +24,8 @@ function receipts() {
     controller: identity(111, 111, 111, 10), keeper: identity(222, 222, 222, 10),
     init: identity(333, 333, 1, 20), worker: identity(334, 334, 2, 20) } };
   const inner = { ...common, observer_pid_namespace: ns(20), capability_profile: 'worker_none', identities: {
-    controller: identity(1, 333, 1, 20), keeper: identity(2, 334, 2, 20),
-    init: identity(3, 335, 1, 30), worker: identity(4, 336, 2, 30) } };
+    controller: identity(2, 334, 2, 20), keeper: identity(3, 335, 3, 20),
+    init: identity(4, 336, 1, 30), worker: identity(5, 337, 2, 30) } };
   const closed = { protocol, status: 'closed', active_processes: 0, init_exit_observed: true, init_reaped: true };
   return [outer, inner, { ...closed }, { ...closed, probe_depth: 2 }];
 }
@@ -67,8 +67,10 @@ const mutations = [
   ['unobserved outer init', rows => { rows[3].init_exit_observed = false; return rows; }],
   ['nested marker on inner receipt', rows => { rows[2].probe_depth = 2; return rows; }],
   ['wrong nested observer namespace', rows => { rows[1].observer_pid_namespace = ns(99); return rows; }],
-  ['changed self-exec keeper birth', rows => { rows[1].identities.keeper.start_ticks += '1'; return rows; }],
-  ['changed init controller birth', rows => { rows[1].identities.controller.proc_pid += 1; return rows; }],
+  ['keeper substituted for authority', rows => { rows[1].identities.keeper.proc_pid = rows[0].identities.worker.proc_pid; return rows; }],
+  ['keeper substituted for capability-full init', rows => { rows[1].identities.keeper.proc_pid = rows[0].identities.init.proc_pid; return rows; }],
+  ['changed authority controller birth', rows => { rows[1].identities.controller.start_ticks += '1'; return rows; }],
+  ['capability-full init substituted as controller', rows => { rows[1].identities.controller = identity(1,333,1,20); return rows; }],
   ['wrong outer controller', rows => { rows[0].identities.controller.pid += 1; return rows; }],
   ['wrong outer keeper', rows => { rows[0].identities.keeper.pid += 1; return rows; }],
   ['worker granted authority profile', rows => { rows[1].capability_profile = 'authority_none'; return rows; }]

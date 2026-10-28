@@ -62,6 +62,12 @@ def main():
                 m.need(len(matches)==1,'base_native_provenance_missing')
                 origin=dict(matches[0]);origin['new_linux_build']=False
             record=m.base.native_pair(stage,expected,binary,manifest)
+            if rebuilt:
+                build=receipt.get('native_build',{})
+                m.need(receipt.get('native_pair')==record and build.get('status')=='PASS' and
+                    all(build.get(k)==record[k] for k in ['source_sha256','binary_sha256','binary_bytes']) and
+                    receipt.get('runtime',{}).get('arch')==expected['architecture'],
+                    'linux_build_receipt_pair_binding_mismatch:'+target)
             for key, original in [('binary',binary),('manifest',manifest)]:
                 destination=stage/expected[key];destination.parent.mkdir(parents=True,exist_ok=True)
                 shutil.copyfile(original,destination)

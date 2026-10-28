@@ -668,8 +668,20 @@ int main(int argc, char **argv) {
   if (argc == 2 && !strcmp(argv[1], "--probe-nested")) {
     /* Self-exec names the already mapped helper inode, not an updateable path.
      * This fixed native prerequisite probe never runs Node or project code. */
-    char *nested[] = {"/proc/self/exe", "--probe", NULL};
+    char *nested[] = {"/proc/self/exe", "--probe-nested-controller", NULL};
     namespace_link_provider = 1; return run_keeper(nested, 15000, 2, 1);
+  }
+  if (argc == 2 && !strcmp(argv[1], "--probe-nested-controller")) {
+    /* Match real authority -> helper ancestry. Self-exec alone would make
+     * capability-full namespace init the helper's parent: its identity is
+     * intentionally unreadable by the restricted authority. This fixed
+     * controller has the same restricted profile as the real Node authority. */
+    if (getpid() != 2 || getppid() != 1 || prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) != 1) return 1;
+    pid_t child = fork(); if (child < 0) return 1;
+    if (!child) { char *nested[] = {"/proc/self/exe", "--probe", NULL}; execv(nested[0], nested); _exit(126); }
+    int status; pid_t reaped;
+    do { reaped = waitpid(child, &status, 0); } while (reaped < 0 && errno == EINTR);
+    return reaped == child && WIFEXITED(status) ? WEXITSTATUS(status) : 1;
   }
   if (argc == 2 && (!strcmp(argv[1], "--identity") || !strcmp(argv[1], "--identity-link"))) {
     namespace_link_provider = !strcmp(argv[1], "--identity-link");

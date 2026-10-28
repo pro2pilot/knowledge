@@ -83,9 +83,12 @@ original native 15-second deadline encloses both namespace levels and both
 drains. Ordered outer-ready, inner-ready, inner-closed and outer-closed receipts
 must bind the actual caller, keeper, boot, procfs and nested births; both closures
 require zero active processes and reaped namespace init. The fixed outer
-canary self-execs `/proc/self/exe --probe`, preserving the mapped helper inode
-and the trusted-authority capability profile. Its inner zero exit is required
-before the outer pidfd drain. No Node or project command runs in this probe.
+canary self-execs a fixed native controller mode, preserving the mapped helper
+inode and the trusted-authority capability profile. That controller forks the
+same mapped helper with `--probe` and waits for that exact child. This preserves
+the real authority-to-helper parent relationship: capability-full namespace init
+is deliberately not used as the inner helper's readable controller. The inner
+zero exit is required before the outer pidfd drain. No Node or project command runs in this probe.
 Legacy `--probe` remains a one-level component operation and cannot satisfy the
 exported capability check by itself. `job.close()` uses
 a 30-second default cleanup allowance unless the caller supplies another

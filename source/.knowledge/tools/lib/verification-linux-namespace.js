@@ -181,9 +181,11 @@ function validNestedProbe(rows, helper, keeperPid) {
       inner.capability_profile !== 'worker_none' || inner.boot_id !== outer.boot_id || inner.procfs_dev !== outer.procfs_dev ||
       !sameNamespaceIdentity(inner.observer_pid_namespace, outer.identities.init.pid_namespace)) return false;
   const sameBirth = (left, right) => left.proc_pid === right.proc_pid && left.start_ticks === right.start_ticks;
-  // Fixed self-exec preserves the outer worker's birth as the inner keeper.
-  return sameBirth(inner.identities.keeper, outer.identities.worker) &&
-    sameBirth(inner.identities.controller, outer.identities.init);
+  // The fixed native controller keeps the outer worker birth and forks the
+  // inner keeper, matching the real Node authority -> helper relationship.
+  return sameBirth(inner.identities.controller, outer.identities.worker) &&
+    inner.identities.keeper.proc_pid !== outer.identities.worker.proc_pid &&
+    inner.identities.keeper.proc_pid !== outer.identities.init.proc_pid;
 }
 function validNamespaceIdentity(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
