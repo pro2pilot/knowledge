@@ -360,7 +360,8 @@ static int host_pid_from_pidfd(int held) {
 static int collect_work_reports(int report,int channel,struct native_result *result) {
   for(unsigned i=0;i<4;i++){
     struct native_result item;int passed=-1;ssize_t size=packet_recv(report,&item,sizeof(item),&passed,NULL,0);
-    if(size<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR||errno==ECONNRESET))return 0;if(!size)return 0;
+    if(size<0&&errno==ECONNRESET)continue;
+    if(size<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))return 0;if(!size)return 0;
     if(size!=sizeof(item)||item.magic!=INTERNAL_MAGIC){if(passed>=0)close(passed);return -1;}
     if(item.kind==INTERNAL_AUTHORITY&&passed>=0&&!result->work.authority_host_pid){
       pid_t parent;uid_t uid;uint64_t birth;int host=host_pid_from_pidfd(passed);
@@ -570,11 +571,12 @@ static void observe_attempt(void) {
   }
   for(unsigned i=0;i<4;i++){
     struct native_result value;int passed=-1;ssize_t n=packet_recv(a->channel,&value,sizeof(value),&passed,NULL,0);
-    /* A keeper may publish FINAL and exit while a late STOP remains unread
-     * in the opposite direction. Unix seqpacket then reports ECONNRESET
-     * after draining that valid FINAL. This is transport EOF, never by itself
-     * a physical-exit proof or a reason to discard exact retained closure. */
-    if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR||errno==ECONNRESET))break;if(!n)break;
+    /* A keeper may publish FINAL and exit while a late STOP remains unread.
+     * Linux exposes a one-shot ECONNRESET BEFORE the still-queued FINAL.
+     * Consume the error and drain in this same bounded loop before considering
+     * keeper-loss fallback; transport state alone never proves finality. */
+    if(n<0&&errno==ECONNRESET)continue;
+    if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))break;if(!n)break;
     if(n!=sizeof(value)||value.magic!=INTERNAL_MAGIC){if(passed>=0)close(passed);a->quarantined=quarantine=1;break;}
     if(value.kind==INTERNAL_BIRTH&&a->initfd<0&&passed>=0&&value.init>1){
       a->initfd=passed;a->result.init=value.init;

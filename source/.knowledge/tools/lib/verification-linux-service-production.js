@@ -47,7 +47,9 @@ function guardInput(request, timeoutMs, started) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > policyAPI.MAX_WORK_MS ||
       typeof started !== 'bigint' || started < 0n || started > clock()) throw failure('verification_clock_invalid');
   const config = policyAPI.nativeExecutionRequest(request)?.linux;
-  if (!config?.enabled) throw failure('verification_linux_service_opt_in_required');return config;
+  if (!config?.enabled) throw failure('verification_linux_service_opt_in_required');
+  if (!Array.isArray(request.tests) || request.tests.length < 1 || request.tests.length > 64) throw failure('verification_linux_batch_limit');
+  return config;
 }
 function storageChannel({ onFailure, onEvent }) {
   const child = spawn(process.execPath, [path.join(__dirname, 'verification-linux-service-store.js'), String(process.pid)], {

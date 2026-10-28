@@ -50,6 +50,7 @@ async function main() {
   const control = require(path.join(runtime,'tools/lib/verification-control.js'));
   const finalization = require(path.join(runtime,'tools/lib/verification-finalization.js'));
   const execution = require(path.join(runtime,'tools/lib/verification-execution.js'));
+  const { readStableFile } = require(path.join(runtime,'tools/lib/stable-file.js'));
   const service = require(path.join(runtime,'tools/lib/verification-linux-service-finalization.js'));
   const env = require(path.join(runtime,'tools/lib/command-runner.js')).safeEnvironment(process.env);
   const context = { stateRoot:state, projectKnowledgeRoot:state, targetRoot:repo, systemRoot:runtime };
@@ -199,6 +200,20 @@ async function main() {
         assert.equal(nativeClient?.exit_observed,true);assert.equal(nativeClient?.close_observed,true);
         row.error=value.error;row.no_acceptance_released=true;
       }
+      const controlBytes=readStableFile(state,path.join(state,'maintenance/verification-control/active.json'),{maxBytes:2*1024*1024});
+      const physicalControl=JSON.parse(controlBytes);
+      const {owner_token_sha256,root_identity,...publicControl}=physicalControl;
+      assert.match(owner_token_sha256,/^[a-f0-9]{64}$/);assert.ok(root_identity);
+      assert.equal(finalization.digest(publicControl),finalization.digest(attempt));
+      const inspect=value=>{
+        if(!value||typeof value!=='object')return;
+        for(const [key,child] of Object.entries(value)){
+          assert.ok(!/^(?:token|owner_token|private_key|signing_key)$/i.test(key),'Never export private capabilities');
+          inspect(child);
+        }
+      };inspect(physicalControl);
+      const controlFilename=name+'.control.json';fs.writeFileSync(path.join(evidence,controlFilename),controlBytes);
+      row.raw_control=controlFilename;row.control_physical_sha256=sha(controlBytes);
       priorGeneration=attempt.generation;row.status='PASS';row.creator_owned_caller_exit=exited;row.output_eof=closed;
       fs.writeFileSync(path.join(evidence,name+'.attempt.json'),JSON.stringify(attempt,null,2)+'\n');
     } catch(error) { row.error=boundedError(error);throw error; }
