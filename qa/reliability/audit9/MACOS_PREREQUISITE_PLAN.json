@@ -1,0 +1,14 @@
+{
+  "schema_version": "knowledge-audit9-macos-prerequisite-plan.v1",
+  "intended_branch": "codex/rc5-reliability9-platform-qa-20261029",
+  "workflow": ".github/workflows/rc5-audit9-macos-prerequisite.yml",
+  "inputs": {},
+  "expected_matrix": [
+    {"runner_label": "macos-15-intel", "architecture": "x64"},
+    {"runner_label": "macos-15", "architecture": "arm64"},
+    {"runner_label": "macos-26-intel", "architecture": "x64"},
+    {"runner_label": "macos-26", "architecture": "arm64"}
+  ],
+  "acceptance": "Collect all four RESULT.json files with raw probe streams and SHA256. Require matching source commit, workflow run and attempt, exact unique runner labels/architectures, and expected probe SHA256. A missing, cancelled, timed out, skipped or unbound cell is BLOCKED; never infer matrix success from remaining cells. Report availability separately for each host. Even four prerequisite passes do not qualify production or release.",
+  "next_if_enabled": "Run the canonical production installer/protected-executable canary and both normal/failure cohorts on an enabled-SIP host against current source and freshly bound pins. Preserve original SIP status; no host security policy changes."
+}
