@@ -6,3 +6,5 @@
 *.webp binary
 *.zip binary
 qa/reliability/audit9/fixtures/windows-arm64/lock-publication.manifest.json -text
+qa/reliability/audit9/fixtures/team-crash-tests/reliability-windows-team-crash.test.js -text
+qa/reliability/audit9/fixtures/team-crash-tests/helpers/reliability-windows-custody-trace.cjs -text

@@ -1,0 +1,57 @@
+name: RC5 audit9 historical Windows ARM Team custody
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability9-platform-qa-20261029]
+    paths:
+      - .github/workflows/rc5-audit9-windows-arm-team.yml
+permissions:
+  contents: read
+concurrency:
+  group: rc5-audit9-windows-arm-team-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  team-custody:
+    runs-on: windows-11-arm
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: arm64
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Native kernel and Node addon prerequisite
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path arm-prerequisite | Out-Null
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class NativeMachine {
+            [DllImport("kernel32.dll", SetLastError=true)] public static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+            [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+          }
+          '@
+          [ushort]$processMachine = 0
+          [ushort]$nativeMachine = 0
+          $success = [NativeMachine]::IsWow64Process2([NativeMachine]::GetCurrentProcess(), [ref]$processMachine, [ref]$nativeMachine)
+          @{ api_success=$success; native_machine=[int]$nativeMachine; powershell_process_machine=[int]$processMachine; os_version=[Environment]::OSVersion.VersionString; runner_arch=$env:RUNNER_ARCH; image_os=$env:ImageOS; image_version=$env:ImageVersion } | ConvertTo-Json | Set-Content -Encoding utf8 arm-prerequisite/HOST.json
+          node qa/reliability/audit9/windows_arm_prerequisite.cjs arm-prerequisite
+          exit $LASTEXITCODE
+      - name: Exact historical runtime plus physical source-only Team custody tests
+        run: python qa/reliability/audit9/windows_arm_team.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit9-windows-arm-historical-team
+          path: |
+            arm-prerequisite/**
+            arm-team-evidence/**
+          if-no-files-found: error
+          retention-days: 7

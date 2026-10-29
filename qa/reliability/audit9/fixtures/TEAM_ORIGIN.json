@@ -1,0 +1,12 @@
+{
+  "schema_version": "knowledge-audit9-arm-team-origin.v1",
+  "historical_candidate_sha256": "81a6d8d4daf8d3d73f4ac298297893fe40b488627d1f176f7960e5179c8cb542",
+  "test_origin_source_commit": "f52864e2de45b49fa56a074d1b088d4c448cf213",
+  "files": {
+    "knowledge-v3.4.4.zip": "81a6d8d4daf8d3d73f4ac298297893fe40b488627d1f176f7960e5179c8cb542",
+    "team-crash-tests/reliability-windows-team-crash.test.js": "9ee6dbbcd409570422ffe9354639d36edf4b903eae3c9e422dd06ec3e6f009ce",
+    "team-crash-tests/helpers/reliability-windows-custody-trace.cjs": "28272d88db67d272714b0519f6e7d8a9efd9121a9a5da652d62fedd3b3fa1927"
+  },
+  "scope": "Historical candidate runtime plus source-only physical Windows custody tests; final exact-candidate release acceptance remains separate",
+  "release_qualified": false
+}
