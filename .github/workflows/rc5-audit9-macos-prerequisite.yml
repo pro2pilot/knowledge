@@ -1,0 +1,50 @@
+name: RC5 audit9 read-only macOS prerequisites
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability9-platform-qa-20261029]
+    paths:
+      - .github/workflows/rc5-audit9-macos-prerequisite.yml
+      - qa/reliability/audit9/macos_prerequisite.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc5-audit9-macos-prerequisite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prerequisite:
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-15
+            arch: arm64
+          - os: macos-26-intel
+            arch: x64
+          - os: macos-26
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Observe stock SIP and native host prerequisites without installation
+        env:
+          EXPECTED_RUNNER_LABEL: ${{ matrix.os }}
+        run: python3 qa/reliability/audit9/macos_prerequisite.py --out macos-prerequisite --arch '${{ matrix.arch }}'
+      - name: Preserve raw prerequisite observation and exact script identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit9-macos-prerequisite-${{ matrix.os }}
+          path: macos-prerequisite/**
+          if-no-files-found: error
+          retention-days: 7
