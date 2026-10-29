@@ -1,0 +1,10 @@
+{
+  "schema_version": "knowledge-lock-native-binary.v1",
+  "platform": "win32",
+  "architecture": "arm64",
+  "napi_version": 8,
+  "source_sha256": "ed200e1c901cf65387188a3804380826e5cd56bca411543cd293baabbcd247d0",
+  "binary_sha256": "e866065510a925efaf9be2b6a925ee95b639566d2273ae6e35342df086e93cd3",
+  "binary_bytes": 162816,
+  "binary": "lock-publication.node"
+}

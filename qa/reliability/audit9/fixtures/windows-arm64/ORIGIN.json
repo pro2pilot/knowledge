@@ -1,0 +1,12 @@
+{
+  "schema_version": "knowledge-audit9-arm-fixture-origin.v1",
+  "candidate_name": "knowledge-v3.4.4.zip",
+  "candidate_sha256": "81a6d8d4daf8d3d73f4ac298297893fe40b488627d1f176f7960e5179c8cb542",
+  "scope": "Historical unchanged native addon availability only; not candidate or forced-cancellation qualification",
+  "files": {
+    "lock-publication.manifest.json": "f66852c49bf8a2280166682303185c68599ba41789aed76a438d4e8453dd97a7",
+    "lock-publication.node": "e866065510a925efaf9be2b6a925ee95b639566d2273ae6e35342df086e93cd3"
+  },
+  "source_sha256": "ed200e1c901cf65387188a3804380826e5cd56bca411543cd293baabbcd247d0",
+  "release_qualified": false
+}

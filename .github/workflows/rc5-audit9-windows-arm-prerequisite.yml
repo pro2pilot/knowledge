@@ -1,0 +1,49 @@
+name: RC5 audit9 native Windows ARM prerequisites
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rc5-reliability9-platform-qa-20261029]
+    paths:
+      - .github/workflows/rc5-audit9-windows-arm-prerequisite.yml
+permissions:
+  contents: read
+concurrency:
+  group: rc5-audit9-windows-arm-prerequisite-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  prerequisite:
+    runs-on: windows-11-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.1'
+          architecture: arm64
+      - name: Observe native kernel architecture independently of runtime emulation
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path arm-prerequisite | Out-Null
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class NativeMachine {
+            [DllImport("kernel32.dll", SetLastError=true)] public static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+            [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+          }
+          '@
+          [ushort]$processMachine = 0
+          [ushort]$nativeMachine = 0
+          $success = [NativeMachine]::IsWow64Process2([NativeMachine]::GetCurrentProcess(), [ref]$processMachine, [ref]$nativeMachine)
+          @{ api_success=$success; native_machine=[int]$nativeMachine; powershell_process_machine=[int]$processMachine; os_version=[Environment]::OSVersion.VersionString; runner_arch=$env:RUNNER_ARCH; image_os=$env:ImageOS; image_version=$env:ImageVersion } | ConvertTo-Json | Set-Content -Encoding utf8 arm-prerequisite/HOST.json
+          node qa/reliability/audit9/windows_arm_prerequisite.cjs arm-prerequisite
+          exit $LASTEXITCODE
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit9-windows-arm-prerequisite
+          path: arm-prerequisite/**
+          if-no-files-found: error
+          retention-days: 7

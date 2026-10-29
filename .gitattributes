@@ -5,3 +5,4 @@
 *.jpeg binary
 *.webp binary
 *.zip binary
+qa/reliability/audit9/fixtures/windows-arm64/lock-publication.manifest.json -text
