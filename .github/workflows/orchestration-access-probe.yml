@@ -1,0 +1,17 @@
+name: Orchestration access probe
+on:
+  push:
+    branches: ['codex/orchestration-20261102']
+    paths: ['.github/workflows/orchestration-access-probe.yml']
+permissions: {}
+concurrency:
+  group: orchestration-access-probe
+  cancel-in-progress: true
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Fixed access marker
+        shell: bash
+        run: printf '%s\n' 'ORCHESTRATION_ACTIONS_ACCESS_OK'
