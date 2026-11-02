@@ -1,0 +1,116 @@
+{
+  "schema": "a2-pinned-main-derivative.v1",
+  "status": "SOURCE_ONLY_NOT_EXECUTED",
+  "input_pins": {
+    "BASE_MAIN/verification-linux-service-main.c": {
+      "bytes": 11359,
+      "sha256": "579eebd839c026d19daee3c7619a7ff260dab9212a79910f2d3a51fdbb59e157"
+    },
+    "BASE_MAIN/verification-linux-service-configuration.h": {
+      "bytes": 2230,
+      "sha256": "b6a7ffc3c804e62b3dd3268701313713b65a9e16fce1718ff440c6fc754287ec"
+    },
+    "BASE_MAIN/verification-linux-service-daemon.h": {
+      "bytes": 2056,
+      "sha256": "97987849bd9658b9bc4afec6ca913fb47ccf40168a370ae1a65b3ee603f923ff"
+    },
+    "BASE_MAIN/verification-linux-service-runtime-front.h": {
+      "bytes": 2092,
+      "sha256": "c4c7ccf5dd02765e939125a275edefb0928024b0d2e048b28c011a293dac19ca"
+    },
+    "main-h-birth-core.inc": {
+      "bytes": 24700,
+      "sha256": "6f7855f99258ac702ba6e12e2759a0609e646b190ae0f7474d01faf94478dc7f"
+    }
+  },
+  "before": {
+    "bytes": 11359,
+    "sha256": "579eebd839c026d19daee3c7619a7ff260dab9212a79910f2d3a51fdbb59e157"
+  },
+  "after": {
+    "bytes": 12053,
+    "sha256": "3da9173e08d53ddc8351834eaa999a724514b36e5e33fcdd6e013dee8c680c76"
+  },
+  "anchors": [
+    {
+      "label": "relative_configuration_include",
+      "before_anchor": "#include \"verification-linux-service-configuration.h\"",
+      "before_anchor_sha256": "e5ab91246abc763b46e9d9cba8eb5316cc5006b057f65b6b790c118774f6bf89",
+      "after_anchor": "#include \"../BASE_MAIN/verification-linux-service-configuration.h\"",
+      "after_anchor_sha256": "3c7db72ea97f6b1241a91da7b9a8fe51b4cd16299878fc9e46f3ff50cd40df50"
+    },
+    {
+      "label": "private_include_after_unistd",
+      "before_anchor": "#include <unistd.h>\n",
+      "before_anchor_sha256": "b5239a9340ef9440234ebf0a16ae276a58cabb6923df05f7fc49b66cd70ace20",
+      "after_anchor": "#include <unistd.h>\n#include \"../main-h-birth-core.inc\"\n#include \"main-intake.inc\"\n",
+      "after_anchor_sha256": "855e0a587d6c215de2dc7a845365aca45419ebe063b4b87ed243f93a09c69609"
+    },
+    {
+      "label": "signal_only_latch",
+      "before_anchor": "static void stop_signal(int number){(void)number;stopping=1;}",
+      "before_anchor_sha256": "31b5e40fd9aa8a6603888b7374cd2182de97980639a8c2180ffc6c2ba4a283b1",
+      "after_anchor": "static void stop_signal(int number){(void)number;stopping=1;mi_stop_original();}",
+      "after_anchor_sha256": "86b06a503e714e0f94e99e503e0d346c32f340e8a94ab0217c38524b9557aa55"
+    },
+    {
+      "label": "no_executable_main_entry",
+      "before_anchor": "int main(int argc,char **argv){",
+      "before_anchor_sha256": "d205960c43517feba0395a90e4cacf58ade545554194fc845b5d14eda33ab49f",
+      "after_anchor": "/* SOURCE ONLY. This file deliberately has no executable main entry. */\nstatic __attribute__((used)) int mi_private_main_source_only(int argc,char **argv){",
+      "after_anchor_sha256": "cd2f086d611954c8076b9a74f07f7a2d53184c2f1261a84735cca1126155057f"
+    },
+    {
+      "label": "no_administrative_initialize_entry",
+      "before_anchor": "    int initialize=argc==2&&!strcmp(argv[1],\"--initialize\");\n    if(argc!=1&&!initialize)_exit(1);\n",
+      "before_anchor_sha256": "99fa902b475082021e87816729ad4df8532d35cdbe7b8984cdd3066100c47dc5",
+      "after_anchor": "    if(argc!=1)_exit(1);\n    (void)argv;\n",
+      "after_anchor_sha256": "bd4fa6ac1a90eff19830c3f23fd25252144fc3d6dfda0f908815a63c849fb158"
+    },
+    {
+      "label": "no_initialize_socket_branch",
+      "before_anchor": "    if(initialize){\n        struct stat existing;\n        if(!fstatat(runtime,KV_LINUX_SERVICE_RUNTIME_SOCKET_NAME,&existing,AT_SYMLINK_NOFOLLOW)||errno!=ENOENT)goto done;\n    }\n",
+      "before_anchor_sha256": "ad401bea7e253884946b1dcf3fe34c9b5365f715c79a651a0bedff751e680b84",
+      "after_anchor": "",
+      "after_anchor_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "existing_singleton_only",
+      "before_anchor": "    lock=singleton(state,initialize);if(lock<0)goto done;\n",
+      "before_anchor_sha256": "bfa63afe2908c4187f21d82ba80d3ea7c3615f121cbc38f175a9ac6ae9df888d",
+      "after_anchor": "    lock=singleton(state,0);if(lock<0)goto done;\n",
+      "after_anchor_sha256": "bfe547560c4b1a65b96022b57b4f6a4fa9184aa159ad3f3e4e221a67ac9fb576"
+    },
+    {
+      "label": "no_uid_initialization_branch",
+      "before_anchor": "    if(initialize){\n        result=kv_linux_uid_initialize(&configuration.history,NULL)?1:0;goto done;\n    }\n",
+      "before_anchor_sha256": "23fca3c77c29096e5d0473b6d2da8132f7a7f3cca7ada87081ba327a88c9ff3d",
+      "after_anchor": "",
+      "after_anchor_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "remove_old_front_owner",
+      "before_anchor": "    kv_linux_runtime_front *front=NULL;\n",
+      "before_anchor_sha256": "6f1448d2ff2197cbe16efc5df272ba28c9c4c4dacf448801ca0079f70c7a0e52",
+      "after_anchor": "    /* A2 does not open the old runtime front or create any child. */\n",
+      "after_anchor_sha256": "399db68728445fa96729980752007b2e2142da42def250a6891be76e73aa9923"
+    },
+    {
+      "label": "terminal_only_intake_from_actual_listener",
+      "before_anchor": "    front=kv_linux_runtime_front_open(original,&configuration.history,&configuration.policy,&configuration.pins);\n    if(!front)goto done;\n    /* Only Main's original and front's duplicate exist. Retire the original\n     * BEFORE the first poll can clone. Raw child in reviewed front7ec closes\n     * its inherited front duplicate before all parent checks/FD overwrites. */\n    {int closed=close(original);original=-1;if(closed)goto done;}\n    result=0;\n    while(!stopping){\n        if(kv_linux_runtime_front_poll(front,100)<0){result=1;break;}\n    }\n",
+      "before_anchor_sha256": "0c06af8c35469accb8bcb429f2c1a79ce10433b3b8ead7c5780412d5e24405b2",
+      "after_anchor": "    /* Fixed source origin: these are Main's local verified administrative\n     * configuration and its sole actual listener. No packet chooses either. */\n    struct mi_admin intake_admin={configuration.policy.authorized_uid,\n        configuration.policy.authorized_gid,configuration.policy.setup_ns,\n        configuration.policy.work_ns,configuration.policy.cleanup_ns};\n    if(mi_main_capture(original,&intake_admin))goto done;\n    /* One bounded intake attempt. This is not an H/recovery event loop.\n     * Every outcome is terminal unavailable; no public reply/authority. */\n    while(!stopping){\n        int step=mi_state.phase==MI_MAIN_CAPTURED?mi_accept_original():\n            mi_state.phase==MI_PEER_HELD?mi_receive_original():-1;\n        if(step<0)break;\n        if(mi_state.phase==MI_B1_READY){(void)mi_core_offer_original();break;}\n        if(mi_guard())break;\n        struct pollfd watches[2]={{mi_state.phase==MI_MAIN_CAPTURED?original:\n            mi_state.fd[MI_CONNECTION],POLLIN|POLLHUP,0},\n            {mi_state.fd[MI_PEER_PIDFD],POLLIN,0}};\n        uint64_t now=mi_now();if(!now||now>=mi_state.admission_end)break;\n        uint64_t ms=(mi_state.admission_end-now)/UINT64_C(1000000);\n        if(ms>10)ms=10;\n        if(poll(watches,mi_state.phase==MI_MAIN_CAPTURED?1:2,(int)ms)<0)break;\n        if(watches[0].revents&(POLLERR|POLLNVAL))break;\n        if(watches[1].revents)break;\n    }\n    if(stopping)mi_stop_original();\n    result=1; /* unavailable is never a successful birth/release receipt */\n",
+      "after_anchor_sha256": "35d0d07d76fe8a7c2e7780dc2fb05e37370808a672e2ae1d0853a5b2aa2dd677"
+    },
+    {
+      "label": "remove_old_front_cleanup",
+      "before_anchor": "    if(front){\n        (void)kv_linux_runtime_front_stop(front);\n        while(kv_linux_runtime_front_close(&front)){\n            if(errno!=EBUSY)result=1;\n            (void)kv_linux_runtime_front_poll(front,100);\n        }\n    }\n",
+      "before_anchor_sha256": "1b45ff70fa3606c21d88b6f00bb24a3ebb24568949bca5093cd439b4dc12c559",
+      "after_anchor": "    (void)mi_cancel_original();\n    (void)mi_finish_original();\n",
+      "after_anchor_sha256": "fa62f4757ec95a6f3d948c8233e1e2206b7af04a0cea5b8016db1238ab3f1192"
+    }
+  ],
+  "entry": "static used mi_private_main_source_only; no main or exported intake symbol",
+  "full_translation_unit": "BLOCKED_MISSING_PINNED_TRANSITIVE_HEADERS",
+  "no_base_overwrite": true
+}

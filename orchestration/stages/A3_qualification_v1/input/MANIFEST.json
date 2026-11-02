@@ -1,0 +1,240 @@
+{
+  "files": {
+    "source4/CORE_SLICE_CONTRACT_RU.md": {
+      "bytes": 24093,
+      "sha256": "029121314af86dcf3569ee9e3f15d14337f42edfd4e6ea98165e30613bb6e942"
+    },
+    "source4/main-h-birth-core.inc": {
+      "bytes": 24700,
+      "sha256": "6f7855f99258ac702ba6e12e2759a0609e646b190ae0f7474d01faf94478dc7f"
+    },
+    "source4/MAIN_BOUNDARIES.json": {
+      "bytes": 4711,
+      "sha256": "4533b589a3c175b37b8e626c8d7a0b0080ea70e88030699c711260f72e1ccdb2"
+    },
+    "source4/MAIN_CREATOR_CONTRACT.md": {
+      "bytes": 8933,
+      "sha256": "55b0479cb24bd10091ba1e3dc559e7dcd9b016b9ddcd72d2101d1b9f1ab62892"
+    },
+    "source4/BASE_MAIN/verification-linux-service-configuration.c": {
+      "bytes": 7709,
+      "sha256": "a48818d7af0c8dc601a1942c4c5d85de406a48fbe4fe357c045dd8f84a264b2e"
+    },
+    "source4/BASE_MAIN/verification-linux-service-configuration.h": {
+      "bytes": 2230,
+      "sha256": "b6a7ffc3c804e62b3dd3268701313713b65a9e16fce1718ff440c6fc754287ec"
+    },
+    "source4/BASE_MAIN/verification-linux-service-daemon.h": {
+      "bytes": 2056,
+      "sha256": "97987849bd9658b9bc4afec6ca913fb47ccf40168a370ae1a65b3ee603f923ff"
+    },
+    "source4/BASE_MAIN/verification-linux-service-key-process.c": {
+      "bytes": 56568,
+      "sha256": "7e44cca2555355794043503cb37cdacb94b88f44534eaae0be05999443e7c505"
+    },
+    "source4/BASE_MAIN/verification-linux-service-main.c": {
+      "bytes": 11359,
+      "sha256": "579eebd839c026d19daee3c7619a7ff260dab9212a79910f2d3a51fdbb59e157"
+    },
+    "source4/BASE_MAIN/verification-linux-service-runtime-front.c": {
+      "bytes": 28094,
+      "sha256": "18e71a28bdbbd5abc746999038728c4cab10e7038e15f2f0263178715de221fe"
+    },
+    "source4/BASE_MAIN/verification-linux-service-runtime-front.h": {
+      "bytes": 2092,
+      "sha256": "c4c7ccf5dd02765e939125a275edefb0928024b0d2e048b28c011a293dac19ca"
+    },
+    "source4/BASE_MAIN/verification-linux-uid-history.h": {
+      "bytes": 4197,
+      "sha256": "724dbe32e56de11db5201c0a9d886f0671ef88ac31f2abf34ce198559617f62e"
+    },
+    "source4/intake-slice/DERIVATIVE_PINS.json": {
+      "bytes": 8375,
+      "sha256": "0e81778dc895c02ca4537bb37c68d0d978383bf783c64ec0263ad30d34f9a3e4"
+    },
+    "source4/intake-slice/derive_main.py": {
+      "bytes": 8065,
+      "sha256": "9550817f49af1ed9f845abc0a50953b7de99776456f194e707e6c655fd851fb8"
+    },
+    "source4/intake-slice/INTAKE_CONTRACT_RU.md": {
+      "bytes": 24438,
+      "sha256": "6839852e1699b4d5a14e98e92701006245b04c2bba9402de54d2273110733f54"
+    },
+    "source4/intake-slice/main-intake.inc": {
+      "bytes": 21826,
+      "sha256": "17f69092381bedbd010e8da49fbd3f157fd15412fd765e99d15a444d1eeaf4ce"
+    },
+    "source4/intake-slice/private-main-intake.c": {
+      "bytes": 12053,
+      "sha256": "3da9173e08d53ddc8351834eaa999a724514b36e5e33fcdd6e013dee8c680c76"
+    },
+    "source4/tests/main_h_core_compile.c": {
+      "bytes": 886,
+      "sha256": "5df7b4ce7eaa3eac5f93a8406bd50088e16eae27f9180c89875b56b8c4707ccc"
+    },
+    "source4/tests/main_h_core_model.c": {
+      "bytes": 47182,
+      "sha256": "fa434f77668e7ceb79ec849888cff1e4982d714f1c7eaa32969dc25b5c2051e1"
+    },
+    "source4/tests/run_checks.py": {
+      "bytes": 8989,
+      "sha256": "355a9087ecfaa256a0ef727a6ac76750c27a8b6a5cfb0357a44544d11c4ef039"
+    },
+    "source4/intake-slice/tests/main_intake_compile.c": {
+      "bytes": 701,
+      "sha256": "0492cd8400966d0881c6175861987da1245fa8f5907999dbc882a9c17d054859"
+    },
+    "source4/intake-slice/tests/main_intake_model.c": {
+      "bytes": 40983,
+      "sha256": "c4fc2658ed478f94e0f91e4e20477e6752569a8cd855acdd7832e30c810ae1fe"
+    },
+    "source4/intake-slice/tests/ordinary_socket_probe.py": {
+      "bytes": 9337,
+      "sha256": "b5e0806e767c355e9f1020edc2eedfd8be66659a51f4485063724be0ab7e98c4"
+    },
+    "source4/intake-slice/tests/run_checks.py": {
+      "bytes": 12420,
+      "sha256": "f327ab983ee499ebfbe984aeff7e7e248ad6d14f31947ec7f95f3905d2b8a697"
+    },
+    "deps/verification-linux-service-session-front.h": {
+      "bytes": 2568,
+      "sha256": "07c679246b0ea6983f619d1ede9d5a95fe729d99d6c00c7882993ef2a446f6e2"
+    },
+    "deps/verification-linux-service-admission.h": {
+      "bytes": 8995,
+      "sha256": "b08337f665b12a0deae741f619febda3944375ff90f58a05e44a7e0ad7bd12f5"
+    },
+    "deps/verification-linux-service-transport.h": {
+      "bytes": 7805,
+      "sha256": "4690bc9f6a42ac1f22219dc1909cc6da1090ded43f9b45b64cbc1eba81503906"
+    },
+    "deps/verification-linux-service-child-runtime.h": {
+      "bytes": 5333,
+      "sha256": "43a5e48bbb1173bae248db3a0126eae990e0095fee0859e355ad841fcbb95058"
+    },
+    "deps/verification-linux-service-source-provider.h": {
+      "bytes": 4610,
+      "sha256": "04a8ca5bbd0c0e01e3217dbcdfe39ccb0c588054f711214e9bcd1b2f713c1b54"
+    },
+    "deps/verification-linux-service-input-hash.h": {
+      "bytes": 2962,
+      "sha256": "2d6208f36cc07e5a7a335b9015288f2b84ed0139b9608ea77073a5be69e260a1"
+    },
+    "deps/verification-linux-service-intent.h": {
+      "bytes": 2645,
+      "sha256": "57bab0c361b1aee82f0f89e5bf285fc8cc6aa5247af54b1af5533c02aaa3c242"
+    },
+    "deps/verification-linux-service-custody.h": {
+      "bytes": 3654,
+      "sha256": "7e4f95ed21fe44deaf8102bd90afedd759b5707b739f66d16176fc0d98284f9b"
+    },
+    "deps/verification-linux-service-import.h": {
+      "bytes": 3469,
+      "sha256": "457fb4594df8b9e53845a93ed3b69e083b425b9c50561aa6c218363c21340055"
+    },
+    "deps/verification-linux-service-verify.h": {
+      "bytes": 5355,
+      "sha256": "3d142f38b4f1540992a733bc2d12308fcc036fca321cb0436bdb3eb1aca138f3"
+    },
+    "deps/verification-linux-service-request-capability.h": {
+      "bytes": 2614,
+      "sha256": "c0926748282acf330347893cc114b7e3f9bbc16a1cd572667bf57f834290f36b"
+    },
+    "deps/verification-linux-service-semantic-plan.h": {
+      "bytes": 2487,
+      "sha256": "c8088ab69223fb9219fa48754fd776410a7fc6c3c82fec3ff91db226a44db11e"
+    },
+    "deps/verification-linux-service-semantic-process.h": {
+      "bytes": 3779,
+      "sha256": "e517f15e0ce955b152cc37e915688b72416f97cf2e955cd1e613cd1140abd56a"
+    },
+    "deps/verification-linux-service-attempt-semantic.h": {
+      "bytes": 3083,
+      "sha256": "45f591112a91ce57db35478b7eb80466b204de7083975de8b91fa59e9e88d050"
+    },
+    "deps/verification-linux-service-attempt-identity.h": {
+      "bytes": 2802,
+      "sha256": "15f51e7d76aa70033eac2d036975337a87f8481294e52dc22c99e82b0b641f83"
+    },
+    "deps/verification-linux-service-semantic-report.h": {
+      "bytes": 3019,
+      "sha256": "4716cfb70bb407005150f956c27ba15a964ddddbd0ca6e71ca9e761e12d5bc7c"
+    },
+    "deps/verification-linux-service-execution.h": {
+      "bytes": 2880,
+      "sha256": "4cf65360e9c206874ee7b23e5ba42a325ab96868fb42afb7067cd2a8d4dc2643"
+    },
+    "deps/verification-linux-service-key-process.h": {
+      "bytes": 3072,
+      "sha256": "5f606b69f1e928bb06ef168a190ef47a33bc709f37a94c6e54609ca34fd4f12b"
+    },
+    "deps/verification-linux-service-finalization.h": {
+      "bytes": 2179,
+      "sha256": "a9711101e95a8663529e1506e82ffc4301db32125641e4117117ddfe41eb27e2"
+    },
+    "deps/verification-linux-service-cleanup-phase.h": {
+      "bytes": 1794,
+      "sha256": "8050b4bce0ca0069da140389cbb34a7596a4ba3a3281535770d48bb2b6de91d0"
+    },
+    "deps/verification-linux-service-result-wire.h": {
+      "bytes": 579,
+      "sha256": "2f894e0b72dd51a532e6f7ebd946590cf8a99f03f4a85291629cc6a8a8e27b05"
+    },
+    "deps/verification-linux-service-key-wire.h": {
+      "bytes": 2301,
+      "sha256": "42d0f0e67e42b4e09496409f26fb2212715b57c7e0eb57fd006b9fd0665e7852"
+    },
+    "deps/verification-linux-service-semantic-plan-input.h": {
+      "bytes": 4119,
+      "sha256": "e384766e182bd06f312f9297c9c87f67daf1c253a482f677f80d26275abb500f"
+    },
+    "deps/verification-linux-service-execution-input.h": {
+      "bytes": 2364,
+      "sha256": "b363fa8035950ee428232e2c4845fd057e5597aa36df9b6555e85e74aabfa4b0"
+    },
+    "deps/verification-linux-service-cleanup-phase-input.h": {
+      "bytes": 9869,
+      "sha256": "9c04fb3a207aa54470db154a429740a2fbf7fe17a718dcd13289dd3881aecafb"
+    },
+    "deps/verification-linux-service-phase-wire.h": {
+      "bytes": 1512,
+      "sha256": "ef40a0eb1830e655dae510706446da6f6732e7387d12a4e4eac23461a0b3d694"
+    },
+    "deps/verification-linux-service-key-phase-wire.h": {
+      "bytes": 2092,
+      "sha256": "4ecabd8d97981209a2cf109dceee1fcd880fcb3ffb092bb2129431612a1ed455"
+    },
+    "deps/verification-linux-service-finalization-input.h": {
+      "bytes": 5523,
+      "sha256": "79c0519dfd49a152624fcccaf1d7a83d8d52fad28ba94971bb5ff5aa3575d348"
+    },
+    "deps/verification-linux-service-runtime-input.h": {
+      "bytes": 1246,
+      "sha256": "27ff5e9ac94cf4fefe920311ba0218f548c433cfa3337f2fe932762b5057ede1"
+    },
+    "deps/verification-linux-service-revocation-input.h": {
+      "bytes": 3486,
+      "sha256": "4a223ebc1649423f182afb7da57612a99b502d997c48366870523e0cd9d74ab2"
+    },
+    "deps/verification-linux-service-runtime-channel-native.h": {
+      "bytes": 7560,
+      "sha256": "6da6e146d8e28ddc0b24f96c2bb2ed2584c0afdc5d1510c57df316d8c65e4736"
+    },
+    "deps/verification-linux-service-child-runtime-input.h": {
+      "bytes": 1106,
+      "sha256": "de1aeaea2b904beef45e7a662190fbc786993aa84f19453b464a0b462211cc69"
+    },
+    "DEPENDENCY_PINS.json": {
+      "bytes": 9446,
+      "sha256": "86e50c366c8124deeba7fec29172c4ec8e365c5c8b2eddeaaeadbe7a4cf07991"
+    },
+    "PROMPT_RU.txt": {
+      "bytes": 3672,
+      "sha256": "9213f559fa80a5974086a9f97efab5322c4e174697d31e4f47d1597098a76eef"
+    },
+    "CONTEXT.json": {
+      "bytes": 97,
+      "sha256": "983a5e756b6ef44131fd67d8ca6ce9350f8298294ac53375b6b58d50d8cf629f"
+    }
+  }
+}
