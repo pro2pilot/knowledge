@@ -1,0 +1,10 @@
+#ifndef KNOWLEDGE_LINUX_SERVICE_RESULT_WIRE_H
+#define KNOWLEDGE_LINUX_SERVICE_RESULT_WIRE_H
+/* Canonical historical DATA only. None of these sizes/bytes is a constructor
+ * for a native owner, command execution, acceptance or recovered finality. */
+#define KV_LINUX_RESULT_MAX_COMMANDS 128
+#define KV_LINUX_RESULT_HEADER_BYTES 56
+#define KV_LINUX_RESULT_COMMAND_BYTES 184
+#define KV_LINUX_RESULT_MAX_BYTES (KV_LINUX_RESULT_HEADER_BYTES+KV_LINUX_RESULT_MAX_COMMANDS*KV_LINUX_RESULT_COMMAND_BYTES)
+#define KV_LINUX_RESULT_REPLY_MAX_BYTES (128+576+KV_LINUX_RESULT_MAX_BYTES)
+#endif

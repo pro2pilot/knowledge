@@ -1,0 +1,61 @@
+{
+  "Root_source_commit": "65ec67ce3c806507aa2170a266699d2a2dcac4ab",
+  "source_boundaries": [
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-main.c",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-main.c",
+      "bytes": 11359,
+      "sha256": "579eebd839c026d19daee3c7619a7ff260dab9212a79910f2d3a51fdbb59e157",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-configuration.c",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-configuration.c",
+      "bytes": 7709,
+      "sha256": "a48818d7af0c8dc601a1942c4c5d85de406a48fbe4fe357c045dd8f84a264b2e",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-configuration.h",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-configuration.h",
+      "bytes": 2230,
+      "sha256": "b6a7ffc3c804e62b3dd3268701313713b65a9e16fce1718ff440c6fc754287ec",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-runtime-front.c",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-runtime-front.c",
+      "bytes": 28094,
+      "sha256": "18e71a28bdbbd5abc746999038728c4cab10e7038e15f2f0263178715de221fe",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-runtime-front.h",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-runtime-front.h",
+      "bytes": 2092,
+      "sha256": "c4c7ccf5dd02765e939125a275edefb0928024b0d2e048b28c011a293dac19ca",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-daemon.h",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-daemon.h",
+      "bytes": 2056,
+      "sha256": "97987849bd9658b9bc4afec6ca913fb47ccf40168a370ae1a65b3ee603f923ff",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-uid-history.h",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-uid-history.h",
+      "bytes": 4197,
+      "sha256": "724dbe32e56de11db5201c0a9d886f0671ef88ac31f2abf34ce198559617f62e",
+      "Root65ec_Git_equals_current": true
+    },
+    {
+      "Root": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r9-gates-20261029\\source\\.knowledge\\tools\\lib\\verification-linux-service-key-process.c",
+      "snapshot": "C:\\MyProject\\knowledge-kit\\knowledge-next-release-matotchka\\r12-session-20261031\\qa\\reliability\\audit17\\linux-service-owned-adapter\\issuer-protected-graph-source4\\BASE_MAIN\\verification-linux-service-key-process.c",
+      "bytes": 56568,
+      "sha256": "7e44cca2555355794043503cb37cdacb94b88f44534eaae0be05999443e7c505",
+      "Root65ec_Git_equals_current": true
+    }
+  ]
+}
