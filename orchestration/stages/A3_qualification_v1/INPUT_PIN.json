@@ -1,0 +1,8 @@
+{
+  "input_zip": "input.zip",
+  "bytes": 179240,
+  "sha256": "e017faaa77577789d78a40400ab4794e0c54c092413e798a24ab35b5931f5c32",
+  "scope": "source-only candidate; not product or release",
+  "private_historical_raw_included": false,
+  "pattern_scan": "no selected patterns; heuristic not guarantee"
+}
