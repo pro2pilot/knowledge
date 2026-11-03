@@ -1,0 +1,61 @@
+name: A3 ordinary kcmp environment probe
+on:
+  push:
+    branches: [codex/a3-kcmp-probe-20261103]
+    paths: [.github/workflows/a3-kcmp-probe.yml]
+permissions: {}
+jobs:
+  kcmp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Probe only self-owned pipe descriptions
+        shell: bash
+        run: |
+          python3 -I -B - <<'PY'
+          import ctypes, errno, json, os, platform, sys
+          report = {"scope": "ordinary self-owned kcmp only; no product execution",
+                    "machine": platform.machine(), "kernel": platform.release(),
+                    "uid": os.getuid(), "euid": os.geteuid(), "gid": os.getgid(),
+                    "egid": os.getegid(), "close_errors": []}
+          status = {}
+          for line in open('/proc/self/status', encoding='ascii'):
+              key, _, value = line.partition(':')
+              if key in ('Uid', 'Gid', 'CapInh', 'CapPrm', 'CapEff', 'CapAmb'):
+                  status[key] = value.strip()
+          report['selected_status'] = status
+          allowed = (platform.machine() in ('x86_64', 'amd64')
+                     and all(int(x) != 0 for k in ('Uid', 'Gid') for x in status[k].split())
+                     and all(int(status[k], 16) == 0 for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb')))
+          if not allowed:
+              report.update(result='BLOCKED_PROFILE', rc=77)
+              print(json.dumps(report)); sys.exit(77)
+          descriptors = []
+          code = 1
+          try:
+              r, w = os.pipe2(os.O_CLOEXEC | os.O_NONBLOCK); descriptors += [r, w]
+              alias = os.dup(r); descriptors.append(alias)
+              other, writer = os.pipe2(os.O_CLOEXEC | os.O_NONBLOCK); descriptors += [other, writer]
+              libc = ctypes.CDLL(None, use_errno=True)
+              libc.syscall.restype = ctypes.c_long
+              observations = []
+              for label, right in (('known_dup_alias', alias), ('fresh_distinct_pipe', other)):
+                  ctypes.set_errno(0)
+                  value = libc.syscall(*[ctypes.c_long(x) for x in (312, os.getpid(), os.getpid(), 0, r, right)])
+                  observations.append({'case': label, 'rc': value, 'errno': ctypes.get_errno() if value < 0 else 0})
+                  if value < 0: break  # Do not retry a denied primitive in the same environment.
+              report['observations'] = observations
+              if any(o['rc'] < 0 for o in observations):
+                  code = 77 if all(o['rc'] >= 0 or o['errno'] in (errno.EPERM, errno.EACCES, errno.ENOSYS) for o in observations) else 1
+              else:
+                  code = 0 if observations[0]['rc'] == 0 and observations[1]['rc'] > 0 else 1
+          except OSError as error:
+              report['invocation_errno'] = error.errno
+          finally:
+              for fd in reversed(descriptors):
+                  try: os.close(fd)
+                  except OSError as error: report['close_errors'].append({'fd': fd, 'errno': error.errno})
+          if report['close_errors']: code = 1
+          report.update(result='PASS_ORDINARY_KCMP_ONLY' if code == 0 else 'BLOCKED_KCMP' if code == 77 else 'FAIL', rc=code)
+          print(json.dumps(report)); sys.exit(code)
+          PY
