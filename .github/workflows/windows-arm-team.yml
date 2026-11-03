@@ -1,0 +1,244 @@
+# QA-only candidate. Root publishes this exact reviewed tree once on the QA branch.
+# No checkout, actions, dependency install, artifact/cache upload, or product rewrite.
+name: Knowledge D5 Windows ARM Team QA
+'on':
+  push:
+    branches:
+      - codex/windows-arm-team-20261103-v2
+permissions:
+  contents: read
+jobs:
+  team-native-arm:
+    if: ${{ github.repository == 'pro2pilot/knowledge' && github.event_name == 'push' && github.ref == 'refs/heads/codex/windows-arm-team-20261103-v2' && github.event.repository.private == false }}
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    steps:
+      - name: Bounded pinned QA and encrypted private evidence
+        shell: pwsh
+        env:
+          D5_REPOSITORY: ${{ github.repository }}
+          D5_COMMIT: ${{ github.sha }}
+          D5_RUN_ID: ${{ github.run_id }}
+          D5_RUN_ATTEMPT: ${{ github.run_attempt }}
+          D5_REF: ${{ github.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          Set-StrictMode -Version Latest
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          $client = $null; $handler = $null
+          $finalExit = 1
+          try {
+            if (-not $IsWindows -or $env:D5_REPOSITORY -cne 'pro2pilot/knowledge' -or
+                $env:D5_REF -cne 'refs/heads/codex/windows-arm-team-20261103-v2' -or
+                $env:D5_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or $env:D5_RUN_ID -cnotmatch '^[1-9][0-9]{0,19}$' -or
+                $env:D5_RUN_ATTEMPT -cne '1') { throw 'D5_CONTEXT_NOT_RUN' }
+            function Assert-Physical([string]$value) {
+              if (-not [IO.Path]::IsPathFullyQualified($value) -or $value.StartsWith('\\') -or
+                  [IO.Path]::GetFullPath($value) -cne $value) { throw 'D5_PHYSICAL_PATH' }
+              $current = $value
+              while ($current) {
+                if (([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'D5_REPARSE' }
+                $parent = [IO.Path]::GetDirectoryName($current)
+                if (-not $parent -or $parent -ceq $current) { break }
+                $current = $parent
+              }
+            }
+            $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+            Assert-Physical $temp
+            if ($temp -match '\s' -or -not [IO.Directory]::Exists($temp)) { throw 'D5_TEMP_NOT_RUN' }
+            $pwsh = [Environment]::ProcessPath; Assert-Physical $pwsh
+            $freshDirectoryType = @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class D5FreshDirectory {
+            [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true, ExactSpelling=true)]
+            private static extern bool CreateDirectoryW(string path, IntPtr attributes);
+            public static void Create(string path) {
+              if (!CreateDirectoryW(path, IntPtr.Zero)) throw new InvalidOperationException("D5_FRESH_REQUIRED");
+            }
+          }
+          '@
+            Add-Type -TypeDefinition $freshDirectoryType -ErrorAction Stop | Out-Null
+            $root = [IO.Path]::Combine($temp,'knowledge-d5-'+[Guid]::NewGuid().ToString('N'))
+            [D5FreshDirectory]::Create($root); Assert-Physical $root
+            $downloads = [IO.Path]::Combine($root,'downloads')
+            [D5FreshDirectory]::Create($downloads)
+            $payloads = @(
+              @{Name='Invoke-TeamQa.ps1'; Bytes=24797; Sha='2a3f3474efbd7cddfbed2f3a6bc60dc9e497c806cac44f0de0b45e41a0403939'};
+              @{Name='Verify-TestInput.ps1'; Bytes=4159; Sha='7e8276ff74de8cd39d9e8475ea8f86cd8c7049abd61f80c1303a68db3157d22e'};
+              @{Name='verify-input.cjs'; Bytes=13615; Sha='2d289244ada977a052761aa1bf535d74a7ea6097df9a5f67ab737681bf8c2f17'};
+              @{Name='guard-recursive-cleanup.cjs'; Bytes=6434; Sha='871fb77a2888715f88caa191a89efcf5db2af6ab47841488e71680369046a560'};
+              @{Name='guard-path-check.ps1'; Bytes=2041; Sha='91994177419f899bcf53d604aa07ee5ecbd6a444a971d3463dd5674d5bfdf60d'};
+              @{Name='guard-preflight.test.cjs'; Bytes=3155; Sha='1ad7bb8d810ad491f36fe8addeb7883ce00abebf9df0af2379edf94c61a900af'};
+              @{Name='native-probe.cjs'; Bytes=6817; Sha='3cd731cc46f30304617284d08559ebab7e6d9a563614d26bb9ba6fd7d9b93932'};
+              @{Name='observe-product.cjs'; Bytes=20287; Sha='fccd5d6f332698dcd0f67dc8104db0c4b4afd7c45fac4618d7a4086d527b019e'};
+              @{Name='job-matrix.ps1'; Bytes=4812; Sha='54b3cc3d91c3f3cfcabb69700016e37324a635b96722eb5a867837f933a7ec74'};
+              @{Name='supervisor-analyze.cjs'; Bytes=24847; Sha='c12b3a641206ed176006c02762df4849241378a4e5368c919f877bac938517e1'};
+              @{Name='supervisor-capture.cs'; Bytes=9593; Sha='24f2e96f826e64324223af6c49c76a05df003ca6624da56001992b46122ba184'};
+              @{Name='evidence-transport.cjs'; Bytes=35881; Sha='d85d94692067b1066d20a426312fda3c2037d38949c61bc207e784fc35982e18'};
+              @{Name='encrypt-evidence.cjs'; Bytes=1189; Sha='eec2844a1d7baef77892b186881c424c29530cc42d51b224db2a8fcc695beb69'};
+              @{Name='finalize-evidence.cjs'; Bytes=14260; Sha='3aa9f5b5fe40767efd5095e3d203ce2bfbede21f5d0b3b0812a3cf7ac8c8b287'};
+              @{Name='emit-validated-envelope.cjs'; Bytes=3596; Sha='838a3145f2fa3d549d861f91cf8aace233bd3cb549ce3329e1e184a674215f1f'};
+              @{Name='evidence-public.pem'; Bytes=625; Sha='6443fc9c6c7369ca1931fd05ffcc56bb01a4ef086e7f83ddaac7da4118072cdb'};
+              @{Name='WINDOWS_TEAM_TEST_INPUT.zip'; Bytes=705049; Sha='24df61b60ff43899a8e85884acf14bef6eb3a8c4a2537413033f5092b6965407'}
+            )
+            $handler = [Net.Http.HttpClientHandler]::new()
+            $handler.AllowAutoRedirect = $false; $handler.UseCookies = $false
+            $handler.UseDefaultCredentials = $false; $handler.PreAuthenticate = $false
+            $handler.AutomaticDecompression = [Net.DecompressionMethods]::None
+            $client = [Net.Http.HttpClient]::new($handler)
+            $client.Timeout = [TimeSpan]::FromSeconds(20)
+            foreach ($item in $payloads) {
+              $remaining = 80000 - [int]$watch.ElapsedMilliseconds
+              if ($remaining -le 0) { throw 'D5_BOOTSTRAP_DEADLINE' }
+              $uri = 'https://raw.githubusercontent.com/pro2pilot/knowledge/'+$env:D5_COMMIT+'/qa/windows-arm-team/'+$item.Name
+              $cancel = [Threading.CancellationTokenSource]::new([Math]::Min(20000,$remaining))
+              $response = $null; $stream = $null; $memory = [IO.MemoryStream]::new()
+              try {
+                $response = $client.GetAsync($uri,[Net.Http.HttpCompletionOption]::ResponseHeadersRead,$cancel.Token).GetAwaiter().GetResult()
+                if ([int]$response.StatusCode -ne 200 -or $response.RequestMessage.RequestUri.AbsoluteUri -cne $uri -or
+                    ($null -ne $response.Content.Headers.ContentLength -and $response.Content.Headers.ContentLength -ne $item.Bytes)) { throw 'D5_DOWNLOAD_METADATA' }
+                $stream = $response.Content.ReadAsStreamAsync($cancel.Token).GetAwaiter().GetResult()
+                $buffer = [byte[]]::new(65536)
+                while (($count = $stream.ReadAsync($buffer,0,$buffer.Length,$cancel.Token).GetAwaiter().GetResult()) -gt 0) {
+                  if ($memory.Length + $count -gt $item.Bytes) { throw 'D5_DOWNLOAD_BOUND' }
+                  $memory.Write($buffer,0,$count)
+                }
+                $bytes = $memory.ToArray()
+                $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+                if ($bytes.Length -ne $item.Bytes -or $hash -cne $item.Sha) { throw 'D5_DOWNLOAD_PIN' }
+                Assert-Physical $downloads
+                $file = [IO.File]::Open([IO.Path]::Combine($downloads,$item.Name),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+                try { $file.Write($bytes,0,$bytes.Length); $file.Flush($true) } finally { $file.Dispose() }
+              } finally {
+                if ($null -ne $stream) { $stream.Dispose() }; if ($null -ne $response) { $response.Dispose() }
+                $memory.Dispose(); $cancel.Dispose()
+              }
+            }
+            # Exact official Node ZIP: DATA download, no host install or PATH mutation.
+            # Detached Node release signature was not verified by the input census.
+            $nodeUri = 'https://nodejs.org/dist/v24.22.1/node-v24.22.1-win-arm64.zip'
+            $nodeZipPath = [IO.Path]::Combine($root,'node-v24.22.1-win-arm64.zip')
+            $nodeDirectory = [IO.Path]::Combine($root,'node24'); [D5FreshDirectory]::Create($nodeDirectory); Assert-Physical $nodeDirectory
+            $node = [IO.Path]::Combine($nodeDirectory,'node.exe')
+            $remaining = 80000 - [int]$watch.ElapsedMilliseconds
+            if ($remaining -le 0) { throw 'D5_NODE_DOWNLOAD_DEADLINE' }
+            $nodeCancel = [Threading.CancellationTokenSource]::new([Math]::Min(30000,$remaining))
+            $nodeResponse = $null; $nodeSource = $null; $nodeFile = $null
+            try {
+              $nodeResponse = $client.GetAsync($nodeUri,[Net.Http.HttpCompletionOption]::ResponseHeadersRead,$nodeCancel.Token).GetAwaiter().GetResult()
+              if ([int]$nodeResponse.StatusCode -ne 200 -or $nodeResponse.RequestMessage.RequestUri.AbsoluteUri -cne $nodeUri -or
+                  ($null -ne $nodeResponse.Content.Headers.ContentLength -and $nodeResponse.Content.Headers.ContentLength -ne 33786263)) { throw 'D5_NODE_DOWNLOAD_METADATA' }
+              $nodeSource = $nodeResponse.Content.ReadAsStreamAsync($nodeCancel.Token).GetAwaiter().GetResult()
+              $nodeFile = [IO.File]::Open($nodeZipPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+              $buffer = [byte[]]::new(65536); [long]$total = 0
+              while (($count = $nodeSource.ReadAsync($buffer,0,$buffer.Length,$nodeCancel.Token).GetAwaiter().GetResult()) -gt 0) {
+                $total += $count; if ($total -gt 33786263 -or $watch.ElapsedMilliseconds -ge 80000) { throw 'D5_NODE_DOWNLOAD_BOUND' }
+                $nodeFile.Write($buffer,0,$count)
+              }
+              $nodeFile.Flush($true); if ($total -ne 33786263) { throw 'D5_NODE_DOWNLOAD_LENGTH' }
+            } finally {
+              if ($null -ne $nodeFile) { $nodeFile.Dispose() }; if ($null -ne $nodeSource) { $nodeSource.Dispose() }
+              if ($null -ne $nodeResponse) { $nodeResponse.Dispose() }; $nodeCancel.Dispose()
+            }
+            Assert-Physical $nodeZipPath
+            Add-Type -AssemblyName System.IO.Compression
+            $archiveFile = $null; $zip = $null; $memberStream = $null; $nodeOut = $null
+            try {
+              $archiveFile = [IO.File]::Open($nodeZipPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+              $zipHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($archiveFile)).ToLowerInvariant()
+              if ($zipHash -cne 'a0c807319fede24c4a0d8f84564c82a619bd313b16b10c007c383c2609e99171') { throw 'D5_NODE_ZIP_PIN' }
+              $archiveFile.Position=0
+              $zip = [IO.Compression.ZipArchive]::new($archiveFile,[IO.Compression.ZipArchiveMode]::Read,$false)
+              if ($zip.Entries.Count -ne 2459) { throw 'D5_NODE_ZIP_INVENTORY' }
+              $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase); $member=$null
+              foreach ($entry in $zip.Entries) {
+                $entryName=$entry.FullName
+                if (-not $seen.Add($entryName)) { throw 'D5_NODE_ZIP_DUPLICATE' }
+                if ($entryName -ceq 'node-v24.22.1-win-arm64/node.exe') { if ($null -ne $member) { throw 'D5_NODE_ZIP_DUPLICATE' }; $member=$entry }
+              }
+              if ($null -eq $member -or $member.Length -ne 82150728 -or $member.CompressedLength -ne 29244635 -or
+                  $member.ExternalAttributes -ne 32) { throw 'D5_NODE_MEMBER_METADATA' }
+              $memberStream=$member.Open(); $nodeOut=[IO.File]::Open($node,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+              $buffer=[byte[]]::new(65536); [long]$total=0
+              while (($count=$memberStream.Read($buffer,0,$buffer.Length)) -gt 0) {
+                $total += $count; if ($total -gt 82150728 -or $watch.ElapsedMilliseconds -ge 80000) { throw 'D5_NODE_MEMBER_BOUND' }
+                $nodeOut.Write($buffer,0,$count)
+              }
+              $nodeOut.Flush($true); if ($total -ne 82150728) { throw 'D5_NODE_MEMBER_LENGTH' }
+            } finally {
+              if ($null -ne $nodeOut) { $nodeOut.Dispose() }; if ($null -ne $memberStream) { $memberStream.Dispose() }
+              if ($null -ne $zip) { $zip.Dispose() } elseif ($null -ne $archiveFile) { $archiveFile.Dispose() }
+            }
+            Assert-Physical $node
+            $nodeBytes=[IO.File]::ReadAllBytes($node)
+            if ($nodeBytes.Length -ne 82150728 -or [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($nodeBytes)).ToLowerInvariant() -cne '8bea91dc437fe01e7d92ef0efc6c9eaf654369aaba9b2d3e9841552ea7b95a00') { throw 'D5_NODE_EXE_PIN' }
+            if ($nodeBytes[0] -ne 0x4d -or $nodeBytes[1] -ne 0x5a) { throw 'D5_NODE_PE_DOS' }
+            $pe=[BitConverter]::ToUInt32($nodeBytes,0x3c)
+            if ($pe -gt $nodeBytes.Length-26 -or $nodeBytes[$pe] -ne 0x50 -or $nodeBytes[$pe+1] -ne 0x45 -or
+                $nodeBytes[$pe+2] -ne 0 -or $nodeBytes[$pe+3] -ne 0 -or [BitConverter]::ToUInt16($nodeBytes,[int]$pe+4) -ne 0xaa64 -or
+                [BitConverter]::ToUInt16($nodeBytes,[int]$pe+20) -lt 2 -or [BitConverter]::ToUInt16($nodeBytes,[int]$pe+24) -ne 0x20b) { throw 'D5_NODE_PE_ARM64' }
+            $nodeBytes=$null
+            # Exact helper hashes were checked before the first helper is loaded.
+            Add-Type -Path ([IO.Path]::Combine($downloads,'supervisor-capture.cs')) -ErrorAction Stop | Out-Null
+            if ($watch.ElapsedMilliseconds -gt 80000) { throw 'D5_BOOTSTRAP_DEADLINE' }
+            $childEnv = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($name in @('SystemRoot','WINDIR','SystemDrive','COMSPEC','PATHEXT','PATH')) {
+              $value = [Environment]::GetEnvironmentVariable($name)
+              if ($value) { $childEnv.Add($name,$value) }
+            }
+            $childEnv['RUNNER_TEMP'] = $temp; $childEnv['TEMP'] = $root; $childEnv['TMP'] = $root
+            $arguments = [string[]]@('-NoLogo','-NoProfile','-NonInteractive','-File',([IO.Path]::Combine($downloads,'Invoke-TeamQa.ps1')),
+              '-JobRoot',$root,'-NodeExe',$node,'-Repository',$env:D5_REPOSITORY,'-RunId',$env:D5_RUN_ID,'-RunAttempt',$env:D5_RUN_ATTEMPT,'-Commit',$env:D5_COMMIT)
+            $supervisorOut = [IO.Path]::Combine($root,'supervisor.private.stdout')
+            $supervisorErr = [IO.Path]::Combine($root,'supervisor.private.stderr')
+            $budget = [Math]::Min(740000,820000-[int]$watch.ElapsedMilliseconds)
+            if ($budget -lt 700000) { throw 'D5_SUPERVISOR_BUDGET_NOT_RUN' }
+            $captured = [D5Capture]::Run($pwsh,$arguments,$downloads,$childEnv,$supervisorOut,$supervisorErr,$budget,2097152,2097152)
+            $receipt = @{schema='knowledge-d5-bootstrap-capture.v1';started=$captured.Started;exited=$captured.Exited;
+              original_supervisor_exit=$captured.ExitCode;stdout_eof=$captured.StdoutEof;stderr_eof=$captured.StderrEof;
+              timed_out=$captured.TimedOut;overflow=$captured.Overflow;pipe_failure=$captured.PipeFailure;
+              kill_attempted=$captured.KillAttempted;kill_succeeded=$captured.KillSucceeded;
+              retained_handle_captured=$captured.RetainedHandleCaptured;stdout_observed_bytes=$captured.StdoutObservedBytes;
+              stderr_observed_bytes=$captured.StderrObservedBytes;elapsed_ms=$captured.ElapsedMs;failure_code=$captured.FailureCode}
+            $receiptPath = [IO.Path]::Combine($root,'bootstrap-capture.json')
+            [IO.File]::WriteAllText($receiptPath,($receipt | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+            # The sole encryption owner runs after every captured supervisor
+            # result, including start failure, timeout and nonzero exit. It can
+            # export partial evidence without inventing a product exit code.
+            $finalizerOut = [IO.Path]::Combine($root,'finalizer.private.stdout')
+            $finalizerErr = [IO.Path]::Combine($root,'finalizer.private.stderr')
+            $finalizeArgs = [string[]]@(([IO.Path]::Combine($downloads,'finalize-evidence.cjs')),
+              '--job-root',$root,'--public-key',([IO.Path]::Combine($downloads,'evidence-public.pem')),
+              '--repository',$env:D5_REPOSITORY,'--run-id',$env:D5_RUN_ID,'--run-attempt',$env:D5_RUN_ATTEMPT,'--commit',$env:D5_COMMIT)
+            $finalized = [D5Capture]::Run($node,$finalizeArgs,$downloads,$childEnv,$finalizerOut,$finalizerErr,20000,16777216,4096)
+            $exportReceipt = @{schema='knowledge-d5-export-capture.v1';started=$finalized.Started;exited=$finalized.Exited;
+              original_finalizer_exit=$finalized.ExitCode;stdout_eof=$finalized.StdoutEof;stderr_eof=$finalized.StderrEof;
+              timed_out=$finalized.TimedOut;overflow=$finalized.Overflow;pipe_failure=$finalized.PipeFailure;
+              kill_attempted=$finalized.KillAttempted;kill_succeeded=$finalized.KillSucceeded;
+              retained_handle_captured=$finalized.RetainedHandleCaptured;stdout_observed_bytes=$finalized.StdoutObservedBytes;
+              stderr_observed_bytes=$finalized.StderrObservedBytes;elapsed_ms=$finalized.ElapsedMs;failure_code=$finalized.FailureCode}
+            $exportReceiptPath = [IO.Path]::Combine($root,'export-capture.json')
+            [IO.File]::WriteAllText($exportReceiptPath,($exportReceipt | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+            # The emitter checks full framing/run binding and the separate
+            # finalizer process receipt. All unexpected output stays private.
+            $emitOut = [IO.Path]::Combine($root,'public.envelope.stdout'); $emitErr = [IO.Path]::Combine($root,'public.emitter.stderr')
+            $emitArgs = [string[]]@(([IO.Path]::Combine($downloads,'emit-validated-envelope.cjs')),'--log',$finalizerOut,
+              '--capture-receipt',$exportReceiptPath,'--repository',$env:D5_REPOSITORY,'--run-id',$env:D5_RUN_ID,
+              '--run-attempt',$env:D5_RUN_ATTEMPT,'--commit',$env:D5_COMMIT)
+            $emitted = [D5Capture]::Run($node,$emitArgs,$downloads,$childEnv,$emitOut,$emitErr,10000,16777216,4096)
+            if (-not $emitted.Exited -or -not $emitted.StdoutEof -or -not $emitted.StderrEof -or $emitted.TimedOut -or
+                $emitted.Overflow -or $emitted.PipeFailure -or $emitted.KillAttempted -or $emitted.KillSucceeded -or
+                -not $emitted.RetainedHandleCaptured -or $null -ne $emitted.FailureCode -or
+                $emitted.StderrObservedBytes -ne 0 -or -not [IO.File]::Exists($emitOut)) { throw 'D5_EXPORT_UNCERTAIN' }
+            [Console]::Out.Write([IO.File]::ReadAllText($emitOut,[Text.UTF8Encoding]::new($false,$true)))
+            if ($emitted.ExitCode -eq 0 -and $finalized.ExitCode -eq 0 -and $captured.ExitCode -eq 0) { $finalExit = 0 }
+          } catch {
+            [Console]::Out.WriteLine('D5_PUBLIC BOOTSTRAP_OR_EXPORT_UNCERTAIN_NO_PLAINTEXT')
+            $finalExit = 1
+          } finally {
+            if ($null -ne $client) { $client.Dispose() }; if ($null -ne $handler) { $handler.Dispose() }
+            # Retain our root on every outcome. No recursive cleanup or cleanup claim.
+          }
+          exit $finalExit
