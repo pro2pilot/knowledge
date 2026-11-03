@@ -1,0 +1,178 @@
+{
+  "schema": "knowledge-a3-v1-public-source-only-delivery.v1",
+  "classification": "SOURCE_ONLY_REVIEW_CANDIDATE_NOT_FULL_AUDIT_HANDOFF",
+  "archive": {
+    "path": "RETURN_A3_PUBLIC_SOURCE_ONLY.zip",
+    "bytes": 108422,
+    "sha256": "d84f19557ac04a03fe9be5d13d4796b6dde679b1b1d4a7c413f04809eb1c0626",
+    "members": 23,
+    "crc": "PASS",
+    "pinned_once_no_repack": true
+  },
+  "manifest": {
+    "path": "MANIFEST.json",
+    "bytes": 3950,
+    "sha256": "41b74636d71a13a13db04896029281197cc2d87228b8a64f01ce549dc7fd54f3",
+    "payload_files": 22,
+    "payload_bytes": 250052,
+    "new_minimal_manifest_not_old_36_payload_manifest": true
+  },
+  "members": {
+    "ACTIONS_REQUEST.json": {
+      "bytes": 6517,
+      "sha256": "a550c553bc8a8195ee8a8ac1aec2f0b3e2c21be322fcb0845b889fd854b9f99d"
+    },
+    "APPLY_RU.md": {
+      "bytes": 7842,
+      "sha256": "dfd45bb24a0b12c25be0a9c31aea47f5dc64a84d3583672b3e06fcee5fa14e3a"
+    },
+    "MANIFEST.json": {
+      "bytes": 3950,
+      "sha256": "41b74636d71a13a13db04896029281197cc2d87228b8a64f01ce549dc7fd54f3"
+    },
+    "NEXT_CHAT_RU.txt": {
+      "bytes": 5910,
+      "sha256": "3aefdf26a32fcdca8dd6b18a4d6eff211cbe3a809860aff69d24b06831c60642"
+    },
+    "RESULT_RU.md": {
+      "bytes": 16117,
+      "sha256": "324b1599b53e331b7fc12d13ab290b6b01810febf7340243ba76b18318b3b060"
+    },
+    "qualification/ACTIONS_CODE_PINS.json": {
+      "bytes": 1007,
+      "sha256": "c587873f8e7c5c43a74bf0c057ddf466e151cadb33547572a14c7742dafe2c08"
+    },
+    "qualification/ACTIONS_JOB_RECIPE.yml": {
+      "bytes": 43778,
+      "sha256": "2421d1cea7186b1af8c96ea72c64c005bd0695e51ecf9e6bcc83078cd188c712"
+    },
+    "qualification/MODEL_NOTES_RU.md": {
+      "bytes": 6445,
+      "sha256": "7b9880be22f35345c1ff313f829496940da047d34177b86d33e7a45aae7c47bf"
+    },
+    "qualification/actions_entry.py": {
+      "bytes": 5232,
+      "sha256": "675968879cc1ed1b1645130e719d9990111a25b2657eb7f5f531c27aa1692961"
+    },
+    "qualification/actions_prepare_and_run.py": {
+      "bytes": 8058,
+      "sha256": "eaaf0a91badd8b5063364c24e667e4b40320964bdcec70ed3e7290ba59afb9c7"
+    },
+    "qualification/apply_results.py": {
+      "bytes": 10922,
+      "sha256": "6ddc7b0b9960f6f0946342d1bb70379cc6a6d1a4c551989589ca4a179296290a"
+    },
+    "qualification/compile_NOTES_RU.md": {
+      "bytes": 8975,
+      "sha256": "0ce626483aab45e182d3d92ecb412359d9cd344c4432d15eb190d83e4c233dbf"
+    },
+    "qualification/compile_generator_checks.py": {
+      "bytes": 7634,
+      "sha256": "a1c3dcf3366e861b31437a16d52c138ddc54c9532e1db0dec31b346ec33dde95"
+    },
+    "qualification/compile_main.c": {
+      "bytes": 1476,
+      "sha256": "f46d456c98ba2ddf109d7c06434cc3a963f9765787d765952f089a4d14e90379"
+    },
+    "qualification/compile_qualification.py": {
+      "bytes": 16751,
+      "sha256": "61ad93eecd90abc52f0ccac6c0fd7b0d902f82011e25ed703c972bd11f621605"
+    },
+    "qualification/model_expectations.json": {
+      "bytes": 1063,
+      "sha256": "873f77ca89ead2107812a05ce8a3d8d7f2462ca07d86399482ce9351c3933be9"
+    },
+    "qualification/model_qualification.py": {
+      "bytes": 18985,
+      "sha256": "7ca929d734f66cfde32b44b37b274b624d2e8ade4d36bbc5e919fd5e36b449aa"
+    },
+    "qualification/ordinary_README_RU.md": {
+      "bytes": 11402,
+      "sha256": "9c683e8dc170eca74bc483ab17b0b61dc6357bae3722dc5b4580b4c388e182ed"
+    },
+    "qualification/ordinary_review.json": {
+      "bytes": 3195,
+      "sha256": "817dda57e6e08b1dfd735bb1a2cfc94b93f9f149c8e040e2610ec73c25dc4a04"
+    },
+    "qualification/ordinary_run.py": {
+      "bytes": 14426,
+      "sha256": "6c9a1df32faef2047bcffe33b02c72fbcaccee7bfffd17e41591ff19b4421216"
+    },
+    "qualification/ordinary_socket_fixtures.py": {
+      "bytes": 40672,
+      "sha256": "31dfc3b222a3b28612cafe8a66389cc146c66f7d596a570811d6452ff116d586"
+    },
+    "qualification/public_evidence.py": {
+      "bytes": 9942,
+      "sha256": "b0d41f6a81c0b3921c6df330bfef7dd9a9d860a8d0f865399d8ff6c4b8a20a52"
+    },
+    "reviews/EXACT_SOURCE_REVIEW.json": {
+      "bytes": 3703,
+      "sha256": "aeafc3e52967a2f5c4cf9d43a25434c8c65f784ed27e977606fb3b7240994568"
+    }
+  },
+  "unchanged_handoff_documents": [
+    "RESULT_RU.md",
+    "APPLY_RU.md",
+    "NEXT_CHAT_RU.txt"
+  ],
+  "handoff_reference_notice_ru": "RESULT/APPLY/NEXT сохранены побайтно и описывают полный приватный пакет A3 v1. Их ссылки на manifests, helper/application layout, raw, bases и полное evidence относятся к полному приватному пакету. Здесь присутствуют только перечисленные qualification sources/helpers и две source-review квитанции; остальные материалы полного audit handoff отсутствуют. Этот минимальный source-only subset не равен полному audit handoff и не является полным набором для применения по прежнему APPLY.",
+  "excluded": [
+    "original raw/runtime evidence",
+    "BASES and input archives",
+    "compiled objects or executable binaries",
+    "full audit/review evidence",
+    "additional unlisted files"
+  ],
+  "source_review_guards_preserved": [
+    "qualification/ordinary_review.json",
+    "reviews/EXACT_SOURCE_REVIEW.json"
+  ],
+  "embedded_source_transport": "ACTIONS_JOB_RECIPE.yml retains its exact reviewed 6-member source-only ZIP as existing base64 literals; no standalone ACTIONS_SOURCE_PAYLOAD.zip member is added. All decoded members match listed source files.",
+  "publication_contract": {
+    "repository": "pro2pilot/knowledge",
+    "branch": "codex/stage-a3-v1-20261103",
+    "expected_head": "0684ffa0d132675233d7d9602121f02bb50ff6eb",
+    "allowed_paths": [
+      "orchestration/results/A3_v1/PUBLIC_SOURCE_ONLY/RETURN_A3_PUBLIC_SOURCE_ONLY.zip",
+      "orchestration/results/A3_v1/PUBLIC_SOURCE_ONLY/DELIVERY.json"
+    ],
+    "new_files_only": true,
+    "one_commit": true,
+    "force": false,
+    "actor": "pro2pilot",
+    "author": {
+      "name": "Pro2Pilot",
+      "email": "286498725+pro2pilot@users.noreply.github.com"
+    },
+    "committer": {
+      "name": "Pro2Pilot",
+      "email": "286498725+pro2pilot@users.noreply.github.com"
+    },
+    "commit_sha": "REPORTED_SEPARATELY_AFTER_SUCCESSFUL_PUBLICATION"
+  },
+  "scan": {
+    "phase": "before packaging and repeated on pinned ZIP before any write",
+    "unapproved_findings": 0,
+    "scope": "22 exact UTF-8 payload files, new manifest, decoded 6-member recipe payload; DELIVERY is checked before publication",
+    "allowed_identity_email": "Explicitly authorized public users.noreply identity only",
+    "patterns": [
+      "private_key",
+      "github_token",
+      "aws_access_key",
+      "openai_token",
+      "bearer_credential",
+      "credential_url",
+      "email",
+      "personal_home",
+      "personal_windows_home",
+      "unexpected_root_path"
+    ],
+    "limits": "Literal credential, email, home path, workspace and hostname scan and exact source-byte review; not an exhaustive detector of every encoding."
+  },
+  "transport_only": true,
+  "new_stage_started": false,
+  "actions_qualification_product_execution": "NOT_RUN",
+  "full_offer_release": "EOPNOTSUPP_UNCHANGED",
+  "full_private_returns": "PRESERVED_UNMODIFIED; not included or published"
+}
