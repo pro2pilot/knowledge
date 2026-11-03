@@ -1,0 +1,97 @@
+name: Windows ARM capability observation
+on:
+  push:
+    branches: ['codex/windows-arm-capability-20261103']
+    paths: ['.github/workflows/windows-arm-capability.yml']
+permissions: {}
+concurrency:
+  group: windows-arm-capability-20261103
+  cancel-in-progress: false
+jobs:
+  capability:
+    runs-on: windows-11-arm
+    timeout-minutes: 2
+    steps:
+      - name: Observe OS, PowerShell and preinstalled Node architectures separately
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = [ordered]@{
+            scope = 'CAPABILITY_OBSERVATION_ONLY_NOT_PRODUCT_OR_RELEASE'
+            os_arch = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+            powershell_arch = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+            node_status = 'NOT_FOUND'
+            node_platform = $null
+            node_arch = $null
+            node_version = $null
+            node_exit = $null
+            node_native_arm64 = $false
+            node_cleanup_confirmed = $true
+            network_isolation = 'NOT_ESTABLISHED; step contains no network operation'
+          }
+          $process = $null
+          try {
+            $command = Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue
+            if ($null -ne $command) {
+              $info = [Diagnostics.ProcessStartInfo]::new()
+              $info.FileName = $command.Source
+              $info.WorkingDirectory = $env:RUNNER_TEMP
+              $info.UseShellExecute = $false
+              $info.RedirectStandardOutput = $true
+              $info.RedirectStandardError = $true
+              $info.RedirectStandardInput = $true
+              $info.CreateNoWindow = $true
+              foreach ($name in @('NODE_OPTIONS','NODE_PATH','NODE_EXTRA_CA_CERTS','OPENSSL_CONF','OPENSSL_MODULES','SSL_CERT_FILE','SSL_CERT_DIR')) {
+                $info.Environment.Remove($name) | Out-Null
+              }
+              $info.ArgumentList.Add('-p')
+              $info.ArgumentList.Add('JSON.stringify({platform:process.platform,arch:process.arch,version:process.version})')
+              $process = [Diagnostics.Process]::new()
+              $process.StartInfo = $info
+              if (-not $process.Start()) { throw 'FIXED_LAUNCH_FAILURE' }
+              $process.StandardInput.Close()
+              $stdout = $process.StandardOutput.ReadToEndAsync()
+              $stderr = $process.StandardError.ReadToEndAsync()
+              if (-not $process.WaitForExit(20000)) {
+                $result.node_status = 'TIMEOUT'
+                $process.Kill($true)
+                $result.node_cleanup_confirmed = $process.WaitForExit(3000)
+              } else {
+                $result.node_exit = $process.ExitCode
+                if ($process.ExitCode -ne 0) {
+                  $result.node_status = 'NONZERO_EXIT_RAW_SUPPRESSED'
+                } elseif (-not $stdout.IsCompleted -or $stdout.Result.Length -gt 512) {
+                  $result.node_status = 'OUTPUT_BOUND_OR_COMPLETION_FAILURE'
+                } else {
+                  $observed = $stdout.Result | ConvertFrom-Json -ErrorAction Stop
+                  if ($observed.platform -isnot [string] -or $observed.arch -isnot [string] -or $observed.version -isnot [string] -or
+                      $observed.platform -notin @('win32','linux','darwin') -or
+                      $observed.arch -notin @('arm64','x64','ia32') -or
+                      $observed.version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+                    $result.node_status = 'INVALID_FIXED_FIELDS'
+                  } else {
+                    $result.node_status = 'OBSERVED'
+                    $result.node_platform = $observed.platform
+                    $result.node_arch = $observed.arch
+                    $result.node_version = $observed.version
+                    $result.node_native_arm64 = ($result.os_arch -eq 'Arm64' -and $observed.platform -eq 'win32' -and $observed.arch -eq 'arm64')
+                  }
+                }
+              }
+            }
+          } catch {
+            $result.node_status = 'PROBE_EXCEPTION_RAW_SUPPRESSED'
+          } finally {
+            if ($null -ne $process) {
+              try {
+                if (-not $process.HasExited) {
+                  $process.Kill($true)
+                  $result.node_cleanup_confirmed = $process.WaitForExit(3000)
+                }
+              } catch { $result.node_cleanup_confirmed = $false }
+              $process.Dispose()
+            }
+          }
+          $result | ConvertTo-Json -Compress
+          if ($result.os_arch -ne 'Arm64') { exit 41 }
+          if (-not $result.node_cleanup_confirmed) { exit 42 }
