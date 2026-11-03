@@ -1,0 +1,147 @@
+{
+  "schema": "knowledge-b3-public-source-only-delivery.v1",
+  "classification": "SOURCE_ONLY_REVIEW_SUBSET",
+  "status": "PARTIAL_SOURCE_MODEL; POLICY_BLOCKED; not native qualification or release PASS",
+  "repository": "pro2pilot/knowledge",
+  "branch": "codex/stage-b3-v1-20261103",
+  "required_parent_commit": "045424a2528510c317f911cc3a7d3b51bac36f12",
+  "repository_prefix": "orchestration/results/B3_v1/PUBLIC_SOURCE_ONLY/",
+  "required_actor": "pro2pilot",
+  "required_author": {
+    "name": "Pro2Pilot",
+    "email": "286498725+pro2pilot@users.noreply.github.com"
+  },
+  "required_committer": {
+    "name": "Pro2Pilot",
+    "email": "286498725+pro2pilot@users.noreply.github.com"
+  },
+  "archive": {
+    "path": "RETURN_B3_PUBLIC_SOURCE_ONLY.zip",
+    "bytes": 69151,
+    "sha256": "9ed24e3c28a2799edf434e704ae3d3f243973d678ebfeedb5112f6da4c58b674",
+    "members": 22
+  },
+  "limitations": "This is a source-only review subset. Automatic apply helper, raw evidence, reviews, full evidence and base/input archives are absent. Links and commands in RESULT_RU.md, APPLY_RU.md and NEXT_CHAT_RU.txt refer to the full private package; they do not make this subset a self-contained automatic apply kit.",
+  "preservation": "All ZIP bytes and 21 existing payload files are unchanged. The full private package is retained separately and is not published by this delivery.",
+  "prepublication_scan": {
+    "zip_sha256": "MATCH",
+    "crc": "PASS_ALL_22",
+    "member_pins": "MATCH",
+    "utf8_text_members": 22,
+    "binary_members": 0,
+    "secret_or_personal_path_hits": 0,
+    "authorized_identity_email_only_in_this_delivery": true
+  },
+  "member_pins": [
+    {
+      "path": "APPLY_RU.md",
+      "bytes": 5577,
+      "sha256": "e04876d00dbb6f1bceb5b2b45387fd9e7fd54dd98e9b4c41fc31de3465e39d56"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/CONTRACT_RU.md",
+      "bytes": 31238,
+      "sha256": "a3790205146103ae07771508408ed28b6ea78d46953b874ca1ec9c7183a1bbd0"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/INTEGRATION_RU.md",
+      "bytes": 17675,
+      "sha256": "420b7b5335a1708e2c637c798624fd1ba291b613d5dce179497a731b12bd0621"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/identity.c",
+      "bytes": 21233,
+      "sha256": "e35aa9f59914902a178eee93792352f0995d5f162d25bf7b8364ceca736da998"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/identity.h",
+      "bytes": 3841,
+      "sha256": "8f2bc535a7a67596da6db671fff82628615351b41517053716bfbb15595ecc04"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/identity_internal.h",
+      "bytes": 830,
+      "sha256": "c2f638137963016dfbe3cfd01e0a05cb78e7aa523e632269aa56ba716feb3bb4"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/identity_provider.h",
+      "bytes": 2973,
+      "sha256": "fe068b33de06aee3719cbc6f9519cd0e6fbb0eedb16a15da8e1d38b165203643"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/identity_provider_unavailable.c",
+      "bytes": 777,
+      "sha256": "78c006a0376f738dfb5fa2ff86c5c379a0a058833b1c2a3622f11b15de0b6deb"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/main-identity-adapter.inc",
+      "bytes": 8115,
+      "sha256": "3d08bb3de305023e396de0f1001a602c1214392bbd9f6a929b9c7358fb2041bb"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/TEST_SCOPE_RU.md",
+      "bytes": 5507,
+      "sha256": "9827ff46539ce483a901c8c92809993656cde808a216bb4ec70b3de10ad6941f"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/model_provider.c",
+      "bytes": 9084,
+      "sha256": "28b14f47d77b49d5382d2583785983535da70ac41816344fe21c96051b18e1c1"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/model_provider.h",
+      "bytes": 1424,
+      "sha256": "64e03021ddf0048949ceb33a2657c92fb8d4f7e00308c8696a1b065b84defae5"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/namespace_model.c",
+      "bytes": 3366,
+      "sha256": "20a50d2f8461eecbd371e2f8d204c590b06cb33fb4833d219968932874ccee64"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/namespace_model.h",
+      "bytes": 451,
+      "sha256": "f449a87a9a2561e506af034f1d43a95a97324e8cd83445961890eb8f6805908b"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/run_checks.py",
+      "bytes": 14181,
+      "sha256": "43304ce0d438ae93cbccc465332452469895711fbd514fadf9d1101479a4799b"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/test_adapter_compile.c",
+      "bytes": 945,
+      "sha256": "a06b1fd7d440ac034d74f5e7fe5b4d8232eff4b07ba2d8db61d36ce2ebd9ed51"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/test_adapter_model.c",
+      "bytes": 18772,
+      "sha256": "2539b8fdc68ec5c0274d17c9aac430b41efbd7f369ff2369b25ce25ae992679b"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/test_identity_model.c",
+      "bytes": 23899,
+      "sha256": "4c9c6caaa29c81909c678be26eae1e42d92491c1cdadc4fc248d7e4e46750fd0"
+    },
+    {
+      "path": "CHANGES/source4/identity-slice/tests/test_public_denial.c",
+      "bytes": 1896,
+      "sha256": "ddfe5855902865c254a8e7ae5f1203db87410174b8c65197aeac4593f31a3cde"
+    },
+    {
+      "path": "MANIFEST.json",
+      "bytes": 5160,
+      "sha256": "5e18f2aa05264b484135c154f1b73498c1ed398ea156ce41d9b338b630ab1130"
+    },
+    {
+      "path": "NEXT_CHAT_RU.txt",
+      "bytes": 4129,
+      "sha256": "17abd55a93465af8aefc3bb2b5533c2443528bb9b05adafadb6662790aabb02c"
+    },
+    {
+      "path": "RESULT_RU.md",
+      "bytes": 17913,
+      "sha256": "8fd22aafb16b04566bdeda9402e5f407423ff0779012582563b2e76dd995486f"
+    }
+  ]
+}
